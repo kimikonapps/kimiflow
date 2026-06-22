@@ -2,6 +2,17 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.9
+
+### Changed
+- **Slimmed `SKILL.md` to a thinner state-machine spine.** The always-loaded orchestrator spec was
+  compressed in 12 spots where the detail already lives in `reference.md` — in-line explanation
+  replaced with terse imperatives + section pointers (Modes, Core principles, Phase 0/2/4/7).
+  **Behavior-preserving:** every gate, threshold, transition and mechanical contract is kept inline
+  or reachable via a working `reference.md` pointer (verified clause-by-clause by an independent
+  adversarial audit; all pointers resolve; `reference.md` unchanged; hook tests green). ≈−8% bytes /
+  −9% words off the per-run orchestrator context.
+
 ## 0.1.8
 
 ### Fixed
