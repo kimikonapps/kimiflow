@@ -65,12 +65,15 @@ reset
 put r1-B.md "FINDING HIGH src/a:1 :: x"
 put r2-B.md "NONE"
 af "$(run --round 2 --expect B)" 1 OPEN "resolved_clean"
-# reappearance: in r1, absent r2, back in r3 → CLOSED reappeared
+# reappearance: count strictly decreasing (oscillation does NOT fire), but a finding present
+# in r1, absent in r2, returns in r3 → CLOSED reappeared (isolates reappearance vs oscillation)
 reset
-put r1-B.md "FINDING HIGH src/a:1 :: x"
-put r2-B.md "FINDING HIGH src/b:2 :: y"
+put r1-B.md "FINDING HIGH src/a:1 :: x
+FINDING HIGH src/b:2 :: y"
+put r2-B.md "FINDING HIGH src/b:2 :: y
+FINDING HIGH src/c:3 :: z"
 put r3-B.md "FINDING HIGH src/a:1 :: x"
-af "$(run --round 3 --expect B)" 3 reappeared "reappeared_r1_r3"
+af "$(run --round 3 --expect B)" 3 reappeared "reappeared_isolated"
 # cap reached with open findings → CLOSED cap-reached
 reset
 put r1-B.md "FINDING HIGH src/a:1 :: x"
