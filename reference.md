@@ -58,6 +58,12 @@ A user-approval checkpoint between the (internally vetted) plan and implementati
 
 ---
 
+## Phase task list (all phases)
+
+A native task-list widget for glance-level progress. In Phase 0 create one task per phase actually run (`TaskCreate`), scaled to scope; mark `in_progress`/`completed` via `TaskUpdate` as phases open/close. It **complements**, never replaces: `STATE.md` is the durable, resume-able record (survives sessions; the widget is ephemeral per session) and the colored markers remain the per-phase event line. It satisfies the "reads at a glance" goal as structured output, not prose narration (see terse-output (e)). Subagents keep their own internal task-lists — keep those out of the orchestrator's phase list.
+
+---
+
 ## Intent clarification (grill, plain language) (Phase 1)
 
 Goal: shared understanding BEFORE research/plan. kimiflow runs the interview **itself** (embedded, no external skill).
