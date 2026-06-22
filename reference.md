@@ -160,6 +160,37 @@ For bug fixes this branch replaces the intent/research logic. **Core rule: prove
 
 ---
 
+## Audit mode (ponytail lens) (Phase 1–7)
+
+A third mode (beside feature/fix) to safely shrink over-engineered / dead code in a **bounded target**. **Staged:** find → report → approve → execute. **Engine unchanged**; reuses the deletion gate ("Code mandate"), adversarial reviewers ("Review rubric"), the Phase-4 summary gate, and atomic commits.
+
+**Core rule (ponytail Rung-1):** for each item ask not "can we dedupe" but **"should this exist at all?"** — resolves to *delete* or *earns-its-place → simplify*. Every cut is **caller-verified at execution time**; on any doubt, downgrade or skip — never delete on assumption.
+
+**Tags:** `yagni` (speculative architecture) · `delete` (dead, zero-caller) · `shrink` (dedupe, behavior preserved) · `stdlib` (hand-rolled → standard library, edge-cases preserved).
+
+**Safety (non-negotiable):**
+- **Caller-greps run repo-wide** (`src` + tests), never only the target — a symbol in the target can be called from anywhere.
+- **Caller-grep is a MINIMUM:** dynamic dispatch / reflection / string-keyed lookup escape it → tests-green + a do-NOT-touch list + the Phase-4 "refute the cut" lens are the backstop.
+- **Git-history-freshness:** weigh a zero-caller symbol by `git log` — recently touched = likely WIP (downgrade); import removed long ago = confidently dead.
+
+**`AUDIT-INTENT.md` (Phase 1, plain language):** target paths · aggressiveness · behavior-preserve constraints · do-NOT-touch hints · what stays untouched.
+
+**`AUDIT.md` (Phase 2) — self-contained slices, ranked biggest-cut-first:**
+```
+## Slice <n>: <scope>  (~−<x> lines)
+**Scope:** <paths>
+**ponytail lens (why each exists):** per item — delete | earns-its-place→simplify
+**Findings (ranked):**
+| tag | what to cut | replacement | path:line | repo-wide pre-delete grep (→ 0 / expected) | freshness |
+**do-NOT-touch:** <symbol> — <why it stays despite the grep suspicion>
+**Verify gate:** grep-sweep clean → typecheck/build → tests green (shrink/stdlib: green before+after)
+**Companion edits:** <tests referencing cut code, edited in lockstep>
+```
+
+**Execution (Phase 5–7):** one slice at a time — verify grep==0 → apply → run the slice's verify gate → companion edits → **one slice = one commit**. Never batch slices. `--prepare` stops after Phase 4 with the approved `AUDIT.md`.
+
+---
+
 ## Project memory & standards (Phase 2 read · Phase 7 append)
 
 Lets kimiflow get smarter about a project over time instead of re-deriving it every run. **Opt-in, append-only, verified content only** — the anti-hallucination rule governs what may be written; a wrong "standard" must never silently poison future runs.
