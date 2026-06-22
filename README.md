@@ -17,7 +17,7 @@ A **user-invoked** Claude Code skill+plugin that runs a disciplined **8-phase lo
 
 **Prerequisite:** [`jq`](https://jqlang.github.io/jq/) on your `PATH` — the hooks need it. `brew install jq` (macOS) · `sudo apt-get install jq` (Debian/Ubuntu).
 
-**Optional (recommended):** an Obsidian (or compatible notes) MCP for the **vault memory layer** — kimiflow searches the vault before researching and saves reusable findings back, auto-discovering your vault's own structure. No vault MCP → kimiflow skips it and uses the repo-local `.flow/` memory.
+**Optional (recommended):** an Obsidian (or compatible notes) MCP for the **vault memory layer** — kimiflow searches the vault before researching and saves reusable findings back, auto-discovering your vault's own structure. No vault MCP → kimiflow skips it and uses the repo-local `.flow/` memory. → full setup + why it's worth it under **[Vault memory layer](#vault-memory-layer-optional-but-recommended)** below.
 
 ### Recommended — plugin (skill **+** hooks)
 
@@ -96,6 +96,25 @@ kimiflow ships two safety hooks under `hooks/`, **active only in kimiflow repos*
 - **`commit-secret-gate`** — blocks a `git commit` that would stage a secret (`.env*`, `*.pem/.key`, `id_rsa`, `.npmrc`, `secret`/`token`/`credential` paths) and any bulk `git add -A`/`.`.
 - **`test-gate`** (opt-in) — blocks finishing while the project's tests are red; enable per project via a **local, untracked** `.flow/test-gate` file (auto-enabled for `large`-scope runs). A git-tracked (committed) marker is refused — its first line is `eval`'d, so committed markers can't run as a drive-by.
 
+## Vault memory layer (optional, but recommended)
+
+kimiflow can use an **Obsidian vault as a cross-project knowledge base**. In Phase 2 it **searches your vault before researching** (so it never re-researches what you already learned) and **saves reusable findings back** — auto-discovering your vault's own folder/index structure. Across many projects this compounds into a personal, searchable memory that makes every run faster and better-grounded. **It's genuinely worth setting up.**
+
+**Without a vault MCP — nothing breaks.** kimiflow detects there's no notes MCP, **notes it in `STATE.md`, skips the vault search + save, and continues.** Research falls back to the codebase + web, and the **repo-local `.flow/` memory** (`STANDARDS.md` / `DECISIONS.md`) still persists project-level learning. No errors, no blocked phases — identical gates, hooks and outcome; you only lose the cross-project shortcut.
+
+### Setup — so the vault layer actually works
+
+1. **Install Obsidian:** <https://obsidian.md> — open or create a vault.
+2. **Enable the *Local REST API* plugin** ([coddingtonbear/obsidian-local-rest-api](https://github.com/coddingtonbear/obsidian-local-rest-api)): Obsidian → Settings → Community plugins → install & enable → copy the **API key** from the plugin settings.
+3. **Add the Obsidian MCP server to Claude Code** ([MarkusPfundstein/mcp-obsidian](https://github.com/MarkusPfundstein/mcp-obsidian); needs [`uv`](https://docs.astral.sh/uv/)):
+   ```bash
+   claude mcp add obsidian -e OBSIDIAN_API_KEY=<your-api-key> -- uvx mcp-obsidian
+   ```
+   Defaults to `127.0.0.1:27124`; override with `-e OBSIDIAN_HOST=… -e OBSIDIAN_PORT=…` if you changed the plugin's port.
+4. **Restart Claude Code** and keep **Obsidian running** during a kimiflow run (the MCP talks to the app's local API). Verify the `obsidian_*` tools are listed.
+
+kimiflow uses `obsidian_simple_search`, `obsidian_get_file_contents` and `obsidian_append_content` — any MCP exposing those `obsidian_*` tools works.
+
 ---
 
 # kimiflow — Feature- & Fix-Loop (Deutsch)
@@ -108,7 +127,7 @@ Ein **user-invoked** Claude-Code-Skill+Plugin, das einen disziplinierten **8-Pha
 
 **Voraussetzung:** [`jq`](https://jqlang.github.io/jq/) im `PATH` — die Hooks brauchen es. `brew install jq` (macOS) · `sudo apt-get install jq` (Debian/Ubuntu).
 
-**Optional (empfohlen):** ein Obsidian- (oder kompatibler Notes-) MCP für die **Vault-Memory-Schicht** — kimiflow durchsucht den Vault vor dem Recherchieren und speichert wiederverwendbare Erkenntnisse zurück, wobei es die Struktur deines Vaults selbst erkennt. Kein Vault-MCP → kimiflow überspringt ihn und nutzt die repo-lokale `.flow/`-Memory.
+**Optional (empfohlen):** ein Obsidian- (oder kompatibler Notes-) MCP für die **Vault-Memory-Schicht** — kimiflow durchsucht den Vault vor dem Recherchieren und speichert wiederverwendbare Erkenntnisse zurück, wobei es die Struktur deines Vaults selbst erkennt. Kein Vault-MCP → kimiflow überspringt ihn und nutzt die repo-lokale `.flow/`-Memory. → vollständiges Setup + warum es sich lohnt unter **Vault-Memory-Schicht** unten.
 
 ### Empfohlen — Plugin (Skill **+** Hooks)
 
@@ -186,3 +205,22 @@ kimiflow bringt zwei Sicherheits-Hooks unter `hooks/` mit, **nur in kimiflow-Rep
 
 - **`commit-secret-gate`** — blockt einen `git commit`, der ein Secret stagen würde (`.env*`, `*.pem/.key`, `id_rsa`, `.npmrc`, `secret`/`token`/`credential`-Pfade), sowie jedes Bulk-`git add -A`/`.`.
 - **`test-gate`** (opt-in) — blockt das Beenden, solange die Projekt-Tests rot sind; pro Projekt via **lokaler, untracked** `.flow/test-gate`-Datei aktivieren (für `large`-Läufe automatisch). Ein git-getrackter (committeter) Marker wird abgelehnt — seine erste Zeile wird `eval`'t, committete Marker können so nicht als Drive-by laufen.
+
+## Vault-Memory-Schicht (optional, aber empfohlen)
+
+kimiflow kann einen **Obsidian-Vault als projektübergreifende Wissensbasis** nutzen. In Phase 2 **durchsucht es deinen Vault vor dem Recherchieren** (damit es nie neu recherchiert, was du schon gelernt hast) und **speichert wiederverwendbare Erkenntnisse zurück** — wobei es die Ordner-/Index-Struktur deines Vaults selbst erkennt. Über viele Projekte hinweg wächst das zu einem persönlichen, durchsuchbaren Gedächtnis, das jeden Lauf schneller und fundierter macht. **Das Einrichten lohnt sich wirklich.**
+
+**Ohne Vault-MCP — nichts bricht.** kimiflow erkennt, dass kein Notes-MCP da ist, **vermerkt es in `STATE.md`, überspringt Vault-Suche + -Save und läuft weiter.** Recherche fällt auf Codebase + Web zurück, und die **repo-lokale `.flow/`-Memory** (`STANDARDS.md` / `DECISIONS.md`) persistiert weiterhin projektbezogenes Lernen. Keine Fehler, keine blockierten Phasen — identische Gates, Hooks und Ergebnisqualität; nur die projektübergreifende Abkürzung fehlt.
+
+### Setup — damit die Vault-Schicht wirklich funktioniert
+
+1. **Obsidian installieren:** <https://obsidian.md> — Vault öffnen oder anlegen.
+2. **Das *Local REST API*-Plugin aktivieren** ([coddingtonbear/obsidian-local-rest-api](https://github.com/coddingtonbear/obsidian-local-rest-api)): Obsidian → Einstellungen → Community-Plugins → installieren & aktivieren → **API-Key** aus den Plugin-Einstellungen kopieren.
+3. **Den Obsidian-MCP-Server zu Claude Code hinzufügen** ([MarkusPfundstein/mcp-obsidian](https://github.com/MarkusPfundstein/mcp-obsidian); braucht [`uv`](https://docs.astral.sh/uv/)):
+   ```bash
+   claude mcp add obsidian -e OBSIDIAN_API_KEY=<dein-api-key> -- uvx mcp-obsidian
+   ```
+   Standard ist `127.0.0.1:27124`; mit `-e OBSIDIAN_HOST=… -e OBSIDIAN_PORT=…` überschreiben, falls du den Port geändert hast.
+4. **Claude Code neu starten** und **Obsidian während eines kimiflow-Laufs laufen lassen** (der MCP spricht mit der lokalen API der App). Prüfen, dass die `obsidian_*`-Tools gelistet sind.
+
+kimiflow nutzt `obsidian_simple_search`, `obsidian_get_file_contents` und `obsidian_append_content` — jeder MCP, der diese `obsidian_*`-Tools bereitstellt, funktioniert.
