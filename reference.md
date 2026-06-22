@@ -63,6 +63,65 @@ A native task-list widget for glance-level progress. In Phase 0 create one task 
 
 ---
 
+## Explore phase (before Phase 1) — opt-in
+
+A divergent front-end that widens the **direction** space before the convergent Clarify locks the
+WHAT. Runs only on `--explore` or an accepted offer. **Feature mode only** — fix is
+root-cause-convergent, audit is itself a survey. If exploration reveals the real work is a fix or a
+cleanup, that's a **finding** → suggest `--fix`/`--audit`; don't force it through Explore.
+
+**Trigger & offer-on-detect.** The explicit `--explore` flag always runs the phase. Otherwise, when a
+request reads as open-ended **and** is not already a concrete spec (a clear WHAT with
+acceptance-shaped detail), kimiflow **offers once**: "This looks open-ended — explore a few
+directions first?". **Decline → normal routing. Headless / no interactive answer → skip the offer,
+proceed normally (never block).** Only `--explore` forces the phase. Detection markers (illustrative,
+in the user's language): EN "not sure how", "what are my options", "ideas for", "brainstorm",
+"explore", "which way", "how should I"; DE "Ideen für/zu", "weiß nicht wie", "welche Optionen", "wie
+am besten".
+
+**Flow — bound → fan-out → menu → pick:**
+1. **Bound (≤1 question).** If the request lacks what's needed to explore *relevantly* (goal, hard
+   constraints, what "better" means), ask ONE plain-language bounding question. Already bounded →
+   skip. A full interview is Clarify's job, later — not here.
+2. **Fan-out (2–3 explorers, parallel, read-only `Explore` agents).** Each is forced to a **distinct**
+   direction via a diverse lens (e.g. minimal/MVP · robust/long-horizon · sideways/reframe) and is
+   **codebase-grounded**: it reads what exists and cites `file:line` where a direction leans on
+   current code, marking speculation "NOT VERIFIED". Adversarial-diversity framing so they don't
+   converge. Each returns: framing · sketch · rough effort/risk · key trade-off · what it rules out.
+   Counts against the agent budget (2–3, within the lean default).
+3. **Synthesize → menu.** Dedup/merge into a terse menu of 2–3 directions (each ≤3 lines: name ·
+   essence · the deciding trade-off). Write `EXPLORE.md`; show the menu + path — a **bounded
+   terse-output exemption** (structured, like the pre-build summary; never a full-artifact dump,
+   invariant (b) still holds).
+4. **Pick — the Explore gate (human; no numeric score):**
+   - **continue** → the chosen direction **seeds Phase 1 Clarify** (`INTENT.md` anchored to it;
+     Clarify converges the details and does NOT re-ask the WHAT from scratch) → normal loop.
+   - **stop** → behave like `--prepare`: STOP, update STATE (Explore done + chosen direction), emit
+     `/kimiflow --resume <slug>` (resume re-enters at Clarify with the chosen direction).
+   - **none of these** → ONE re-fan-out using the user's steer (why none fit), bounded to a single
+     retry (anti-spin), then stop + ask.
+   - **headless / no answer** → never auto-pick a direction; behave like `--prepare`.
+
+**`EXPLORE.md`** (at `.kimiflow/<slug>/EXPLORE.md`, dense — artifact-economy):
+```
+# Explore: <fuzzy idea in plain words>
+## Bounding            (the constraints/goal that scoped the search)
+## Directions (2–3)
+   ### <Direction name>
+   - Essence        (1–2 sentences)
+   - Grounding      (file:line it leans on; "NOT VERIFIED" if speculative)
+   - Effort / risk  (rough, relative)
+   - Trade-off      (what you gain / give up)
+   - Rules out      (what choosing it forecloses)
+## Chosen             (the picked direction + why; or "none → re-explored / stopped")
+```
+
+**Handoff to Clarify:** Phase 1 reads `## Chosen` and seeds `INTENT.md` from it — the WHAT is now the
+chosen direction, which Clarify then narrows. **Resume:** Explore done with a chosen direction ⇒
+`--resume` starts at Phase 1 Clarify, seeded by it.
+
+---
+
 ## Intent clarification (grill, plain language) (Phase 1)
 
 Goal: shared understanding BEFORE research/plan. kimiflow runs the interview **itself** (embedded, no external skill).
