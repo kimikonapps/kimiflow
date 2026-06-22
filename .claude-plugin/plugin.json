@@ -1,7 +1,7 @@
 {
   "name": "kimiflow",
   "description": "Feature & bug-fix loop for Claude Code with real quality gates (clarify → understand/diagnose → plan-gate → verify → commit). Replies in your language.",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "license": "MIT",
   "author": {
     "name": "kimikon"

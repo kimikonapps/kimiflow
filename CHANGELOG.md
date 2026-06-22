@@ -2,6 +2,22 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.7
+
+### Added
+- **Mechanized review gate.** The binary Phase-4 / Phase-7 review decision is now a single tested,
+  deterministic resolver `hooks/resolve-review-gate.sh` instead of a prose-instructed `grep | wc -l`.
+  It validates findings completeness + canonical grammar, counts open BLOCKER/HIGH, and applies
+  anti-oscillation (`cap → oscillation → reappearance`), echoing one stable machine line
+  `VERDICT⇥count⇥reason_code⇥detail`. **Fail-closed** on any incompleteness / malformation / misuse
+  (never a false `OPEN`); **language-agnostic** — operates only on the `FINDING <SEVERITY> <ref> :: <reason>`
+  abstraction (arbitrary UTF-8 refs/reasons, no source or per-language logic). Unit-tested (22 cases),
+  wired into CI as a hard gate.
+
+### Changed
+- `reference.md` "Review rubric" and `SKILL.md` (Phase 4 / Phase 7) now delegate the gate count to
+  `resolve-review-gate.sh` (the single source of truth); gate semantics unchanged (mechanized 1:1).
+
 ## 0.1.6
 
 ### Fixed
