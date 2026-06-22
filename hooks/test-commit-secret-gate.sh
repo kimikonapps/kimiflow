@@ -55,6 +55,17 @@ for f in server.pem private.key cert.p12 store.pfx backup.asc id_rsa .npmrc .pyp
   clear_index; stage "$f"; assert_deny "git commit -m x" "secret_caught:$f"
 done
 
+# --- discriminator: a secret word as the TRAILING token is still caught, even hyphen-prefixed ---
+for f in client-secret.txt prod-secret.json oauth-credentials.yml; do
+  clear_index; stage "$f"; assert_deny "git commit -m x" "secret_trailing_caught:$f"
+done
+
+# --- false positive fix: a secret word MID-name (compound code filename, keyword then `-token`)
+# must NOT be flagged. kimiflow's own hook files contain "secret"; so do many source files. ---
+for f in hooks/commit-secret-gate.sh hooks/test-commit-secret-gate.sh lib/secret-manager.ts; do
+  clear_index; stage "$f"; assert_allow "git commit -m x" "compound_name_safe:$f"
+done
+
 # --- intended boundary: bare `token` is NOT caught (would false-positive on tokenizer etc.) ---
 clear_index; stage token.txt; assert_allow "git commit -m x" "bare_token_not_flagged(intended)"
 

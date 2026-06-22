@@ -24,7 +24,7 @@ emit_deny() { # $1 = reason; emits a valid PreToolUse deny with or without jq
   exit 0
 }
 
-flow_root() { # $1 = candidate cwd; echo the git root (cwd first, hook cwd fallback)
+git_root() { # $1 = candidate cwd; echo the git root (cwd first, hook cwd fallback)
   git -C "${1:-.}" rev-parse --show-toplevel 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null || true
 }
 
@@ -32,7 +32,7 @@ flow_root() { # $1 = candidate cwd; echo the git root (cwd first, hook cwd fallb
 if ! command -v jq >/dev/null 2>&1; then
   if printf '%s' "$input" | grep -qE 'git.{0,200}(add|commit)'; then
     cwd="$(printf '%s' "$input" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
-    root="$(flow_root "$cwd")"
+    root="$(git_root "$cwd")"
     [ -n "$root" ] && [ -d "$root/.kimiflow" ] && emit_deny "kimiflow commit-secret-gate: jq is not installed — cannot verify staged files for secrets, so this git command is blocked (fail-closed). Install jq (brew install jq / apt-get install jq); jq is also required by kimiflow's test-gate."
   fi
   exit 0
@@ -49,7 +49,7 @@ git_sub() { printf '%s' "$cmd" | grep -qE "(^|[;&|][[:space:]]*)git( +-[Cc] +[^ 
 
 git_sub add || git_sub commit || exit 0
 
-root="$(flow_root "$cwd")"
+root="$(git_root "$cwd")"
 [ -n "$root" ] || exit 0
 [ -d "$root/.kimiflow" ] || exit 0   # scope: kimiflow repos only
 
@@ -74,7 +74,11 @@ if git_sub commit; then
   fi
   scan="$(printf '%s\n%s\n' "$staged" "$added_now" | grep -vE '^[[:space:]]*$' || true)"
   [ -n "$scan" ] || exit 0
-  secret_re='(^|/)[^/]*\.env(rc)?(\.|$)|\.(pem|key|p12|pfx|asc)$|(^|/)id_(rsa|dsa|ecdsa|ed25519)$|(^|/)\.(npmrc|pypirc)$|(^|[/._-])(secrets?|credentials?|api[._-]?keys?|access[._-]?tokens?|auth[._-]?tokens?)([/._-]|$)'
+  # Keyword boundary: a secret-word is flagged as the LEADING or trailing token, but the
+  # trailing side excludes '-' so a compound NAME like commit-secret-gate.sh / secret-manager.ts
+  # (keyword mid-name, continues with '-...') is NOT flagged, while a trailing secret token like
+  # client-secret.txt / aws-credentials.yml still is (leading '-' kept, trailing '.'/'/'/'_'/$).
+  secret_re='(^|/)[^/]*\.env(rc)?(\.|$)|\.(pem|key|p12|pfx|asc)$|(^|/)id_(rsa|dsa|ecdsa|ed25519)$|(^|/)\.(npmrc|pypirc)$|(^|[/._-])(secrets?|credentials?|api[._-]?keys?|access[._-]?tokens?|auth[._-]?tokens?)([/._]|$)'
   hits="$(printf '%s\n' "$scan" | grep -iE "$secret_re" || true)"
   if [ -n "$hits" ]; then
     emit_deny "$(printf 'kimiflow commit-secret-gate: refusing commit — staged paths look like secrets:\n%s\n\nUnstage them (git restore --staged <path>) or add to .gitignore. False positive? Commit the specific safe files by name from outside a kimiflow run.' "$hits")"
