@@ -20,6 +20,9 @@ jobs:
       - name: Unit tests (resolve-verbosity) — hard gate
         run: bash hooks/test-resolve-verbosity.sh
 
+      - name: Unit tests (resolve-build-gate) — hard gate
+        run: bash hooks/test-resolve-build-gate.sh
+
       - name: Validate JSON — hard gate
         run: |
           jq -e . hooks/hooks.json > /dev/null
