@@ -2,6 +2,15 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.4
+
+### Added
+- **Audit / cleanup mode** — a third mode (`/kimiflow --audit <path>` or auto-detected) that runs the
+  ponytail lens over a bounded target: finds tagged slices (`yagni`/`delete`/`shrink`/`stdlib`) with
+  repo-wide caller-greps and git-history-freshness, presents them for approval (Phase-4 summary gate),
+  then executes one slice = one commit with a per-slice verify gate. Caller-grep is a documented
+  MINIMUM; tests + do-NOT-touch + adversarial "refute the cut" verification are the backstop. Engine unchanged.
+
 ## 0.1.3
 
 ### Added
