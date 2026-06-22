@@ -80,5 +80,36 @@ assert_allow "git add safe.txt && git commit -m wip"    "bypass_add_commit_safe_
 NOREPO="$WORK/norepo"; git init -q "$NOREPO"; : > "$NOREPO/.env"; git -C "$NOREPO" add -f .env >/dev/null 2>&1
 assert_allow "git commit -m x" "out_of_scope_repo_allowed" "$NOREPO"
 
+# ============================================================================
+# No-jq path: the hook FAILS CLOSED without jq, and the git add/commit detection
+# must be robust against quotes between `git` and the subcommand. Drive the REAL
+# hook under a PATH that OMITS jq (symlink only the tools its no-jq branch needs).
+# The test itself keeps jq (to build payloads) — only the HOOK sees no jq.
+# Tool paths are resolved with `command -v` INSIDE this script (alias-free in
+# non-interactive bash), so a user's interactive `grep` alias can't poison them.
+# ============================================================================
+REALBASH="$(command -v bash)"
+NOJQ="$WORK/nojq-bin"; mkdir -p "$NOJQ"
+for t in cat grep sed head git tr; do s="$(command -v "$t")"; [ -n "$s" ] && ln -s "$s" "$NOJQ/$t"; done
+PLAIN="$WORK/plain"; git init -q "$PLAIN"   # git repo WITHOUT .kimiflow/
+
+deny_nojq()  { # $1=cmd $2=label [$3=repo]
+  out="$(payload "$1" "${3:-$REPO}" | PATH="$NOJQ" "$REALBASH" "$HOOK" 2>/dev/null)"
+  if printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then pass "$2"
+  else fail "$2 (expected DENY, got: ${out:-<empty/allow>})"; fi
+}
+allow_nojq() { # $1=cmd $2=label [$3=repo]
+  out="$(payload "$1" "${3:-$REPO}" | PATH="$NOJQ" "$REALBASH" "$HOOK" 2>/dev/null)"
+  if printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then fail "$2 (expected ALLOW, got DENY: $out)"
+  else pass "$2"; fi
+}
+
+deny_nojq  "git commit -m x"                     "nojq_commit_denied"                 # AC-A1
+deny_nojq  'git -C "/x" commit -m x'             "nojq_dashC_commit_denied"           # AC-A2
+deny_nojq  'git -c user.name="a b" commit -m x'  "nojq_dashc_commit_denied"           # AC-A3
+deny_nojq  "git add prod.env && git commit -m x" "nojq_add_commit_denied"             # AC-A4
+allow_nojq "ls -la"                              "nojq_nongit_allowed"                # AC-A5
+allow_nojq "git commit -m x"                     "nojq_no_kimiflow_allowed" "$PLAIN"  # AC-A6
+
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi

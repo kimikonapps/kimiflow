@@ -30,7 +30,7 @@ flow_root() { # $1 = candidate cwd; echo the git root (cwd first, hook cwd fallb
 
 # ---- No jq: cannot parse/verify → FAIL CLOSED on git add/commit in kimiflow repos ----
 if ! command -v jq >/dev/null 2>&1; then
-  if printf '%s' "$input" | grep -qE 'git[^"]{0,80}(add|commit)'; then
+  if printf '%s' "$input" | grep -qE 'git.{0,200}(add|commit)'; then
     cwd="$(printf '%s' "$input" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
     root="$(flow_root "$cwd")"
     [ -n "$root" ] && [ -d "$root/.kimiflow" ] && emit_deny "kimiflow commit-secret-gate: jq is not installed — cannot verify staged files for secrets, so this git command is blocked (fail-closed). Install jq (brew install jq / apt-get install jq); jq is also required by kimiflow's test-gate."
