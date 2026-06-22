@@ -57,4 +57,32 @@ for lens in "$@"; do
 done
 
 [ "$open_count" -eq 0 ] && emit OPEN 0 clean
-emit CLOSED "$open_count" open-findings   # (anti-oscillation refines this in Task 2)
+
+# ---- open_count > 0: anti-oscillation (cap → reappeared → oscillation → open-findings) ----
+[ "$round" -gt "$cap" ] && emit CLOSED "$open_count" cap-reached "round ${round} > cap ${cap}"
+
+prev=$((round - 1))
+prev_exists=false
+for pf in "$dir"/r${prev}-*.md; do [ -e "$pf" ] && { prev_exists=true; break; }; done
+
+if [ "$prev" -ge 1 ] && [ "$prev_exists" = true ]; then
+  if [ "$prev" -ge 2 ]; then
+    while IFS= read -r id; do
+      [ -n "$id" ] || continue
+      grep -qF "FINDING $id :: " "$dir"/r${prev}-*.md 2>/dev/null && continue   # still present last round
+      k=1
+      while [ "$k" -le $((prev - 1)) ]; do
+        if grep -qF "FINDING $id :: " "$dir"/r${k}-*.md 2>/dev/null; then
+          emit CLOSED "$open_count" reappeared "$id"
+        fi
+        k=$((k + 1))
+      done
+    done <<EOF
+$cur_ids
+EOF
+  fi
+  prev_open="$(grep -hE '^FINDING (BLOCKER|HIGH) ' "$dir"/r${prev}-*.md 2>/dev/null | grep -c '' )"
+  [ "$open_count" -ge "$prev_open" ] && emit CLOSED "$open_count" oscillation "${prev_open}->${open_count}"
+fi
+
+emit CLOSED "$open_count" open-findings

@@ -47,4 +47,40 @@ af "$(run --round 1 --expect B)" 2 1 "utf8_reason_counts"
 reset; put r1-B.md "FINDING MEDIUM PLAN.md §Abschnitt 3 :: criterion AC-2 has no test"
 af "$(run --round 1 --expect B)" 1 OPEN "planref_valid"
 
+# oscillation: count not strictly decreasing r1->r2 (2 -> 2) → CLOSED oscillation
+reset
+put r1-B.md "FINDING HIGH src/a:1 :: x
+FINDING HIGH src/b:2 :: y"
+put r2-B.md "FINDING HIGH src/a:1 :: x
+FINDING HIGH src/c:3 :: z"
+af "$(run --round 2 --expect B)" 3 oscillation "osc_not_decreasing"
+# progress: 2 -> 1 (strictly decreasing) → still open-findings (not oscillation)
+reset
+put r1-B.md "FINDING HIGH src/a:1 :: x
+FINDING HIGH src/b:2 :: y"
+put r2-B.md "FINDING HIGH src/a:1 :: x"
+af "$(run --round 2 --expect B)" 3 open-findings "progress_decreasing"
+# resolved: 1 -> 0 → OPEN clean
+reset
+put r1-B.md "FINDING HIGH src/a:1 :: x"
+put r2-B.md "NONE"
+af "$(run --round 2 --expect B)" 1 OPEN "resolved_clean"
+# reappearance: in r1, absent r2, back in r3 → CLOSED reappeared
+reset
+put r1-B.md "FINDING HIGH src/a:1 :: x"
+put r2-B.md "FINDING HIGH src/b:2 :: y"
+put r3-B.md "FINDING HIGH src/a:1 :: x"
+af "$(run --round 3 --expect B)" 3 reappeared "reappeared_r1_r3"
+# cap reached with open findings → CLOSED cap-reached
+reset
+put r1-B.md "FINDING HIGH src/a:1 :: x"
+put r2-B.md "FINDING HIGH src/a:1 :: x"
+put r3-B.md "FINDING HIGH src/a:1 :: x"
+put r4-B.md "FINDING HIGH src/a:1 :: x"
+af "$(run --round 4 --expect B --cap 3)" 3 cap-reached "cap_reached"
+# degrade safely: prior-round files absent → no false oscillation, just open-findings
+reset
+put r2-B.md "FINDING HIGH src/a:1 :: x"
+af "$(run --round 2 --expect B)" 3 open-findings "degrade_no_prior"
+
 echo "----"; if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi
