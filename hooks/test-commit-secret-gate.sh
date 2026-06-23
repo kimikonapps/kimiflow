@@ -93,6 +93,44 @@ assert_deny  "git add a.txt server.pem && git commit -m wip" "bypass_add_commit_
 assert_deny  "git add prod.env; git commit -m wip"     "bypass_add_commit_semicolon"
 assert_allow "git add safe.txt && git commit -m wip"    "bypass_add_commit_safe_allowed"
 
+# --- HARDENING: `git commit -a/--all/-am` stages tracked working-tree mods AT COMMIT TIME
+# (after this hook runs), so `diff --cached` alone misses them. With -a present the hook also
+# scans tracked unstaged mods (`git diff --name-only`). Setup: a fresh kimiflow repo with a
+# TRACKED file that is then MODIFIED but left unstaged. ---
+AREPO="$WORK/arepo"; git init -q "$AREPO"; mkdir -p "$AREPO/.kimiflow"
+git -C "$AREPO" config user.email t@t >/dev/null 2>&1; git -C "$AREPO" config user.name t >/dev/null 2>&1
+seed_arepo() { # reset to base (.env + safe.txt committed clean), then modify the named files unstaged
+  git -C "$AREPO" reset -q --hard >/dev/null 2>&1 || true
+  printf 'A=1\n' > "$AREPO/.env"; printf 'ok\n' > "$AREPO/safe.txt"
+  git -C "$AREPO" add -f .env safe.txt >/dev/null 2>&1
+  git -C "$AREPO" commit -qm base >/dev/null 2>&1
+  for p in "$@"; do printf 'changed\n' >> "$AREPO/$p"; done
+}
+seed_arepo .env;     assert_deny  "git commit -am wip"          "commit_a_modified_env_caught"          "$AREPO"
+seed_arepo .env;     assert_deny  "git commit -a -m wip"        "commit_a_split_modified_env_caught"    "$AREPO"
+seed_arepo .env;     assert_deny  "git commit --all -m wip"     "commit_all_modified_env_caught"        "$AREPO"
+# bundled short flags where `a` is NOT first (verbose/quiet/etc. before -a) must STILL be caught —
+# they all auto-stage tracked mods (regression guard for the a-not-first bypass) ---
+seed_arepo .env;     assert_deny  "git commit -vam wip"         "commit_vam_modified_env_caught"        "$AREPO"
+seed_arepo .env;     assert_deny  "git commit -qam wip"         "commit_qam_modified_env_caught"        "$AREPO"
+seed_arepo .env;     assert_deny  "git commit -va -m wip"       "commit_va_modified_env_caught"         "$AREPO"
+seed_arepo safe.txt; assert_allow "git commit -am wip"          "commit_a_only_safe_dirty_allowed"      "$AREPO"
+# false-positive guard: a plain commit must NOT scan unstaged mods (.env dirty+tracked, not staged)
+seed_arepo .env;     assert_allow "git commit -m wip"           "plain_commit_ignores_unstaged_env"     "$AREPO"
+# false-positive guard: a `-a` token INSIDE a quoted -m message must NOT trigger the unstaged scan
+seed_arepo .env;     assert_allow 'git commit -m "drop -a flag"' "commit_msg_dash_a_not_triggered"      "$AREPO"
+# `-ma` is `-m` with value "a" (a message), NOT `-a` — must not trigger the unstaged scan
+seed_arepo .env;     assert_allow "git commit -ma"              "commit_dash_ma_is_message_not_all"     "$AREPO"
+# `--allow-empty` must NOT be misread as `--all` (whole-word match) — plain commit, env not staged
+seed_arepo .env;     assert_allow "git commit --allow-empty -m wip" "commit_allow_empty_not_all"        "$AREPO"
+# value-taking shorts -u (untracked-files) / -S (gpg-sign) whose VALUE contains `a` must NOT be
+# read as `-a` (git does not auto-stage for these) — over-block guard
+seed_arepo .env;     assert_allow "git commit -uall -m wip"        "commit_u_value_all_not_dash_a"      "$AREPO"
+seed_arepo .env;     assert_allow "git commit -Sabc123 -m wip"     "commit_S_keyid_a_not_dash_a"        "$AREPO"
+# documented residual: an explicit pathspec commit of a tracked secret is NOT covered (no shell-AST
+# pathspec parsing — see reference.md "Commit hygiene"). Locked as a KNOWN GAP, not a regression. ---
+seed_arepo .env;     assert_allow "git commit .env -m wip"      "pathspec_commit_known_gap(documented)" "$AREPO"
+
 # --- scope: a repo WITHOUT .kimiflow/ is never policed (even with a staged secret) ---
 NOREPO="$WORK/norepo"; git init -q "$NOREPO"; : > "$NOREPO/.env"; git -C "$NOREPO" add -f .env >/dev/null 2>&1
 assert_allow "git commit -m x" "out_of_scope_repo_allowed" "$NOREPO"

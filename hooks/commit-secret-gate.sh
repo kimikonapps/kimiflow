@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# kimiflow — commit-secret-gate (PreToolUse, Bash). Blocks a `git commit` that would
-# stage a secret, or a bulk `git add -A` / `git add .`. AUTO-ACTIVE only in kimiflow
-# repos — a `.kimiflow/` directory at the git root — so installing kimiflow never polices
-# unrelated repos. No-op for every non-git command and every repo without `.kimiflow/`.
+# kimiflow — commit-secret-gate (PreToolUse, Bash). Blocks a `git commit` whose staged paths
+# (plus, for `-a`/`--all`, the tracked working-tree paths it would auto-stage) look like secrets,
+# and a bulk `git add -A` / `git add .`. AUTO-ACTIVE only in kimiflow repos — a `.kimiflow/`
+# directory at the git root — so installing kimiflow never polices unrelated repos. No-op for
+# every non-git command and every repo without `.kimiflow/`. LIMITATION: an explicit pathspec
+# commit (`git commit <path>`) is NOT covered — parsing a pathspec from a shell string needs an
+# AST, not a regex (see reference.md → "Commit hygiene"). This is path hygiene, not a secret
+# scanner: pair it with a content scanner (gitleaks/trufflehog) for in-source secrets.
 #
 # Requires `jq` (same dependency as test-gate.sh). Without jq the hook cannot parse
 # the payload to verify staged files, so it FAILS CLOSED: it denies a git add/commit
@@ -90,7 +94,28 @@ if git_sub commit; then
       | tr ' ' '\n' \
       | grep -vE '^(-|[[:space:]]*$)' || true)"
   fi
-  scan="$(printf '%s\n%s\n' "$staged" "$added_now" | grep -vE '^[[:space:]]*$' || true)"
+  # `git commit -a/--all/-am…` stages tracked working-tree modifications AT COMMIT TIME — after
+  # this PreToolUse hook runs — so the index scan alone misses them. When -a/--all is present,
+  # also scan tracked-but-unstaged modifications (`git diff --name-only`). Detection is best-effort
+  # over the unparsed command: the commit invocation's own args are isolated (bounded by ;&|),
+  # the subcommand prefix stripped by an anchored match (so the word "commit" in a -m message is
+  # not mistaken for the subcommand), and quoted message text removed first so a `-a` inside
+  # `-m "…-a…"` is not misread (an UNquoted -a token in a message would over-block — the safe
+  # failure). The `-a` matcher fires when `a` appears anywhere in a SHORT-option cluster BEFORE a
+  # value-taking option (m/c/C/F/S/u — incl. optional-arg `-S`gpg / `-u`untracked) — so bundles
+  # like `-am`/`-vam`/`-qam` are caught, while `-ma` (a message), `-uall`, `-Sabc` (option values
+  # containing `a`) are NOT; `--all` is matched as a whole word (not `--allow-empty`).
+  # LIMITATION: an explicit pathspec commit (`git commit <path>`) is NOT covered — reliably parsing
+  # a pathspec from a shell string needs an AST, not a regex (see reference.md → "Commit hygiene").
+  unstaged=""
+  commit_args="$(printf '%s' "$cmd" \
+    | grep -oE "(^|[;&|][[:space:]]*)git( +-[Cc] +[^ ]+| +-[^ ]+)* +commit( +[^;&|]+)*" \
+    | sed -E 's/^[^a-zA-Z]*git( +-[Cc] +[^ ]+| +-[^ ]+)* +commit[[:space:]]*//' \
+    | sed -E "s/\"[^\"]*\"//g; s/'[^']*'//g" || true)"
+  if printf '%s' "$commit_args" | grep -qE '(^|[[:space:]])(--all([[:space:]]|$)|-[^-mcCFSu[:space:]]*a)'; then
+    unstaged="$(git -C "$root" diff --name-only 2>/dev/null || true)"
+  fi
+  scan="$(printf '%s\n%s\n%s\n' "$staged" "$added_now" "$unstaged" | grep -vE '^[[:space:]]*$' || true)"
   [ -n "$scan" ] || exit 0
   # Keyword boundary: a secret-word is flagged as the LEADING or trailing token, but the
   # trailing side excludes '-' so a compound NAME like commit-secret-gate.sh / secret-manager.ts
