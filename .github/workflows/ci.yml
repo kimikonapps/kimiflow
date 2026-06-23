@@ -29,6 +29,9 @@ jobs:
       - name: Unit tests (weakening-scan) — hard gate
         run: bash hooks/test-weakening-scan-unit.sh
 
+      - name: Unit tests (secret-content-scan) — hard gate
+        run: bash hooks/test-secret-content-scan.sh
+
       - name: Unit tests (test-gate) — hard gate
         run: bash hooks/test-gate-unit.sh
 
