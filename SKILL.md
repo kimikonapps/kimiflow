@@ -164,3 +164,4 @@ Run each check, show real output, prove the goal — details: → reference.md "
 - **Deeper debugging:** for a stubborn bug, stop patching and run a systematic, hypothesis-first pass (reproduce → isolate → root-cause) before further edits.
 - **Hard test-gate (opt-in, per project):** kimiflow ships a Stop hook (`hooks/`) that blocks finishing on red tests — see → reference.md "Hard test-gate" to enable.
 - **Anti-reward-hacking hardening (critical code):** held-out/hidden tests, stricter diff inspection for test manipulation.
+- **Behavioral evals (out-of-CI, on-demand):** pressure-test the gates against rationalization with subagents loaded with the real skill — see `evals/` (the `testing-skills-with-subagents` tier). Slow/LLM-judged; never wired into CI.
