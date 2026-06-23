@@ -41,8 +41,9 @@ loop still runs.
 
 Run on every Claude Code upgrade (and at each kimiflow release):
 
-1. **CI hard gates** — `bash -n hooks/*.sh` + the six unit-test scripts green; `jq -e .` on all three
-   JSON manifests. (Already enforced by `.github/workflows/ci.yml`.)
+1. **CI hard gates** — `bash -n hooks/*.sh` + the seven unit-test scripts green; `jq -e .` on all three
+   JSON manifests; and `bash hooks/smoke-install.sh` (structural install check: manifests, skill
+   frontmatter, hook wiring, and a synthetic gate-fires probe). (Enforced by `.github/workflows/ci.yml`.)
 2. **Resolvers run installed** — `/kimiflow --settings` resolves (exercises `resolve-verbosity.sh` /
    `resolve-build-gate.sh` via `${CLAUDE_PLUGIN_ROOT}`).
 3. **Hooks fire installed** — in a repo with a `.kimiflow/` dir, confirm `commit-secret-gate.sh` blocks

@@ -44,5 +44,8 @@ jobs:
           jq -e . .claude-plugin/plugin.json > /dev/null
           jq -e . .claude-plugin/marketplace.json > /dev/null
 
+      - name: Install smoke-test (structural) — hard gate
+        run: bash hooks/smoke-install.sh
+
       - name: ShellCheck (informational)
         run: shellcheck hooks/*.sh || true
