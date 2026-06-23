@@ -143,6 +143,14 @@ seed_arepo .env;     assert_allow 'git commit -m "a\"; x" -a'    "commit_escaped
 # (c) an explicit pathspec commit of a tracked secret is NOT covered (no shell-AST pathspec parsing)
 seed_arepo .env;     assert_allow "git commit .env -m wip"      "pathspec_commit_known_gap(documented)" "$AREPO"
 
+# whitespace normalization: a literal TAB between argv tokens must NOT defeat detection (tabs are
+# normalized to spaces before parsing) — covers both the -a working-tree scan and the git_sub-guarded
+# staged scan. (Without normalization, a tab after `commit` makes git_sub NO-MATCH → branch skipped.)
+seed_arepo .env;         assert_deny  $'git commit\t-am wip'      "tab_after_commit_a_caught"             "$AREPO"
+seed_arepo .env;         assert_deny  $'git commit\t--all -m wip' "tab_before_all_caught"                 "$AREPO"
+seed_arepo .env;         assert_deny  $'git\tcommit -am wip'      "tab_after_git_a_caught"                "$AREPO"
+clear_index; stage .env; assert_deny  $'git commit\t-m wip'      "tab_after_commit_staged_env_caught"
+
 # --- scope: a repo WITHOUT .kimiflow/ is never policed (even with a staged secret) ---
 NOREPO="$WORK/norepo"; git init -q "$NOREPO"; : > "$NOREPO/.env"; git -C "$NOREPO" add -f .env >/dev/null 2>&1
 assert_allow "git commit -m x" "out_of_scope_repo_allowed" "$NOREPO"

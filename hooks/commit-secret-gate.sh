@@ -56,6 +56,11 @@ fi
 cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null || true)"
 cwd="$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)"
 [ -n "$cmd" ] || exit 0
+# Normalize non-newline whitespace (TAB/VT/FF/CR) to spaces so a token separator that isn't a literal
+# space can't defeat the space-anchored matchers below (e.g. `git<TAB>commit` / `git commit<TAB>--all`
+# would otherwise skip git_sub → the whole branch). Newlines are left as line separators (grep is
+# line-oriented; backslash-newline continuations are joined later, in the commit branch).
+cmd="$(printf '%s' "$cmd" | tr '\t\v\f\r' ' ')"
 
 # True when `git`'s SUBCOMMAND is $1 (anchored past optional `-C path` / `-c cfg` /
 # flag globals) — so `git commit -m "...add -A..."` is NOT misread as a bulk add.
