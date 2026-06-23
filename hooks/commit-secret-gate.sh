@@ -97,21 +97,26 @@ if git_sub commit; then
   # `git commit -a/--all/-am…` stages tracked working-tree modifications AT COMMIT TIME — after
   # this PreToolUse hook runs — so the index scan alone misses them. When -a/--all is present,
   # also scan tracked-but-unstaged modifications (`git diff --name-only`). Detection is best-effort
-  # over the unparsed command: the commit invocation's own args are isolated (bounded by ;&|),
-  # the subcommand prefix stripped by an anchored match (so the word "commit" in a -m message is
-  # not mistaken for the subcommand), and quoted message text removed first so a `-a` inside
-  # `-m "…-a…"` is not misread (an UNquoted -a token in a message would over-block — the safe
-  # failure). The `-a` matcher fires when `a` appears anywhere in a SHORT-option cluster BEFORE a
-  # value-taking option (m/c/C/F/S/u — incl. optional-arg `-S`gpg / `-u`untracked) — so bundles
-  # like `-am`/`-vam`/`-qam` are caught, while `-ma` (a message), `-uall`, `-Sabc` (option values
-  # containing `a`) are NOT; `--all` is matched as a whole word (not `--allow-empty`).
-  # LIMITATION: an explicit pathspec commit (`git commit <path>`) is NOT covered — reliably parsing
-  # a pathspec from a shell string needs an AST, not a regex (see reference.md → "Commit hygiene").
+  # over the unparsed command. CRITICAL ORDER: backslash-newline continuations are joined and
+  # quoted spans removed FIRST, THEN the commit segment is isolated by the ;&| split — otherwise a
+  # shell metachar HIDDEN in a quoted message (`-m "a; b" -a`) or behind a line continuation
+  # (`-m "x" \⏎ -a`) would truncate the segment and drop the trailing -a. Safe to strip quotes here:
+  # this branch reads only -a/--all FLAGS, never pathspec/filenames (pathspec is out of scope), so
+  # removing quoted text can never drop a path we needed. The subcommand prefix is then stripped by
+  # an anchored match (so the word "commit" inside a -m message is not taken for the subcommand).
+  # The `-a` matcher fires when `a` appears in a SHORT-option cluster BEFORE a value-taking option
+  # (m/c/C/F/S/u — incl. optional-arg `-S`gpg / `-u`untracked) — so `-am`/`-vam`/`-qam` are caught,
+  # while `-ma` (a message), `-uall`, `-Sabc` are NOT; `--all` is a whole word (not `--allow-empty`).
+  # KNOWN RESIDUALS (regex ≠ shell parser — documented, see reference.md → "Commit hygiene"):
+  # an `env X=y`/`sudo` prefix (defeats the command-position anchor, gate-wide), an escaped quote
+  # inside the message, and an explicit pathspec commit (`git commit <path>`) are NOT covered.
   unstaged=""
-  commit_args="$(printf '%s' "$cmd" \
+  cmd_unq="$(printf '%s' "$cmd" \
+    | awk '{ if (sub(/\\$/,"")) printf "%s ", $0; else print }' \
+    | sed -E "s/\"[^\"]*\"//g; s/'[^']*'//g")"
+  commit_args="$(printf '%s' "$cmd_unq" \
     | grep -oE "(^|[;&|][[:space:]]*)git( +-[Cc] +[^ ]+| +-[^ ]+)* +commit( +[^;&|]+)*" \
-    | sed -E 's/^[^a-zA-Z]*git( +-[Cc] +[^ ]+| +-[^ ]+)* +commit[[:space:]]*//' \
-    | sed -E "s/\"[^\"]*\"//g; s/'[^']*'//g" || true)"
+    | sed -E 's/^[^a-zA-Z]*git( +-[Cc] +[^ ]+| +-[^ ]+)* +commit[[:space:]]*//' || true)"
   if printf '%s' "$commit_args" | grep -qE '(^|[[:space:]])(--all([[:space:]]|$)|-[^-mcCFSu[:space:]]*a)'; then
     unstaged="$(git -C "$root" diff --name-only 2>/dev/null || true)"
   fi

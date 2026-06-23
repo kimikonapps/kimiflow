@@ -115,6 +115,13 @@ seed_arepo .env;     assert_deny  "git commit -vam wip"         "commit_vam_modi
 seed_arepo .env;     assert_deny  "git commit -qam wip"         "commit_qam_modified_env_caught"        "$AREPO"
 seed_arepo .env;     assert_deny  "git commit -va -m wip"       "commit_va_modified_env_caught"         "$AREPO"
 seed_arepo safe.txt; assert_allow "git commit -am wip"          "commit_a_only_safe_dirty_allowed"      "$AREPO"
+# a quoted shell metachar in the -m message must NOT truncate the segment before -a (the command is
+# unquoted BEFORE the ;&| split); same for a backslash-newline continuation (lines are joined first).
+seed_arepo .env;     assert_deny  'git commit -m "hello; world" -a' "commit_quoted_semicolon_a_caught"     "$AREPO"
+seed_arepo .env;     assert_deny  'git commit -m "a && b" -a'       "commit_quoted_amp_a_caught"            "$AREPO"
+seed_arepo .env;     assert_deny  'git commit -m "a | b" -a'        "commit_quoted_pipe_a_caught"           "$AREPO"
+seed_arepo .env;     assert_deny  'git commit -m "a; b" --all'      "commit_quoted_semicolon_all_caught"    "$AREPO"
+seed_arepo .env;     assert_deny  $'git commit -m "x" \\\n -a'      "commit_newline_continuation_a_caught"  "$AREPO"
 # false-positive guard: a plain commit must NOT scan unstaged mods (.env dirty+tracked, not staged)
 seed_arepo .env;     assert_allow "git commit -m wip"           "plain_commit_ignores_unstaged_env"     "$AREPO"
 # false-positive guard: a `-a` token INSIDE a quoted -m message must NOT trigger the unstaged scan
@@ -127,8 +134,13 @@ seed_arepo .env;     assert_allow "git commit --allow-empty -m wip" "commit_allo
 # read as `-a` (git does not auto-stage for these) — over-block guard
 seed_arepo .env;     assert_allow "git commit -uall -m wip"        "commit_u_value_all_not_dash_a"      "$AREPO"
 seed_arepo .env;     assert_allow "git commit -Sabc123 -m wip"     "commit_S_keyid_a_not_dash_a"        "$AREPO"
-# documented residual: an explicit pathspec commit of a tracked secret is NOT covered (no shell-AST
-# pathspec parsing — see reference.md "Commit hygiene"). Locked as a KNOWN GAP, not a regression. ---
+# documented residuals (regex ≠ shell parser) — locked as KNOWN ALLOW so each gap is honest, not silent:
+# (a) env/sudo prefix defeats the command-position anchor (gate-wide; see reference.md "Commit hygiene")
+seed_arepo .env;     assert_allow "env X=1 git commit -am wip"   "commit_env_prefix_known_gap"           "$AREPO"
+seed_arepo .env;     assert_allow "sudo git commit -am wip"      "commit_sudo_prefix_known_gap"          "$AREPO"
+# (b) an escaped quote inside the message desyncs the quote-strip
+seed_arepo .env;     assert_allow 'git commit -m "a\"; x" -a'    "commit_escaped_quote_known_gap"        "$AREPO"
+# (c) an explicit pathspec commit of a tracked secret is NOT covered (no shell-AST pathspec parsing)
 seed_arepo .env;     assert_allow "git commit .env -m wip"      "pathspec_commit_known_gap(documented)" "$AREPO"
 
 # --- scope: a repo WITHOUT .kimiflow/ is never policed (even with a staged secret) ---
