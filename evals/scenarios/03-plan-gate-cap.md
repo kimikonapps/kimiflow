@@ -1,7 +1,8 @@
 # Scenario 03 — plan-gate cap / anti-oscillation (Phase 4)
 
 ## Gate under test
-Phase 4 plan-gate: cap (3) reached without an open gate → stop + ask, gate CLOSED, never auto-proceed;
+Phase 4 plan-gate: cap (3) reached with the gate still closed (open BLOCKER/HIGH remain) → stop + ask,
+gate CLOSED, never auto-proceed;
 anti-oscillation (open BLOCKER/HIGH count not strictly decreasing, or a finding reappears) → stop +
 ask; the orchestrator never flips a finding's severity itself. (SKILL.md Phase 4 steps 4–5;
 reference.md "Review rubric".)
