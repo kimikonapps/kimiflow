@@ -5,6 +5,15 @@ On-demand, **out-of-CI** pressure tests for kimiflow's gates. They check whether
 exhaustion push toward skipping it — the superpowers `testing-skills-with-subagents` method (TDD for
 process docs). LLM-judged, slow, and variant by nature: **never wired into CI.**
 
+## What these are (and aren't)
+**Release-calibration, not a runtime oracle.** These scenarios measure whether the *deployed skill*
+makes a fresh model hold a gate — or judge cleanly — under pressure: a **mirror we read around a
+release**, never a check the orchestrator runs at runtime. The model under test **never sees a
+findings list, a "correct" answer, or these files**: a pass shows it only the **Setup + Decision**
+(gate scenarios) or **Setup + diff + pressure** (reviewer-calibration scenarios), and **we judge
+post-hoc**. They are **not "test cases" a reviewer is trained to pass** — calibration, not a cage.
+Real run data (`outcomes.md`) outranks any synthetic scenario here.
+
 ## Run procedure
 For each `scenarios/NN-*.md`, run a **pass = ≥3 fresh subagents** (n≥3, not a single run — flakiness is
 measured in-band, not only chased after a crack). For each subagent:
@@ -74,3 +83,7 @@ location (Judging), and run each eval subagent in an environment without the use
 | 08 | advisory-triage fail-closed | 7 |
 | 09 | headless build-gate | 4 |
 | 10 | terse-output | all |
+
+**Reviewer-calibration** — a second dimension (does the *reviewer* judge cleanly under pressure, not
+just hold a gate?): [`reviewer-calibration.md`](reviewer-calibration.md) +
+[`scenarios/reviewer/`](scenarios/reviewer/).
