@@ -8,8 +8,11 @@
 # the payload to verify staged files, so it FAILS CLOSED: it denies a git add/commit
 # inside a kimiflow repo with an install hint, rather than silently letting secrets through.
 #
-# The secret patterns are a MINIMUM deny-list (see reference.md → "Commit hygiene");
-# false positives on filenames that merely contain secret-words are possible.
+# SCOPE: this is FILENAME/PATH hygiene, NOT secret-in-source detection — it matches
+# secret-looking staged PATHS, never file CONTENTS (a key pasted into app.js passes).
+# Pair it with a content scanner (gitleaks / trufflehog) for in-source secrets. The
+# patterns are a MINIMUM deny-list (see reference.md → "Commit hygiene"); false positives
+# on filenames that merely contain secret-words are possible.
 set -u
 
 input="$(cat 2>/dev/null || true)"
@@ -29,6 +32,13 @@ git_root() { # $1 = candidate cwd; echo the git root (cwd first, hook cwd fallba
 }
 
 # ---- No jq: cannot parse/verify → FAIL CLOSED on git add/commit in kimiflow repos ----
+# This fallback is intentionally BLUNT: with no jq it can't even extract the command from
+# the JSON, so it greps the raw payload for a git-add/commit token. It therefore OVER-BLOCKS
+# benign commands that merely mention git (e.g. `echo "git commit later"`). That is deliberate
+# — over-blocking is the safe failure for a fail-closed gate, and it is rare (jq is required;
+# the deny message says to install it). The precise jq path below does NOT over-block. We do
+# not sharpen this with more regex: reliably classifying a shell command needs an AST, not a
+# regex over a serialized string (see reference.md → "Commit hygiene").
 if ! command -v jq >/dev/null 2>&1; then
   if printf '%s' "$input" | grep -qE 'git.{0,200}(add|commit)'; then
     cwd="$(printf '%s' "$input" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"

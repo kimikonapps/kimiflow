@@ -128,5 +128,12 @@ deny_nojq  "git add prod.env && git commit -m x" "nojq_add_commit_denied"       
 allow_nojq "ls -la"                              "nojq_nongit_allowed"                # AC-A5
 allow_nojq "git commit -m x"                     "nojq_no_kimiflow_allowed" "$PLAIN"  # AC-A6
 
+# --- documented intentional over-block: the blunt no-jq fallback greps the raw payload, so a
+# benign command that merely MENTIONS git add/commit is over-blocked. This is deliberate (safe
+# failure for a fail-closed gate; install jq for the precise path). These cases LOCK that
+# contract — see commit-secret-gate.sh no-jq comment + reference.md "Commit hygiene". ---
+deny_nojq  'echo "git commit later"'             "nojq_benign_git_mention_overblocked(intended)"  # AC-1
+allow_nojq 'echo "deploy later"'                 "nojq_nongit_phrase_allowed"                      # AC-1
+
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi
