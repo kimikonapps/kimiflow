@@ -2,6 +2,19 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.19
+
+Close the pre-existing literal-TAB gap in `commit-secret-gate` (the LOW from 0.1.18's review).
+
+### Fixed
+- **A non-space token separator (TAB/VT/FF/CR) defeated detection** (`hooks/commit-secret-gate.sh`).
+  The git/subcommand matchers anchor on a literal space, so `git<TAB>commit …` or `git commit<TAB>--all …`
+  made `git_sub` NO-MATCH — skipping the **whole** commit branch (both the staged-path scan and the
+  `-a` working-tree scan), letting a tracked/staged secret commit unblocked. Fixed with a single
+  normalization: non-newline whitespace is collapsed to spaces (`tr '\t\v\f\r' ' '`) right after the
+  command is parsed, so every downstream matcher benefits. Newlines stay as line separators. 4 tab
+  unit tests added (82 cases total).
+
 ## 0.1.18
 
 Close a second bypass class in `commit-secret-gate`'s `-a`/`--all` detection and make the README's
