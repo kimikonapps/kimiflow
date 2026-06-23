@@ -2,6 +2,39 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.12
+
+A self-applied claim/evidence remediation (kimiflow's own `evidence-before-assertion` standard turned
+on its own docs) + eval-suite hardening + secret-gate scoping. **Docs / evals / tests only — engine
+behavior unchanged; `secret_re` and all gate logic untouched.**
+
+### Added
+- **`COMPATIBILITY.md`** — every Claude Code primitive kimiflow depends on (PreToolUse/Stop hooks,
+  `${CLAUDE_PLUGIN_ROOT}`/`${CLAUDE_SKILL_DIR}`, `TaskCreate`/`TaskUpdate`, subagent types,
+  `disable-model-invocation`, the manifests), classed load-bearing vs graceful, with a version-bump
+  smoke checklist. Last verified: Claude Code 2.1.186.
+- **Eval suite expanded to 10 scenarios** — `07-scope-gate` (both directions),
+  `08-advisory-triage-failclosed`, `09-headless-build-gate`, `10-terse-output`; an open-ended tier
+  beside the MCQ tier; and a run procedure requiring n≥3 per pass + a CLAUDE.md-free / attribution-
+  forcing setup (addresses the ambient-CLAUDE.md confound in the method, not just the prose).
+- **`evals/outcomes.md`** — an honest, currently-empty log for outcome quality (kimiflow vs a plain
+  session); field notes, not a benchmark. Nothing is cited from it while empty.
+
+### Changed
+- **Outward claims aligned with evidence.** The 0.1.11 "6/6 held" line now carries the
+  ambient-CLAUDE.md confound caveat (only 3/6 cleanly attributable). README weakened "enforced, not
+  self-reported" → "a `done` self-report can't inflate past open blockers"; `reference.md` "Review
+  rubric" now states what the gate does **not** guarantee (sound over its inputs, not a completeness
+  proof). Added a "Why kimiflow over plan-mode + a `CLAUDE.md`" section.
+- **Scenario pass-criteria tightened** — every scenario now requires the citation to name its
+  `SKILL.md`/`reference.md` location; the cartoonish distractors in 01/02 became tempting near-misses.
+- **`commit-secret-gate` claim scoped to path-hygiene** — README / `reference.md` now state it is
+  filename/path hygiene, **not** secret-in-source detection, and point to gitleaks/trufflehog for
+  in-source secrets. Doc pattern list synced to the regex (`.asc`, the four concrete SSH keytypes,
+  `.p12`/`.pfx`). The blunt no-jq fallback's intentional over-block is documented and locked by tests.
+- **`LEDGER.md` schema** gains approx-token-cost + post-commit-outcome columns (a cheap ROI
+  instrument) and an honest "when is `large` worth it?" note.
+
 ## 0.1.11
 
 ### Added
