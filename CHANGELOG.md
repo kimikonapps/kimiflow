@@ -2,6 +2,31 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.22
+
+Close a `commit-secret-gate` bypass where **`git -C <target> commit`** scoped the gate to the wrong repo.
+The hook located the repo from the tool **cwd**, never from the global `-C <path>`, so a secret-looking
+staged path could be committed into a kimiflow repo by running git from a different directory
+(`git -C <kimiflow-repo> commit -am …` from outside). **Hook + tests + docs only.**
+
+### Fixed
+- **`git -C <path>` is now honored** (`hooks/commit-secret-gate.sh`). Repo resolution passes the global
+  `-C` option(s) to git, which resolves them cumulatively relative to the cwd — exactly as `git -C` does
+  (so `git -C <repo> commit` from any cwd is scoped to `<repo>`). Extraction is scoped to the **global**
+  span (before the subcommand), so a reuse-message `-C <commit>` that *follows* `commit` is not mistaken
+  for a chdir. Applied to both the precise (jq) path and the fail-closed jq-less fallback (which tests
+  each `-C` target independently, so an unresolvable reuse-`-C` can't mask a real one). `git_root`, on an
+  unresolvable `-C`, falls back to the cwd itself — never to the hook's own process cwd. bash-3.2-safe.
+- **9 new tests** (`hooks/test-commit-secret-gate.sh`), all run with a process-cwd-faithful runner +
+  an OUTSIDE-not-kimiflow guard: `-C` commit/`-am`/relative-`-C`/reuse-message-discriminator/no-false-
+  positive, plus the jq-less `-C` cases.
+
+### Docs
+- **Known residuals updated** (hook header + `README`/`reference.md` "Commit hygiene"): `git -C <path>` is
+  honored for **unquoted, space-free** paths; a **quoted `-C` path with a space** stays a residual; and
+  `/usr/bin/git` / `command`/`builtin`/`exec git` are documented as command-position-evasion residuals
+  alongside `sudo` / `env X=y` (a deliberate non-standard invocation is out of the gate's threat model).
+
 ## 0.1.21
 
 Add a deliberate **defer → backlog** outcome to the Phase-4 pre-build summary gate. Until now a ready,
