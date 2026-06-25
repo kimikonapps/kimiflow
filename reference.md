@@ -619,6 +619,7 @@ files work without any API key, subscription, or MCP server.
   RUN-HISTORY.md     readable run/session history snapshot
   VAULT-PROVIDER.json local optional Vault/Obsidian provider manifest
   VAULT-PREFETCH.md  bounded handoff for a connected Vault MCP
+  VAULT-SYNC.md      bounded handoff for publish-safe learning sync to a Vault MCP
   PENDING-PROPOSALS.md review-only rule/skill proposal candidates
   PROPOSALS.jsonl    local proposal approval state
   SKILL-DRAFTS/      review-only skill/workflow draft notes
@@ -644,7 +645,7 @@ memory-router.sh curate [--write]
 memory-router.sh index [--write]
 memory-router.sh consolidate [--write]
 memory-router.sh propose [--write] [--approve <id>] [--reject <id>] [--reason <why>] [--apply]
-memory-router.sh provider <status|configure|prefetch> [--type <obsidian|none>] [--available <true|false>] [--path <path>]
+memory-router.sh provider <status|configure|prefetch|sync> [--type <obsidian|none>] [--available <true|false>] [--path <path>]
 ```
 
 **Pre-run hydration:**
@@ -717,7 +718,12 @@ requiring the index; missing SQLite falls back to JSONL and run-history matching
 **Optional Vault provider:** `memory-router.sh provider status` exposes the local provider manifest. `provider
 configure --type obsidian --available true --path <vault>` writes `.kimiflow/project/VAULT-PROVIDER.json`;
 `provider prefetch --query "<task>" --write` writes a bounded `VAULT-PREFETCH.md` handoff for an Obsidian/Vault
-MCP. The router never requires a paid provider or API key and never blocks when the provider is absent.
+MCP before research. `provider sync --write` writes `.kimiflow/project/VAULT-SYNC.md`, a bounded handoff of only
+current, non-private, non-security learnings with freshly verified repo-relative evidence. It exports at most
+`${KIMIFLOW_PROVIDER_SYNC_MAX:-20}` candidates per run, records only those exported IDs in the manifest, and
+leaves omitted candidates pending so later `status` can report whether another Vault sync is needed. The router
+never requires a paid provider or API key, never blocks when the provider is absent, and does not patch skills or
+write external Vault notes blindly.
 
 **Consolidation:** `memory-router.sh consolidate --write` archives superseded learning rows to
 `LEARNINGS.archive.jsonl`, refreshes bounded memory/profile/index files, and never silently deletes data. It is
@@ -756,8 +762,8 @@ patch `SKILL.md`, `reference.md`, or repo docs automatically. Approve/apply reva
 
 **Curator:** `memory-router.sh status` reports `curation.recommended` and reasons such as `memory_over_budget`,
 `stale_learnings`, `superseded_learnings`, `learning_lifecycle_review_due`, `memory_index_missing`, `recall_index_missing`,
-`learning_proposals_pending`, `learning_proposals_approved`, `learning_proposals_need_revalidation`, or
-`many_learnings`.
+`provider_sync_pending`, `learning_proposals_pending`, `learning_proposals_approved`,
+`learning_proposals_need_revalidation`, or `many_learnings`.
 `review-run --write` refreshes the small always-on `MEMORY.md`; `curate --write` writes/refreshes
 `MEMORY-INDEX.json`, lifecycle metrics, provider status, and the optional recall index. Row archival is explicit
 through `consolidate --write`.

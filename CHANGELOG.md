@@ -4,6 +4,12 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.1.35
+
+Ship **bounded Vault sync handoffs** for the Memory Provider lifecycle.
+
 ### Added
 - Memory Router now supports optional local FTS5 recall via `.kimiflow/project/RECALL.sqlite` and `index --write`.
 - Added `history --query ... --write` for bounded old-run/session recall snapshots in `RUN-HISTORY.json` /
@@ -17,6 +23,10 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 - Added `propose --write` to generate review-only rule/skill proposals from evidence-backed learnings.
 - Approved skill/workflow proposals now create review-only drafts under `.kimiflow/project/SKILL-DRAFTS/` instead
   of patching skill files automatically.
+- Added `provider sync --write` to create `.kimiflow/project/VAULT-SYNC.md` from current, non-private,
+  non-security learnings with freshly verified repo-relative evidence.
+- Launcher and memory status now report `provider.sync` and `provider_sync_pending` so omitted Vault sync
+  candidates stay visible until exported.
 
 ### Fixed
 - Refreshed learning rows now supersede older rows with changed evidence fingerprints, and recall returns only
@@ -26,6 +36,9 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
   digest is actually SHA-256.
 - Active memory writes are now blocked when they contain prompt-injection, hidden-instruction, or credential
   exfiltration patterns.
+- Provider sync recomputes evidence fingerprints before export so stale or changed evidence rows are not written
+  to the Vault handoff.
+- Vault sync handoffs are capped by `${KIMIFLOW_PROVIDER_SYNC_MAX:-20}`, and only exported IDs are marked synced.
 
 ## 0.1.34
 

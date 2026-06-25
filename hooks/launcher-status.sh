@@ -181,7 +181,8 @@ default_memory_status() {
       recall_index: ".kimiflow/project/RECALL.sqlite",
       run_history: ".kimiflow/project/RUN-HISTORY.json",
       usage: ".kimiflow/project/MEMORY-USAGE.json",
-      provider: ".kimiflow/project/VAULT-PROVIDER.json"
+      provider: ".kimiflow/project/VAULT-PROVIDER.json",
+      provider_sync: ".kimiflow/project/VAULT-SYNC.md"
     },
     memory: {present: false, path: ".kimiflow/project/MEMORY.md", tokens_estimate: 0, budget: 900, over_budget: false},
     learnings: {present: false, path: ".kimiflow/project/LEARNINGS.jsonl", total: 0, current: 0, stale: 0, superseded: 0, archived: 0, private: 0, security: 0, by_topic: {}},
@@ -189,7 +190,7 @@ default_memory_status() {
     usage: {present: false, path: ".kimiflow/project/MEMORY-USAGE.json", tracked_items: 0, total_uses: 0, last_used_at: null, by_kind: {}},
     proposals: {present: false, path: ".kimiflow/project/PROPOSALS.jsonl", total: 0, pending: 0, approved: 0, applied: 0, rejected: 0, needs_revalidation: 0, by_type: {}},
     history: {present: false, path: ".kimiflow/project/RUN-HISTORY.json"},
-    provider: {present: false, path: ".kimiflow/project/VAULT-PROVIDER.json", type: "none", available: false, mode: "local-first", vault_path: "", last_prefetch_at: null, last_write_at: null, capabilities: {status: true, prefetch: false, write: false, extract: false}},
+    provider: {present: false, path: ".kimiflow/project/VAULT-PROVIDER.json", type: "none", available: false, mode: "local-first", vault_path: "", last_prefetch_at: null, last_write_at: null, capabilities: {status: true, prefetch: false, sync: false, write: false, extract: false}, sync: {path: ".kimiflow/project/VAULT-SYNC.md", available: false, pending_count: 0, pending_ids: [], exportable_count: 0, status: "provider_unavailable"}},
     vault: {available: false, last_recall_at: null, last_write_at: null, provider: null},
     curation: {recommended: false, reasons: ["memory_router_unavailable"]}
   }'

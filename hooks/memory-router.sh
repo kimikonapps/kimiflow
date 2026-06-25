@@ -13,7 +13,7 @@
 #   memory-router.sh index [--root <path>] [--write] [--pretty]
 #   memory-router.sh consolidate [--root <path>] [--write] [--pretty]
 #   memory-router.sh propose [--root <path>] [--write] [--approve <id>] [--reject <id>] [--reason <text>] [--apply] [--pretty]
-#   memory-router.sh provider <status|configure|prefetch> [--root <path>] [--type <obsidian|none>] [--available <true|false>] [--path <path>] [--pretty]
+#   memory-router.sh provider <status|configure|prefetch|sync> [--root <path>] [--type <obsidian|none>] [--available <true|false>] [--path <path>] [--pretty]
 #
 # Output: JSON except record/verify-run, which emit stable tab-separated lines.
 set -u
@@ -272,6 +272,7 @@ provider_manifest_json() {
       vault_path: "",
       last_prefetch_at: null,
       last_write_at: null,
+      synced_learning_ids: [],
       updated_at: null
     }'
   fi
@@ -301,9 +302,65 @@ provider_status_json() {
       capabilities: {
         status: true,
         prefetch: $available,
+        sync: $available,
         write: $available,
         extract: $available
       }
+    }'
+}
+
+provider_sync_base_candidates_json() {
+  local learnings="$1" manifest_file="$2"
+  local synced
+  synced="$(provider_manifest_json "$manifest_file" | jq -c '.synced_learning_ids // []')"
+  jsonl_rows "$learnings" | jq --argjson synced "$synced" '
+    map(select((.status // "current") == "current"))
+    | map(select((.sensitivity // "normal") != "security" and (.sensitivity // "normal") != "private"))
+    | map(select((.evidence // []) | length > 0))
+    | map(select(((.evidence // []) | any(. == "NOT VERIFIED" or . == "OUTSIDE_REPO")) | not))
+    | map(select((.evidence_fingerprints // []) | length > 0))
+    | map(select(((.evidence_fingerprints // []) | all(.status == "current"))))
+    | map(select((.id // "") as $id | ($id != "" and (($synced | index($id)) == null))))
+  '
+}
+
+provider_sync_candidates_json() {
+  local root="$1" learnings="$2" manifest_file="$3"
+  local candidates fresh='[]' row evidence_json stored_fingerprints current_fingerprints
+  candidates="$(provider_sync_base_candidates_json "$learnings" "$manifest_file")"
+  while IFS= read -r row; do
+    [ -n "$row" ] || continue
+    evidence_json="$(printf '%s\n' "$row" | jq -c '.evidence // []')"
+    stored_fingerprints="$(printf '%s\n' "$row" | jq -c '.evidence_fingerprints // []')"
+    current_fingerprints="$(evidence_fingerprints_json "$root" "$evidence_json")"
+    if [ "$stored_fingerprints" = "$current_fingerprints" ]; then
+      fresh="$(printf '%s\n' "$fresh" | jq --argjson row "$row" '. + [$row]')"
+    fi
+  done < <(printf '%s\n' "$candidates" | jq -c '.[]')
+  printf '%s\n' "$fresh"
+}
+
+provider_sync_status_json() {
+  local root="$1" learnings="$2" manifest_file="$3"
+  local provider candidates
+  provider="$(provider_status_json "$manifest_file")"
+  candidates="$(provider_sync_candidates_json "$root" "$learnings" "$manifest_file")"
+  jq -n \
+    --arg path ".kimiflow/project/VAULT-SYNC.md" \
+    --argjson provider "$provider" \
+    --argjson candidates "$candidates" \
+    '{
+      path: $path,
+      available: ($provider.available == true),
+      pending_count: (if $provider.available == true then ($candidates | length) else 0 end),
+      pending_ids: (if $provider.available == true then ($candidates | map(.id)) else [] end),
+      exportable_count: ($candidates | length),
+      status: (
+        if $provider.available != true then "provider_unavailable"
+        elif ($candidates | length) > 0 then "pending"
+        else "current"
+        end
+      )
     }'
 }
 
@@ -370,7 +427,7 @@ status_json() {
   local provider_manifest="$project/VAULT-PROVIDER.json"
   local proposal_rows="$project/PROPOSALS.jsonl"
 
-  local memory_tokens user_tokens memory_present learnings_present user_memory_present user_rows_present index_present recall_present recall_db_present run_history_present usage_present provider_present proposal_rows_present learning_json user_json proposals_json usage_json lifecycle_json provider_json vault_json sqlite_available
+  local memory_tokens user_tokens memory_present learnings_present user_memory_present user_rows_present index_present recall_present recall_db_present run_history_present usage_present provider_present proposal_rows_present learning_json user_json proposals_json usage_json lifecycle_json provider_json provider_sync_json vault_json sqlite_available
   memory_tokens="$(word_count_file "$memory")"
   user_tokens="$(word_count_file "$user_memory")"
   memory_present=false; [ -f "$memory" ] && memory_present=true
@@ -391,6 +448,7 @@ status_json() {
   usage_json="$(usage_summary_json "$usage_file")"
   lifecycle_json="$(learning_lifecycle_json "$learnings" "$usage_file")"
   provider_json="$(provider_status_json "$provider_manifest")"
+  provider_sync_json="$(provider_sync_status_json "$root" "$learnings" "$provider_manifest")"
   vault_json="$(vault_status_json "$index" "$provider_manifest")"
 
   jq -n \
@@ -406,6 +464,7 @@ status_json() {
     --arg run_history_path ".kimiflow/project/RUN-HISTORY.json" \
     --arg usage_path ".kimiflow/project/MEMORY-USAGE.json" \
     --arg provider_path ".kimiflow/project/VAULT-PROVIDER.json" \
+    --arg provider_sync_path ".kimiflow/project/VAULT-SYNC.md" \
     --argjson memory_present "$memory_present" \
     --argjson learnings_present "$learnings_present" \
     --argjson user_memory_present "$user_memory_present" \
@@ -428,6 +487,7 @@ status_json() {
     --argjson usage "$usage_json" \
     --argjson lifecycle "$lifecycle_json" \
     --argjson provider "$provider_json" \
+    --argjson provider_sync "$provider_sync_json" \
     --argjson vault "$vault_json" \
     '{
       schema_version: 1,
@@ -444,7 +504,8 @@ status_json() {
         recall_index: $recall_db_path,
         run_history: $run_history_path,
         usage: $usage_path,
-        provider: $provider_path
+        provider: $provider_path,
+        provider_sync: $provider_sync_path
       },
       memory: {
         present: $memory_present,
@@ -475,7 +536,7 @@ status_json() {
         path: $recall_db_path,
         sqlite_available: $sqlite_available
       },
-      provider: ($provider + {present: ($provider.present or $provider_present), path: $provider_path}),
+      provider: ($provider + {present: ($provider.present or $provider_present), path: $provider_path, sync: $provider_sync}),
       vault: $vault,
       curation: {
         recommended: (
@@ -489,6 +550,7 @@ status_json() {
           or ($proposals.pending > 0)
           or ($proposals.approved > 0)
           or ($proposals.needs_revalidation > 0)
+          or ($provider_sync.pending_count > 0)
         ),
         reasons: ([
           if $memory_tokens > $budget then "memory_over_budget" else empty end,
@@ -500,7 +562,8 @@ status_json() {
           if (($learnings.total > 0) and ($sqlite_available == true) and ($recall_db_present | not)) then "recall_index_missing" else empty end,
           if $proposals.pending > 0 then "learning_proposals_pending" else empty end,
           if $proposals.approved > 0 then "learning_proposals_approved" else empty end,
-          if $proposals.needs_revalidation > 0 then "learning_proposals_need_revalidation" else empty end
+          if $proposals.needs_revalidation > 0 then "learning_proposals_need_revalidation" else empty end,
+          if $provider_sync.pending_count > 0 then "provider_sync_pending" else empty end
         ])
       }
     }'
@@ -2479,8 +2542,8 @@ cmd_curate() {
   user_summary="$(read_jsonl_summary "$user_rows")"
   usage_summary="$(usage_summary_json "$usage_file")"
   lifecycle="$(learning_lifecycle_json "$learnings" "$usage_file")"
-  provider="$(provider_status_json "$provider_manifest")"
-  vault="$(vault_status_json "$index" "$provider_manifest")"
+  provider="$(printf '%s\n' "$status" | jq -c '.provider')"
+  vault="$(printf '%s\n' "$status" | jq -c '.vault')"
   topics='{}'
   if [ -f "$learnings" ]; then
     topics="$(jq -Rsc '
@@ -2545,6 +2608,32 @@ write_provider_prefetch_markdown() {
   } > "$path"
 }
 
+write_provider_sync_markdown() {
+  local path="$1" json="$2"
+  mkdir -p "$(dirname "$path")"
+  {
+    printf '# Vault Provider Sync\n\n'
+    printf 'Generated: %s\n\n' "$(iso_now)"
+    printf 'Provider: %s\n' "$(printf '%s\n' "$json" | jq -r '.provider.type')"
+    printf 'Available: %s\n' "$(printf '%s\n' "$json" | jq -r '.provider.available')"
+    printf 'Candidates exported: %s\n' "$(printf '%s\n' "$json" | jq -r '.candidates.exported_count // .candidates.count')"
+    printf 'Total pending: %s\n' "$(printf '%s\n' "$json" | jq -r '.candidates.count')"
+    printf 'Omitted: %s\n\n' "$(printf '%s\n' "$json" | jq -r '.candidates.omitted_count // 0')"
+    printf 'Policy: review this bounded handoff before writing to the Vault. It includes only current, non-private, non-security learnings with verified repo-relative evidence. Remaining candidates stay pending for a later sync.\n\n'
+    if printf '%s\n' "$json" | jq -e '(.candidates.exported_count // .candidates.count) == 0' >/dev/null 2>&1; then
+      printf 'No new publish-safe learning candidates are pending for Vault sync.\n'
+    else
+      printf '## Candidates\n\n'
+      printf '%s\n' "$json" | jq -r '
+        .candidates.rows[]
+        | "- [" + (.topic // "uncategorized") + " · " + (.kind // "learning") + " · " + (.id // "") + "] "
+          + ((.summary // "") | tostring | gsub("\n"; " ") | .[0:260])
+          + " (evidence: " + (((.evidence // []) | .[0] // "NOT VERIFIED") | tostring) + ")"
+      '
+    fi
+  } > "$path"
+}
+
 cmd_provider() {
   local action="${1:-status}"
   [ "$#" -gt 0 ] && shift
@@ -2565,7 +2654,7 @@ cmd_provider() {
   done
   need_jq
   root="$(resolve_root "$root")"
-  local project manifest provider out available_json now prefetch_path
+  local project manifest provider out available_json now prefetch_path sync_path candidates export_candidates ids handoff sync_max total_count export_count omitted_count
   project="$root/.kimiflow/project"
   manifest="$project/VAULT-PROVIDER.json"
   now="$(iso_now)"
@@ -2593,6 +2682,7 @@ cmd_provider() {
           vault_path: $path,
           last_prefetch_at: null,
           last_write_at: null,
+          synced_learning_ids: [],
           updated_at: $now
         }')"
       mkdir -p "$project"
@@ -2624,8 +2714,61 @@ cmd_provider() {
         fi
       fi
       ;;
+    sync)
+      provider="$(provider_status_json "$manifest")"
+      sync_path="$project/VAULT-SYNC.md"
+      if ! printf '%s\n' "$provider" | jq -e '.available == true' >/dev/null 2>&1; then
+        out="$(jq -n \
+          --arg path ".kimiflow/project/VAULT-SYNC.md" \
+          --argjson provider "$provider" \
+          '{schema_version: 1, status: "skipped", reason: "provider_unavailable", path: $path, provider: $provider, candidates: {count: 0, exported_count: 0, omitted_count: 0, ids: []}}')"
+      else
+        sync_max="${KIMIFLOW_PROVIDER_SYNC_MAX:-20}"
+        case "$sync_max" in
+          ''|*[!0-9]*) sync_max=20 ;;
+        esac
+        [ "$sync_max" -gt 0 ] || sync_max=20
+        candidates="$(provider_sync_candidates_json "$root" "$project/LEARNINGS.jsonl" "$manifest")"
+        total_count="$(printf '%s\n' "$candidates" | jq 'length')"
+        export_candidates="$(printf '%s\n' "$candidates" | jq --argjson max "$sync_max" '.[0:$max]')"
+        export_count="$(printf '%s\n' "$export_candidates" | jq 'length')"
+        omitted_count=$((total_count - export_count))
+        out="$(jq -n \
+          --arg path ".kimiflow/project/VAULT-SYNC.md" \
+          --argjson provider "$provider" \
+          --argjson candidates "$candidates" \
+          --argjson export_candidates "$export_candidates" \
+          --argjson exported "$export_count" \
+          --argjson omitted "$omitted_count" \
+          '{
+            schema_version: 1,
+            status: "sync_handoff",
+            path: $path,
+            provider: $provider,
+            candidates: {
+              count: ($candidates | length),
+              exported_count: $exported,
+              omitted_count: $omitted,
+              ids: ($export_candidates | map(.id))
+            },
+            written: false
+          }')"
+        if [ "$write" -eq 1 ]; then
+          mkdir -p "$project"
+          handoff="$(printf '%s\n' "$out" | jq --argjson candidates "$export_candidates" '.candidates.rows = $candidates')"
+          write_provider_sync_markdown "$sync_path" "$handoff"
+          ids="$(printf '%s\n' "$export_candidates" | jq -c 'map(.id)')"
+          provider_manifest_json "$manifest" \
+            | jq --arg now "$now" --argjson ids "$ids" \
+                '.last_write_at = $now | .updated_at = $now | .available = true | .synced_learning_ids = (((.synced_learning_ids // []) + $ids) | unique)' \
+            > "$manifest.tmp" && mv "$manifest.tmp" "$manifest"
+          provider="$(provider_status_json "$manifest")"
+          out="$(printf '%s\n' "$out" | jq --argjson provider "$provider" '.written = true | .provider = $provider')"
+        fi
+      fi
+      ;;
     *)
-      die "provider action must be status, configure, or prefetch" 2
+      die "provider action must be status, configure, prefetch, or sync" 2
       ;;
   esac
   json_print "$out" "$pretty"

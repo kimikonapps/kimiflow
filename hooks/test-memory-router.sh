@@ -22,12 +22,13 @@ fi
 
 reset_repo() {
   rm -rf "$REPO"
-  mkdir -p "$REPO/src" "$REPO/.kimiflow/project"
+  mkdir -p "$REPO/src" "$REPO/hooks" "$REPO/.kimiflow/project"
   ( cd "$REPO" && git init -q && git config user.email "kimiflow@example.test" && git config user.name "kimiflow test" )
   ( cd "$REPO" && git remote add origin https://github.com/swinxx/kimiflow.git )
   printf '.kimiflow/\n' > "$REPO/.gitignore"
   printf 'one\n' > "$REPO/src/a.txt"
-  ( cd "$REPO" && git add .gitignore src/a.txt && git commit -q -m init )
+  printf '# launcher status fixture\n' > "$REPO/hooks/launcher-status.sh"
+  ( cd "$REPO" && git add .gitignore src/a.txt hooks/launcher-status.sh && git commit -q -m init )
 }
 
 run_router() {
@@ -142,7 +143,7 @@ assert_jq "$out" '.status == "prefetch_handoff" and .written == true' "provider_
 [ -f "$REPO/.kimiflow/project/VAULT-PROVIDER.json" ] && pass "provider_env_prefetch_creates_manifest" || fail "provider_env_prefetch_creates_manifest"
 rm -f "$REPO/.kimiflow/project/VAULT-PROVIDER.json" "$REPO/.kimiflow/project/VAULT-PREFETCH.md"
 out="$(run_router provider configure --type obsidian --available true --path "$WORK/vault")"
-assert_jq "$out" '.available == true and .type == "obsidian" and .capabilities.prefetch == true' "provider_configure_marks_obsidian_available"
+assert_jq "$out" '.available == true and .type == "obsidian" and .capabilities.prefetch == true and .capabilities.sync == true' "provider_configure_marks_obsidian_available"
 run_router curate --write >/dev/null
 out="$(run_router provider prefetch --query "memory router" --write)"
 assert_jq "$out" '.status == "prefetch_handoff" and .written == true' "provider_prefetch_writes_handoff"
@@ -150,6 +151,41 @@ assert_jq "$out" '.status == "prefetch_handoff" and .written == true' "provider_
 out="$(run_router status)"
 assert_jq "$out" '.provider.available == true and .vault.available == true and .history.present == true and .usage.tracked_items >= 1' "status_surfaces_provider_history_usage"
 assert_jq "$out" '.vault.provider.last_prefetch_at != null and .vault.last_recall_at == .vault.provider.last_prefetch_at' "status_prefers_fresh_provider_prefetch_timestamp"
+assert_jq "$out" '.provider.sync.pending_count >= 1 and (.curation.reasons | index("provider_sync_pending"))' "status_surfaces_provider_sync_pending"
+out="$(run_router provider sync --write)"
+assert_jq "$out" '.status == "sync_handoff" and .written == true and .candidates.count >= 1 and (.candidates.rows == null)' "provider_sync_writes_handoff"
+[ -f "$REPO/.kimiflow/project/VAULT-SYNC.md" ] && pass "provider_sync_writes_markdown" || fail "provider_sync_writes_markdown"
+if grep -q "Concrete credential" "$REPO/.kimiflow/project/VAULT-SYNC.md" || grep -q "$outside_evidence" "$REPO/.kimiflow/project/VAULT-SYNC.md"; then
+  fail "provider_sync_excludes_private_and_security_rows"
+else
+  pass "provider_sync_excludes_private_and_security_rows"
+fi
+out="$(run_router status)"
+assert_jq "$out" '.provider.sync.pending_count == 0 and .vault.provider.last_write_at != null and (.curation.reasons | index("provider_sync_pending") | not)' "provider_sync_clears_pending_status"
+out="$(run_router record --summary "Vault sync excludes rows whose evidence changed after recording." --topic memory --kind process --confidence high --sensitivity normal --evidence hooks/launcher-status.sh:1)"
+stale_sync_id="$(printf '%s\n' "$out" | awk -F '\t' '{print $3}')"
+printf '# changed launcher status fixture\n' > "$REPO/hooks/launcher-status.sh"
+out="$(run_router status)"
+if printf '%s\n' "$out" | jq -e --arg id "$stale_sync_id" '(.provider.sync.pending_ids | index($id)) == null' >/dev/null 2>&1; then
+  pass "provider_sync_excludes_stale_evidence_from_status"
+else
+  fail "provider_sync_excludes_stale_evidence_from_status"
+fi
+out="$(run_router provider sync --write)"
+if printf '%s\n' "$out" | jq -e --arg id "$stale_sync_id" '(.candidates.ids | index($id)) == null' >/dev/null 2>&1 && ! grep -q "Vault sync excludes rows whose evidence changed" "$REPO/.kimiflow/project/VAULT-SYNC.md"; then
+  pass "provider_sync_excludes_stale_evidence_from_handoff"
+else
+  fail "provider_sync_excludes_stale_evidence_from_handoff"
+fi
+run_router record --summary "Vault sync cap exports the first eligible learning only." --topic sync-cap --kind process --confidence high --sensitivity normal --evidence src/a.txt:1 >/dev/null
+run_router record --summary "Vault sync cap keeps remaining eligible learnings pending." --topic sync-cap --kind process --confidence high --sensitivity normal --evidence src/a.txt:1 >/dev/null
+out="$(KIMIFLOW_PROVIDER_SYNC_MAX=1 run_router provider sync --write)"
+assert_jq "$out" '.status == "sync_handoff" and .written == true and .candidates.count >= 2 and .candidates.exported_count == 1 and .candidates.omitted_count >= 1 and (.candidates.ids | length == 1) and (.candidates.rows == null)' "provider_sync_bounds_handoff"
+out="$(run_router status)"
+assert_jq "$out" '.provider.sync.pending_count >= 1 and (.curation.reasons | index("provider_sync_pending"))' "provider_sync_leaves_omitted_candidates_pending"
+run_router provider sync --write >/dev/null
+out="$(run_router status)"
+assert_jq "$out" '.provider.sync.pending_count == 0 and (.curation.reasons | index("provider_sync_pending") | not)' "provider_sync_clears_omitted_candidates"
 
 out="$(run_router review-run --run .kimiflow/demo-run --write)"
 assert_jq "$out" '.status == "recorded" and .recorded_count == 4 and .memory_updated == true' "review_run_records_four_questions"

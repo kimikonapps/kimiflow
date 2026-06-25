@@ -21,7 +21,7 @@ Claude Code and Codex both cover a lot with native planning, subagents and hooks
 
 **Prerequisite:** [`jq`](https://jqlang.github.io/jq/) on your `PATH` — the hooks need it. `brew install jq` (macOS) · `sudo apt-get install jq` (Debian/Ubuntu).
 
-**Optional (recommended):** an Obsidian (or compatible notes) MCP for the **vault memory layer** — kimiflow searches the vault before researching and saves reusable findings back, auto-discovering your vault's own structure. No vault MCP → kimiflow skips it and uses the repo-local `.kimiflow/` memory. → full setup + why it's worth it under **[Vault memory layer](#vault-memory-layer-optional-but-recommended)** below.
+**Optional (recommended):** an Obsidian (or compatible notes) MCP for the **vault memory layer** — kimiflow searches the vault before researching and writes a reviewable sync handoff for reusable findings, auto-discovering your vault's own structure. No vault MCP → kimiflow skips it and uses the repo-local `.kimiflow/` memory. → full setup + why it's worth it under **[Vault memory layer](#vault-memory-layer-optional-but-recommended)** below.
 
 ### Claude Code — plugin (skill **+** hooks)
 
@@ -192,8 +192,9 @@ you explicitly ask for a sanitized public note.
 
 Kimiflow also keeps a bounded local memory under `.kimiflow/project/`: `MEMORY.md`, `USER.md`,
 `LEARNINGS.jsonl`, `USER.jsonl`, `MEMORY-INDEX.json`, optional `RECALL.sqlite`, `RECALL.md`,
-`RUN-HISTORY.json`, `MEMORY-USAGE.json`, `VAULT-PROVIDER.json`, `PENDING-PROPOSALS.md`, `PROPOSALS.jsonl`,
-and review-only `SKILL-DRAFTS/`; each completed run also gets a run-local `LEARNING-REVIEW.md`.
+`RUN-HISTORY.json`, `MEMORY-USAGE.json`, `VAULT-PROVIDER.json`, `VAULT-SYNC.md`,
+`PENDING-PROPOSALS.md`, `PROPOSALS.jsonl`, and review-only `SKILL-DRAFTS/`; each completed run also gets a
+run-local `LEARNING-REVIEW.md`.
 `hooks/memory-router.sh` gives the launcher and Phase 2 a cheap way to check memory freshness, recall relevant
 project facts, classify new learnings, write the required run-close learning review, and curate the index
 without rereading the whole repo or Vault every time.
@@ -208,10 +209,13 @@ only when a recall/history snapshot is written. Memory writes are scanned for pr
 patterns, user preferences are split into local-only profile files, and `propose`/`consolidate` turn accumulated
 learning into reviewable rule/skill proposals and compacted history. Proposal state supports `--approve`,
 `--reject`, and `--apply`; approved standards/decisions can be appended to local `.kimiflow/` docs, while skill
-candidates create review-only draft notes instead of patching skills automatically.
+candidates create review-only draft notes instead of patching skills automatically. Provider sync writes a
+bounded `VAULT-SYNC.md` handoff with only current, non-private, non-security learnings with freshly verified
+repo-relative evidence; it exports at most 20 candidates by default, records only exported IDs locally, and never
+writes external Vault notes blindly.
 Approve/apply revalidates evidence first, so stale proposals stay local until refreshed.
-The launcher surfaces memory budget, learning counts, run-history/usage/provider status, pending proposal
-notifications, Vault availability, and curation reasons.
+The launcher surfaces memory budget, learning counts, run-history/usage/provider status, pending provider sync
+handoffs, pending proposal notifications, Vault availability, and curation reasons.
 
 ## Example
 
@@ -260,7 +264,7 @@ kimiflow ships safety hooks under `hooks/`, **active only in kimiflow repos** (a
 
 ## Vault memory layer (optional, but recommended)
 
-kimiflow can use an **Obsidian vault as a cross-project knowledge base**. In Phase 2 it **searches your vault before researching** (so it never re-researches what you already learned) and **saves reusable findings back** — auto-discovering your vault's own folder/index structure. Across many projects this compounds into a personal, searchable memory that makes every run faster and better-grounded. **It's genuinely worth setting up.**
+kimiflow can use an **Obsidian vault as a cross-project knowledge base**. In Phase 2 it **searches your vault before researching** (so it never re-researches what you already learned) and writes a reviewable sync handoff for reusable findings — auto-discovering your vault's own folder/index structure. Across many projects this compounds into a personal, searchable memory that makes every run faster and better-grounded. **It's genuinely worth setting up.**
 
 **Without a vault MCP — nothing breaks.** kimiflow detects there's no notes MCP, **notes it in `STATE.md`, skips the vault search + save, and continues.** Research falls back to the codebase + web, and the **repo-local `.kimiflow/` memory** (`STANDARDS.md` / `DECISIONS.md`) still persists project-level learning. No errors, no blocked phases — identical gates, hooks and outcome; you only lose the cross-project shortcut.
 
@@ -298,7 +302,7 @@ Claude Code und Codex decken mit nativer Planung, Subagents und Hooks schon viel
 
 **Voraussetzung:** [`jq`](https://jqlang.github.io/jq/) im `PATH` — die Hooks brauchen es. `brew install jq` (macOS) · `sudo apt-get install jq` (Debian/Ubuntu).
 
-**Optional (empfohlen):** ein Obsidian- (oder kompatibler Notes-) MCP für die **Vault-Memory-Schicht** — kimiflow durchsucht den Vault vor dem Recherchieren und speichert wiederverwendbare Erkenntnisse zurück, wobei es die Struktur deines Vaults selbst erkennt. Kein Vault-MCP → kimiflow überspringt ihn und nutzt die repo-lokale `.kimiflow/`-Memory. → vollständiges Setup + warum es sich lohnt unter **Vault-Memory-Schicht** unten.
+**Optional (empfohlen):** ein Obsidian- (oder kompatibler Notes-) MCP für die **Vault-Memory-Schicht** — kimiflow durchsucht den Vault vor dem Recherchieren und schreibt ein reviewbares Sync-Handoff für wiederverwendbare Erkenntnisse, wobei es die Struktur deines Vaults selbst erkennt. Kein Vault-MCP → kimiflow überspringt ihn und nutzt die repo-lokale `.kimiflow/`-Memory. → vollständiges Setup + warum es sich lohnt unter **Vault-Memory-Schicht** unten.
 
 ### Claude Code — Plugin (Skill **+** Hooks)
 
@@ -469,8 +473,8 @@ außer du verlangst explizit eine sanitisierte öffentliche Notiz.
 
 Kimiflow hält zusätzlich ein bounded lokales Gedächtnis unter `.kimiflow/project/`: `MEMORY.md`, `USER.md`,
 `LEARNINGS.jsonl`, `USER.jsonl`, `MEMORY-INDEX.json`, optional `RECALL.sqlite`, `RECALL.md`,
-`RUN-HISTORY.json`, `MEMORY-USAGE.json`, `VAULT-PROVIDER.json`, `PENDING-PROPOSALS.md`, `PROPOSALS.jsonl`
-und reviewbare `SKILL-DRAFTS/`; jeder abgeschlossene Run bekommt zusätzlich eine run-lokale
+`RUN-HISTORY.json`, `MEMORY-USAGE.json`, `VAULT-PROVIDER.json`, `VAULT-SYNC.md`,
+`PENDING-PROPOSALS.md`, `PROPOSALS.jsonl` und reviewbare `SKILL-DRAFTS/`; jeder abgeschlossene Run bekommt zusätzlich eine run-lokale
 `LEARNING-REVIEW.md`. `hooks/memory-router.sh` gibt Launcher und Phase 2 einen günstigen Weg,
 Memory-Freshness zu prüfen, relevante Projektfakten abzurufen, neue Learnings zu klassifizieren, die
 verpflichtende Run-Abschluss-Review zu schreiben und den Index zu kuratieren, ohne jedes Mal das ganze Repo
@@ -487,9 +491,12 @@ Snapshot gespeichert wird. Memory-Writes werden auf Prompt-Injection/Exfiltratio
 liegen in lokalen Profil-Dateien, und `propose`/`consolidate` machen aus Learnings reviewbare Regel-/Skill-
 Vorschläge und kompakte Historie. Proposal-State unterstützt `--approve`, `--reject` und `--apply`;
 freigegebene Standards/Entscheidungen können lokal in `.kimiflow/` landen, Skill-Kandidaten erzeugen
-reviewbare Draft-Notizen statt automatische Skill-Patches. Approve/apply prüft Evidence vorher erneut, stale
-Vorschläge bleiben lokal bis zum Refresh. Der Launcher zeigt Memory-Budget, Learning-Zählungen,
-Run-History-/Usage-/Provider-Status, pending Proposal Notifications, Vault-Verfügbarkeit und Kuratierungsgründe.
+reviewbare Draft-Notizen statt automatische Skill-Patches. Provider-Sync schreibt ein bounded `VAULT-SYNC.md`
+mit nur aktuellen, nicht-privaten, nicht-security Learnings mit frisch verifizierter repo-relativer Evidence,
+exportiert standardmäßig maximal 20 Kandidaten, merkt sich nur exportierte IDs lokal und schreibt niemals blind externe Vault-Notizen. Approve/apply prüft Evidence
+vorher erneut, stale Vorschläge bleiben lokal bis zum Refresh. Der Launcher zeigt Memory-Budget,
+Learning-Zählungen, Run-History-/Usage-/Provider-Status, pending Provider-Sync-Handoffs, pending Proposal
+Notifications, Vault-Verfügbarkeit und Kuratierungsgründe.
 
 ## Beispiel
 
@@ -538,7 +545,7 @@ kimiflow bringt Sicherheits-Hooks unter `hooks/` mit, **nur in kimiflow-Repos ak
 
 ## Vault-Memory-Schicht (optional, aber empfohlen)
 
-kimiflow kann einen **Obsidian-Vault als projektübergreifende Wissensbasis** nutzen. In Phase 2 **durchsucht es deinen Vault vor dem Recherchieren** (damit es nie neu recherchiert, was du schon gelernt hast) und **speichert wiederverwendbare Erkenntnisse zurück** — wobei es die Ordner-/Index-Struktur deines Vaults selbst erkennt. Über viele Projekte hinweg wächst das zu einem persönlichen, durchsuchbaren Gedächtnis, das jeden Lauf schneller und fundierter macht. **Das Einrichten lohnt sich wirklich.**
+kimiflow kann einen **Obsidian-Vault als projektübergreifende Wissensbasis** nutzen. In Phase 2 **durchsucht es deinen Vault vor dem Recherchieren** (damit es nie neu recherchiert, was du schon gelernt hast) und schreibt ein reviewbares Sync-Handoff für wiederverwendbare Erkenntnisse — wobei es die Ordner-/Index-Struktur deines Vaults selbst erkennt. Über viele Projekte hinweg wächst das zu einem persönlichen, durchsuchbaren Gedächtnis, das jeden Lauf schneller und fundierter macht. **Das Einrichten lohnt sich wirklich.**
 
 **Ohne Vault-MCP — nichts bricht.** kimiflow erkennt, dass kein Notes-MCP da ist, **vermerkt es in `STATE.md`, überspringt Vault-Suche + -Save und läuft weiter.** Recherche fällt auf Codebase + Web zurück, und die **repo-lokale `.kimiflow/`-Memory** (`STANDARDS.md` / `DECISIONS.md`) persistiert weiterhin projektbezogenes Lernen. Keine Fehler, keine blockierten Phasen — identische Gates, Hooks und Ergebnisqualität; nur die projektübergreifende Abkürzung fehlt.
 

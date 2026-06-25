@@ -1,7 +1,7 @@
 {
   "name": "kimiflow",
-  "description": "Feature & bug-fix loop for Claude Code with real quality gates, project intelligence maps, and token-cheap memory/learning recall. Replies in your language.",
-  "version": "0.1.34",
+  "description": "Feature & bug-fix loop for Claude Code with real quality gates, project intelligence maps, token-cheap memory/learning recall, and Vault sync handoffs. Replies in your language.",
+  "version": "0.1.35",
   "license": "MIT",
   "author": {
     "name": "kimikon"
