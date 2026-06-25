@@ -2,7 +2,10 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
-## Unreleased
+## 0.1.25
+
+Ship **Project Intelligence** for kimiflow: a local project map, per-section staleness/refresh, and
+optional Vault/repo-doc/improvement publishing.
 
 ### Added
 - **Vault, repo-doc, and Improve publishing contract (Slice 3)** for standalone project-map runs:
