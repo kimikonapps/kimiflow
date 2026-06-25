@@ -5,11 +5,15 @@
         "matcher": "Bash",
         "hooks": [
           {
+            "name": "Kimiflow commit hygiene",
+            "description": "Blocks broad git staging and secret-looking paths in Kimiflow repositories before Bash commands run.",
             "type": "command",
             "command": "KIMIFLOW_HOST=codex ${KIMIFLOW_PLUGIN_ROOT:-.}/hooks/commit-secret-gate.sh",
             "statusMessage": "Checking Kimiflow commit hygiene"
           },
           {
+            "name": "Kimiflow run state",
+            "description": "Checks Kimiflow run-state invariants before Bash commands can use gate resolver scripts.",
             "type": "command",
             "command": "KIMIFLOW_HOST=codex ${KIMIFLOW_PLUGIN_ROOT:-.}/hooks/state-gate.sh",
             "statusMessage": "Checking Kimiflow run state"
@@ -21,6 +25,8 @@
       {
         "hooks": [
           {
+            "name": "Kimiflow test gate",
+            "description": "Blocks completion when an opt-in Kimiflow test gate command is still failing.",
             "type": "command",
             "command": "KIMIFLOW_HOST=codex ${KIMIFLOW_PLUGIN_ROOT:-.}/hooks/test-gate.sh",
             "statusMessage": "Checking Kimiflow test gate"

@@ -61,6 +61,8 @@ codex plugin marketplace upgrade kimiflow
 
 `hooks/install-codex-hooks.sh` writes Kimiflow wrappers into `${CODEX_HOME:-~/.codex}/hooks`, the stable Codex hook surface, and pins them back to the checkout it is run from with `KIMIFLOW_PLUGIN_ROOT`. Some Codex CLI versions expose marketplace management but not a non-interactive plugin install/update command; in that case the plugin browser/app install step is expected after the marketplace upgrade. Codex plugin-bundled hooks are also described in `hooks.json` for builds that enable `plugin_hooks`, but Kimiflow's safety gates do not rely on that experimental path.
 
+The Codex plugin UI may show hook commands with an expanded local cache path such as `~/.codex/plugins/cache/...` or `~/.codex/.tmp/marketplaces/...`. That path is resolved on each user's machine; it is not a published path from this repository, so other users see their own local Codex directory, not the maintainer's. If the UI still shows an older version in that path after `codex plugin marketplace upgrade kimiflow`, the Git marketplace checkout may already be current while the app's installed plugin cache is still stale; restart Codex and reinstall/update the plugin from the plugin browser if needed.
+
 For local plugin development, register the checkout instead:
 
 ```bash
@@ -285,6 +287,8 @@ codex plugin marketplace upgrade kimiflow
 ```
 
 `hooks/install-codex-hooks.sh` schreibt Kimiflow-Wrapper nach `${CODEX_HOME:-~/.codex}/hooks`, also in die stabile Codex-Hook-Oberfläche, und pinnt sie über `KIMIFLOW_PLUGIN_ROOT` zurück auf den Checkout, aus dem der Installer läuft. Einige Codex-CLI-Versionen haben Marketplace-Verwaltung, aber keinen nicht-interaktiven Plugin-Install-/Update-Befehl; dann ist der Installationsschritt über Plugin-Browser/App nach dem Marketplace-Upgrade normal. Plugin-gebündelte Codex-Hooks sind zusätzlich in `hooks.json` beschrieben, falls ein Build `plugin_hooks` aktiviert, aber Kimiflows Sicherheitsgates hängen nicht von diesem experimentellen Pfad ab.
+
+Die Codex-Plugin-UI kann Hook-Befehle mit einem expandierten lokalen Cache-Pfad wie `~/.codex/plugins/cache/...` oder `~/.codex/.tmp/marketplaces/...` anzeigen. Dieser Pfad wird auf dem Rechner jedes Users aufgelöst; er ist kein veröffentlichter Pfad aus diesem Repository, andere User sehen also ihr eigenes lokales Codex-Verzeichnis, nicht das des Maintainers. Wenn die UI nach `codex plugin marketplace upgrade kimiflow` noch eine ältere Version in diesem Pfad zeigt, kann der Git-Marketplace-Checkout bereits aktuell sein, während der installierte App-Plugin-Cache noch stale ist; dann Codex neu starten und das Plugin bei Bedarf im Plugin-Browser neu installieren/aktualisieren.
 
 Für lokale Plugin-Entwicklung registrierst du stattdessen den Checkout:
 

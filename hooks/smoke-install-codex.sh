@@ -27,6 +27,8 @@ jq -e '((.interface.longDescription // "") + " " + (.interface.shortDescription 
   && ok "codex plugin describes project intelligence" || bad "codex plugin description does not mention project intelligence"
 jq -e '.name == "kimiflow" and (.plugins[] | select(.name == "kimiflow" and .source.path == "./"))' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
   && ok "codex marketplace entry" || bad "codex marketplace entry"
+jq -e '[.hooks[]?[]?.hooks[]? | select(.type == "command")] | length == 3 and all(.[]; (.name // "" | length > 0) and (.description // "" | length > 0) and (.statusMessage // "" | length > 0))' "$ROOT/hooks.json" >/dev/null 2>&1 \
+  && ok "codex plugin hooks are labelled" || bad "codex plugin hook labels missing"
 
 echo "== codex skill =="
 SKILL="$ROOT/skills/kimiflow/SKILL.md"

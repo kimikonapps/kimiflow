@@ -1,6 +1,6 @@
 {
   "name": "kimiflow",
-  "version": "0.1.26",
+  "version": "0.1.27",
   "description": "Feature and bug-fix loop for Codex with mechanical quality gates, plus optional project intelligence maps for codebase understanding, architecture, docs, and improvement ideas.",
   "author": {
     "name": "kimikon",
