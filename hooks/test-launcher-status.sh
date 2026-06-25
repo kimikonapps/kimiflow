@@ -200,7 +200,7 @@ out="$(run_status)"
 assert_jq "$out" '.runs.backlog == 1 and (.runs.items[] | select(.slug == "parked" and .stale_risk == "needs-revalidation"))' "backlog_run_needs_revalidation_when_affected_file_changed"
 
 reset_repo
-mkdir -p "$REPO/.kimiflow/legacy-active-done" "$REPO/.kimiflow/legacy-missing-done" "$REPO/.kimiflow/still-active" "$REPO/.kimiflow/not-done"
+mkdir -p "$REPO/.kimiflow/legacy-active-done" "$REPO/.kimiflow/legacy-missing-done" "$REPO/.kimiflow/stale-review-done" "$REPO/.kimiflow/still-active" "$REPO/.kimiflow/not-done"
 cat > "$REPO/.kimiflow/legacy-active-done/STATE.md" <<'EOF'
 # STATE
 
@@ -213,6 +213,20 @@ cat > "$REPO/.kimiflow/legacy-missing-done/STATE.md" <<'EOF'
 
 Phase 0: done
 Phase 7: **done**
+EOF
+cat > "$REPO/.kimiflow/stale-review-done/STATE.md" <<'EOF'
+# STATE
+
+- **Status:** done
+EOF
+cat > "$REPO/.kimiflow/stale-review-done/LEARNING-REVIEW.md" <<'EOF'
+# Learning Review
+
+Run: .kimiflow/stale-review-done
+Status: recorded
+Generated: 2026-06-25T00:00:00Z
+
+Recorded: learn_missing
 EOF
 cat > "$REPO/.kimiflow/still-active/STATE.md" <<'EOF'
 # STATE
@@ -228,7 +242,9 @@ cat > "$REPO/.kimiflow/not-done/STATE.md" <<'EOF'
 - Phase 7: not done yet
 EOF
 out="$(run_status)"
-assert_jq "$out" '.runs.done == 2 and .runs.active == 2 and (.runs.items[] | select(.slug == "legacy-active-done" and .status == "done")) and (.runs.items[] | select(.slug == "legacy-missing-done" and .status == "done")) and (.runs.items[] | select(.slug == "not-done" and .status == "active"))' "legacy_phase7_done_runs_inferred_done"
+assert_jq "$out" '.runs.done == 3 and .runs.active == 2 and (.runs.items[] | select(.slug == "legacy-active-done" and .status == "done")) and (.runs.items[] | select(.slug == "legacy-missing-done" and .status == "done")) and (.runs.items[] | select(.slug == "not-done" and .status == "active"))' "legacy_phase7_done_runs_inferred_done"
+assert_jq "$out" '.runs.learning_reviews.missing_done == 2 and (.runs.items[] | select(.slug == "legacy-active-done" and .learning_review.verdict == "CLOSED" and .learning_review.reason == "missing_review"))' "done_runs_without_learning_review_surface_without_legacy_noise"
+assert_jq "$out" '.runs.learning_reviews.needs_attention == 1 and (.maintenance.reasons | index("learning_reviews_need_attention")) and (.runs.items[] | select(.slug == "stale-review-done" and .learning_review.verdict == "CLOSED" and .learning_review.reason == "missing_learnings"))' "stale_existing_learning_review_recommends_attention"
 assert_jq "$out" '.maintenance.bring_current_recommended == true and (.maintenance.reasons | index("active_runs"))' "active_runs_recommend_maintenance"
 
 reset_repo

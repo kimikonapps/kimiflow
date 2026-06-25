@@ -119,6 +119,55 @@ json_append_string() {
   printf '%s\n' "$json" | jq --arg value "$value" '. + [$value]'
 }
 
+learning_review_status_json() {
+  local root="$1" slug="$2"
+  local run_rel=".kimiflow/$slug"
+  local review_path="$run_rel/LEARNING-REVIEW.md"
+  local review="$root/$review_path"
+  local status verdict reason freshness line
+
+  if [ ! -f "$review" ]; then
+    jq -nc --arg path "$review_path" '{
+      present: false,
+      path: $path,
+      status: "missing",
+      verdict: "CLOSED",
+      reason: "missing_review",
+      freshness: null
+    }'
+    return 0
+  fi
+
+  status="$(awk -F': ' '/^Status:/ {print $2; exit}' "$review" 2>/dev/null)"
+  [ -n "$status" ] || status="unknown"
+  verdict="unknown"
+  reason=""
+  freshness=""
+
+  if [ -x "$SCRIPT_DIR/memory-router.sh" ]; then
+    line="$(KIMIFLOW_HOST="${KIMIFLOW_HOST:-}" "$SCRIPT_DIR/memory-router.sh" verify-run --root "$root" --run "$run_rel" 2>/dev/null || true)"
+    verdict="$(printf '%s\n' "$line" | awk -F '\t' '$1 == "LEARNING_REVIEW" {print $2; exit}')"
+    [ -n "$verdict" ] || verdict="unknown"
+    reason="$(printf '%s\n' "$line" | sed -nE 's/.*reason=([^	]+).*/\1/p' | head -n 1)"
+    freshness="$(printf '%s\n' "$line" | sed -nE 's/.*freshness=([^	]+).*/\1/p' | head -n 1)"
+  fi
+
+  jq -nc \
+    --arg path "$review_path" \
+    --arg status "$status" \
+    --arg verdict "$verdict" \
+    --arg reason "$reason" \
+    --arg freshness "$freshness" \
+    '{
+      present: true,
+      path: $path,
+      status: $status,
+      verdict: $verdict,
+      reason: (if $reason == "" then null else $reason end),
+      freshness: (if $freshness == "" then null else $freshness end)
+    }'
+}
+
 default_memory_status() {
   jq -nc '{
     schema_version: 1,
@@ -216,6 +265,12 @@ ACTIVE=0
 BACKLOG=0
 DONE=0
 OTHER=0
+LEARNING_REVIEW_RECORDED=0
+LEARNING_REVIEW_SKIPPED=0
+LEARNING_REVIEW_MISSING=0
+LEARNING_REVIEW_MISSING_DONE=0
+LEARNING_REVIEW_CLOSED=0
+LEARNING_REVIEW_NEEDS_ATTENTION=0
 if [ -d "$ROOT/.kimiflow" ]; then
   while IFS= read -r state; do
     slug="$(basename "$(dirname "$state")")"
@@ -242,6 +297,9 @@ if [ -d "$ROOT/.kimiflow" ]; then
     affected_json="$(json_path_array_from_state "$state")"
     affected_count="$(printf '%s\n' "$affected_json" | jq 'length')"
     stale_risk="n/a"
+    learning_review_json="$(learning_review_status_json "$ROOT" "$slug")"
+    learning_review_status="$(printf '%s\n' "$learning_review_json" | jq -r '.status // "missing"')"
+    learning_review_verdict="$(printf '%s\n' "$learning_review_json" | jq -r '.verdict // "unknown"')"
 
     case "$status" in
       backlog) BACKLOG=$((BACKLOG + 1)) ;;
@@ -249,6 +307,20 @@ if [ -d "$ROOT/.kimiflow" ]; then
       active) ACTIVE=$((ACTIVE + 1)) ;;
       *) OTHER=$((OTHER + 1)) ;;
     esac
+    case "$learning_review_status" in
+      recorded) LEARNING_REVIEW_RECORDED=$((LEARNING_REVIEW_RECORDED + 1)) ;;
+      skipped) LEARNING_REVIEW_SKIPPED=$((LEARNING_REVIEW_SKIPPED + 1)) ;;
+      missing) LEARNING_REVIEW_MISSING=$((LEARNING_REVIEW_MISSING + 1)) ;;
+    esac
+    if [ "$learning_review_verdict" = "CLOSED" ]; then
+      LEARNING_REVIEW_CLOSED=$((LEARNING_REVIEW_CLOSED + 1))
+    fi
+    if [ "$status" = "done" ] && [ "$learning_review_status" = "missing" ]; then
+      LEARNING_REVIEW_MISSING_DONE=$((LEARNING_REVIEW_MISSING_DONE + 1))
+    fi
+    if [ "$status" = "done" ] && [ "$learning_review_status" != "missing" ] && [ "$learning_review_verdict" != "OPEN" ]; then
+      LEARNING_REVIEW_NEEDS_ATTENTION=$((LEARNING_REVIEW_NEEDS_ATTENTION + 1))
+    fi
 
     if [ "$status" = "backlog" ]; then
       if ! git_commit_ok "$ROOT" "$plan_commit" || [ "$affected_count" -eq 0 ]; then
@@ -274,6 +346,7 @@ if [ -d "$ROOT/.kimiflow" ]; then
       --arg plan_status "$plan_status" \
       --arg stale_risk "$stale_risk" \
       --argjson affected_files "$affected_json" \
+      --argjson learning_review "$learning_review_json" \
       '. + [{
         slug: $slug,
         status: $status,
@@ -283,6 +356,7 @@ if [ -d "$ROOT/.kimiflow" ]; then
         plan_commit: $plan_commit,
         plan_status: $plan_status,
         affected_files: $affected_files,
+        learning_review: $learning_review,
         stale_risk: $stale_risk
       }]')"
   done < <(find "$ROOT/.kimiflow" -mindepth 2 -maxdepth 2 -name STATE.md -type f 2>/dev/null | sort)
@@ -320,6 +394,9 @@ fi
 if [ "$BACKLOG" -gt 0 ]; then
   MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "backlog_runs")"
 fi
+if [ "$LEARNING_REVIEW_NEEDS_ATTENTION" -gt 0 ]; then
+  MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "learning_reviews_need_attention")"
+fi
 if printf '%s\n' "$MEMORY_JSON" | jq -e '.curation.recommended == true' >/dev/null 2>&1; then
   MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "memory_curation_recommended")"
 fi
@@ -352,6 +429,12 @@ out="$(jq -n \
   --argjson backlog "$BACKLOG" \
   --argjson done "$DONE" \
   --argjson other "$OTHER" \
+  --argjson learning_review_recorded "$LEARNING_REVIEW_RECORDED" \
+  --argjson learning_review_skipped "$LEARNING_REVIEW_SKIPPED" \
+  --argjson learning_review_missing "$LEARNING_REVIEW_MISSING" \
+  --argjson learning_review_missing_done "$LEARNING_REVIEW_MISSING_DONE" \
+  --argjson learning_review_closed "$LEARNING_REVIEW_CLOSED" \
+  --argjson learning_review_needs_attention "$LEARNING_REVIEW_NEEDS_ATTENTION" \
   --argjson items "$RUNS_JSON" \
   --argjson commits_since_map "$COMMITS_SINCE_MAP" \
   --argjson maintenance_reasons "$MAINTENANCE_REASONS" \
@@ -364,7 +447,21 @@ out="$(jq -n \
     memory: $memory,
     findings: {open: $findings_open, path: $findings_path},
     improvements: {open: $improvements_open, path: $improvements_path},
-    runs: {active: $active, backlog: $backlog, done: $done, other: $other, items: $items},
+    runs: {
+      active: $active,
+      backlog: $backlog,
+      done: $done,
+      other: $other,
+      learning_reviews: {
+        recorded: $learning_review_recorded,
+        skipped: $learning_review_skipped,
+        missing: $learning_review_missing,
+        missing_done: $learning_review_missing_done,
+        closed: $learning_review_closed,
+        needs_attention: $learning_review_needs_attention
+      },
+      items: $items
+    },
     maintenance: {
       bring_current_recommended: (($maintenance_reasons | length) > 0),
       reasons: $maintenance_reasons,

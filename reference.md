@@ -77,7 +77,9 @@ hygiene pass, not an implementation mode:
 - Backlog runs: list slug, status, mode, scope, plan commit, affected-file count, and stale risk from the
   snapshot. Selecting a run starts the resume safety check; it never jumps directly to implementation.
 - Done runs: count `Status: done`; for legacy states, a Phase-7-done / `RUN COMPLETE` signal may be inferred as
-  done so old completed runs do not remain noisy active work.
+  done so old completed runs do not remain noisy active work. Surface missing `LEARNING-REVIEW.md` in
+  `runs.learning_reviews.missing_done` and stale/invalid existing reviews as `learning_reviews_need_attention`;
+  completed current runs are clean only when the recorded or skipped learning review verifies `OPEN`.
 - Improve: translate "improve" into handles: `top 3 levers`, `architecture simplification`,
   `code quality/refactoring`, `scalability/performance`, `tests/robustness`, `docs/onboarding`,
   `security/privacy`. "Top 3 levers" produces a prioritized improve analysis before any build plan.
@@ -677,6 +679,11 @@ generic, missing verified evidence, a project-rule answer without a rule/convent
 an avoidance/risk signal, or an important decision without a concrete decision signal. The generated
 `LEARNING-REVIEW.md` prints `Quality: passed` for accepted rows. Quality failures stay in the run and should
 be fixed in the source artifact rather than promoted to memory.
+
+**Structured learning extraction:** `review-run` prefers explicit labeled lines in run artifacts before falling
+back to the first substantive line. Use labels such as `Learning:`, `Project rule confirmed:`, `Pitfall:`, and
+`Decision:` under a short learning-summary section when a run artifact has intro/context text. Evidence points
+to the actual label line, so later freshness checks validate the precise source that produced the learning.
 
 **Source freshness gate:** every learning row written by `review-run` stores `evidence_fingerprints`
 (repo-relative path + digest algorithm + digest + optional sha256 + status). Outside-repo evidence paths are

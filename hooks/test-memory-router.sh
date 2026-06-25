@@ -166,6 +166,47 @@ out="$(run_router review-run --run .kimiflow/demo-run --write)"
 after_count="$(wc -l < "$REPO/.kimiflow/project/LEARNINGS.jsonl" | tr -d '[:space:]')"
 [ "$before_count" = "$after_count" ] && pass "review_run_is_idempotent" || fail "review_run_is_idempotent"
 
+mkdir -p "$REPO/.kimiflow/structured-run"
+cat > "$REPO/.kimiflow/structured-run/RESEARCH.md" <<'EOF'
+# Research Notes
+
+Introductory context that should not become durable memory.
+
+## Kimiflow Learning Summary
+
+Learning: Memory review should prefer explicit structured learning summaries over generic narrative introductions.
+EOF
+cat > "$REPO/.kimiflow/structured-run/ACCEPTANCE.md" <<'EOF'
+# Acceptance
+
+Introductory acceptance context that should not become durable memory.
+
+## Kimiflow Learning Summary
+
+Project rule confirmed: Every run-close learning review must prefer explicit structured learning lines when they exist.
+EOF
+cat > "$REPO/.kimiflow/structured-run/CODE-REVIEW.md" <<'EOF'
+# Review
+
+Generic review context that should not become durable memory.
+
+## Kimiflow Learning Summary
+
+Pitfall: Avoid storing generic introduction lines when a sharper run learning summary exists.
+EOF
+cat > "$REPO/.kimiflow/structured-run/PLAN.md" <<'EOF'
+# Plan
+
+Generic plan context that should not become durable memory.
+
+## Kimiflow Learning Summary
+
+Decision: Keep the structured learning summary parser local and deterministic because recall quality depends on compact evidence.
+EOF
+out="$(run_router review-run --run .kimiflow/structured-run --write)"
+assert_jq "$out" '.status == "recorded" and .recorded_count == 4 and (.entries | all(.extraction_source == "structured"))' "review_run_prefers_structured_learning_summaries"
+assert_jq "$out" '(.entries[] | select(.question == "what_was_learned").summary | contains("structured learning summaries")) and (.entries[] | select(.question == "what_was_learned").evidence[0] | endswith(":7"))' "review_run_uses_structured_summary_evidence_line"
+
 cat >> "$REPO/.kimiflow/demo-run/RESEARCH.md" <<'EOF'
 The evidence changed after the review, so the stored fingerprint must be refreshed.
 EOF
@@ -178,8 +219,8 @@ out="$(run_router review-run --run .kimiflow/demo-run --write)"
 out="$(run_router verify-run --run .kimiflow/demo-run)"
 printf '%s\n' "$out" | grep -q '^LEARNING_REVIEW	OPEN	status=recorded	freshness=current' && pass "review_run_refreshes_stale_evidence" || fail "review_run_refreshes_stale_evidence"
 rows="$(jq -Rsc 'split("\n") | map(select(length > 0) | (fromjson? // empty))' "$REPO/.kimiflow/project/LEARNINGS.jsonl")"
-assert_jq "$rows" 'map(select(.topic == "run-learning" and (.status // "current") == "current")) | length == 1' "review_run_keeps_one_current_learning_after_refresh"
-assert_jq "$rows" 'map(select(.topic == "run-learning" and .status == "superseded")) | length == 1' "review_run_supersedes_old_learning_after_refresh"
+assert_jq "$rows" 'map(select(.topic == "run-learning" and ((.summary // "") | contains("Memory recall should run before web research")) and (.status // "current") == "current")) | length == 1' "review_run_keeps_one_current_learning_after_refresh"
+assert_jq "$rows" 'map(select(.topic == "run-learning" and ((.summary // "") | contains("Memory recall should run before web research")) and .status == "superseded")) | length == 1' "review_run_supersedes_old_learning_after_refresh"
 out="$(run_router recall --query "web research project map" --max 10)"
 assert_jq "$out" '.sources.learnings.hits | map(select((.status // "current") != "current")) | length == 0' "recall_omits_superseded_learnings"
 if command -v sqlite3 >/dev/null 2>&1; then

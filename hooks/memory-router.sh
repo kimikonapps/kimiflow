@@ -1480,35 +1480,102 @@ resolve_run_dir() {
   (cd "$run" 2>/dev/null && pwd) || die "run directory not found: $run" 2
 }
 
-first_substantive_line() {
+first_substantive_tsv() {
   local file="$1"
   [ -f "$file" ] || return 1
   awk '
     {
       line = $0
+      gsub(/\r/, "", line)
       sub(/^[[:space:]]+/, "", line)
       sub(/[[:space:]]+$/, "", line)
       if (line == "") next
       if (line ~ /^#{1,6}[[:space:]]/) next
       if (line ~ /^```/) next
       gsub(/[[:space:]]+/, " ", line)
-      print line
+      print NR "\t" line
       exit
     }
   ' "$file"
 }
 
+structured_learning_tsv() {
+  local file="$1" kind="$2"
+  [ -f "$file" ] || return 1
+  awk -v kind="$kind" '
+    function trim(s) {
+      sub(/^[[:space:]]+/, "", s)
+      sub(/[[:space:]]+$/, "", s)
+      return s
+    }
+    function matches_kind(lower) {
+      if (kind == "learned") {
+        return lower ~ /^(what was learned|learned|learning|lesson learned|gelernt|was gelernt wurde|erkenntnis)[[:space:]]*:/
+      }
+      if (kind == "project_rule_confirmed") {
+        return lower ~ /^(which project rule was confirmed|project rule confirmed|rule confirmed|confirmed rule|project rule|projektregel|bestaetigte regel)[[:space:]]*:/
+      }
+      if (kind == "trap_or_pitfall") {
+        return lower ~ /^(which trap or pitfall appeared|pitfall|trap|risk|avoid|falle|risiko|achtung)[[:space:]]*:/
+      }
+      if (kind == "important_decision") {
+        return lower ~ /^(which decision remains important|important decision|decision|decided|entscheidung|wichtige entscheidung)[[:space:]]*:/
+      }
+      return 0
+    }
+    {
+      line = $0
+      gsub(/\r/, "", line)
+      gsub(/\*\*/, "", line)
+      line = trim(line)
+      sub(/^[-*][[:space:]]+/, "", line)
+      sub(/^>[[:space:]]+/, "", line)
+      lower = tolower(line)
+      if (matches_kind(lower)) {
+        summary = line
+        if (summary != "") {
+          gsub(/[[:space:]]+/, " ", summary)
+          print NR "\t" summary
+          exit
+        }
+      }
+    }
+  ' "$file"
+}
+
+learning_summary_json() {
+  local file="$1" kind="$2" row line summary source
+  row="$(structured_learning_tsv "$file" "$kind" | head -n 1)"
+  source="structured"
+  if [ -z "$row" ]; then
+    row="$(first_substantive_tsv "$file" | head -n 1)"
+    source="fallback"
+  fi
+  [ -n "$row" ] || return 1
+  line="$(printf '%s\n' "$row" | awk -F '\t' '{print $1}')"
+  summary="$(printf '%s\n' "$row" | cut -f2- | cut -c1-320)"
+  [ -n "$summary" ] || return 1
+  jq -nc \
+    --argjson line "$line" \
+    --arg summary "$summary" \
+    --arg source "$source" \
+    '{line: $line, summary: $summary, source: $source}'
+}
+
 review_candidate_json() {
   local root="$1" run_dir="$2" question="$3" kind="$4" topic="$5"
   shift 5
-  local file path summary rel evidence_json classification target sensitivity confidence quality
+  local file path summary_info summary summary_line summary_source rel evidence_json classification target sensitivity confidence quality
   for file in "$@"; do
     path="$run_dir/$file"
     [ -f "$path" ] || continue
-    summary="$(first_substantive_line "$path" | cut -c1-320)"
+    summary_info="$(learning_summary_json "$path" "$kind")" || continue
+    summary="$(printf '%s\n' "$summary_info" | jq -r '.summary')"
+    summary_line="$(printf '%s\n' "$summary_info" | jq -r '.line')"
+    summary_source="$(printf '%s\n' "$summary_info" | jq -r '.source')"
     [ -n "$summary" ] || continue
     rel="$(rel_path "$root" "$path")"
-    evidence_json="$(jq -nc --arg evidence "$rel:1" '[$evidence]')"
+    evidence_json="$(jq -nc --arg evidence "$rel:$summary_line" '[$evidence]')"
     classification="$(classify_text "$summary")"
     target="$(printf '%s\n' "$classification" | jq -r '.classification.target')"
     sensitivity="$(printf '%s\n' "$classification" | jq -r '.classification.sensitivity')"
@@ -1523,6 +1590,7 @@ review_candidate_json() {
       --arg topic "$topic" \
       --arg summary "$summary" \
       --argjson evidence "$evidence_json" \
+      --arg source "$summary_source" \
       --arg target "$target" \
       --arg sensitivity "$sensitivity" \
       --arg confidence "$confidence" \
@@ -1534,6 +1602,7 @@ review_candidate_json() {
         topic: $topic,
         summary: $summary,
         evidence: $evidence,
+        extraction_source: $source,
         target: $target,
         sensitivity: $sensitivity,
         confidence: $confidence,
