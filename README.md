@@ -225,7 +225,8 @@ repo-relative evidence; it exports at most 20 candidates by default, records onl
 writes external Vault notes blindly.
 Approve/apply revalidates evidence first, so stale proposals stay local until refreshed.
 The launcher surfaces memory budget, learning counts, run-history/usage/provider health, pending provider sync
-handoffs, pending proposal notifications, Vault availability, and curation reasons.
+handoffs, pending proposal notifications, Vault availability, and only user-actionable curation reasons. Internal
+threshold hints such as `many_learnings` stay silent when memory is fresh and under budget.
 
 ## Example
 
@@ -522,7 +523,8 @@ mit nur aktuellen, nicht-privaten, nicht-security Learnings mit frisch verifizie
 exportiert standardmäßig maximal 20 Kandidaten, merkt sich nur exportierte IDs lokal und schreibt niemals blind externe Vault-Notizen. Approve/apply prüft Evidence
 vorher erneut, stale Vorschläge bleiben lokal bis zum Refresh. Der Launcher zeigt Memory-Budget,
 Learning-Zählungen, Run-History-/Usage-/Provider-Health, pending Provider-Sync-Handoffs, pending Proposal
-Notifications, Vault-Verfügbarkeit und Kuratierungsgründe.
+Notifications, Vault-Verfügbarkeit und nur Kuratierungsgründe, bei denen der User wirklich handeln muss. Interne
+Schwellen wie `many_learnings` bleiben still, wenn Memory frisch und unter Budget ist.
 
 ## Beispiel
 

@@ -517,6 +517,8 @@ else
 fi
 out="$(run_router status)"
 assert_jq "$out" '.lifecycle.unused_current >= 1 and (.lifecycle.cold_candidate_ids | index("learn_cold_one"))' "status_reports_cold_learning_candidates"
+out="$(KIMIFLOW_OBSIDIAN_URL=http://127.0.0.1:1 KIMIFLOW_MEMORY_CURATE_AFTER_LEARNINGS=3 run_router status)"
+assert_jq "$out" '.curation.recommended == false and .curation.internal_recommended == true and (.curation.reasons | index("many_learnings") | not) and (.curation.silent_reasons | index("many_learnings")) and (.curation.all_reasons | index("many_learnings"))' "many_learnings_is_silent_when_memory_is_healthy"
 
 mkdir -p "$REPO/.kimiflow/skip-run"
 out="$(run_router review-run --run .kimiflow/skip-run --write --skip "intentionally trivial run")"

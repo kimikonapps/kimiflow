@@ -68,7 +68,8 @@ hygiene pass, not an implementation mode:
   local/private; repo docs are updated only when the user chooses a docs/storage action.
 - **Memory hygiene:** if `memory.curation.recommended` is true, offer a token-cheap memory curation action.
   This runs `memory-router.sh curate --write`, updates `MEMORY-INDEX.json`, and never rewrites/delete-learns
-  destructively without a later explicit action.
+  destructively without a later explicit action. Ignore `memory.curation.silent_reasons` in normal UI; for example
+  `many_learnings` is an internal health/threshold hint, not user-facing work when memory is under budget and fresh.
 
 **Drilldowns, not dumps:**
 - Findings: if `findings.open > 0`, offer `summarize`, `fix highest priority`, `group by area`, `show details`,
@@ -803,11 +804,12 @@ patch `SKILL.md`, `reference.md`, or repo docs automatically. Approve/apply reva
 - `security`: local/sanitized only by default; never put concrete vulnerability details, exploit paths, secret names,
   token values, private paths, or raw risk findings into repo docs.
 
-**Curator:** `memory-router.sh status` reports `curation.recommended` and reasons such as `memory_over_budget`,
+**Curator:** `memory-router.sh status` reports user-visible `curation.recommended` and `curation.reasons` such as `memory_over_budget`,
 `stale_learnings`, `superseded_learnings`, `learning_lifecycle_review_due`, `memory_index_missing`, `recall_index_missing`,
 `provider_sync_pending`, `provider_detected_unconfigured`, `provider_auth_required`, `provider_auth_failed`,
 `learning_proposals_pending`, `learning_proposals_approved`,
-`learning_proposals_need_revalidation`, or `many_learnings`.
+or `learning_proposals_need_revalidation`. It also reports `curation.internal_recommended`, `silent_reasons`, and
+`all_reasons`; `many_learnings` belongs there so agents can know the threshold fired without asking the user to act.
 `review-run --write` refreshes the small always-on `MEMORY.md`; `curate --write` writes/refreshes
 `MEMORY-INDEX.json`, lifecycle metrics, provider status, and the optional recall index. Row archival is explicit
 through `consolidate --write`.

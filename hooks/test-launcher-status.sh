@@ -165,6 +165,13 @@ assert_jq "$out" '.memory.history.present == true and .memory.usage.total_uses =
 "$MEMORY_ROUTER" curate --root "$REPO" --write >/dev/null
 out="$(run_status)"
 assert_jq "$out" '.memory.curation.recommended == false and (.maintenance.reasons | index("memory_curation_recommended") | not)' "memory_index_clears_curation_recommendation"
+cat >> "$REPO/.kimiflow/project/LEARNINGS.jsonl" <<'EOF'
+{"id":"learn_many_one","kind":"process","scope":"project","topic":"memory","summary":"Additional healthy learning should not surface as user maintenance.","evidence":["hooks/launcher-status.sh:1"],"confidence":"high","sensitivity":"normal","last_verified":"2026-06-25","source_commit":"abc1234","status":"current"}
+{"id":"learn_many_two","kind":"process","scope":"project","topic":"memory","summary":"Healthy many-learnings threshold remains an internal signal only.","evidence":["hooks/launcher-status.sh:1"],"confidence":"high","sensitivity":"normal","last_verified":"2026-06-25","source_commit":"abc1234","status":"current"}
+EOF
+"$MEMORY_ROUTER" curate --root "$REPO" --write >/dev/null
+out="$(KIMIFLOW_OBSIDIAN_URL=http://127.0.0.1:1 KIMIFLOW_MEMORY_CURATE_AFTER_LEARNINGS=3 run_status)"
+assert_jq "$out" '.memory.curation.recommended == false and .memory.curation.internal_recommended == true and (.memory.curation.silent_reasons | index("many_learnings")) and .maintenance.bring_current_recommended == false and (.maintenance.reasons | index("memory_curation_recommended") | not)' "launcher_hides_benign_many_learnings_signal"
 
 cat > "$REPO/.kimiflow/project/PROPOSALS.jsonl" <<'EOF'
 {"id":"learn_memory","learning_id":"learn_memory","type":"standard","kind":"project_rule_confirmed","target_path":".kimiflow/STANDARDS.md","summary":"Project rule confirmed: launcher status exposes pending learning proposals.","evidence":["hooks/launcher-status.sh:1"],"status":"pending","created_at":"2026-06-25T00:00:00Z","updated_at":"2026-06-25T00:00:00Z"}

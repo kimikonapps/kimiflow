@@ -1054,7 +1054,25 @@ status_json() {
     --argjson provider "$provider_json" \
     --argjson provider_sync "$provider_sync_json" \
     --argjson vault "$vault_json" \
-    '{
+    '([
+        if $memory_tokens > $budget then "memory_over_budget" else empty end,
+        if $learnings.stale > 0 then "stale_learnings" else empty end,
+        if $learnings.superseded > 0 then "superseded_learnings" else empty end,
+        if $lifecycle.stale_candidates > 0 then "learning_lifecycle_review_due" else empty end,
+        if (($learnings.total > 0) and ($index_present | not)) then "memory_index_missing" else empty end,
+        if $learnings.total >= $learning_threshold then "many_learnings" else empty end,
+        if (($learnings.total > 0) and ($sqlite_available == true) and ($recall_db_present | not)) then "recall_index_missing" else empty end,
+        if $proposals.pending > 0 then "learning_proposals_pending" else empty end,
+        if $proposals.approved > 0 then "learning_proposals_approved" else empty end,
+        if $proposals.needs_revalidation > 0 then "learning_proposals_need_revalidation" else empty end,
+        if $provider_sync.pending_count > 0 then "provider_sync_pending" else empty end,
+        if (($provider_sync.status == "provider_detected_unconfigured") and ($provider_sync.exportable_count > 0)) then "provider_detected_unconfigured" else empty end,
+        if $provider.health.status == "auth_failed" then "provider_auth_failed" else empty end,
+        if (($provider.health.status == "connected_local_only") and ($provider_sync.exportable_count > 0)) then "provider_auth_required" else empty end
+      ]) as $all_reasons
+      | ($all_reasons | map(select(. != "many_learnings"))) as $visible_reasons
+      | ($all_reasons | map(select(. == "many_learnings"))) as $silent_reasons
+      | {
       schema_version: 1,
       present: ($memory_present or $learnings_present or $user_memory_present or $user_rows_present or $index_present or $recall_present or $recall_db_present or $run_history_present or $usage_present or $provider_present or $proposal_rows_present),
       root: $root,
@@ -1104,38 +1122,11 @@ status_json() {
       provider: ($provider + {present: ($provider.present or $provider_present), path: $provider_path, sync: $provider_sync}),
       vault: $vault,
       curation: {
-        recommended: (
-          ($memory_tokens > $budget)
-          or ($learnings.stale > 0)
-          or ($learnings.superseded > 0)
-          or ($lifecycle.stale_candidates > 0)
-          or (($learnings.total > 0) and ($index_present | not))
-          or ($learnings.total >= $learning_threshold)
-          or (($learnings.total > 0) and ($sqlite_available == true) and ($recall_db_present | not))
-          or ($proposals.pending > 0)
-          or ($proposals.approved > 0)
-          or ($proposals.needs_revalidation > 0)
-          or ($provider_sync.pending_count > 0)
-          or (($provider_sync.status == "provider_detected_unconfigured") and ($provider_sync.exportable_count > 0))
-          or ($provider.health.status == "auth_failed")
-          or (($provider.health.status == "connected_local_only") and ($provider_sync.exportable_count > 0))
-        ),
-        reasons: ([
-          if $memory_tokens > $budget then "memory_over_budget" else empty end,
-          if $learnings.stale > 0 then "stale_learnings" else empty end,
-          if $learnings.superseded > 0 then "superseded_learnings" else empty end,
-          if $lifecycle.stale_candidates > 0 then "learning_lifecycle_review_due" else empty end,
-          if (($learnings.total > 0) and ($index_present | not)) then "memory_index_missing" else empty end,
-          if $learnings.total >= $learning_threshold then "many_learnings" else empty end,
-          if (($learnings.total > 0) and ($sqlite_available == true) and ($recall_db_present | not)) then "recall_index_missing" else empty end,
-          if $proposals.pending > 0 then "learning_proposals_pending" else empty end,
-          if $proposals.approved > 0 then "learning_proposals_approved" else empty end,
-          if $proposals.needs_revalidation > 0 then "learning_proposals_need_revalidation" else empty end,
-          if $provider_sync.pending_count > 0 then "provider_sync_pending" else empty end,
-          if (($provider_sync.status == "provider_detected_unconfigured") and ($provider_sync.exportable_count > 0)) then "provider_detected_unconfigured" else empty end,
-          if $provider.health.status == "auth_failed" then "provider_auth_failed" else empty end,
-          if (($provider.health.status == "connected_local_only") and ($provider_sync.exportable_count > 0)) then "provider_auth_required" else empty end
-        ])
+        recommended: (($visible_reasons | length) > 0),
+        internal_recommended: (($all_reasons | length) > 0),
+        reasons: $visible_reasons,
+        silent_reasons: $silent_reasons,
+        all_reasons: $all_reasons
       }
     }'
 }
