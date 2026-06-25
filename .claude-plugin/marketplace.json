@@ -5,18 +5,18 @@
     "name": "kimikon"
   },
   "metadata": {
-    "description": "kimiflow — a disciplined feature & bug-fix loop for Claude Code with real, mechanical quality gates."
+    "description": "kimiflow — a disciplined feature & bug-fix loop for Claude Code with real gates, project intelligence, and bounded memory recall."
   },
   "plugins": [
     {
       "name": "kimiflow",
-      "description": "Feature & bug-fix loop for Claude Code with real quality gates (clarify → understand/diagnose → plan-gate → verify → commit). Replies in your language.",
-      "version": "0.1.30",
+      "description": "Feature & bug-fix loop for Claude Code with real gates, project intelligence maps, and token-cheap memory recall. Replies in your language.",
+      "version": "0.1.31",
       "author": {
         "name": "kimikon"
       },
       "source": ".",
-      "tags": ["workflow", "quality-gates", "tdd", "code-review", "bug-fix"]
+      "tags": ["workflow", "quality-gates", "tdd", "code-review", "bug-fix", "project-intelligence", "memory"]
     }
   ]
 }

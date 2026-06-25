@@ -150,8 +150,8 @@ $kimiflow --project-map standard
 
 If you invoke kimiflow without a concrete task (`/kimiflow` or `$kimiflow`), it opens a context-aware
 launcher. The launcher first runs `hooks/launcher-status.sh` and summarizes the current project state:
-project-map depth/status, open findings, improvement slices, repo docs, dirty working tree, and active or
-backlog runs. It then routes your choice into the normal Kimiflow modes.
+project-map depth/status, memory/recall status, open findings, improvement slices, repo docs, dirty working
+tree, and active or backlog runs. It then routes your choice into the normal Kimiflow modes.
 
 Backlog/resume is guarded: a parked plan is not implemented blindly if affected files changed since its
 plan commit, or if the plan basis is unknown. In that case kimiflow offers plan revalidation before Phase 5.
@@ -185,6 +185,17 @@ requested, kimiflow writes a curated publish-safe derivative instead: architectu
 testing docs may go under the repo's docs structure, while concrete vulnerabilities, exploit paths,
 secrets, private/local paths, vault references, and raw improvement findings stay local or private unless
 you explicitly ask for a sanitized public note.
+
+## Memory Router
+
+Kimiflow also keeps a bounded local memory under `.kimiflow/project/`: `MEMORY.md`, `LEARNINGS.jsonl`,
+`MEMORY-INDEX.json`, and `RECALL.md`. `hooks/memory-router.sh` gives the launcher and Phase 2 a cheap way to
+check memory freshness, recall relevant project facts, classify new learnings, and curate the index without
+rereading the whole repo or Vault every time.
+
+This layer is local-first and optional-provider-aware. It works without a Vault MCP; if a Vault is connected,
+kimiflow can promote curated long-term learnings there while keeping private/security details local or
+sanitized. The launcher surfaces memory budget, learning counts, Vault availability, and curation reasons.
 
 ## Example
 
@@ -236,6 +247,9 @@ kimiflow ships safety hooks under `hooks/`, **active only in kimiflow repos** (a
 kimiflow can use an **Obsidian vault as a cross-project knowledge base**. In Phase 2 it **searches your vault before researching** (so it never re-researches what you already learned) and **saves reusable findings back** — auto-discovering your vault's own folder/index structure. Across many projects this compounds into a personal, searchable memory that makes every run faster and better-grounded. **It's genuinely worth setting up.**
 
 **Without a vault MCP — nothing breaks.** kimiflow detects there's no notes MCP, **notes it in `STATE.md`, skips the vault search + save, and continues.** Research falls back to the codebase + web, and the **repo-local `.kimiflow/` memory** (`STANDARDS.md` / `DECISIONS.md`) still persists project-level learning. No errors, no blocked phases — identical gates, hooks and outcome; you only lose the cross-project shortcut.
+
+The newer local memory router (`.kimiflow/project/MEMORY.md`, `LEARNINGS.jsonl`, `MEMORY-INDEX.json`) still
+works without a vault and is the default project-level learning layer.
 
 **Second optional source — claude-mem.** If the **claude-mem** plugin (cross-session memory) is installed, kimiflow *also* searches it during Phase 2 recall ("did we already deal with this?") — **search-only**; saving still goes to the vault / repo-local `.kimiflow/` memory. Not installed → skipped, exactly like the vault. **Detection is per-run**, so adding it later is picked up on the next run (after a `/reload-plugins` or restart). The two are independent — either, both, or neither.
 
@@ -397,9 +411,9 @@ $kimiflow --project-map standard
 
 Wenn du kimiflow ohne konkreten Auftrag startest (`/kimiflow` oder `$kimiflow`), öffnet es einen
 kontextbewussten Launcher. Der Launcher ruft zuerst `hooks/launcher-status.sh` auf und fasst den
-Projektzustand zusammen: Projektkarten-Tiefe/-Status, offene Findings, Verbesserungs-Slices, Repo-Doku,
-dirty Working Tree und aktive oder geparkte Runs. Deine Auswahl wird danach in den normalen Kimiflow-Modus
-geroutet.
+Projektzustand zusammen: Projektkarten-Tiefe/-Status, Memory-/Recall-Status, offene Findings,
+Verbesserungs-Slices, Repo-Doku, dirty Working Tree und aktive oder geparkte Runs. Deine Auswahl wird danach
+in den normalen Kimiflow-Modus geroutet.
 
 Resume ist abgesichert: Ein geparkter Plan wird nicht blind umgesetzt, wenn betroffene Dateien seit dem
 Plan-Commit geändert wurden oder die Plan-Basis unbekannt ist. Dann bietet kimiflow vor Phase 5 eine
@@ -430,10 +444,22 @@ und Repo-Doku sind Publishing-Ebenen, keine Voraussetzung. Verbesserungs-Slices 
 mit Evidence, Nutzen, Risiko, Aufwand, Akzeptanzkriterien und „Nicht anfassen" geschrieben.
 
 `.kimiflow/project/` ist ein lokaler Agent-Cache und wird standardmäßig nicht committed. Wenn Repo-Doku
-gewünscht ist, schreibt kimiflow stattdessen eine kuratierte publish-safe Ableitung: Architektur-,
-Codebase-, Flow- und Test-Doku kann in die Doku-Struktur des Repos, konkrete Schwachstellen,
-Exploit-Pfade, Secrets, private/lokale Pfade, Vault-Verweise und rohe Improvement-Findings bleiben lokal
-oder privat, außer du verlangst ausdrücklich eine bereinigte öffentliche Notiz.
+angefordert wird, schreibt kimiflow stattdessen eine kuratierte publish-safe Ableitung: Architektur-,
+Codebase-, Flow- und Testing-Doku können in die Repo-Doku, konkrete Schwachstellen, Exploit-Pfade,
+Secrets, private/lokale Pfade, Vault-Referenzen und rohe Verbesserungs-Findings bleiben lokal oder privat,
+außer du verlangst explizit eine sanitisierte öffentliche Notiz.
+
+## Memory Router
+
+Kimiflow hält zusätzlich ein bounded lokales Gedächtnis unter `.kimiflow/project/`: `MEMORY.md`,
+`LEARNINGS.jsonl`, `MEMORY-INDEX.json` und `RECALL.md`. `hooks/memory-router.sh` gibt Launcher und Phase 2
+einen günstigen Weg, Memory-Freshness zu prüfen, relevante Projektfakten abzurufen, neue Learnings zu
+klassifizieren und den Index zu kuratieren, ohne jedes Mal das ganze Repo oder den ganzen Vault zu lesen.
+
+Diese Schicht ist local-first und funktioniert ohne Vault-MCP. Wenn ein Vault verbunden ist, kann kimiflow
+kuratierte Langzeit-Learnings dorthin schreiben; private oder sicherheitsrelevante Details bleiben lokal
+oder werden sanitisiert. Der Launcher zeigt Memory-Budget, Learning-Zählungen, Vault-Verfügbarkeit und
+Kuratierungsgründe.
 
 ## Beispiel
 

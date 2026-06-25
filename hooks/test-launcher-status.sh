@@ -4,6 +4,7 @@
 set -u
 
 SCRIPT="$(cd "$(dirname "$0")" && pwd)/launcher-status.sh"
+MEMORY_ROUTER="$(cd "$(dirname "$0")" && pwd)/memory-router.sh"
 WORK="$(mktemp -d)"
 REPO="$WORK/repo"
 INDEX="$REPO/.kimiflow/project/INDEX.json"
@@ -139,6 +140,25 @@ cat > "$REPO/.kimiflow/project/IMPROVEMENTS.md" <<'EOF'
 EOF
 out="$(run_status)"
 assert_jq "$out" '.findings.open == 2 and .improvements.open == 1' "findings_and_improvements_counted_en"
+
+cat > "$REPO/.kimiflow/project/MEMORY.md" <<'EOF'
+# Memory
+
+Kimiflow loads small project memory before fresh code exploration.
+EOF
+cat > "$REPO/.kimiflow/project/LEARNINGS.jsonl" <<'EOF'
+{"id":"learn_memory","kind":"process","scope":"project","topic":"memory","summary":"Launcher status exposes memory curation needs.","evidence":["hooks/launcher-status.sh:1"],"confidence":"high","sensitivity":"normal","last_verified":"2026-06-25","source_commit":"abc1234","status":"current"}
+EOF
+out="$(run_status)"
+assert_jq "$out" '.memory.present == true and .memory.learnings.current == 1 and .memory.curation.recommended == true and (.maintenance.reasons | index("memory_curation_recommended"))' "memory_status_reports_index_missing_curation"
+
+"$MEMORY_ROUTER" curate --root "$REPO" --write >/dev/null
+out="$(run_status)"
+assert_jq "$out" '.memory.curation.recommended == false and (.maintenance.reasons | index("memory_curation_recommended") | not)' "memory_index_clears_curation_recommendation"
+
+awk 'BEGIN{for(i=0;i<950;i++) printf "word "}' > "$REPO/.kimiflow/project/MEMORY.md"
+out="$(run_status)"
+assert_jq "$out" '.memory.memory.over_budget == true and .memory.curation.recommended == true and (.maintenance.reasons | index("memory_curation_recommended"))' "memory_over_budget_surfaces_in_launcher"
 
 mkdir -p "$REPO/.kimiflow/parked"
 cat > "$REPO/.kimiflow/parked/STATE.md" <<EOF

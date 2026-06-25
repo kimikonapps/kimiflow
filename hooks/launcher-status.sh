@@ -119,6 +119,23 @@ json_append_string() {
   printf '%s\n' "$json" | jq --arg value "$value" '. + [$value]'
 }
 
+default_memory_status() {
+  jq -nc '{
+    schema_version: 1,
+    present: false,
+    paths: {
+      memory: ".kimiflow/project/MEMORY.md",
+      learnings: ".kimiflow/project/LEARNINGS.jsonl",
+      index: ".kimiflow/project/MEMORY-INDEX.json",
+      recall: ".kimiflow/project/RECALL.md"
+    },
+    memory: {present: false, path: ".kimiflow/project/MEMORY.md", tokens_estimate: 0, budget: 900, over_budget: false},
+    learnings: {present: false, path: ".kimiflow/project/LEARNINGS.jsonl", total: 0, current: 0, stale: 0, superseded: 0, archived: 0, private: 0, security: 0, by_topic: {}},
+    vault: {available: false, last_recall_at: null, last_write_at: null},
+    curation: {recommended: false, reasons: ["memory_router_unavailable"]}
+  }'
+}
+
 ROOT=""
 PRETTY=0
 while [ "$#" -gt 0 ]; do
@@ -268,6 +285,14 @@ for artifact in .planning .gsd; do
   fi
 done
 
+MEMORY_JSON="$(default_memory_status)"
+if [ -x "$SCRIPT_DIR/memory-router.sh" ]; then
+  maybe_memory_json="$(KIMIFLOW_HOST="${KIMIFLOW_HOST:-}" "$SCRIPT_DIR/memory-router.sh" status --root "$ROOT" 2>/dev/null || true)"
+  if printf '%s\n' "$maybe_memory_json" | jq -e . >/dev/null 2>&1; then
+    MEMORY_JSON="$maybe_memory_json"
+  fi
+fi
+
 MAINTENANCE_REASONS='[]'
 if [ "$DIRTY" = true ]; then
   MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "working_tree_dirty")"
@@ -284,6 +309,9 @@ if [ "$ACTIVE" -gt 0 ]; then
 fi
 if [ "$BACKLOG" -gt 0 ]; then
   MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "backlog_runs")"
+fi
+if printf '%s\n' "$MEMORY_JSON" | jq -e '.curation.recommended == true' >/dev/null 2>&1; then
+  MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "memory_curation_recommended")"
 fi
 out="$(jq -n \
   --arg root "$ROOT" \
@@ -309,10 +337,12 @@ out="$(jq -n \
   --argjson commits_since_map "$COMMITS_SINCE_MAP" \
   --argjson maintenance_reasons "$MAINTENANCE_REASONS" \
   --argjson workflow_artifacts "$WORKFLOW_ARTIFACTS" \
+  --argjson memory "$MEMORY_JSON" \
   '{
     schema_version: 1,
     repo: {present: $repo_present, root: $root, head: $head, dirty: $dirty},
     project_map: {present: $map_present, valid: $map_valid, depth: $depth, status: $map_status, index: $index, baseline_commit: $baseline},
+    memory: $memory,
     findings: {open: $findings_open, path: $findings_path},
     improvements: {open: $improvements_open, path: $improvements_path},
     runs: {active: $active, backlog: $backlog, done: $done, other: $other, items: $items},

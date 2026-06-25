@@ -1,7 +1,7 @@
 {
   "name": "kimiflow",
-  "version": "0.1.30",
-  "description": "Context-aware Kimiflow launcher, feature and bug-fix loop for Codex with mechanical quality gates, plus optional project intelligence maps for codebase understanding, architecture, docs, and improvement ideas.",
+  "version": "0.1.31",
+  "description": "Context-aware Kimiflow launcher, feature and bug-fix loop for Codex with mechanical quality gates, project intelligence maps, and token-cheap memory/learning recall.",
   "author": {
     "name": "kimikon",
     "url": "https://github.com/swinxx"
@@ -16,6 +16,7 @@
     "code-review",
     "bug-fix",
     "project-intelligence",
+    "memory",
     "codebase-analysis",
     "architecture",
     "refactoring",
@@ -25,7 +26,7 @@
   "interface": {
     "displayName": "kimiflow",
     "shortDescription": "Understand a codebase, plan changes, and run feature/fix work through gates",
-    "longDescription": "Kimiflow opens with a context-aware launcher when invoked without a concrete task, then routes the user into project mapping, findings, backlog resume, feature work, bug fixes, improvement analysis, or docs. It also runs a disciplined feature and bug-fix loop in Codex, and can build a local project intelligence map before coding. It maps the codebase, architecture, conventions, tests, flows, stale sections, docs, and opt-in improvement/refactoring ideas under .kimiflow/project/. Normal coding runs use that map to understand what already exists before planning, then continue through mechanical plan, verification, review, and commit gates.",
+    "longDescription": "Kimiflow opens with a context-aware launcher when invoked without a concrete task, then routes the user into project mapping, memory/recall curation, findings, backlog resume, feature work, bug fixes, improvement analysis, or docs. It also runs a disciplined feature and bug-fix loop in Codex, and can build a local project intelligence map before coding. It maps the codebase, architecture, conventions, tests, flows, stale sections, docs, opt-in improvement/refactoring ideas, and bounded project memory under .kimiflow/project/. Normal coding runs use that map and memory recall to understand what already exists before planning, then continue through mechanical plan, verification, review, and commit gates.",
     "developerName": "kimikon",
     "category": "Developer Tools",
     "capabilities": [
@@ -41,6 +42,7 @@
       "Run kimiflow for this feature",
       "Use kimiflow --fix for this bug",
       "Map and understand this codebase with kimiflow",
+      "Refresh kimiflow project memory and recall",
       "Find architecture and refactoring opportunities with kimiflow",
       "Document this project with kimiflow"
     ],

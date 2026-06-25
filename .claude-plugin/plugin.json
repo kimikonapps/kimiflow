@@ -1,7 +1,7 @@
 {
   "name": "kimiflow",
-  "description": "Feature & bug-fix loop for Claude Code with real quality gates (clarify → understand/diagnose → plan-gate → verify → commit). Replies in your language.",
-  "version": "0.1.30",
+  "description": "Feature & bug-fix loop for Claude Code with real quality gates, project intelligence maps, and token-cheap memory/learning recall. Replies in your language.",
+  "version": "0.1.31",
   "license": "MIT",
   "author": {
     "name": "kimikon"

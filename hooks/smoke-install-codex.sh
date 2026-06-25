@@ -53,10 +53,18 @@ if [ -x "$ROOT/hooks/project-map-status.sh" ] && bash -n "$ROOT/hooks/project-ma
 if [ -x "$ROOT/hooks/test-project-map-status.sh" ] && bash -n "$ROOT/hooks/test-project-map-status.sh" 2>/dev/null; then ok "project map status test ok"; else bad "project map status test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/current-state-gate.sh" ] && bash -n "$ROOT/hooks/current-state-gate.sh" 2>/dev/null; then ok "current-state gate helper ok"; else bad "current-state gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-current-state-gate.sh" ] && bash -n "$ROOT/hooks/test-current-state-gate.sh" 2>/dev/null; then ok "current-state gate test ok"; else bad "current-state gate test missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/memory-router.sh" ] && bash -n "$ROOT/hooks/memory-router.sh" 2>/dev/null; then ok "memory router helper ok"; else bad "memory router helper missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/test-memory-router.sh" ] && bash -n "$ROOT/hooks/test-memory-router.sh" 2>/dev/null; then ok "memory router test ok"; else bad "memory router test missing/not-exec/bad"; fi
 grep -q 'project-map-status.sh' "$ROOT/reference.md" && ok "canonical project-map status helper documented" || bad "canonical project-map status helper missing"
 grep -q 'current-state-gate.sh' "$ROOT/reference.md" && ok "canonical current-state gate helper documented" || bad "canonical current-state gate helper missing"
+grep -q 'memory-router.sh' "$ROOT/reference.md" && ok "canonical memory router helper documented" || bad "canonical memory router helper missing"
 grep -q 'current-state-gate.sh' "$SKILL" && ok "Codex wrapper maps current-state gate helper" || bad "Codex wrapper missing current-state gate helper"
+grep -q 'memory-router.sh' "$SKILL" && ok "Codex wrapper maps memory router helper" || bad "Codex wrapper missing memory router helper"
+grep -q 'Memory Router & Learning Loop' "$ROOT/SKILL.md" && ok "canonical Memory Router present" || bad "canonical Memory Router missing"
 grep -q 'potentially_stale' "$ROOT/reference.md" && ok "per-section staleness documented" || bad "per-section staleness missing"
+for term in MEMORY.md LEARNINGS.jsonl MEMORY-INDEX.json RECALL.md; do
+  grep -q "$term" "$ROOT/reference.md" && ok "memory artifact documented: $term" || bad "memory artifact missing: $term"
+done
 for term in 'Storage targets' 'kimiflow+vault' 'repo-docs' 'IMPROVEMENTS.md' 'DOCS-PLAN.md'; do
   grep -q "$term" "$ROOT/reference.md" && ok "project map publishing documented: $term" || bad "project map publishing missing: $term"
 done

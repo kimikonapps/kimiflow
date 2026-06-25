@@ -2,6 +2,24 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.31
+
+Ship the **Memory Router and Learning Loop** for token-cheap project recall.
+
+### Added
+- `hooks/memory-router.sh` with `status`, `recall`, `classify`, `record`, and `curate` commands for local
+  `.kimiflow/project/` memory artifacts (`MEMORY.md`, `LEARNINGS.jsonl`, `MEMORY-INDEX.json`, `RECALL.md`).
+- `hooks/test-memory-router.sh` covering empty state, recall, sensitivity classification, recording, and
+  non-destructive curation.
+- Launcher status now includes memory budget, learning counts, Vault availability, and curation reasons so
+  the start menu can offer memory hygiene before feature/fix work.
+
+### Changed
+- Canonical Claude and Codex skill docs now route Phase 2 through local memory recall before optional Vault,
+  claude-mem, or web research, and route Phase 7 through automatic learning classification/recording.
+- Plugin metadata, README, and publish-safe repo docs now mention bounded memory/recall alongside Project
+  Intelligence.
+
 ## 0.1.30
 
 Fix **launcher run hygiene edge cases** and clarify project-map baseline maintenance context.

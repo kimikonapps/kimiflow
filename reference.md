@@ -13,8 +13,9 @@ requests.
 
 **Mechanical snapshot:** before showing options, run `hooks/launcher-status.sh --pretty` from the installed
 Kimiflow root (Codex: with `KIMIFLOW_HOST=codex`). The script is read-only and returns JSON for:
-repo status, dirty working tree, project-map depth/status, open findings, open improvement slices, repo-doc
-presence, and active/backlog/done runs. The orchestrator may summarize this JSON, but must not invent counts.
+repo status, dirty working tree, project-map depth/status, memory/recall status, curation needs, open findings,
+open improvement slices, repo-doc presence, and active/backlog/done runs. The orchestrator may summarize this
+JSON, but must not invent counts.
 
 **Start menu (user language):** show a compact numbered menu, tuned to the snapshot. Typical full menu:
 
@@ -22,6 +23,7 @@ presence, and active/backlog/done runs. The orchestrator may summarize this JSON
 Kimiflow Start
 
 Projektkarte: standard · aktuell
+Memory: 820/900 Tokens · aktuell
 Offene Findings: 4
 Geparkte Runs: 2
 Repo-Doku: vorhanden
@@ -38,6 +40,7 @@ Was willst du tun?
 7. Verbesserungen priorisieren
 8. Doku schreiben/aktualisieren
 9. Idee/unklaren Auftrag ausarbeiten
+10. Memory/Recall prüfen oder kuratieren
 ```
 
 If `.kimiflow/project/INDEX.json` is missing, bias the first menu toward Project Map Bootstrap:
@@ -63,6 +66,9 @@ hygiene pass, not an implementation mode:
   reconcile with the current code. Do not bulk-ingest another tool's full archive.
 - **Then refresh:** update only stale `.kimiflow/project/` sections and run-state metadata. Raw maps remain
   local/private; repo docs are updated only when the user chooses a docs/storage action.
+- **Memory hygiene:** if `memory.curation.recommended` is true, offer a token-cheap memory curation action.
+  This runs `memory-router.sh curate --write`, updates `MEMORY-INDEX.json`, and never rewrites/delete-learns
+  destructively without a later explicit action.
 
 **Drilldowns, not dumps:**
 - Findings: if `findings.open > 0`, offer `summarize`, `fix highest priority`, `group by area`, `show details`,
@@ -75,6 +81,9 @@ hygiene pass, not an implementation mode:
 - Improve: translate "improve" into handles: `top 3 levers`, `architecture simplification`,
   `code quality/refactoring`, `scalability/performance`, `tests/robustness`, `docs/onboarding`,
   `security/privacy`. "Top 3 levers" produces a prioritized improve analysis before any build plan.
+- Memory: list `MEMORY.md` budget, learning counts by status, vault availability, and curation reasons. Offer
+  `recall for current task`, `curate index`, `show current learnings`, `back`; do not dump full Vault notes or
+  full `LEARNINGS.jsonl`.
 - Vague idea/spec: route to existing Explore/Prepare in V1. Native `--spec` is a follow-up slice, not part of
   launcher V1.
 
@@ -351,14 +360,25 @@ A third mode (beside feature/fix) to safely shrink over-engineered / dead code i
 
 ## Project memory & standards (Phase 2 read · Phase 7 append)
 
-Lets kimiflow get smarter about a project over time instead of re-deriving it every run. **Opt-in, append-only, verified content only** — the anti-hallucination rule governs what may be written; a wrong "standard" must never silently poison future runs.
+Lets kimiflow get smarter about a project over time instead of re-deriving it every run. The old
+`.kimiflow/STANDARDS.md` and `.kimiflow/DECISIONS.md` files remain short human-readable steering files. The
+new durable project-intelligence memory lives in `.kimiflow/project/` and is routed by
+`hooks/memory-router.sh`. **Verified content only** — the anti-hallucination rule governs what may be written;
+a wrong "standard" must never silently poison future runs.
 
 **Read (Phase 2, always — cheap: native `CLAUDE.md` + two small `.kimiflow` files only if present):**
 - The project's native **`CLAUDE.md`** (Claude Code loads it anyway) — house rules, stack, conventions.
 - If present: **`.kimiflow/STANDARDS.md`** (accumulated conventions) and **`.kimiflow/DECISIONS.md`** (past decisions/lessons).
+- `memory-router.sh status`, then `.kimiflow/project/MEMORY.md` only if present and under budget.
 - Use these as ground truth; the `Explore` agent only fills the gaps they leave.
 
-**Append (Phase 7, after the commit, only if the user enabled project memory):**
+**Append/record (Phase 7, after verification):**
+- `.kimiflow/project/LEARNINGS.jsonl` — durable, machine-readable learnings written through
+  `memory-router.sh record`, each with evidence, confidence, sensitivity, freshness, source commit, and status.
+- `.kimiflow/project/MEMORY-INDEX.json` — cheap lookup/curation index written by
+  `memory-router.sh curate --write`.
+- `.kimiflow/project/MEMORY.md` — bounded always-on summary; keep it around 500-900 tokens and curate when
+  over budget. Do not make it a second README.
 - `.kimiflow/STANDARDS.md` — newly **verified** conventions worth keeping (e.g. "errors use `Result<T>`; tests live in `__tests__/`"). One line each, no speculation.
 - `.kimiflow/DECISIONS.md` — a 3–5 line entry: what we chose, why, what surprised us (source-attributed).
 - Optional `.kimiflow/LEDGER.md` — one line per run: slug · scope · rounds used · gate pass/fail · knobs enabled · **approx. token cost** · **post-commit outcome** (e.g. `regression-in-7d: y/n`). The last two turn the ledger into a cheap **ROI instrument**: over ~10–20 runs the cost/outcome columns show whether a tier earns its spend.
@@ -575,11 +595,82 @@ research path unchanged.
 
 ---
 
+## Memory Router & Learning Loop (Phase 2 recall · Phase 7 learn)
+
+The memory router is Kimiflow's bounded project brain. It makes memory useful without paying to reread the
+whole codebase, old runs, or Vault on every request. It is local-first and optional-provider-aware: the repo-local
+files work without any API key, subscription, or MCP server.
+
+**Source of truth:** `.kimiflow/project/`.
+
+```text
+.kimiflow/project/
+  MEMORY.md          small always-on summary, target 500-900 tokens
+  LEARNINGS.jsonl    evidence-backed durable learnings
+  MEMORY-INDEX.json  cheap lookup/curation index
+  RECALL.md          last/project recall log, or run-local recall when written there
+```
+
+**Helper:** `hooks/memory-router.sh` is the mechanical source for local memory state, recall, classification,
+recording, and curation. Invoke it from the installed plugin root (Codex: set `KIMIFLOW_HOST=codex`, same
+plugin-root rule as other helpers):
+
+```text
+memory-router.sh status [--root <path>] [--pretty]
+memory-router.sh recall --query <text>|--query-file <path> [--max <n>] [--write <path>]
+memory-router.sh classify --input <path>|--text <text>
+memory-router.sh record --summary <text> --topic <topic> --evidence <ref>...
+memory-router.sh curate [--write]
+```
+
+**Pre-run hydration:**
+1. Run `memory-router.sh status`.
+2. Read `MEMORY.md` only if present and under budget. If it is over budget, do not load it wholesale; offer or
+   run curation when appropriate.
+3. Run `memory-router.sh recall --query-file <INTENT|PROBLEM|AUDIT-INTENT> --write .kimiflow/<slug>/RECALL.md`
+   before fresh code exploration.
+4. Use recall hits to decide which `FACTS.jsonl` lines, map sections, old runs, Vault notes, or web sources are
+   still needed. Missing memory never blocks the run.
+
+**Retrieval order (token budget):**
+1. Always-on memory (`MEMORY.md`, bounded).
+2. Project map index and relevant facts/sections (`INDEX.json`, `FACTS.jsonl`, selected markdown).
+3. Local learnings (`LEARNINGS.jsonl` hits from `memory-router.sh recall`).
+4. Vault/claude-mem recall when connected.
+5. Current-state primary-source check when the Current-State Gate requires it.
+6. Old run artifacts only when their slug/paths match.
+7. Web research only for uncovered, stale, or fast-moving external facts.
+
+**Post-run learning loop:** after verification/review, extract candidate learnings from `RESEARCH.md` /
+`DIAGNOSIS.md`, `PLAN.md`, `CODE-REVIEW.md`, changed files, tests, and surprises. For each candidate:
+
+- Run `memory-router.sh classify` or apply the same categories manually when a tool is unavailable.
+- `run_only`: keep in the run folder; do not promote.
+- `project_memory`: record via `memory-router.sh record` with evidence and source commit.
+- `vault`: save a curated note only if a Vault MCP is connected and the sensitivity allows it.
+- `repo_doc_candidate`: do not write raw; include only through an explicit repo-doc action and publish-safe rules.
+- `skip`: trivial, duplicate, speculative, or not evidence-backed.
+
+**Sensitivity rules:**
+- `public`: safe for repo docs if useful and verified.
+- `normal`: OK for local memory and usually OK for Vault; repo docs require a publish-safe docs action.
+- `private`: local or Vault only; sanitize local paths/user/customer details before broader reuse.
+- `security`: local/sanitized only by default; never put concrete vulnerability details, exploit paths, secret names,
+  token values, private paths, or raw risk findings into repo docs.
+
+**Curator:** `memory-router.sh status` reports `curation.recommended` and reasons such as `memory_over_budget`,
+`stale_learnings`, `superseded_learnings`, `memory_index_missing`, or `many_learnings`. `curate --write` is
+non-destructive in V1: it writes/refreshes `MEMORY-INDEX.json`, reports the same curation reasons, and does not
+delete or rewrite learnings. Destructive dedupe, summary rewrites, and stale pruning require a later explicit
+curation slice.
+
+---
+
 ## Memory recall (Phase 2)
 
-Before researching, search whatever **optional memory providers** are connected — recall beats
-re-research. Each is independent and **graceful**: present → use, absent → note in STATE.md + continue
-(the skill runs identically either way; no provider is ever required).
+Before researching, recall locally first via `memory-router.sh recall`, then search whatever **optional memory
+providers** are connected — recall beats re-research. Each provider is independent and **graceful**: present →
+use, absent → note in STATE.md + continue (the skill runs identically either way; no provider is ever required).
 
 - **Vault** (notes MCP, e.g. Obsidian) — curated research notes. Searched here; **also saved back** at
   Phase 2's end (see "Vault conventions" below).
@@ -664,6 +755,10 @@ run `verify` again.
 
 The vault is an **optional** notes MCP (e.g. Obsidian — `obsidian_simple_search`, `obsidian_get_file_contents`, `obsidian_append_content`). **No vault MCP → skip, note in STATE.md** — the repo-local `.kimiflow/` memory still works. Notes follow the **user's language**, never a fixed one.
 
+- **Router decides what is vault-worthy.** Do not ask the user to babysit every write. Classify candidate
+  learnings through "Memory Router & Learning Loop"; write to Vault automatically only when the classification
+  is `vault`, the evidence is strong enough, and sensitivity is not `security`. Security-sensitive concrete
+  detail stays local/sanitized unless the user explicitly asks for a sanitized private note.
 - **Discover, don't assume — kimiflow self-optimizes placement but keeps it findable.** Before saving, inspect the vault's existing layout and **reuse** an existing research/notes folder and an existing index/MOC note. Only if none exists, fall back to one predictable folder (`Research/` at the vault root). Never assume hardcoded folder names.
 - **Template:** use the vault's own research template if it has one; otherwise the built-in minimal structure below.
 - **Filename:** descriptive title + date suffix `YYYY-MM`. No `/` in the filename.

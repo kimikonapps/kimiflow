@@ -25,7 +25,7 @@ Verbesserungs-Backlogs liegen lokal unter `.kimiflow/project/` und werden nicht 
 - Codex: `.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`, `skills/kimiflow/SKILL.md`,
   `skills/kimiflow/agents/openai.yaml`, `hooks/install-codex-hooks.sh`.
 - Shared runtime: `hooks/commit-secret-gate.sh`, `hooks/state-gate.sh`, `hooks/test-gate.sh`,
-  `hooks/resolve-review-gate.sh`, `hooks/project-map-status.sh`.
+  `hooks/resolve-review-gate.sh`, `hooks/project-map-status.sh`, `hooks/memory-router.sh`.
 
 ## Wo Aenderungen typischerweise landen
 
@@ -33,6 +33,7 @@ Verbesserungs-Backlogs liegen lokal unter `.kimiflow/project/` und werden nicht 
 |---|---|
 | Workflow oder Phasenlogik aendern | `SKILL.md`, `reference.md` |
 | Project Intelligence erweitern | `reference.md`, `hooks/project-map-status.sh`, `hooks/test-project-map-status.sh` |
+| Memory/Recall/Learning Loop erweitern | `reference.md`, `hooks/memory-router.sh`, `hooks/test-memory-router.sh`, `hooks/launcher-status.sh` |
 | Codex-Plugin-Darstellung verbessern | `.codex-plugin/plugin.json`, `skills/kimiflow/agents/openai.yaml`, README-Codex-Abschnitt |
 | Claude-Plugin-Darstellung verbessern | `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, README-Claude-Abschnitt |
 | Hook-Verhalten aendern | Passendes `hooks/*.sh`, passendes `hooks/test-*.sh`, Smoke-Tests |
