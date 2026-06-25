@@ -74,6 +74,20 @@ json_path_array_from_state() {
   printf '%s' "$json"
 }
 
+state_phase7_done() {
+  local file="$1"
+  awk '
+    {
+      line = tolower($0)
+      gsub(/\r/, "", line)
+      gsub(/\*\*/, "", line)
+      if (line ~ /^[[:space:]-]*phase[[:space:]]+7([[:space:]:(-]|$)/ && line ~ /done/) found = 1
+      if (line ~ /run complete/) found = 1
+    }
+    END { exit(found ? 0 : 1) }
+  ' "$file" 2>/dev/null
+}
+
 git_commit_ok() {
   local root="$1" commit="$2"
   [ -n "$commit" ] && [ "$commit" != "NOT VERIFIED" ] || return 1
@@ -98,6 +112,11 @@ repo_dirty() {
 path_in_changed_set() {
   local needle="$1" root="$2" base="$3"
   changed_paths "$root" "$base" | grep -vE '^\.kimiflow(/|$)' | grep -Fxq "$needle"
+}
+
+json_append_string() {
+  local json="$1" value="$2"
+  printf '%s\n' "$json" | jq --arg value "$value" '. + [$value]'
 }
 
 ROOT=""
@@ -132,11 +151,17 @@ MAP_VALID=false
 MAP_DEPTH="missing"
 MAP_STATUS="missing"
 MAP_INDEX=".kimiflow/project/INDEX.json"
+MAP_BASELINE="NOT VERIFIED"
+COMMITS_SINCE_MAP='null'
 if [ -f "$INDEX" ]; then
   MAP_PRESENT=true
   if jq -e . "$INDEX" >/dev/null 2>&1; then
     MAP_VALID=true
     MAP_DEPTH="$(jq -r '.scan_depth // "unknown"' "$INDEX" 2>/dev/null)"
+    MAP_BASELINE="$(jq -r '.baseline_commit // "NOT VERIFIED"' "$INDEX" 2>/dev/null)"
+    if git_commit_ok "$ROOT" "$MAP_BASELINE"; then
+      COMMITS_SINCE_MAP="$(git -C "$ROOT" rev-list --count "$MAP_BASELINE"..HEAD 2>/dev/null || printf '0')"
+    fi
     if [ -x "$SCRIPT_DIR/project-map-status.sh" ]; then
       map_line="$(cd "$ROOT" && "$SCRIPT_DIR/project-map-status.sh" status --index "$INDEX" 2>/dev/null | awk -F '\t' '$1 == "PROJECT_MAP" { print $2; exit }')"
       MAP_STATUS="${map_line:-unknown}"
@@ -176,6 +201,11 @@ if [ -d "$ROOT/.kimiflow" ]; then
       active*) status="active" ;;
       *) status="other" ;;
     esac
+    status_detail="$raw_status"
+    if [ "$status" = "active" ] && state_phase7_done "$state"; then
+      status="done"
+      status_detail="$raw_status (inferred: phase 7 done)"
+    fi
     mode="$(state_value "$state" "Mode")"
     scope="$(state_value "$state" "Scope")"
     plan_commit="$(state_value "$state" "Plan commit")"
@@ -210,7 +240,7 @@ if [ -d "$ROOT/.kimiflow" ]; then
     RUNS_JSON="$(printf '%s\n' "$RUNS_JSON" | jq \
       --arg slug "$slug" \
       --arg status "$status" \
-      --arg status_detail "$raw_status" \
+      --arg status_detail "$status_detail" \
       --arg mode "$mode" \
       --arg scope "$scope" \
       --arg plan_commit "$plan_commit" \
@@ -231,11 +261,36 @@ if [ -d "$ROOT/.kimiflow" ]; then
   done < <(find "$ROOT/.kimiflow" -mindepth 2 -maxdepth 2 -name STATE.md -type f 2>/dev/null | sort)
 fi
 
+WORKFLOW_ARTIFACTS='[]'
+for artifact in .planning .gsd; do
+  if [ -e "$ROOT/$artifact" ]; then
+    WORKFLOW_ARTIFACTS="$(json_append_string "$WORKFLOW_ARTIFACTS" "$artifact")"
+  fi
+done
+
+MAINTENANCE_REASONS='[]'
+if [ "$DIRTY" = true ]; then
+  MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "working_tree_dirty")"
+fi
+if [ "$MAP_PRESENT" != true ]; then
+  MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "project_map_missing")"
+elif [ "$MAP_VALID" != true ]; then
+  MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "project_map_invalid")"
+elif [ "$MAP_STATUS" != "current" ]; then
+  MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "project_map_${MAP_STATUS}")"
+fi
+if [ "$ACTIVE" -gt 0 ]; then
+  MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "active_runs")"
+fi
+if [ "$BACKLOG" -gt 0 ]; then
+  MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "backlog_runs")"
+fi
 out="$(jq -n \
   --arg root "$ROOT" \
   --arg head "$HEAD" \
   --arg index "$MAP_INDEX" \
   --arg depth "$MAP_DEPTH" \
+  --arg baseline "$MAP_BASELINE" \
   --arg map_status "$MAP_STATUS" \
   --arg findings_path "$FINDINGS_PATH" \
   --arg improvements_path "$IMPROVEMENTS_PATH" \
@@ -251,13 +306,22 @@ out="$(jq -n \
   --argjson done "$DONE" \
   --argjson other "$OTHER" \
   --argjson items "$RUNS_JSON" \
+  --argjson commits_since_map "$COMMITS_SINCE_MAP" \
+  --argjson maintenance_reasons "$MAINTENANCE_REASONS" \
+  --argjson workflow_artifacts "$WORKFLOW_ARTIFACTS" \
   '{
     schema_version: 1,
     repo: {present: $repo_present, root: $root, head: $head, dirty: $dirty},
-    project_map: {present: $map_present, valid: $map_valid, depth: $depth, status: $map_status, index: $index},
+    project_map: {present: $map_present, valid: $map_valid, depth: $depth, status: $map_status, index: $index, baseline_commit: $baseline},
     findings: {open: $findings_open, path: $findings_path},
     improvements: {open: $improvements_open, path: $improvements_path},
     runs: {active: $active, backlog: $backlog, done: $done, other: $other, items: $items},
+    maintenance: {
+      bring_current_recommended: (($maintenance_reasons | length) > 0),
+      reasons: $maintenance_reasons,
+      commits_since_project_map: $commits_since_map,
+      workflow_artifacts: $workflow_artifacts
+    },
     repo_docs: {present: $docs_present}
   }')"
 

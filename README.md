@@ -35,7 +35,7 @@ Inside Claude Code:
 claude plugin marketplace add swinxx/kimiflow
 claude plugin install kimiflow@kimiflow
 ```
-Then **restart Claude Code** (or open a new session) and run `/kimiflow`. This installs the skill **and** the safety hooks (`commit-secret-gate`, `test-gate`). Update later with `claude plugin update kimiflow`.
+Then **restart Claude Code** (or open a new session) and run `/kimiflow`. This installs the skill **and** the safety hooks (`commit-secret-gate`, `state-gate`, `test-gate`). Update later with `claude plugin update kimiflow`.
 
 ### Codex — plugin skill **+** stable hooks
 
@@ -282,7 +282,7 @@ In Claude Code:
 claude plugin marketplace add swinxx/kimiflow
 claude plugin install kimiflow@kimiflow
 ```
-Dann **Claude Code neu starten** (oder neue Session) und `/kimiflow` aufrufen. Das installiert den Skill **und** die Sicherheits-Hooks (`commit-secret-gate`, `test-gate`). Später aktualisieren mit `claude plugin update kimiflow`.
+Dann **Claude Code neu starten** (oder neue Session) und `/kimiflow` aufrufen. Das installiert den Skill **und** die Sicherheits-Hooks (`commit-secret-gate`, `state-gate`, `test-gate`). Später aktualisieren mit `claude plugin update kimiflow`.
 
 ### Codex — Plugin-Skill **+** stabile Hooks
 

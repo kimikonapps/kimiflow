@@ -45,12 +45,31 @@ If `.kimiflow/project/INDEX.json` is missing, bias the first menu toward Project
 then only relevant `FACTS.jsonl` lines and markdown sections. New code exploration is for stale/unknown/gap
 areas only.
 
+**"Bring Kimiflow current" offer:** `launcher-status.sh` reports
+`maintenance.bring_current_recommended` plus terse `maintenance.reasons`. If it is true, the menu should offer
+a first-class "Kimiflow auf aktuellen Stand bringen" action before feature/fix work. It is an interactive
+hygiene pass, not an implementation mode:
+- **Run-state hygiene first:** normalize completed runs to `Status: done` when `STATE.md` explicitly says
+  Phase 7 is done / `RUN COMPLETE`; ask before changing ambiguous runs. `Status: backlog` remains a deliberate
+  parked-plan marker.
+- **Delta over full scan:** use `project-map-status.sh`, `INDEX.json` section hashes, and `git log --name-status`
+  / `git diff --name-status` from the map baseline to HEAD to find changed areas. Read only affected sections,
+  recent relevant commits, and changed files; do not re-map the whole codebase unless the index is missing or
+  invalid.
+- **Cross-tool history as hints:** if project-local workflow artifacts such as `.planning/`, `.gsd/`, roadmap
+  logs, or similar tool ledgers exist, read their indexes/recent summaries first and treat them as hints to
+  reconcile with the current code. Do not bulk-ingest another tool's full archive.
+- **Then refresh:** update only stale `.kimiflow/project/` sections and run-state metadata. Raw maps remain
+  local/private; repo docs are updated only when the user chooses a docs/storage action.
+
 **Drilldowns, not dumps:**
 - Findings: if `findings.open > 0`, offer `summarize`, `fix highest priority`, `group by area`, `show details`,
   `back`. Read `.kimiflow/project/FINDINGS.md`; show a compact list only. A selected fix routes into a normal
   `--fix`, docs, or improve run with its own state dir.
 - Backlog runs: list slug, status, mode, scope, plan commit, affected-file count, and stale risk from the
   snapshot. Selecting a run starts the resume safety check; it never jumps directly to implementation.
+- Done runs: count `Status: done`; for legacy states, a Phase-7-done / `RUN COMPLETE` signal may be inferred as
+  done so old completed runs do not remain noisy active work.
 - Improve: translate "improve" into handles: `top 3 levers`, `architecture simplification`,
   `code quality/refactoring`, `scalability/performance`, `tests/robustness`, `docs/onboarding`,
   `security/privacy`. "Top 3 levers" produces a prioritized improve analysis before any build plan.

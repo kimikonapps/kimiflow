@@ -80,10 +80,12 @@ write_index "$BASE" "$(hash_file "$REPO/src/a.txt")"
 out="$(run_status)"
 assert_jq "$out" '.project_map.present == true and .project_map.depth == "standard" and .project_map.status == "current"' "current_map_reports_current"
 assert_jq "$out" '.repo.dirty == false' "ignored_kimiflow_does_not_dirty_repo"
+assert_jq "$out" '.maintenance.bring_current_recommended == false and .maintenance.commits_since_project_map == 0' "clean_current_repo_no_maintenance_recommended"
 
 printf 'two\n' > "$REPO/src/a.txt"
 out="$(run_status)"
 assert_jq "$out" '.project_map.status == "stale" and .repo.dirty == true' "stale_map_and_dirty_repo_reported"
+assert_jq "$out" '.maintenance.bring_current_recommended == true and (.maintenance.reasons | index("working_tree_dirty")) and (.maintenance.reasons | index("project_map_stale"))' "stale_dirty_repo_recommends_maintenance"
 
 reset_repo
 BASE="$(cd "$REPO" && git rev-parse --short HEAD)"
@@ -151,6 +153,32 @@ assert_jq "$out" '.runs.backlog == 1 and (.runs.items[] | select(.slug == "parke
 printf 'changed\n' > "$REPO/src/a.txt"
 out="$(run_status)"
 assert_jq "$out" '.runs.backlog == 1 and (.runs.items[] | select(.slug == "parked" and .stale_risk == "needs-revalidation"))' "backlog_run_needs_revalidation_when_affected_file_changed"
+
+reset_repo
+mkdir -p "$REPO/.kimiflow/legacy-active-done" "$REPO/.kimiflow/legacy-missing-done" "$REPO/.kimiflow/still-active"
+cat > "$REPO/.kimiflow/legacy-active-done/STATE.md" <<'EOF'
+# STATE
+
+- **Status:** active
+- Phase 0: done
+- Phase 7: done
+EOF
+cat > "$REPO/.kimiflow/legacy-missing-done/STATE.md" <<'EOF'
+# STATE
+
+Phase 0: done
+Phase 7: **done**
+EOF
+cat > "$REPO/.kimiflow/still-active/STATE.md" <<'EOF'
+# STATE
+
+Phase 0: done
+Phase 4: done
+Phase 5: open
+EOF
+out="$(run_status)"
+assert_jq "$out" '.runs.done == 2 and .runs.active == 1 and (.runs.items[] | select(.slug == "legacy-active-done" and .status == "done")) and (.runs.items[] | select(.slug == "legacy-missing-done" and .status == "done"))' "legacy_phase7_done_runs_inferred_done"
+assert_jq "$out" '.maintenance.bring_current_recommended == true and (.maintenance.reasons | index("active_runs"))' "active_runs_recommend_maintenance"
 
 reset_repo
 printf '{bad json\n' > "$INDEX"
