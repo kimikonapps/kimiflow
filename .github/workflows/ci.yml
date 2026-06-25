@@ -38,6 +38,9 @@ jobs:
       - name: Unit tests (state-gate) — hard gate
         run: bash hooks/test-state-gate.sh
 
+      - name: Unit tests (launcher-status) — hard gate
+        run: bash hooks/test-launcher-status.sh
+
       - name: Unit tests (review-gate) — hard gate
         run: bash hooks/test-resolve-review-gate.sh
 

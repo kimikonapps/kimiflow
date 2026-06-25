@@ -1,4 +1,4 @@
 interface:
   display_name: "kimiflow"
-  short_description: "Feature and fix loop with mechanical quality gates"
-  default_prompt: "Run Kimiflow for this change and carry it through the gates."
+  short_description: "Context-aware project launcher, codebase map, and feature/fix gates"
+  default_prompt: "Open Kimiflow's launcher, inspect project status, and route this work through the right gates."

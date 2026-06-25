@@ -41,6 +41,12 @@ printf '%s\n' "$fm" | grep -qi 'explicitly asks' && ok "opt-in guard present" ||
 grep -q 'KIMIFLOW_PLUGIN_ROOT/hooks/resolve-review-gate.sh' "$SKILL" && ok "skill uses absolute plugin-root helper paths" || bad "skill does not use plugin-root helper paths"
 if grep -q '\.\./\.\./hooks/' "$SKILL"; then bad "skill still documents cwd-sensitive ../../hooks paths"; else ok "skill avoids cwd-sensitive ../../hooks paths"; fi
 grep -q -- '--project-map <quick|standard|deep|skip>' "$SKILL" && ok "Codex wrapper maps project-map invocation" || bad "Codex wrapper missing project-map invocation mapping"
+grep -q 'launcher-status.sh' "$SKILL" && ok "Codex wrapper maps launcher status helper" || bad "Codex wrapper missing launcher status helper"
+grep -q 'Launcher / menu' "$ROOT/SKILL.md" && ok "canonical Launcher mode present" || bad "canonical Launcher mode missing"
+grep -q 'Launcher mode' "$ROOT/reference.md" && ok "canonical Launcher mode documented" || bad "canonical Launcher mode docs missing"
+grep -q 'Resume safety check' "$ROOT/reference.md" && ok "resume safety check documented" || bad "resume safety check missing"
+if [ -x "$ROOT/hooks/launcher-status.sh" ] && bash -n "$ROOT/hooks/launcher-status.sh" 2>/dev/null; then ok "launcher status helper ok"; else bad "launcher status helper missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/test-launcher-status.sh" ] && bash -n "$ROOT/hooks/test-launcher-status.sh" 2>/dev/null; then ok "launcher status test ok"; else bad "launcher status test missing/not-exec/bad"; fi
 grep -q 'Project Map Bootstrap' "$ROOT/SKILL.md" && ok "canonical Project Map Bootstrap present" || bad "canonical Project Map Bootstrap missing"
 grep -q 'FACTS.jsonl' "$ROOT/reference.md" && ok "project map evidence artifact documented" || bad "project map evidence artifact missing"
 if [ -x "$ROOT/hooks/project-map-status.sh" ] && bash -n "$ROOT/hooks/project-map-status.sh" 2>/dev/null; then ok "project map status helper ok"; else bad "project map status helper missing/not-exec/bad"; fi
@@ -49,6 +55,9 @@ grep -q 'project-map-status.sh' "$ROOT/reference.md" && ok "canonical project-ma
 grep -q 'potentially_stale' "$ROOT/reference.md" && ok "per-section staleness documented" || bad "per-section staleness missing"
 for term in 'Storage targets' 'kimiflow+vault' 'repo-docs' 'IMPROVEMENTS.md' 'DOCS-PLAN.md'; do
   grep -q "$term" "$ROOT/reference.md" && ok "project map publishing documented: $term" || bad "project map publishing missing: $term"
+done
+for term in 'Raw map vs. publishable docs' 'Repo-doc publish safety' 'never auto-commit `.kimiflow/project/`' 'concrete vulnerabilities' 'sanitized version'; do
+  grep -q "$term" "$ROOT/reference.md" && ok "project map publish safety documented: $term" || bad "project map publish safety missing: $term"
 done
 
 echo "== codex plugin hook wiring (optional while plugin_hooks is unavailable) =="

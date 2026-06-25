@@ -119,6 +119,7 @@ Each ✋/✅ and the diagnose/commit stop is a real gate, not a prompt suggestio
 | **Code-review gate** | 7 | same resolver over the post-implementation findings | ✅ yes |
 | **Commit-gate** | 7 | STOP + advisory triage; waits for your explicit OK before any commit | ✅ yes |
 | **Secret-commit hook** | any commit | `PreToolUse` hook — blocks staging secret-looking **paths** + bulk `git add -A`/`.` | ✅ yes |
+| **State-gate hook** | review gates | `PreToolUse` hook — blocks resolver calls without durable `.kimiflow/<slug>/STATE.md` | ✅ yes |
 | **Test-gate hook** (opt-in) | finish | `Stop` hook — blocks finishing while the project's tests are red | ✅ yes |
 
 What is **not** mechanical (model-judged, by design): the scope classification, the root-cause proof, the verification call, and — the honest limit — **whether the findings are complete**. The gate is mechanical *over the findings the reviewers wrote*; it can't prove they found everything. kimiflow makes the gate un-foolable, not the reviewer omniscient.
@@ -126,6 +127,7 @@ What is **not** mechanical (model-judged, by design): the scope classification, 
 ## Usage
 
 ```
+/kimiflow                    # open the context-aware launcher/menu
 /kimiflow <feature>          # build a feature
 /kimiflow <bug>              # fix a bug (auto-detected)
 /kimiflow --fix <bug>        # force fix mode
@@ -137,11 +139,22 @@ What is **not** mechanical (model-judged, by design): the scope classification, 
 In Codex, use the same arguments with `$kimiflow`:
 
 ```text
+$kimiflow
 $kimiflow <feature>
 $kimiflow --fix <bug>
 $kimiflow --resume <slug>
 $kimiflow --project-map standard
 ```
+
+## Launcher
+
+If you invoke kimiflow without a concrete task (`/kimiflow` or `$kimiflow`), it opens a context-aware
+launcher. The launcher first runs `hooks/launcher-status.sh` and summarizes the current project state:
+project-map depth/status, open findings, improvement slices, repo docs, dirty working tree, and active or
+backlog runs. It then routes your choice into the normal Kimiflow modes.
+
+Backlog/resume is guarded: a parked plan is not implemented blindly if affected files changed since its
+plan commit, or if the plan basis is unknown. In that case kimiflow offers plan revalidation before Phase 5.
 
 ## Project map bootstrap
 
@@ -166,6 +179,12 @@ Storage is explicit: `kimiflow` only, `kimiflow + Vault`, or `kimiflow + Vault +
 `.kimiflow/project/` map is always written first; Vault and repo docs are publishing layers, never
 requirements. Improvement slices are written as proposals with evidence, value, risk, effort, acceptance
 criteria, and "do not touch" notes.
+
+`.kimiflow/project/` is a local agent cache and is not meant to be committed by default. When repo docs are
+requested, kimiflow writes a curated publish-safe derivative instead: architecture, codebase, flow and
+testing docs may go under the repo's docs structure, while concrete vulnerabilities, exploit paths,
+secrets, private/local paths, vault references, and raw improvement findings stay local or private unless
+you explicitly ask for a sanitized public note.
 
 ## Example
 
@@ -206,9 +225,10 @@ Details in [`reference.md`](reference.md).
 
 ## Hooks (bundled)
 
-kimiflow ships two safety hooks under `hooks/`, **active only in kimiflow repos** (a `.kimiflow/` dir at the git root) so they never touch unrelated projects:
+kimiflow ships safety hooks under `hooks/`, **active only in kimiflow repos** (a `.kimiflow/` dir at the git root) so they never touch unrelated projects:
 
 - **`commit-secret-gate`** — **filename/path hygiene, not secret-in-source detection**: blocks a `git commit` that would stage a secret-looking **path** (`.env`/`.envrc` incl. `prod.env`-style suffixes, `*.pem/.key/.p12/.pfx/.asc`, private SSH keys `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519` (not `.pub`), `.npmrc`, `secret`/`credential`/`access_token`/`auth_token` paths) and any bulk `git add -A`/`.`. It matches **paths, never file contents** — a key pasted into source passes — so pair it with a content scanner for in-source secrets. kimiflow's advisory `secret-content-scan.sh` does this: **`gitleaks protect --staged`** is the clean staged-content path; **trufflehog** is a best-effort fallback (no native staged mode — it scans commits since `HEAD`). It also covers the working-tree paths a `git commit -a`/`--all` would auto-stage, but it is **a backstop, not complete secret protection**: an explicit pathspec commit (`git commit <path>`), a command-position-evasion prefix (`env X=y`/`sudo`/`/usr/bin/git`/`command git`), a quoted `-C` path with a space, and an escaped quote in the message are **known, documented gaps** (regex isn't a shell parser — see [reference.md](reference.md) "Commit hygiene"). A global **`git -C <path>`** to another repo **is** honored (the gate scopes to the target, not the cwd). Real coverage = `.gitignore` discipline + a content scanner + not tracking secrets.
+- **`state-gate`** — blocks review-gate resolver calls when a non-trivial kimiflow run has no durable `STATE.md`; this protects resume and gate state from living only in chat.
 - **`test-gate`** (opt-in) — blocks finishing while the project's tests are red; enable per project via a **local, untracked** `.kimiflow/test-gate` file (auto-enabled for `large`-scope runs). A git-tracked (committed) marker is refused — its first line is `eval`'d, so committed markers can't run as a drive-by.
 
 ## Vault memory layer (optional, but recommended)
@@ -346,6 +366,7 @@ Jedes ✋/✅ sowie der Diagnose- und Commit-Stopp ist ein echtes Gate, kein Pro
 | **Code-Review-Gate** | 7 | derselbe Resolver über die Findings nach der Umsetzung | ✅ ja |
 | **Commit-Gate** | 7 | STOP + Advisory-Triage; wartet auf dein explizites OK vor jedem Commit | ✅ ja |
 | **Secret-Commit-Hook** | jeder Commit | `PreToolUse`-Hook — blockt secret-verdächtige **Pfade** + Bulk-`git add -A`/`.` | ✅ ja |
+| **State-Gate-Hook** | Review-Gates | `PreToolUse`-Hook — blockt Resolver-Aufrufe ohne dauerhafte `.kimiflow/<slug>/STATE.md` | ✅ ja |
 | **Test-Gate-Hook** (opt-in) | Abschluss | `Stop`-Hook — blockt das Beenden, solange die Projekt-Tests rot sind | ✅ ja |
 
 **Nicht** mechanisch (modell-beurteilt, by design): die Scope-Einstufung, der Root-Cause-Beleg, die Verifikations-Entscheidung und — die ehrliche Grenze — **ob die Findings vollständig sind**. Das Gate ist mechanisch *über die Findings, die die Reviewer geschrieben haben*; es kann nicht beweisen, dass sie alles gefunden haben. kimiflow macht das Gate un-überredbar, nicht den Reviewer allwissend.
@@ -353,6 +374,7 @@ Jedes ✋/✅ sowie der Diagnose- und Commit-Stopp ist ein echtes Gate, kein Pro
 ## Nutzung
 
 ```
+/kimiflow                    # kontextbewussten Launcher / Menü öffnen
 /kimiflow <feature>          # Feature bauen
 /kimiflow <bug>              # Bug fixen (wird automatisch erkannt)
 /kimiflow --fix <bug>        # Fix-Modus erzwingen
@@ -364,11 +386,24 @@ Jedes ✋/✅ sowie der Diagnose- und Commit-Stopp ist ein echtes Gate, kein Pro
 In Codex nutzt du dieselben Argumente mit `$kimiflow`:
 
 ```text
+$kimiflow
 $kimiflow <feature>
 $kimiflow --fix <bug>
 $kimiflow --resume <slug>
 $kimiflow --project-map standard
 ```
+
+## Launcher
+
+Wenn du kimiflow ohne konkreten Auftrag startest (`/kimiflow` oder `$kimiflow`), öffnet es einen
+kontextbewussten Launcher. Der Launcher ruft zuerst `hooks/launcher-status.sh` auf und fasst den
+Projektzustand zusammen: Projektkarten-Tiefe/-Status, offene Findings, Verbesserungs-Slices, Repo-Doku,
+dirty Working Tree und aktive oder geparkte Runs. Deine Auswahl wird danach in den normalen Kimiflow-Modus
+geroutet.
+
+Resume ist abgesichert: Ein geparkter Plan wird nicht blind umgesetzt, wenn betroffene Dateien seit dem
+Plan-Commit geändert wurden oder die Plan-Basis unbekannt ist. Dann bietet kimiflow vor Phase 5 eine
+Plan-Revalidierung an.
 
 ## Project-Map-Bootstrap
 
@@ -393,6 +428,12 @@ Verbesserungsideen. Das Speicherziel ist explizit: nur `kimiflow`, `kimiflow + V
 `kimiflow + Vault + Repo-Doku`. Die lokale `.kimiflow/project/`-Map wird immer zuerst geschrieben; Vault
 und Repo-Doku sind Publishing-Ebenen, keine Voraussetzung. Verbesserungs-Slices werden als Vorschläge
 mit Evidence, Nutzen, Risiko, Aufwand, Akzeptanzkriterien und „Nicht anfassen" geschrieben.
+
+`.kimiflow/project/` ist ein lokaler Agent-Cache und wird standardmäßig nicht committed. Wenn Repo-Doku
+gewünscht ist, schreibt kimiflow stattdessen eine kuratierte publish-safe Ableitung: Architektur-,
+Codebase-, Flow- und Test-Doku kann in die Doku-Struktur des Repos, konkrete Schwachstellen,
+Exploit-Pfade, Secrets, private/lokale Pfade, Vault-Verweise und rohe Improvement-Findings bleiben lokal
+oder privat, außer du verlangst ausdrücklich eine bereinigte öffentliche Notiz.
 
 ## Beispiel
 
@@ -433,9 +474,10 @@ Details in [`reference.md`](reference.md).
 
 ## Hooks (mitgeliefert)
 
-kimiflow bringt zwei Sicherheits-Hooks unter `hooks/` mit, **nur in kimiflow-Repos aktiv** (ein `.kimiflow/`-Verzeichnis am Git-Root) — also nie in fremden Projekten:
+kimiflow bringt Sicherheits-Hooks unter `hooks/` mit, **nur in kimiflow-Repos aktiv** (ein `.kimiflow/`-Verzeichnis am Git-Root) — also nie in fremden Projekten:
 
 - **`commit-secret-gate`** — **Dateiname/Pfad-Hygiene, keine Secret-im-Quelltext-Erkennung**: blockt einen `git commit`, der einen secret-verdächtigen **Pfad** stagen würde (`.env`/`.envrc` inkl. `prod.env`-artiger Suffixe, `*.pem/.key/.p12/.pfx/.asc`, private SSH-Keys `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519` (nicht `.pub`), `.npmrc`, `secret`/`credential`/`access_token`/`auth_token`-Pfade), sowie jedes Bulk-`git add -A`/`.`. Er matcht **Pfade, nie Datei-Inhalte** — ein in den Quelltext gepasteter Key passiert — also ergänze ihn mit einem Content-Scanner für Secrets im Code. kimiflows Advisory `secret-content-scan.sh` macht genau das: **`gitleaks protect --staged`** ist der saubere Staged-Content-Pfad; **trufflehog** ist ein Best-effort-Fallback (kein nativer Staged-Mode — scannt Commits seit `HEAD`).
+- **`state-gate`** — blockt Review-Gate-Resolver-Aufrufe, wenn einem nicht-trivialen kimiflow-Lauf die dauerhafte `STATE.md` fehlt; dadurch lebt Resume-/Gate-State nicht nur im Chat.
 - **`test-gate`** (opt-in) — blockt das Beenden, solange die Projekt-Tests rot sind; pro Projekt via **lokaler, untracked** `.kimiflow/test-gate`-Datei aktivieren (für `large`-Läufe automatisch). Ein git-getrackter (committeter) Marker wird abgelehnt — seine erste Zeile wird `eval`'t, committete Marker können so nicht als Drive-by laufen.
 
 ## Vault-Memory-Schicht (optional, aber empfohlen)

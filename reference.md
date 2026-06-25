@@ -4,6 +4,79 @@ Detailed conventions for the orchestrator. Read a section only when its phase ca
 
 ---
 
+## Launcher mode (empty/vague invocation)
+
+The launcher is a context-aware front door for users who explicitly ask for Kimiflow but do not provide an
+actionable target yet. It starts on `/kimiflow`, `$kimiflow`, `@kimiflow`, `--launcher`, `--menu`, or vague
+requests such as "run Kimiflow" / "lass Kimiflow drüberlaufen". It does not start on clear feature/fix/audit
+requests.
+
+**Mechanical snapshot:** before showing options, run `hooks/launcher-status.sh --pretty` from the installed
+Kimiflow root (Codex: with `KIMIFLOW_HOST=codex`). The script is read-only and returns JSON for:
+repo status, dirty working tree, project-map depth/status, open findings, open improvement slices, repo-doc
+presence, and active/backlog/done runs. The orchestrator may summarize this JSON, but must not invent counts.
+
+**Start menu (user language):** show a compact numbered menu, tuned to the snapshot. Typical full menu:
+
+```text
+Kimiflow Start
+
+Projektkarte: standard · aktuell
+Offene Findings: 4
+Geparkte Runs: 2
+Repo-Doku: vorhanden
+Working Tree: geändert
+
+Was willst du tun?
+
+1. Status ansehen
+2. Projektkarte prüfen/aktualisieren
+3. Offene Findings ansehen/abarbeiten
+4. Geparkten Run fortsetzen
+5. Bug fixen
+6. Feature bauen
+7. Verbesserungen priorisieren
+8. Doku schreiben/aktualisieren
+9. Idee/unklaren Auftrag ausarbeiten
+```
+
+If `.kimiflow/project/INDEX.json` is missing, bias the first menu toward Project Map Bootstrap:
+`standard (recommended)` / `quick` / `deep` / `skip`. If a map exists, use it first: read `INDEX.json`,
+then only relevant `FACTS.jsonl` lines and markdown sections. New code exploration is for stale/unknown/gap
+areas only.
+
+**Drilldowns, not dumps:**
+- Findings: if `findings.open > 0`, offer `summarize`, `fix highest priority`, `group by area`, `show details`,
+  `back`. Read `.kimiflow/project/FINDINGS.md`; show a compact list only. A selected fix routes into a normal
+  `--fix`, docs, or improve run with its own state dir.
+- Backlog runs: list slug, status, mode, scope, plan commit, affected-file count, and stale risk from the
+  snapshot. Selecting a run starts the resume safety check; it never jumps directly to implementation.
+- Improve: translate "improve" into handles: `top 3 levers`, `architecture simplification`,
+  `code quality/refactoring`, `scalability/performance`, `tests/robustness`, `docs/onboarding`,
+  `security/privacy`. "Top 3 levers" produces a prioritized improve analysis before any build plan.
+- Vague idea/spec: route to existing Explore/Prepare in V1. Native `--spec` is a follow-up slice, not part of
+  launcher V1.
+
+**Resume safety check:** before any backlog/prepared run can enter Phase 5, validate the plan against current
+code:
+
+1. Read `.kimiflow/<slug>/STATE.md`, plus `PLAN.md`, `ACCEPTANCE.md`, `RESEARCH.md` or `DIAGNOSIS.md` when present.
+2. Determine `Plan commit:` from STATE; if absent or unverifiable, mark `unknown`.
+3. Determine affected files from `Affected files:` in STATE; fallback to path references in plan/research/diagnosis.
+4. Compare `git diff --name-status <plan_commit> HEAD`, staged changes, unstaged changes, and untracked non-ignored files.
+5. If any affected file changed, or the plan basis/affected files are unknown, show `Plan revalidieren
+   (empfohlen)` and do not offer blind implementation.
+6. Only when affected files are known and unchanged may the menu offer `Fortsetzen`.
+
+**Revalidation:** a stale/unknown prepared plan goes back to Phase 2/3 narrowly: use the current project map
+first, refresh stale affected sections if accepted, compare plan assumptions against current code, then update
+`PLAN.md` / `ACCEPTANCE.md` and re-open the plan gate when drift exists. No drift → Phase 5 may continue.
+
+Headless/no-answer behavior is always safe: print the snapshot summary, do not select a mode, do not resume
+implementation, and STOP.
+
+---
+
 ## Display verbosity (all phases)
 
 Tunes **how much the orchestrator prints** — nothing else.
@@ -428,6 +501,11 @@ written by default and never written merely because `docs` focus was selected; t
 include `repo-docs`. Preserve the user's language for human docs; keep schema keys, paths, commands and
 identifiers as-is.
 
+**Raw map vs. publishable docs:** never auto-commit `.kimiflow/project/`. Treat it as the local agent
+cache and source of truth, not as repo documentation. Commit-capable output must be a curated derivative
+under the repo's documentation structure (for example `docs/architecture.md`, `docs/codebase.md`,
+`docs/testing.md`, or an ADR) and only after the user explicitly chooses a repo-doc storage target.
+
 **Vault publishing:** save compact, curated project-intelligence notes, not raw dumps of every map file.
 Prefer one index/MOC update plus notes such as "Project architecture", "Codebase map", and selected
 improvement slices. Include links/references back to `.kimiflow/project/` artifacts and source evidence.
@@ -438,6 +516,19 @@ notes). Reuse/update the existing structure when clear; if no obvious place exis
 writing. Good default targets are `docs/architecture.md`, `docs/codebase.md`, `docs/testing.md`, and a
 small docs index, but only when they fit the repo. Repo docs must be verified against current map facts
 and cite source paths/sections; no stale or `NOT VERIFIED` claim should be presented as fact.
+
+**Repo-doc publish safety:** repo docs must be publish-safe by default, especially for public repos. They
+may include architecture, module responsibilities, major flows, testing strategy, neutral constraints,
+and decisions. They must NOT include concrete vulnerabilities, exploit paths, secret names/values,
+credentials, private/local filesystem paths, vault references, raw improvement findings, or "this is
+untested/easy to break here" detail. Keep those in `.kimiflow/project/OPEN-QUESTIONS.md`, optional local
+`RISKS.md`/`SECURITY-NOTES.md`, or a private vault note. If the user explicitly asks to publish risk
+context, write a sanitized version: high-level constraint, impact category, owner/next step if known, no
+exploit recipe and no sensitive path/value.
+
+Before any repo-doc commit, show the target paths and a bounded summary of what was included and what was
+withheld as local/private. This is separate from the raw map report; do not stage `.kimiflow/project/`
+unless the user explicitly overrides the local-cache policy after seeing the risk.
 
 **Improve lens (opt-in):** write `.kimiflow/project/IMPROVEMENTS.md` only when the user selects or asks
 for improvements/refactoring/scalability/maintainability/security ideas. Each item is a reviewable slice:

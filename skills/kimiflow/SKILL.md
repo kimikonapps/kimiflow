@@ -13,6 +13,9 @@ This Codex skill is the host-native entrypoint for the same Kimiflow engine used
 
 Treat these as explicit Kimiflow requests:
 
+- `$kimiflow`
+- `@kimiflow`
+- `$kimiflow --launcher` / `$kimiflow --menu`
 - `$kimiflow <feature-or-bug>`
 - `@kimiflow <feature-or-bug>`
 - `run kimiflow ...`
@@ -34,7 +37,8 @@ Never invoke helper scripts through a two-parent relative `hooks` path from the 
 Apply the canonical Kimiflow workflow from `$KIMIFLOW_PLUGIN_ROOT/SKILL.md` with these Codex substitutions:
 
 - `/kimiflow` in user-facing text means `$kimiflow` or an explicit "run Kimiflow" prompt in Codex.
-- `/kimiflow --project-map <quick|standard|deep|skip>` means `$kimiflow --project-map <quick|standard|deep|skip>` in Codex. Missing maps, per-section staleness checks, recommended-but-skippable delta refreshes, focus selection, storage targets, and Improve/Docs publishing use the same canonical Project Map rules and `hooks/project-map-status.sh`.
+- `/kimiflow`, `/kimiflow --launcher`, and `/kimiflow --menu` mean `$kimiflow`, `$kimiflow --launcher`, and `$kimiflow --menu` in Codex. Empty or vague explicit Kimiflow invocations open the context-aware launcher and must use `$KIMIFLOW_PLUGIN_ROOT/hooks/launcher-status.sh` for the status snapshot.
+- `/kimiflow --project-map <quick|standard|deep|skip>` means `$kimiflow --project-map <quick|standard|deep|skip>` in Codex. Missing maps, per-section staleness checks, recommended-but-skippable delta refreshes, focus selection, storage targets, and Improve/Docs publishing use the same canonical Project Map rules and `hooks/project-map-status.sh`. Repo docs are publish-safe derivatives only; raw `.kimiflow/project/` maps and sensitive findings stay local/private unless the user explicitly overrides that policy.
 - `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}` means the installed Kimiflow plugin root. In Codex, use `KIMIFLOW_PLUGIN_ROOT`.
 - When invoking Kimiflow helper scripts from Codex, set `KIMIFLOW_HOST=codex`.
 - `TaskCreate` / `TaskUpdate` means use Codex's task plan/status updates.
@@ -52,6 +56,7 @@ Use the bundled scripts as the only mechanical source of truth:
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/resolve-review-gate.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/resolve-build-gate.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/resolve-verbosity.sh`
+- `$KIMIFLOW_PLUGIN_ROOT/hooks/launcher-status.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/test-weakening-scan.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/secret-content-scan.sh`
 
