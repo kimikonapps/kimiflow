@@ -5,6 +5,10 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 ## Unreleased
 
 ### Added
+- **Vault, repo-doc, and Improve publishing contract (Slice 3)** for standalone project-map runs:
+  user-language focus choices (`codebase`, `architecture`, `docs`, opt-in `improve`), explicit storage
+  targets (`kimiflow`, `kimiflow+vault`, `kimiflow+vault+repo-docs`), local-first source-of-truth rules,
+  and evidence-backed `IMPROVEMENTS.md` / `DOCS-PLAN.md` outputs.
 - **Project Map Staleness + Delta Refresh (Slice 2)** via `hooks/project-map-status.sh` and
   `hooks/test-project-map-status.sh`. Kimiflow can now classify existing `.kimiflow/project/INDEX.json`
   sections as `current`, `stale`, `potentially_stale`, or `unknown`, report affected stale sections, and

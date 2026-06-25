@@ -47,6 +47,9 @@ if [ -x "$ROOT/hooks/project-map-status.sh" ] && bash -n "$ROOT/hooks/project-ma
 if [ -x "$ROOT/hooks/test-project-map-status.sh" ] && bash -n "$ROOT/hooks/test-project-map-status.sh" 2>/dev/null; then ok "project map status test ok"; else bad "project map status test missing/not-exec/bad"; fi
 grep -q 'project-map-status.sh' "$ROOT/reference.md" && ok "reference documents project-map status helper" || bad "missing project-map status helper in reference.md"
 grep -q 'potentially_stale' "$ROOT/reference.md" && ok "reference documents per-section staleness" || bad "missing per-section staleness in reference.md"
+for term in 'Storage targets' 'kimiflow+vault' 'repo-docs' 'IMPROVEMENTS.md' 'DOCS-PLAN.md'; do
+  grep -q "$term" "$ROOT/reference.md" && ok "project map publishing documented: $term" || bad "project map publishing missing: $term"
+done
 
 echo "== hooks wiring (referenced scripts exist, executable, valid) =="
 while IFS= read -r cmd; do

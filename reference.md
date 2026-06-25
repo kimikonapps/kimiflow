@@ -403,6 +403,59 @@ section's `files`/`prefixes`, update the relevant markdown/`FACTS.jsonl` entries
 `project-map-status.sh refresh --section <name>...`. On decline/headless/no answer/`unknown`, continue
 with normal Phase-2 code exploration and note the status in `STATE.md`.
 
+**Focus menu (Slice 3):** accepted standalone map runs may ask what lens the user wants. Use the user's
+language in the prompt and artifacts. Default/headless is `codebase+architecture`.
+
+| focus | writes | notes |
+|---|---|---|
+| `codebase` | `CODEBASE.md`, `CONVENTIONS.md`, relevant `FACTS.jsonl` | where code lives, entry points, patterns |
+| `architecture` | `ARCHITECTURE.md`, `FLOWS.md`, relevant `FACTS.jsonl` | components, responsibilities, flows, invariants |
+| `improve` | `IMPROVEMENTS.md` | opt-in only; requires `codebase` + `architecture` evidence first |
+| `docs` | `DOCS-PLAN.md` and optional repo docs | documentation plan/output from verified map facts |
+
+Combined focuses are allowed (`codebase+architecture+docs`). Do not generate improvement ideas from a
+cold start; first refresh the map sections needed to support them.
+
+**Storage targets (Slice 3):** `.kimiflow/project/` is always written first and remains the source of
+truth. Additional targets are publishing layers and require an explicit user choice:
+
+1. `kimiflow` — write only `.kimiflow/project/` (default and headless fallback).
+2. `kimiflow+vault` — also save curated notes to the optional Vault MCP using "Vault conventions".
+3. `kimiflow+vault+repo-docs` — also write/update repo documentation after discovering existing docs.
+
+No Vault MCP → skip Vault publishing, note it in `STATE.md`, keep local files. Repo docs are never
+written by default and never written merely because `docs` focus was selected; the storage target must
+include `repo-docs`. Preserve the user's language for human docs; keep schema keys, paths, commands and
+identifiers as-is.
+
+**Vault publishing:** save compact, curated project-intelligence notes, not raw dumps of every map file.
+Prefer one index/MOC update plus notes such as "Project architecture", "Codebase map", and selected
+improvement slices. Include links/references back to `.kimiflow/project/` artifacts and source evidence.
+If the Vault already has project folders/templates, reuse them; otherwise follow "Vault conventions".
+
+**Repo-doc publishing:** discover existing documentation first (`README`, `docs/`, ADRs, architecture
+notes). Reuse/update the existing structure when clear; if no obvious place exists, propose paths before
+writing. Good default targets are `docs/architecture.md`, `docs/codebase.md`, `docs/testing.md`, and a
+small docs index, but only when they fit the repo. Repo docs must be verified against current map facts
+and cite source paths/sections; no stale or `NOT VERIFIED` claim should be presented as fact.
+
+**Improve lens (opt-in):** write `.kimiflow/project/IMPROVEMENTS.md` only when the user selects or asks
+for improvements/refactoring/scalability/maintainability/security ideas. Each item is a reviewable slice:
+```
+## Slice <n>: <short title>
+Problem
+Evidence
+Value
+Risk
+Effort
+Acceptance criteria
+Do not touch
+```
+Translate those labels into the user's language in the actual artifact. Every slice needs evidence from `CODEBASE.md`,
+`ARCHITECTURE.md`, `FLOWS.md`, `FACTS.jsonl`, or fresh `file:line` reads. Mark speculative items
+`NOT VERIFIED` or omit them. Improvement slices are proposals only; they do not authorize code changes
+without a later kimiflow feature/fix/audit run.
+
 **Phase 2 consumption:** before fresh code exploration, read `INDEX.json`, the status line from
 `project-map-status.sh`, then only the relevant `FACTS.jsonl` lines and markdown sections. If the map
 is absent, skipped, stale-but-declined, or unknown, continue with the existing Phase 2 memory/codebase

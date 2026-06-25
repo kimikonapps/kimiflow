@@ -144,6 +144,12 @@ be `current`, `stale`, `potentially_stale`, or `unknown`; stale affected section
 but skippable delta refresh. Refresh updates only the selected section hashes/commit metadata, so future
 runs reuse the map without paying for a full rescan.
 
+Standalone map runs can also choose a focus: codebase, architecture, docs, or opt-in improvement ideas.
+Storage is explicit: `kimiflow` only, `kimiflow + Vault`, or `kimiflow + Vault + repo docs`. The local
+`.kimiflow/project/` map is always written first; Vault and repo docs are publishing layers, never
+requirements. Improvement slices are written as proposals with evidence, value, risk, effort, acceptance
+criteria, and "do not touch" notes.
+
 ## Example
 
 **Feature:**
@@ -347,6 +353,12 @@ Wenn eine Projektkarte existiert, prüft kimiflow sie pro Bereich mit `hooks/pro
 Bereiche können `current`, `stale`, `potentially_stale` oder `unknown` sein; stale betroffene Bereiche
 lösen einen empfohlenen, aber überspringbaren Delta-Refresh aus. Der Refresh aktualisiert nur Hashes und
 Commit-Metadaten der ausgewählten Bereiche, damit spätere Läufe die Map ohne Vollscan wiederverwenden.
+
+Standalone-Map-Läufe können außerdem einen Fokus wählen: Codebase, Architektur, Doku oder opt-in
+Verbesserungsideen. Das Speicherziel ist explizit: nur `kimiflow`, `kimiflow + Vault` oder
+`kimiflow + Vault + Repo-Doku`. Die lokale `.kimiflow/project/`-Map wird immer zuerst geschrieben; Vault
+und Repo-Doku sind Publishing-Ebenen, keine Voraussetzung. Verbesserungs-Slices werden als Vorschläge
+mit Evidence, Nutzen, Risiko, Aufwand, Akzeptanzkriterien und „Nicht anfassen" geschrieben.
 
 ## Beispiel
 
