@@ -270,6 +270,24 @@ default_active_session_json() {
   }'
 }
 
+default_background_json() {
+  jq -nc '{
+    schema_version: 1,
+    present: false,
+    path: ".kimiflow/background",
+    total: 0,
+    pending: 0,
+    running: 0,
+    ready: 0,
+    finished: 0,
+    collectable: 0,
+    stale: 0,
+    failed: 0,
+    cancelled: 0,
+    items: []
+  }'
+}
+
 ROOT=""
 PRETTY=0
 while [ "$#" -gt 0 ]; do
@@ -463,6 +481,14 @@ if [ -x "$SCRIPT_DIR/active-run.sh" ]; then
   fi
 fi
 
+BACKGROUND_JSON="$(default_background_json)"
+if [ -x "$SCRIPT_DIR/background-run.sh" ]; then
+  maybe_background_json="$(KIMIFLOW_HOST="${KIMIFLOW_HOST:-}" "$SCRIPT_DIR/background-run.sh" list --root "$ROOT" --json 2>/dev/null || true)"
+  if printf '%s\n' "$maybe_background_json" | jq -e . >/dev/null 2>&1; then
+    BACKGROUND_JSON="$maybe_background_json"
+  fi
+fi
+
 MAINTENANCE_REASONS='[]'
 if [ "$DIRTY" = true ]; then
   MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "working_tree_dirty")"
@@ -472,6 +498,12 @@ if printf '%s\n' "$ACTIVE_SESSION_JSON" | jq -e '.present == true and .terminal 
 fi
 if printf '%s\n' "$ACTIVE_SESSION_JSON" | jq -e '.stale_risk == "needs_revalidation"' >/dev/null 2>&1; then
   MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "active_session_needs_revalidation")"
+fi
+if printf '%s\n' "$BACKGROUND_JSON" | jq -e '(.collectable // 0) > 0' >/dev/null 2>&1; then
+  MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "background_handles_collectable")"
+fi
+if printf '%s\n' "$BACKGROUND_JSON" | jq -e '(.stale // 0) > 0' >/dev/null 2>&1; then
+  MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "background_handles_stale")"
 fi
 if [ "$MAP_PRESENT" != true ]; then
   MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "project_map_missing")"
@@ -537,6 +569,7 @@ out="$(jq -n \
   --argjson memory "$MEMORY_JSON" \
   --argjson memory_summary "$MEMORY_SUMMARY_JSON" \
   --argjson active_session "$ACTIVE_SESSION_JSON" \
+  --argjson background "$BACKGROUND_JSON" \
   '{
     schema_version: 1,
     repo: {present: $repo_present, root: $root, head: $head, dirty: $dirty},
@@ -545,6 +578,7 @@ out="$(jq -n \
     memory_summary: $memory_summary,
     efficiency: ($memory.global_efficiency // {enabled: true, present: false, path: "~/.kimiflow/metrics/token-economics.jsonl", scope: "global_local_anonymous", runs_tracked: 0, projects_tracked: 0, confidence: "none", verdict: "no_data", estimated_savings_percent: null, action_required: false, privacy: {local_only: true, stores_content: false, stores_paths: false, stores_repo_name: false, stores_prompts: false, project_id_salted_hash: true}}),
     active_session: $active_session,
+    background: $background,
     findings: {open: $findings_open, path: $findings_path},
     feature_checks: {runs: $feature_check_runs, verified_findings_open: $feature_check_findings_open, path_pattern: $feature_check_path_pattern},
     improvements: {open: $improvements_open, path: $improvements_path},

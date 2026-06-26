@@ -42,6 +42,7 @@ Apply the canonical Kimiflow workflow from `$KIMIFLOW_PLUGIN_ROOT/SKILL.md` with
 - `/kimiflow --verify-feature <feature-or-path>` means `$kimiflow --verify-feature <feature-or-path>` in Codex. Existing feature checks are review-only and use the canonical lens workflow from `reference.md`: small/fast read-only lens agents may collect candidate issues when available, but the Codex orchestrator must verify candidates before promoting them to findings.
 - Phase-7 code review uses the canonical Review Ensemble from `reference.md`: build one compact review packet, run focused `bug-regression`, `failure-security`, and when relevant `integration-contract` candidate lenses, then let the Codex orchestrator verify candidates before writing canonical `FINDING` lines to the gate. Raw `CANDIDATE` files never count as blockers until promoted.
 - Kimiflow's Active Session Contract uses `$KIMIFLOW_PLUGIN_ROOT/hooks/active-run.sh` in Codex. Once a user explicitly starts Kimiflow and an active session exists, follow-up prompts remain inside that run unless the user explicitly exits, aborts, parks, fails, or switches workflow. Use `append-item`, `mark-built`, `mark-accepted`, `mark-rejected`, `drop-item`, `refresh-baseline`, and `finish|park|fail|abort --write` exactly as the canonical workflow describes; do not route follow-up changes to another skill while `.kimiflow/session/ACTIVE_RUN.json` is present.
+- Kimiflow's Background Handles use `$KIMIFLOW_PLUGIN_ROOT/hooks/background-run.sh` in Codex. Use them for long read-only or draft-producing work such as deep codebase analysis, docs generation, security/advisory review, and improvement scans. The launcher surfaces collectable/stale handles; `collect` must return `OPEN` before the foreground orchestrator trusts a result, and security/improve outputs stay candidate-only until verified.
 - Kimiflow's Working-tree start gate uses `$KIMIFLOW_PLUGIN_ROOT/hooks/working-tree-gate.sh` in Codex. Normal write runs require `WORKING_TREE_GATE OPEN` before slugging or editing; if the gate is `CLOSED`, stop and ask the user to commit/stash/clean first.
 - Kimiflow's fix-mode Red-Green Gate uses `$KIMIFLOW_PLUGIN_ROOT/hooks/red-green-gate.sh` in Codex. A fix run records Red/Green/Regression evidence in `BUG-REPRO.md`; `RED_GREEN_GATE OPEN` is required before Phase 7, learning promotion, or `Status: done`.
 - Kimiflow's local diagnostics advisory uses `$KIMIFLOW_PLUGIN_ROOT/hooks/lsp-diagnostics.sh` in Codex. It runs a bounded set of existing local diagnostics tools or one untracked `.kimiflow/lsp-diagnostics` command, never installs anything, rejects free-form CLI commands, classifies `FLAG`s by changed-file relevance, and routes them to `ADVISORIES.md`.
@@ -69,6 +70,7 @@ Use the bundled scripts as the only mechanical source of truth:
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/red-green-gate.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/lsp-diagnostics.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/launcher-status.sh`
+- `$KIMIFLOW_PLUGIN_ROOT/hooks/background-run.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/active-run.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/memory-router.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/test-weakening-scan.sh`

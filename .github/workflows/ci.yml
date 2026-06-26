@@ -41,6 +41,9 @@ jobs:
       - name: Unit tests (launcher-status) — hard gate
         run: bash hooks/test-launcher-status.sh
 
+      - name: Unit tests (background handles) — hard gate
+        run: bash hooks/test-background-run.sh
+
       - name: Unit tests (working-tree-gate) — hard gate
         run: bash hooks/test-working-tree-gate.sh
 

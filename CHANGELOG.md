@@ -4,7 +4,16 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Added
+- Added local Background Handles for long-running read-only or draft-producing Kimiflow work such as deep codebase
+  analysis, docs drafts, security/advisory review, and improvement scans.
+- Added `hooks/background-run.sh` and tests for handle start/list/status/update/collect/cancel/stale flows,
+  stale affected-path detection, unsafe path rejection, and fail-closed corrupted status handling.
+- Launcher status now surfaces collectable and stale background handles as maintenance reasons.
+
+### Changed
+- README, reference docs, plugin metadata, install smokes, and CI now document and verify the Background Handles
+  workflow for Claude Code and Codex.
 
 ## 0.1.42
 

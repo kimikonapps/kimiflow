@@ -6,6 +6,7 @@ set -u
 SCRIPT="$(cd "$(dirname "$0")" && pwd)/launcher-status.sh"
 MEMORY_ROUTER="$(cd "$(dirname "$0")" && pwd)/memory-router.sh"
 ACTIVE_RUN="$(cd "$(dirname "$0")" && pwd)/active-run.sh"
+BACKGROUND_RUN="$(cd "$(dirname "$0")" && pwd)/background-run.sh"
 WORK="$(mktemp -d)"
 REPO="$WORK/repo"
 INDEX="$REPO/.kimiflow/project/INDEX.json"
@@ -305,6 +306,19 @@ printf 'two\n' > "$REPO/src/a.txt"
 ( cd "$REPO" && git add src/a.txt && git commit -q -m change-a )
 out="$(run_status)"
 assert_jq "$out" '.active_session.stale_risk == "needs_revalidation" and (.maintenance.reasons | index("active_session_needs_revalidation"))' "launcher_surfaces_active_session_stale_risk"
+
+reset_repo
+id1="$("$BACKGROUND_RUN" start --root "$REPO" --kind deep-codebase --title "Map hooks" --affected hooks --write | jq -r '.id')"
+id2="$("$BACKGROUND_RUN" start --root "$REPO" --kind docs --title "Draft docs" --affected docs --write | jq -r '.id')"
+id3="$("$BACKGROUND_RUN" start --root "$REPO" --kind improve --title "Find levers" --affected src --write | jq -r '.id')"
+printf '# Result\nHooks mapped.\n' > "$WORK/result.md"
+printf '["hooks/a.sh"]\n' > "$WORK/files.json"
+"$BACKGROUND_RUN" update --root "$REPO" --id "$id1" --status ready --result "$WORK/result.md" --files "$WORK/files.json" --write >/dev/null
+"$BACKGROUND_RUN" update --root "$REPO" --id "$id2" --status finished --result "$WORK/result.md" --files "$WORK/files.json" --write >/dev/null
+"$BACKGROUND_RUN" mark-stale --root "$REPO" --id "$id3" --reason "base changed" --write >/dev/null
+out="$(run_status)"
+assert_jq "$out" '.background.total == 3 and .background.pending == 0 and .background.ready == 1 and .background.finished == 1 and .background.collectable == 2 and .background.stale == 1 and (.background.items[] | select(.id == "'"$id1"'"))' "launcher_surfaces_background_handles"
+assert_jq "$out" '(.maintenance.reasons | index("background_handles_collectable")) and (.maintenance.reasons | index("background_handles_stale"))' "launcher_background_handles_recommend_maintenance"
 
 reset_repo
 printf '{bad json\n' > "$INDEX"

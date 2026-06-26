@@ -15,7 +15,7 @@ A **user-invoked** `/kimiflow` (Claude Code) / `$kimiflow` (Codex) skill+plugin 
 
 ## Why this exists
 
-Claude Code and Codex both cover a lot with native planning, subagents and hooks — so why a skill? Because a prose instruction file *asks*; kimiflow *enforces*. The plan-gate and code-review gates are **tested, fail-closed resolver scripts** (`hooks/resolve-review-gate.sh`) that count open blockers mechanically — a verbose model can't argue past them. Phase 7 also uses a **review ensemble**: focused bug/regression, failure/security, and integration/contract lenses produce candidate findings, then the orchestrator verifies them before anything counts as a blocker. The secret-commit and test gates are real **PreToolUse/Stop hooks**, not reminders. And it travels: install once, identical gates in every repo, no per-project prompt drift. (kimiflow still reads project convention files such as `AGENTS.md` / `CLAUDE.md` as hints — it just never relies on them for a gate.)
+Claude Code and Codex both cover a lot with native planning, subagents and hooks — so why a skill? Because a prose instruction file *asks*; kimiflow *enforces*. The plan-gate and code-review gates are **tested, fail-closed resolver scripts** (`hooks/resolve-review-gate.sh`) that count open blockers mechanically — a verbose model can't argue past them. Phase 7 also uses a **review ensemble**: focused bug/regression, failure/security, and integration/contract lenses produce candidate findings, then the orchestrator verifies them before anything counts as a blocker. Background Handles keep long subagent/draft work visible until collected and stale-checked. The secret-commit and test gates are real **PreToolUse/Stop hooks**, not reminders. And it travels: install once, identical gates in every repo, no per-project prompt drift. (kimiflow still reads project convention files such as `AGENTS.md` / `CLAUDE.md` as hints — it just never relies on them for a gate.)
 
 ## Install
 
@@ -186,11 +186,23 @@ The run keeps a small item backlog in `.kimiflow/<slug>/ITEMS.jsonl`. Kimiflow w
 pending, only built, rejected, or stale after relevant files changed. Positive learnings are written only on a
 successful `finish`; parked, failed, or aborted runs do not promote unverified memory.
 
+## Background handles
+
+Kimiflow can register long read-only or draft-producing work under `.kimiflow/background/`: deep codebase
+analysis, docs drafts, security/advisory review, and improvement scans. A handle stores the task handoff, status,
+affected paths, result, file list, advisories, and verification notes. The launcher shows collectable and stale
+handles so work does not disappear into chat.
+
+Collection is gated: `hooks/background-run.sh collect --id <handle>` must return `OPEN` before the foreground
+orchestrator trusts the result. If affected files changed, the handle becomes stale and must be revalidated or rerun.
+Security and improvement outputs remain candidates until verified; they never become repo docs, findings, memory, or
+project-map facts automatically.
+
 ## Launcher
 
 If you invoke kimiflow without a concrete task (`/kimiflow` or `$kimiflow`), it opens a context-aware
 launcher. The launcher first runs `hooks/launcher-status.sh` and summarizes the current project state:
-active session status, project-map depth/status, memory/recall status, open findings, improvement slices, repo
+active session status, background handles, project-map depth/status, memory/recall status, open findings, improvement slices, repo
 docs, dirty working tree, and active or backlog runs. It then routes your choice into the normal Kimiflow modes.
 
 Backlog/resume is guarded: a parked plan is not implemented blindly if affected files changed since its
@@ -356,13 +368,13 @@ search/write stays disabled until a tool provider is actually present.
 
 # kimiflow — Feature- & Fix-Loop (Deutsch)
 
-Ein **user-invoked** `/kimiflow`- (Claude Code) / `$kimiflow`-Skill+Plugin (Codex), das einen disziplinierten **8-Phasen-Loop** fürs Bauen von Features und Fixen von Bugs fährt — Klärung → Verstehen/Diagnose → Plan → Plan-Gate → Umsetzung → Verifikation → Code-Review → Commit. Seine Gates sind **mechanisch, nicht beratend**: Reviewer schreiben strukturierte Findings in Dateien, ein getestetes **fail-closed** Script zählt die offenen Blocker, und ein „fertig" lässt sich nicht daran vorbeireden.
+Ein **user-invoked** `/kimiflow`- (Claude Code) / `$kimiflow`-Skill+Plugin (Codex), das einen disziplinierten **8-Phasen-Loop** fürs Bauen von Features und Fixen von Bugs fährt — Klärung → Verstehen/Diagnose → Plan → Plan-Gate → Umsetzung → Verifikation → Code-Review → Commit. Seine Gates sind **mechanisch, nicht beratend**: Reviewer schreiben strukturierte Findings in Dateien, getestete **fail-closed** Scripts zählen die offenen Blocker, Background Handles halten lange Nebenläufe sichtbar, und ein „fertig" lässt sich nicht daran vorbeireden.
 
 > `SKILL.md` / `reference.md` sind auf Englisch geschrieben. **kimiflow antwortet in deiner Sprache** — schreibst du Deutsch, grillt/antwortet es auf Deutsch.
 
 ## Warum es das gibt
 
-Claude Code und Codex decken mit nativer Planung, Subagents und Hooks schon viel ab — warum also ein Skill? Weil eine prosaische Instruktionsdatei *bittet*; kimiflow *erzwingt*. Plan-Gate und Code-Review-Gate sind **getestete, fail-closed Resolver-Scripts** (`hooks/resolve-review-gate.sh`), die offene Blocker mechanisch zählen — ein geschwätziges Modell argumentiert sich da nicht vorbei. Secret-Commit- und Test-Gate sind echte **PreToolUse/Stop-Hooks**, keine Erinnerungen. Und es reist mit: einmal installiert, identische Gates in jedem Repo, kein Per-Projekt-Prompt-Drift. (kimiflow liest Projektkonventionen wie `AGENTS.md` / `CLAUDE.md` als Hinweise — verlässt sich für ein Gate nur nie darauf.)
+Claude Code und Codex decken mit nativer Planung, Subagents und Hooks schon viel ab — warum also ein Skill? Weil eine prosaische Instruktionsdatei *bittet*; kimiflow *erzwingt*. Plan-Gate und Code-Review-Gate sind **getestete, fail-closed Resolver-Scripts** (`hooks/resolve-review-gate.sh`), die offene Blocker mechanisch zählen — ein geschwätziges Modell argumentiert sich da nicht vorbei. Background Handles halten lange Subagent-/Draft-Arbeit sichtbar, bis sie eingesammelt und auf Stale-State geprüft wurde. Secret-Commit- und Test-Gate sind echte **PreToolUse/Stop-Hooks**, keine Erinnerungen. Und es reist mit: einmal installiert, identische Gates in jedem Repo, kein Per-Projekt-Prompt-Drift. (kimiflow liest Projektkonventionen wie `AGENTS.md` / `CLAUDE.md` als Hinweise — verlässt sich für ein Gate nur nie darauf.)
 
 ## Installation
 
@@ -529,11 +541,23 @@ Items pending, nur gebaut, rejected oder nach relevanten Datei-Aenderungen stale
 nur bei erfolgreichem `finish` im Memory; geparkte, fehlgeschlagene oder abgebrochene Runs schreiben keine
 ungeprueften positiven Learnings.
 
+## Background Handles
+
+Kimiflow kann lange read-only oder draft-lastige Arbeit unter `.kimiflow/background/` registrieren:
+tiefere Codebase-Analyse, Doku-Entwürfe, Security-/Advisory-Reviews und Improvement-Scans. Ein Handle speichert
+Handoff, Status, betroffene Pfade, Ergebnis, Dateiliste, Advisories und Verifikationsnotizen. Der Launcher zeigt
+einsammelbare und stale Handles, damit Nebenläufe nicht im Chat verschwinden.
+
+Das Einsammeln ist gegated: `hooks/background-run.sh collect --id <handle>` muss `OPEN` liefern, bevor der
+Foreground-Orchestrator das Ergebnis nutzt. Haben sich betroffene Dateien geändert, wird der Handle stale und muss
+revalidiert oder neu gestartet werden. Security- und Improvement-Ergebnisse bleiben Kandidaten, bis sie verifiziert
+sind; sie werden nie automatisch Repo-Doku, Findings, Memory oder Projektkarten-Facts.
+
 ## Launcher
 
 Wenn du kimiflow ohne konkreten Auftrag startest (`/kimiflow` oder `$kimiflow`), öffnet es einen
 kontextbewussten Launcher. Der Launcher ruft zuerst `hooks/launcher-status.sh` auf und fasst den
-Projektzustand zusammen: aktive Session, Projektkarten-Tiefe/-Status, Memory-/Recall-Status, offene Findings,
+Projektzustand zusammen: aktive Session, Background Handles, Projektkarten-Tiefe/-Status, Memory-/Recall-Status, offene Findings,
 Verbesserungs-Slices, Repo-Doku, dirty Working Tree und aktive oder geparkte Runs. Deine Auswahl wird danach
 in den normalen Kimiflow-Modus geroutet.
 

@@ -1,6 +1,6 @@
 {
   "name": "kimiflow",
-  "description": "Active-session feature & bug-fix loop for Claude Code with clean-worktree, red/green, plan-blocker gates, code-review ensembles, memory, Obsidian, and Vault gates. Replies in your language.",
+  "description": "Active-session feature & bug-fix loop for Claude Code with background handles, clean-worktree, red/green, plan-blocker gates, code-review ensembles, memory, Obsidian, and Vault gates. Replies in your language.",
   "version": "0.1.42",
   "license": "MIT",
   "author": {

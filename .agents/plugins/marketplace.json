@@ -1,7 +1,8 @@
 {
   "name": "kimiflow",
   "interface": {
-    "displayName": "kimiflow"
+    "displayName": "kimiflow",
+    "shortDescription": "Kimiflow launcher, gates, memory, and background handles for Codex"
   },
   "plugins": [
     {

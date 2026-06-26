@@ -13,7 +13,7 @@ requests.
 
 **Mechanical snapshot:** before showing options, run `hooks/launcher-status.sh --pretty` from the installed
 Kimiflow root (Codex: with `KIMIFLOW_HOST=codex`). The script is read-only and returns JSON for:
-repo status, dirty working tree, project-map depth/status, memory/recall status, curation needs, open findings,
+repo status, dirty working tree, project-map depth/status, memory/recall status, curation needs, background handles (`total`, status counts, collectable/stale counts, items), open findings,
 open feature-check findings, open improvement slices, repo-doc presence, active-session status, and active/backlog/done runs. The orchestrator may summarize this
 JSON, but must not invent counts.
 
@@ -31,6 +31,7 @@ Geparkte Runs: 2
 Repo-Doku: vorhanden
 Working Tree: geändert
 Aktive Session: offen · Items 2 · aktuell
+Background: 2 einsammelbar · 1 stale
 
 Was willst du tun?
 
@@ -45,6 +46,7 @@ Was willst du tun?
 9. Idee/unklaren Auftrag ausarbeiten
 10. Eingebautes Feature prüfen
 11. Memory/Recall prüfen oder kuratieren
+12. Background Handles ansehen/einsammeln
 ```
 
 If `.kimiflow/project/INDEX.json` is missing, bias the first menu toward Project Map Bootstrap:
@@ -87,6 +89,10 @@ hygiene pass, not an implementation mode:
   `continue`, `show items`, `finish after verification`, `park`, `fail`, or `abort`. If
   `active_session.stale_risk == "needs_revalidation"`, the first action is revalidation; blind finish is not
   allowed.
+- Background handles: if `background.collectable > 0`, offer `collect results`, `show handles`, `mark stale`,
+  `cancel`, or `back`. Use `hooks/background-run.sh collect --id <id>` before trusting any result. A `CLOSED`
+  collect verdict means the foreground orchestrator must re-run/revalidate the work instead of applying it. If
+  `background.stale > 0`, surface it as maintenance but do not delete anything automatically.
 - Done runs: count `Status: done`; for legacy states, a Phase-7-done / `RUN COMPLETE` signal may be inferred as
   done so old completed runs do not remain noisy active work. Surface missing `LEARNING-REVIEW.md` in
   `runs.learning_reviews.missing_done` and stale/invalid existing reviews as `learning_reviews_need_attention`;
@@ -191,6 +197,68 @@ become project memory.
 **Staleness:** `status` compares the active session baseline to current Git changes and affected files from
 `STATE.md`. If a relevant file changed, status reports `stale_risk: needs_revalidation`, the launcher surfaces
 that state, prompt-context mentions revalidation, and finish is blocked until revalidated.
+
+---
+
+## Background Handles
+
+Background Handles make long-running or later-collected Kimiflow work visible without letting draft results apply
+themselves. They are a local registry, not a host-native agent spawner. Codex/Claude subagents, background threads,
+or manual follow-up work may write results into the registry; the foreground Kimiflow orchestrator must still collect
+and verify them.
+
+**Helper:** `hooks/background-run.sh`
+
+Core files:
+
+- `.kimiflow/background/HANDLES.jsonl` — append-only handle event/index log.
+- `.kimiflow/background/<id>/STATUS.json` — current handle metadata.
+- `.kimiflow/background/<id>/HANDOFF.md` — compact task handoff for the worker/background agent.
+- `.kimiflow/background/<id>/RESULT.md` — worker result summary.
+- `.kimiflow/background/<id>/FILES.json` — files the worker inspected or drafted.
+- `.kimiflow/background/<id>/ADVISORIES.md` and `VERIFY.md` — candidate advisories and verification notes.
+
+Commands:
+
+```bash
+hooks/background-run.sh start --kind deep-codebase --title "Map architecture" --affected hooks --write
+hooks/background-run.sh list --json
+hooks/background-run.sh status --id <handle-id>
+hooks/background-run.sh update --id <handle-id> --status ready --result RESULT.md --files FILES.json --advisories ADVISORIES.md --verify VERIFY.md --write
+hooks/background-run.sh collect --id <handle-id>
+hooks/background-run.sh cancel --id <handle-id> --reason "not needed" --write
+hooks/background-run.sh mark-stale --id <handle-id> --reason "base changed" --write
+```
+
+Valid kinds are `deep-codebase`, `docs`, `security`, `improve`, and `custom`. Statuses are `pending`, `running`,
+`ready`, `finished`, `stale`, `failed`, and `cancelled`. `ready` and `finished` are collectable; `stale`, `failed`,
+and `cancelled` are terminal.
+
+**Stable collect verdict:**
+
+```text
+BACKGROUND_HANDLE<TAB>OPEN|CLOSED<TAB>id=<id><TAB>status=<status><TAB>reason=<code><TAB>detail=<detail>
+```
+
+`OPEN` means the result is current enough for foreground review. It still does not apply anything. `CLOSED` blocks
+use of the result. Common reasons: `not_ready`, `result_missing`, `base_invalid`, `affected_missing`, `stale`,
+`status_cancelled`, `status_failed`, and `status_stale`.
+
+**Staleness:** `start` records `base_commit` and normalized repo-relative `affected_paths`. `collect` checks
+committed drift since `base_commit`, staged changes, unstaged changes, and untracked paths. Directory affected paths
+match descendants, so `hooks` matches `hooks/launcher-status.sh`. Unsafe affected paths (`/abs`, `..`, empty paths,
+internal `.kimiflow` paths) and unsafe ids are rejected. Malformed persisted status data fails closed.
+
+**Candidate-only boundary:** security/advisory and improvement outputs are candidates. `ADVISORIES.md`, `VERIFY.md`,
+and `RESULT.md` may inform `FEATURE-CHECK.md`, `FINDINGS.md`, project maps, repo docs, or memory only after the
+foreground orchestrator verifies them with targeted reads/commands. A background handle never writes repo docs,
+memory rows, project-map facts, or canonical findings by itself.
+
+**Launcher:** `launcher-status.sh` includes `.background` with counts for `total`, `pending`, `running`, `ready`,
+`finished`, `collectable`, `stale`, `failed`, `cancelled`, and `items`. `collectable` counts handles whose current
+`collect` verdict is `OPEN`, not merely handles with `ready`/`finished` status; `stale` also includes drift detected
+during list-time collection checks. `background_handles_collectable` and `background_handles_stale` appear as
+maintenance reasons.
 
 ---
 

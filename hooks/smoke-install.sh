@@ -26,6 +26,10 @@ mv="$(jq -r '.plugins[0].version' "$ROOT/.claude-plugin/marketplace.json" 2>/dev
 if [ -n "$pv" ] && [ "$pv" = "$mv" ]; then ok "version consistent ($pv)"; else bad "version mismatch: plugin=$pv marketplace=$mv"; fi
 jq -e '((.description // "") | test("code-review ensembles"))' "$ROOT/.claude-plugin/plugin.json" >/dev/null 2>&1 \
   && ok "Claude plugin describes code-review ensembles" || bad "Claude plugin description missing code-review ensembles"
+jq -e '((.description // "") | test("background handles"; "i"))' "$ROOT/.claude-plugin/plugin.json" >/dev/null 2>&1 \
+  && ok "Claude plugin describes background handles" || bad "Claude plugin description missing background handles"
+jq -e '((.metadata.description // "") + " " + (.plugins[0].description // "") | test("background handles"; "i"))' "$ROOT/.claude-plugin/marketplace.json" >/dev/null 2>&1 \
+  && ok "Claude marketplace describes background handles" || bad "Claude marketplace missing background handles"
 
 echo "== skill frontmatter (SKILL.md) =="
 fm="$(awk 'NR==1 && $0=="---"{f=1;next} f && $0=="---"{exit} f' "$ROOT/SKILL.md")"
@@ -49,6 +53,8 @@ if [ -x "$ROOT/hooks/launcher-status.sh" ] && bash -n "$ROOT/hooks/launcher-stat
 if [ -x "$ROOT/hooks/test-launcher-status.sh" ] && bash -n "$ROOT/hooks/test-launcher-status.sh" 2>/dev/null; then ok "launcher status test ok"; else bad "launcher status test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/active-run.sh" ] && bash -n "$ROOT/hooks/active-run.sh" 2>/dev/null; then ok "active session helper ok"; else bad "active session helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-active-run.sh" ] && bash -n "$ROOT/hooks/test-active-run.sh" 2>/dev/null; then ok "active session test ok"; else bad "active session test missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/background-run.sh" ] && bash -n "$ROOT/hooks/background-run.sh" 2>/dev/null; then ok "background handles helper ok"; else bad "background handles helper missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/test-background-run.sh" ] && bash -n "$ROOT/hooks/test-background-run.sh" 2>/dev/null; then ok "background handles test ok"; else bad "background handles test missing/not-exec/bad"; fi
 grep -q 'Project Map Bootstrap' "$ROOT/SKILL.md" && ok "canonical skill documents Project Map Bootstrap" || bad "missing Project Map Bootstrap in SKILL.md"
 grep -q -- '--project-map quick|standard|deep' "$ROOT/reference.md" && ok "reference documents project-map depths" || bad "missing project-map depths in reference.md"
 for term in INDEX.json FACTS.jsonl CODEBASE.md ARCHITECTURE.md CONVENTIONS.md TESTING.md FLOWS.md OPEN-QUESTIONS.md; do
@@ -81,7 +87,10 @@ grep -q 'BUG-REPRO.md' "$ROOT/reference.md" && ok "reference documents BUG-REPRO
 grep -q 'lsp-diagnostics.sh' "$ROOT/reference.md" && ok "reference documents local diagnostics helper" || bad "missing local diagnostics helper in reference.md"
 grep -q 'memory-router.sh' "$ROOT/reference.md" && ok "reference documents memory router helper" || bad "missing memory router helper in reference.md"
 grep -q 'active-run.sh' "$ROOT/reference.md" && ok "reference documents active session helper" || bad "missing active session helper in reference.md"
+grep -q 'background-run.sh' "$ROOT/reference.md" && ok "reference documents background handles helper" || bad "missing background handles helper in reference.md"
+grep -q 'Background Handles' "$ROOT/README.md" && ok "README documents Background Handles" || bad "README missing Background Handles"
 grep -q 'Active Session Contract' "$ROOT/SKILL.md" && ok "canonical skill documents Active Session Contract" || bad "missing Active Session Contract in SKILL.md"
+grep -q 'Background Handles' "$ROOT/SKILL.md" && ok "canonical skill documents Background Handles" || bad "missing Background Handles in SKILL.md"
 grep -q 'Current-State Gate' "$ROOT/SKILL.md" && ok "canonical skill documents Current-State Gate" || bad "missing Current-State Gate in SKILL.md"
 grep -q 'working-tree-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents working-tree gate" || bad "missing working-tree gate in SKILL.md"
 grep -q 'red-green-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents red-green gate" || bad "missing red-green gate in SKILL.md"
