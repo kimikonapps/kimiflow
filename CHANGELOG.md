@@ -6,6 +6,18 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.1.42
+
+Ship **working-tree, red/green, and local diagnostics gates**.
+
+### Added
+- Normal write-mode Kimiflow runs now require a clean working tree before starting, while ignoring local `.kimiflow/`
+  state.
+- Fix runs now use a Red/Green evidence gate around `BUG-REPRO.md` before review, learning promotion, or completion.
+- Local diagnostics now run as a bounded advisory using existing typecheck/lint/LSP-adjacent tools or an untracked
+  local `.kimiflow/lsp-diagnostics` command.
+- CI now runs the new working-tree, red/green, and local diagnostics unit tests explicitly.
+
 ## 0.1.41
 
 Ship **Harden review lifecycle and active-session safety gates**.

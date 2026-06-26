@@ -1,7 +1,7 @@
 {
   "name": "kimiflow",
-  "description": "Active-session feature & bug-fix loop for Claude Code with mechanical plan-blocker gates, code-review ensembles, existing-feature checks, project intelligence maps, token-cheap memory/learning recall, Obsidian Terminal MCP setup, health/auth status, and Vault sync handoffs. Replies in your language.",
-  "version": "0.1.41",
+  "description": "Active-session feature & bug-fix loop for Claude Code with clean-worktree, red/green, plan-blocker gates, code-review ensembles, memory, Obsidian, and Vault gates. Replies in your language.",
+  "version": "0.1.42",
   "license": "MIT",
   "author": {
     "name": "kimikon"

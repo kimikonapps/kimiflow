@@ -5,13 +5,13 @@
     "name": "kimikon"
   },
   "metadata": {
-    "description": "kimiflow — a disciplined active-session feature & bug-fix loop for Claude Code with plan-blocker gates, code-review ensembles, existing-feature checks, project intelligence, bounded memory recall, Obsidian Terminal MCP setup, health/auth status, and Vault sync handoffs."
+    "description": "kimiflow — a disciplined active-session feature & bug-fix loop for Claude Code with clean-worktree, red/green, plan-blocker gates, code-review ensembles, project-intelligence, memory, Obsidian, and Vault gates."
   },
   "plugins": [
     {
       "name": "kimiflow",
-      "description": "Active-session feature & bug-fix loop for Claude Code with mechanical plan-blocker gates, code-review ensembles, existing-feature checks, project intelligence maps, token-cheap memory recall, Obsidian Terminal MCP setup, health/auth status, and Vault sync handoffs. Replies in your language.",
-      "version": "0.1.41",
+      "description": "Active-session feature & bug-fix loop for Claude Code with clean-worktree, red/green, plan-blocker gates, code-review ensembles, memory, Obsidian, and Vault gates. Replies in your language.",
+      "version": "0.1.42",
       "author": {
         "name": "kimikon"
       },
