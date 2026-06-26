@@ -52,17 +52,3 @@ hooks/project-map-status.sh refresh --section <name>
 Bei Versionsbumps sollten mindestens README, CHANGELOG, COMPATIBILITY, Plugin-Manifeste, Marketplace-Metadaten
 und GitHub Release konsistent sein. Echte Plugin-Installation und Plugin-Browser-Darstellung bleiben teilweise
 manuelle Host-Checks, weil sie von Claude Code bzw. Codex selbst abhaengen.
-
-Maintainer-Releases sollten ueber den Projekt-Helper laufen:
-
-```bash
-hooks/release.sh --next patch --summary "kurzes Release-Thema" --yes
-```
-
-Der Helper startet nur aus einem sauberen Working Tree, prueft Remote-/Tag-Konflikte, bump't die Claude- und
-Codex-Manifeste, aktualisiert `CHANGELOG.md` und `COMPATIBILITY.md`, laesst Syntax-, Unit-, Smoke- und
-Advisory-Checks laufen, staged nur bekannte Release-Dateien, committet, taggt, pusht und erstellt oder
-aktualisiert den GitHub Release. Mit `--dry-run` kann der Zielstand vorab geprueft werden.
-
-Der geplante `0.2.0` Public-History-Reset ist kein normaler Release. Dafuer liegt das manuelle Runbook unter
-[`docs/history-reset-checklist.md`](history-reset-checklist.md).

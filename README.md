@@ -156,32 +156,10 @@ The repository is intentionally small and script-first:
 - `skills/kimiflow/SKILL.md` — Codex-facing wrapper that maps the canonical workflow to Codex.
 - `.claude-plugin/`, `.codex-plugin/`, `.agents/plugins/`, `hooks.json` — host/plugin manifests.
 - `hooks/` — mechanical gates, launcher/status helpers, memory router, Obsidian setup helpers, smoke tests,
-  focused shell tests, and maintainer release automation.
+  and focused shell tests.
 - `docs/` and `examples/` — demos, design notes, and walkthrough examples.
 - `.kimiflow/` — local project intelligence, run state, memory, findings, and economics data. This directory is
   generated during local runs and is not meant to be committed by default.
-
-## Maintainer release helper
-
-Maintainers can prepare a normal GitHub release with:
-
-```bash
-hooks/release.sh --next patch --summary "short release theme" --yes
-```
-
-For a specific version, for example the planned 0.2 reset release:
-
-```bash
-hooks/release.sh --version 0.2.0 --notes-file /tmp/kimiflow-0.2-notes.md --yes
-```
-
-The helper requires a clean working tree, refuses remote divergence, updates the Claude/Codex manifest versions,
-updates `CHANGELOG.md` and `COMPATIBILITY.md`, runs release checks, stages only release metadata, commits,
-creates the `kimiflow--vX.Y.Z` tag, pushes `main` plus the tag, and creates or updates the GitHub Release.
-Use `--dry-run` first when you want to inspect the target version and safety prechecks.
-
-The planned `0.2.0` public-history reset is a special, manual path. Use
-[`docs/history-reset-checklist.md`](docs/history-reset-checklist.md) before cutting that release.
 
 ## Launcher
 
@@ -491,32 +469,10 @@ Das Repository ist bewusst klein und script-first aufgebaut:
 - `skills/kimiflow/SKILL.md` — Codex-Wrapper fuer denselben Workflow.
 - `.claude-plugin/`, `.codex-plugin/`, `.agents/plugins/`, `hooks.json` — Host-/Plugin-Manifeste.
 - `hooks/` — mechanische Gates, Launcher-/Status-Helfer, Memory Router, Obsidian-Setup, Smoke-Checks und
-  fokussierte Shell-Tests und Maintainer-Release-Automation.
+  fokussierte Shell-Tests.
 - `docs/` und `examples/` — Demos, Design-Notizen und Beispielablaeufe.
 - `.kimiflow/` — lokale Projektintelligenz, Run-State, Memory, Findings und Economics-Daten. Dieser Ordner wird
   bei lokalen Runs erzeugt und standardmaessig nicht committed.
-
-## Maintainer-Release-Helfer
-
-Maintainer koennen einen normalen GitHub Release so vorbereiten:
-
-```bash
-hooks/release.sh --next patch --summary "kurzes Release-Thema" --yes
-```
-
-Fuer eine bestimmte Version, zum Beispiel den geplanten 0.2-Neustart:
-
-```bash
-hooks/release.sh --version 0.2.0 --notes-file /tmp/kimiflow-0.2-notes.md --yes
-```
-
-Der Helper verlangt einen sauberen Working Tree, blockt Remote-Divergenz, aktualisiert die Claude-/Codex-
-Manifest-Versionen, aktualisiert `CHANGELOG.md` und `COMPATIBILITY.md`, laesst Release-Checks laufen, staged
-nur Release-Metadaten, committet, erstellt den Tag `kimiflow--vX.Y.Z`, pusht `main` plus Tag und erstellt oder
-aktualisiert den GitHub Release. Mit `--dry-run` pruefst du vorab Zielversion und Safety-Checks ohne Aenderung.
-
-Der geplante `0.2.0` Public-History-Reset ist ein manueller Sonderweg. Nutze davor
-[`docs/history-reset-checklist.md`](docs/history-reset-checklist.md).
 
 ## Launcher
 

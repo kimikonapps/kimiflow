@@ -84,15 +84,6 @@ while IFS= read -r cmd; do
   if [ -x "$p" ] && bash -n "$p" 2>/dev/null; then ok "hook script ok: $rel"; else bad "hook script missing/not-exec/bad: $rel"; fi
 done < <(jq -r '.hooks[]?[]?.hooks[]?.command' "$ROOT/hooks/hooks.json" 2>/dev/null)
 
-echo "== maintainer release helper =="
-if [ -x "$ROOT/hooks/release.sh" ] && bash -n "$ROOT/hooks/release.sh" 2>/dev/null; then ok "release helper ok: hooks/release.sh"; else bad "release helper missing/not-exec/bad"; fi
-grep -q 'hooks/release.sh' "$ROOT/README.md" && ok "release helper documented in README" || bad "release helper missing from README"
-grep -q 'hooks/release.sh' "$ROOT/docs/testing.md" && ok "release helper documented in testing docs" || bad "release helper missing from testing docs"
-[ -f "$ROOT/docs/history-reset-checklist.md" ] && ok "history reset checklist exists" || bad "history reset checklist missing"
-grep -q 'history-reset-checklist.md' "$ROOT/README.md" && ok "history reset checklist linked in README" || bad "history reset checklist missing from README"
-grep -q 'git bundle create' "$ROOT/docs/history-reset-checklist.md" && ok "history reset checklist documents private bundle backup" || bad "history reset checklist missing bundle backup"
-grep -q 'force-with-lease' "$ROOT/docs/history-reset-checklist.md" && ok "history reset checklist uses force-with-lease" || bad "history reset checklist missing force-with-lease"
-
 echo "== gate fires (commit-secret-gate, synthetic PreToolUse stdin) =="
 HOOK="$ROOT/hooks/commit-secret-gate.sh"
 deny() { jq -nc --arg c "$1" --arg d "$2" '{tool_input:{command:$c}, cwd:$d}' | bash "$HOOK" 2>/dev/null | grep -q '"permissionDecision":"deny"'; }
