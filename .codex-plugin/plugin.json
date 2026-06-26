@@ -1,6 +1,6 @@
 {
   "name": "kimiflow",
-  "version": "0.1.40",
+  "version": "0.1.41",
   "description": "Context-aware Kimiflow launcher, active-session feature/fix loop for Codex with mechanical plan-blocker gates, code-review ensembles, existing-feature checks, project intelligence maps, token-cheap memory/learning recall, Obsidian Terminal MCP setup, health/auth status, and Vault sync handoffs.",
   "author": {
     "name": "kimikon",

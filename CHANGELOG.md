@@ -6,6 +6,10 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.1.41
+
+Ship **Harden review lifecycle and active-session safety gates**.
+
 ## 0.1.40
 
 Ship **global local memory efficiency metrics**.
