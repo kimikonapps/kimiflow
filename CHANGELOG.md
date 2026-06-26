@@ -4,7 +4,11 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Added
+- Added `hooks/release.sh`, a maintainer release helper that checks repository state, bumps plugin manifest
+  versions, updates changelog/compatibility metadata, runs release checks, commits, tags, pushes, and creates
+  or updates the matching GitHub Release.
+- Added `docs/history-reset-checklist.md`, a researched manual runbook for the planned 0.2 public-history reset.
 
 ## 0.1.38
 

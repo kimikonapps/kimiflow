@@ -8,7 +8,12 @@ set -u
 SCANNER="$(cd "$(dirname "$0")" && pwd)/secret-content-scan.sh"
 REALBASH="$(command -v bash)"
 WORK="$(mktemp -d)"; REPO="$WORK/repo"; BIN="$WORK/bin"; trap 'rm -rf "$WORK"' EXIT
-mkdir -p "$BIN"; ln -s "$(command -v git)" "$BIN/git"   # only git on the scanner's PATH
+mkdir -p "$BIN"
+GIT_BIN="/usr/bin/git"
+[ -x "$GIT_BIN" ] || GIT_BIN="$(command -v git)"
+printf '#!/bin/sh\nexec "%s" "$@"\n' "$GIT_BIN" > "$BIN/git"; chmod +x "$BIN/git" # keep scanners off PATH
+ln -s "$REALBASH" "$BIN/bash"              # fallback for env-bash git wrappers
+command -v dirname >/dev/null 2>&1 && ln -s "$(command -v dirname)" "$BIN/dirname"
 
 FAILS=0
 pass(){ printf 'PASS: %s\n' "$1"; }

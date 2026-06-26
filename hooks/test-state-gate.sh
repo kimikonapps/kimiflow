@@ -63,7 +63,11 @@ assert_allow "$G .kimiflow/nostate/findings --round 1 --expect A,B"    "out_of_s
 # ============================================================================
 REALBASH="$(command -v bash)"
 NOJQ="$WORK/nojq-bin"; mkdir -p "$NOJQ"
-for t in cat grep sed head git; do s="$(command -v "$t")"; [ -n "$s" ] && ln -s "$s" "$NOJQ/$t"; done
+GIT_BIN="/usr/bin/git"
+[ -x "$GIT_BIN" ] || GIT_BIN="$(command -v git)"
+printf '#!/bin/sh\nexec "%s" "$@"\n' "$GIT_BIN" > "$NOJQ/git"; chmod +x "$NOJQ/git"
+ln -s "$REALBASH" "$NOJQ/bash"
+for t in cat grep sed head dirname; do s="$(command -v "$t")"; [ -n "$s" ] && ln -s "$s" "$NOJQ/$t"; done
 deny_nojq()  { out="$(payload "$1" "${3:-$REPO}" | PATH="$NOJQ" "$REALBASH" "$HOOK" 2>/dev/null)"; if printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then pass "$2"; else fail "$2 (expected DENY, got: ${out:-<allow>})"; fi; }
 allow_nojq() { out="$(payload "$1" "${3:-$REPO}" | PATH="$NOJQ" "$REALBASH" "$HOOK" 2>/dev/null)"; if printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then fail "$2 (expected ALLOW, got DENY: $out)"; else pass "$2"; fi; }
 

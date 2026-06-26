@@ -78,7 +78,7 @@ assert_allow "git add safe.txt"    "named_add_allowed"
 # --- malformed JSON: empty input is a no-op, but malformed git-like payloads fail closed ---
 out="$(printf '' | "$HOOK")"
 if printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then fail "empty_input_allowed"; else pass "empty_input_allowed"; fi
-out="$(printf '{bad json git commit' | "$HOOK")"
+out="$(printf '{bad json git commit \"cwd\":\"%s\"' "$REPO" | "$HOOK")"
 if printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then pass "malformed_git_payload_denied"; else fail "malformed_git_payload_denied (expected DENY, got: ${out:-<empty/allow>})"; fi
 out="$(printf '{bad json ls' | "$HOOK")"
 if printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then fail "malformed_nongit_payload_allowed"; else pass "malformed_nongit_payload_allowed"; fi
