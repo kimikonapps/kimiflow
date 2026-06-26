@@ -30,6 +30,10 @@ jq -e '((.description // "") | test("background handles"; "i"))' "$ROOT/.claude-
   && ok "Claude plugin describes background handles" || bad "Claude plugin description missing background handles"
 jq -e '((.metadata.description // "") + " " + (.plugins[0].description // "") | test("background handles"; "i"))' "$ROOT/.claude-plugin/marketplace.json" >/dev/null 2>&1 \
   && ok "Claude marketplace describes background handles" || bad "Claude marketplace missing background handles"
+jq -e '((.description // "") | test("full/grill/plan/build/quick/review/audit/fix"))' "$ROOT/.claude-plugin/plugin.json" >/dev/null 2>&1 \
+  && ok "Claude plugin describes natural mode aliases" || bad "Claude plugin description missing natural mode aliases"
+jq -e '((.metadata.description // "") + " " + (.plugins[0].description // "") | test("full/grill/plan/build/quick/review/audit/fix"))' "$ROOT/.claude-plugin/marketplace.json" >/dev/null 2>&1 \
+  && ok "Claude marketplace describes natural mode aliases" || bad "Claude marketplace missing natural mode aliases"
 
 echo "== skill frontmatter (SKILL.md) =="
 fm="$(awk 'NR==1 && $0=="---"{f=1;next} f && $0=="---"{exit} f' "$ROOT/SKILL.md")"
@@ -48,6 +52,20 @@ if printf '%s\n' "$fm" | grep -qE '^user-invocable:[[:space:]]*false'; then bad 
 echo "== project map bootstrap contract =="
 grep -q 'Launcher / menu' "$ROOT/SKILL.md" && ok "canonical skill documents Launcher mode" || bad "missing Launcher mode in SKILL.md"
 grep -q 'Launcher mode' "$ROOT/reference.md" && ok "reference documents Launcher mode" || bad "missing Launcher mode in reference.md"
+grep -q 'Natural mode aliases' "$ROOT/SKILL.md" && ok "canonical skill documents natural mode aliases" || bad "missing natural mode aliases in SKILL.md"
+grep -q 'Natural mode aliases' "$ROOT/reference.md" && ok "reference documents natural mode aliases" || bad "missing natural mode aliases in reference.md"
+for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'kimiflow review' 'kimiflow audit' 'kimiflow fix' 'kimiflow quick'; do
+  grep -q "$term" "$ROOT/README.md" && ok "README documents mode alias: $term" || bad "README missing mode alias: $term"
+done
+grep -q 'pre-build approval stop' "$ROOT/SKILL.md" && ok "full mode includes pre-build approval stop" || bad "full mode missing pre-build approval stop"
+if grep -q 'kimiflow grill.*no code' "$ROOT/reference.md" \
+  && grep -q 'kimiflow plan.*no code' "$ROOT/reference.md" \
+  && grep -q 'kimiflow review.*no code' "$ROOT/reference.md" \
+  && grep -q 'kimiflow audit.*no code' "$ROOT/reference.md"; then
+  ok "launcher documents no-code aliases"
+else
+  bad "launcher docs missing no-code alias rule"
+fi
 grep -q 'Resume safety check' "$ROOT/reference.md" && ok "reference documents resume safety check" || bad "missing resume safety check in reference.md"
 if [ -x "$ROOT/hooks/launcher-status.sh" ] && bash -n "$ROOT/hooks/launcher-status.sh" 2>/dev/null; then ok "launcher status helper ok"; else bad "launcher status helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-launcher-status.sh" ] && bash -n "$ROOT/hooks/test-launcher-status.sh" 2>/dev/null; then ok "launcher status test ok"; else bad "launcher status test missing/not-exec/bad"; fi

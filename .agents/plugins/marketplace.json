@@ -2,7 +2,7 @@
   "name": "kimiflow",
   "interface": {
     "displayName": "kimiflow",
-    "shortDescription": "Kimiflow launcher, gates, memory, and background handles for Codex"
+    "shortDescription": "Kimiflow full/grill/plan/build/quick/review/audit/fix modes, gates, memory, and background handles for Codex"
   },
   "plugins": [
     {

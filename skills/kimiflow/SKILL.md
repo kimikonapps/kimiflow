@@ -16,8 +16,10 @@ Treat these as explicit Kimiflow requests:
 - `$kimiflow`
 - `@kimiflow`
 - `$kimiflow --launcher` / `$kimiflow --menu`
+- `$kimiflow full|grill|plan|build|quick|review|audit|fix`
 - `$kimiflow <feature-or-bug>`
 - `@kimiflow <feature-or-bug>`
+- `kimiflow full`, `kimiflow grill`, `kimiflow plan`, `kimiflow build`, `kimiflow quick`, `kimiflow review`, `kimiflow audit`, `kimiflow fix`
 - `run kimiflow ...`
 - `with kimiflow ...`
 - `build/fix this through the Kimiflow gates`
@@ -38,6 +40,7 @@ Apply the canonical Kimiflow workflow from `$KIMIFLOW_PLUGIN_ROOT/SKILL.md` with
 
 - `/kimiflow` in user-facing text means `$kimiflow` or an explicit "run Kimiflow" prompt in Codex.
 - `/kimiflow`, `/kimiflow --launcher`, and `/kimiflow --menu` mean `$kimiflow`, `$kimiflow --launcher`, and `$kimiflow --menu` in Codex. Empty or vague explicit Kimiflow invocations open the context-aware launcher and must use `$KIMIFLOW_PLUGIN_ROOT/hooks/launcher-status.sh` for the status snapshot.
+- `/kimiflow full|grill|plan|build|quick|review|audit|fix` means `$kimiflow full|grill|plan|build|quick|review|audit|fix` in Codex. These are first-class natural mode aliases, not loose suggestions: `full` forces the strict full loop with grill/spec and a pre-build approval stop; `grill`, `plan`, `review`, and `audit` are no-code modes until a later approval or selected fix; `fix` maps to fix mode; `review` maps to existing-feature/current-change review.
 - `/kimiflow --project-map <quick|standard|deep|skip>` means `$kimiflow --project-map <quick|standard|deep|skip>` in Codex. Missing maps, per-section staleness checks, `coverage`-based Phase-2 depth (`compressed|targeted|full`), recommended-but-skippable delta refreshes, focus selection, storage targets, and Improve/Docs publishing use the same canonical Project Map rules and `hooks/project-map-status.sh`. Repo docs are publish-safe derivatives only; raw `.kimiflow/project/` maps and sensitive findings stay local/private unless the user explicitly overrides that policy.
 - `/kimiflow --verify-feature <feature-or-path>` means `$kimiflow --verify-feature <feature-or-path>` in Codex. Existing feature checks are review-only and use the canonical lens workflow from `reference.md`: small/fast read-only lens agents may collect candidate issues when available, but the Codex orchestrator must verify candidates before promoting them to findings.
 - Phase-7 code review uses the canonical Review Ensemble from `reference.md`: build one compact review packet, run focused `bug-regression`, `failure-security`, and when relevant `integration-contract` candidate lenses, then let the Codex orchestrator verify candidates before writing canonical `FINDING` lines to the gate. Raw `CANDIDATE` files never count as blockers until promoted.

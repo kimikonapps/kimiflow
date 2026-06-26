@@ -39,15 +39,35 @@ Was willst du tun?
 2. Projektkarte prüfen/aktualisieren
 3. Offene Findings ansehen/abarbeiten
 4. Geparkten Run fortsetzen
-5. Bug fixen
-6. Feature bauen
-7. Verbesserungen priorisieren
-8. Doku schreiben/aktualisieren
-9. Idee/unklaren Auftrag ausarbeiten
-10. Eingebautes Feature prüfen
-11. Memory/Recall prüfen oder kuratieren
-12. Background Handles ansehen/einsammeln
+5. Full Loop starten (grill + plan + Freigabe vor Build)
+6. Grill / Spec klären
+7. Plan vorbereiten
+8. Freigegebenen Plan bauen
+9. Quick Fix/Feature
+10. Bug fixen
+11. Eingebautes Feature prüfen
+12. Audit / Refactoring-Hebel finden
+13. Verbesserungen priorisieren
+14. Doku schreiben/aktualisieren
+15. Memory/Recall prüfen oder kuratieren
+16. Background Handles ansehen/einsammeln
 ```
+
+**Natural mode aliases:** users may type short mode words instead of remembering flags. Treat `/kimiflow full`,
+`$kimiflow full`, `@kimiflow full`, or plain "kimiflow full" as the same alias family. If the target is omitted,
+use the current conversation topic only when it is unambiguous; otherwise ask one plain-language question.
+
+- `kimiflow full` — strict full loop: full grill/spec, understanding/research, plan, plan-gate, then STOP before
+  implementation for approval. This is the safe default when the user says they want the thorough Kimiflow flow.
+- `kimiflow grill` — clarify/spec only, no code.
+- `kimiflow plan` — clarify + understand + plan + plan-gate, then park/resume, no code.
+- `kimiflow build` — implement an already-approved/prepared plan; if none exists, ask whether to run `full`,
+  `plan`, or `quick`.
+- `kimiflow quick` — intentionally lean small/trivial feature/fix path.
+- `kimiflow review` — read-only existing-feature/current-change review, no code.
+- `kimiflow audit` — read-only cleanup/refactoring scan first, no code until a slice is approved.
+- `kimiflow fix` — bug flow with reproduction/Red evidence, root-cause proof, current fix research, and Green
+  evidence.
 
 If `.kimiflow/project/INDEX.json` is missing, bias the first menu toward Project Map Bootstrap:
 `standard (recommended)` / `quick` / `deep` / `skip`. If a map exists, use it first: read `INDEX.json`,
@@ -104,6 +124,9 @@ hygiene pass, not an implementation mode:
   check whether an already-built feature really works, whether frontend/backend/API pieces are wired together, or
   whether tests/docs cover the delivered behavior. It is review-only; confirmed findings become fix/improve choices,
   not automatic edits.
+- Natural aliases: show `full`, `grill`, `plan`, `build`, `quick`, `review`, `audit`, and `fix` as shortcuts in
+  launcher text. `full` always includes the grill/spec phase and the pre-build approval stop; `grill`, `plan`,
+  `review`, and `audit` are no-code until the user explicitly approves a later build/fix.
 - Memory: list `MEMORY.md` budget, learning counts by status, vault availability, and curation reasons. Offer
   `recall for current task`, `curate index`, `show current learnings`, `back`; do not dump full Vault notes or
   full `LEARNINGS.jsonl`.

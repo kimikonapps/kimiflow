@@ -6,6 +6,20 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.1.44
+
+Ship **natural Kimiflow mode shortcuts** for Claude Code and Codex.
+
+### Added
+- Added first-class `full`, `grill`, `plan`, `build`, `quick`, `review`, `audit`, and `fix` aliases to the
+  canonical Kimiflow contract, Codex wrapper, launcher docs, README, and plugin metadata.
+- `full` now explicitly forces the strict full loop with grill/spec, research, plan-gate, and a pre-build approval
+  stop before implementation.
+
+### Changed
+- Install smokes now verify the alias contract across Claude Code, Codex, README, launcher docs, and plugin metadata
+  with stricter checks for the no-code aliases.
+
 ## 0.1.43
 
 

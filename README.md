@@ -143,11 +143,26 @@ What is **not** mechanical (model-judged, by design): the scope classification, 
 /kimiflow --project-map standard  # recommended, skippable project map bootstrap
 ```
 
+Natural shortcuts:
+
+```text
+kimiflow full    # strict: grill/spec + research + plan-gate, then stop before build approval
+kimiflow grill   # clarify/spec only; no code
+kimiflow plan    # prepare plan + acceptance criteria; no code
+kimiflow build   # build an approved/prepared plan
+kimiflow quick   # intentionally lean small change
+kimiflow review  # read-only feature/current-change review
+kimiflow audit   # read-only cleanup/refactoring scan first
+kimiflow fix     # bug flow with Red/Green evidence
+```
+
 In Codex, use the same arguments with `$kimiflow`:
 
 ```text
 $kimiflow
 $kimiflow <feature>
+$kimiflow full
+$kimiflow grill
 $kimiflow --fix <bug>
 $kimiflow --verify-feature <feature-or-path>
 $kimiflow --resume <slug>
@@ -204,6 +219,8 @@ If you invoke kimiflow without a concrete task (`/kimiflow` or `$kimiflow`), it 
 launcher. The launcher first runs `hooks/launcher-status.sh` and summarizes the current project state:
 active session status, background handles, project-map depth/status, memory/recall status, open findings, improvement slices, repo
 docs, dirty working tree, and active or backlog runs. It then routes your choice into the normal Kimiflow modes.
+It also surfaces the short mode aliases (`full`, `grill`, `plan`, `build`, `quick`, `review`, `audit`, `fix`) so
+users can choose the desired depth without memorizing flags.
 
 Backlog/resume is guarded: a parked plan is not implemented blindly if affected files changed since its
 plan commit, or if the plan basis is unknown. In that case kimiflow offers plan revalidation before Phase 5.
@@ -497,11 +514,26 @@ Jedes ✋/✅ sowie der Diagnose- und Commit-Stopp ist ein echtes Gate, kein Pro
 /kimiflow --project-map standard  # empfohlene, überspringbare Projektkarte anlegen
 ```
 
+Natürliche Kurzmodi:
+
+```text
+kimiflow full    # streng: Grill/Spec + Recherche + Plan-Gate, dann Stopp vor Build-Freigabe
+kimiflow grill   # nur klären/specen; kein Code
+kimiflow plan    # Plan + Akzeptanzkriterien vorbereiten; kein Code
+kimiflow build   # freigegebenen/vorbereiteten Plan bauen
+kimiflow quick   # bewusst schlanke kleine Änderung
+kimiflow review  # read-only Feature-/Diff-Prüfung
+kimiflow audit   # read-only Cleanup-/Refactoring-Scan zuerst
+kimiflow fix     # Bugflow mit Red/Green-Evidenz
+```
+
 In Codex nutzt du dieselben Argumente mit `$kimiflow`:
 
 ```text
 $kimiflow
 $kimiflow <feature>
+$kimiflow full
+$kimiflow grill
 $kimiflow --fix <bug>
 $kimiflow --verify-feature <feature-or-path>
 $kimiflow --resume <slug>
@@ -559,7 +591,8 @@ Wenn du kimiflow ohne konkreten Auftrag startest (`/kimiflow` oder `$kimiflow`),
 kontextbewussten Launcher. Der Launcher ruft zuerst `hooks/launcher-status.sh` auf und fasst den
 Projektzustand zusammen: aktive Session, Background Handles, Projektkarten-Tiefe/-Status, Memory-/Recall-Status, offene Findings,
 Verbesserungs-Slices, Repo-Doku, dirty Working Tree und aktive oder geparkte Runs. Deine Auswahl wird danach
-in den normalen Kimiflow-Modus geroutet.
+in den normalen Kimiflow-Modus geroutet. Er zeigt auch die Kurzmodi (`full`, `grill`, `plan`, `build`, `quick`,
+`review`, `audit`, `fix`), damit du die gewünschte Tiefe ohne Flag-Wissen auswählen kannst.
 
 Resume ist abgesichert: Ein geparkter Plan wird nicht blind umgesetzt, wenn betroffene Dateien seit dem
 Plan-Commit geändert wurden oder die Plan-Basis unbekannt ist. Dann bietet kimiflow vor Phase 5 eine

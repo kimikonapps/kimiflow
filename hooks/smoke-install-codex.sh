@@ -29,10 +29,14 @@ jq -e '((.interface.longDescription // "") + " " + (.description // "")) | test(
   && ok "codex plugin describes code-review ensemble" || bad "codex plugin description does not mention code-review ensemble"
 jq -e '((.interface.longDescription // "") + " " + (.description // "") + " " + ((.interface.defaultPrompt // []) | join(" "))) | test("background handles"; "i")' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
   && ok "codex plugin describes background handles" || bad "codex plugin description does not mention background handles"
+jq -e '((.interface.longDescription // "") + " " + (.interface.shortDescription // "") + " " + (.description // "") + " " + ((.interface.defaultPrompt // []) | join(" "))) | test("full/grill/plan/build/quick/review/audit/fix"; "i") and test("kimiflow full"; "i") and test("grill"; "i") and test("plan"; "i")' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
+  && ok "codex plugin exposes natural mode aliases" || bad "codex plugin natural mode aliases missing"
 jq -e '.name == "kimiflow" and (.plugins[] | select(.name == "kimiflow" and .source.path == "./"))' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
   && ok "codex marketplace entry" || bad "codex marketplace entry"
 jq -e '[.. | strings] | join(" ") | test("background handles"; "i")' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
   && ok "codex marketplace describes background handles" || bad "codex marketplace missing background handles"
+jq -e '[.. | strings] | join(" ") | test("full/grill/plan/build/quick/review/audit/fix"; "i")' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
+  && ok "codex marketplace describes natural mode aliases" || bad "codex marketplace missing natural mode aliases"
 jq -e '[.hooks[]?[]?.hooks[]? | select(.type == "command")] | length == 5 and all(.[]; (.name // "" | length > 0) and (.description // "" | length > 0) and (.statusMessage // "" | length > 0))' "$ROOT/hooks.json" >/dev/null 2>&1 \
   && ok "codex plugin hooks are labelled" || bad "codex plugin hook labels missing"
 
@@ -52,6 +56,24 @@ grep -q -- '--verify-feature <feature-or-path>' "$SKILL" && ok "Codex wrapper ma
 grep -q 'launcher-status.sh' "$SKILL" && ok "Codex wrapper maps launcher status helper" || bad "Codex wrapper missing launcher status helper"
 grep -q 'Launcher / menu' "$ROOT/SKILL.md" && ok "canonical Launcher mode present" || bad "canonical Launcher mode missing"
 grep -q 'Launcher mode' "$ROOT/reference.md" && ok "canonical Launcher mode documented" || bad "canonical Launcher mode docs missing"
+grep -q 'Natural mode aliases' "$ROOT/SKILL.md" && ok "canonical natural mode aliases present" || bad "canonical natural mode aliases missing"
+grep -q 'Natural mode aliases' "$ROOT/reference.md" && ok "canonical natural mode aliases documented" || bad "canonical natural mode aliases docs missing"
+grep -q 'full|grill|plan|build|quick|review|audit|fix' "$SKILL" && ok "Codex wrapper maps natural mode aliases" || bad "Codex wrapper missing natural mode aliases"
+for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'kimiflow quick' 'kimiflow review' 'kimiflow audit' 'kimiflow fix'; do
+  grep -q "$term" "$SKILL" && ok "Codex wrapper documents plain alias: $term" || bad "Codex wrapper missing plain alias: $term"
+done
+for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'kimiflow review' 'kimiflow audit' 'kimiflow fix' 'kimiflow quick'; do
+  grep -q "$term" "$ROOT/README.md" && ok "README documents mode alias: $term" || bad "README missing mode alias: $term"
+done
+grep -q 'pre-build approval stop' "$ROOT/SKILL.md" && ok "full mode includes pre-build approval stop" || bad "full mode missing pre-build approval stop"
+if grep -q 'kimiflow grill.*no code' "$ROOT/reference.md" \
+  && grep -q 'kimiflow plan.*no code' "$ROOT/reference.md" \
+  && grep -q 'kimiflow review.*no code' "$ROOT/reference.md" \
+  && grep -q 'kimiflow audit.*no code' "$ROOT/reference.md"; then
+  ok "launcher documents no-code aliases"
+else
+  bad "launcher docs missing no-code alias rule"
+fi
 grep -q 'Resume safety check' "$ROOT/reference.md" && ok "resume safety check documented" || bad "resume safety check missing"
 if [ -x "$ROOT/hooks/launcher-status.sh" ] && bash -n "$ROOT/hooks/launcher-status.sh" 2>/dev/null; then ok "launcher status helper ok"; else bad "launcher status helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-launcher-status.sh" ] && bash -n "$ROOT/hooks/test-launcher-status.sh" 2>/dev/null; then ok "launcher status test ok"; else bad "launcher status test missing/not-exec/bad"; fi
