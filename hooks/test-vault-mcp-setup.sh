@@ -19,6 +19,12 @@ not_contains() {
   if printf '%s\n' "$text" | grep -Fq "$needle"; then fail "$name"; else pass "$name"; fi
 }
 
+if grep -Fq '.tmp.$$' "$ROOT/hooks/vault-mcp-setup.sh"; then
+  fail "setup_uses_unpredictable_temp_files"
+else
+  pass "setup_uses_unpredictable_temp_files"
+fi
+
 out="$(OBSIDIAN_API_KEY=fixture-token "$ROOT/hooks/vault-mcp-setup.sh" --host all --url https://127.0.0.1:27124 --data-dir "$WORK" 2>&1)"
 contains "$out" 'bearer_token_env_var = "OBSIDIAN_API_KEY"' "codex_snippet_uses_env_token_reference"
 contains "$out" '"headersHelper": "' "claude_snippet_uses_headers_helper"

@@ -93,9 +93,9 @@ host_includes() {
 write_headers_helper() {
   local helper="$1" tmp
   mkdir -p "$(dirname "$helper")" || die "cannot create helper directory: $(dirname "$helper")"
-  tmp="$helper.tmp.$$"
   umask 077
-  cat > "$tmp" <<'HELPER'
+  tmp="$(mktemp "${helper}.tmp.XXXXXX")" || die "cannot create temporary helper: $helper"
+  if ! cat > "$tmp" <<'HELPER'
 #!/usr/bin/env bash
 set -u
 
@@ -125,7 +125,14 @@ else
   printf '{"Authorization":"Bearer %s"}\n' "$escaped"
 fi
 HELPER
-  mv "$tmp" "$helper" || die "cannot write helper: $helper"
+  then
+    rm -f "$tmp"
+    die "cannot write temporary helper: $helper"
+  fi
+  mv "$tmp" "$helper" || {
+    rm -f "$tmp"
+    die "cannot write helper: $helper"
+  }
   chmod 700 "$helper" || die "cannot chmod helper: $helper"
 }
 
@@ -173,26 +180,41 @@ write_codex_config() {
   dir="$(dirname "$config")"
   mkdir -p "$dir" || die "cannot create Codex config directory: $dir"
   [ -f "$config" ] && had_content=1
-  tmp="$config.tmp.$$"
+  tmp="$(mktemp "${config}.tmp.XXXXXX")" || die "cannot create temporary Codex config: $config"
   if [ -f "$config" ]; then
     awk '
       /^\[\[?mcp_servers\.obsidian(\]|\.)/ { skip = 1; next }
       /^\[\[?[^]]+\]\]?[[:space:]]*$/ { skip = 0 }
       !skip { print }
-    ' "$config" > "$tmp" || die "cannot rewrite Codex config: $config"
+    ' "$config" > "$tmp" || {
+      rm -f "$tmp"
+      die "cannot rewrite Codex config: $config"
+    }
   else
-    : > "$tmp" || die "cannot create Codex config: $config"
+    : > "$tmp" || {
+      rm -f "$tmp"
+      die "cannot create Codex config: $config"
+    }
   fi
   if [ "$had_content" -eq 1 ] && [ -s "$tmp" ]; then
-    printf '\n' >> "$tmp"
+    printf '\n' >> "$tmp" || {
+      rm -f "$tmp"
+      die "cannot append Codex config spacing: $config"
+    }
   fi
   {
     printf '[mcp_servers.obsidian]\n'
     printf 'url = "%s"\n' "$mcp_url"
     printf 'bearer_token_env_var = "OBSIDIAN_API_KEY"\n'
     printf 'default_tools_approval_mode = "prompt"\n'
-  } >> "$tmp"
-  mv "$tmp" "$config" || die "cannot update Codex config: $config"
+  } >> "$tmp" || {
+    rm -f "$tmp"
+    die "cannot append Codex config: $config"
+  }
+  mv "$tmp" "$config" || {
+    rm -f "$tmp"
+    die "cannot update Codex config: $config"
+  }
   printf 'Updated Codex config: %s\n' "$config"
 }
 
