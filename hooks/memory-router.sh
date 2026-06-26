@@ -5,7 +5,7 @@
 #   memory-router.sh status [--root <path>] [--pretty]
 #   memory-router.sh recall --query <text>|--query-file <path> [--root <path>] [--max <n>] [--write <path>] [--pretty]
 #   memory-router.sh history [--query <text>|--query-file <path>] [--root <path>] [--max <n>] [--write] [--pretty]
-#   memory-router.sh metrics [--root <path>] [--pretty]
+#   memory-router.sh metrics [--root <path>] [--global] [--global-purge] [--pretty]
 #   memory-router.sh classify --input <path>|--text <text> [--pretty]
 #   memory-router.sh record --summary <text> --topic <topic> --evidence <ref>... [--root <path>] [--kind <kind>] [--scope <scope>] [--confidence <level>] [--sensitivity <level>] [--status <status>]
 #   memory-router.sh review-run --run <path> [--root <path>] [--write] [--pretty] [--skip <reason>]
@@ -263,6 +263,7 @@ economics_summary_json() {
         estimated_avoided_scan_tokens: 0,
         net_estimated_tokens_saved: 0
       },
+      estimated_savings_percent: null,
       averages: {
         net_estimated_tokens_saved_per_run: 0,
         recall_hit_count_per_run: 0,
@@ -344,6 +345,7 @@ economics_summary_json() {
           estimated_avoided_scan_tokens: $avoided,
           net_estimated_tokens_saved: $net
         },
+        estimated_savings_percent: (if $avoided > 0 then ((($net * 100) / $avoided) | floor) else null end),
         averages: {
           net_estimated_tokens_saved_per_run: (if $n > 0 then (($net / $n) | floor) else 0 end),
           recall_hit_count_per_run: (if $n > 0 then (($hits / $n) | floor) else 0 end),
@@ -359,6 +361,237 @@ economics_summary_json() {
         )
       }
   ' "$economics_file"
+}
+
+global_metrics_enabled() {
+  case "${KIMIFLOW_GLOBAL_METRICS:-on}" in
+    off|OFF|0|false|FALSE|no|NO) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+global_metrics_base_dir() {
+  local base="${KIMIFLOW_HOME:-}"
+  if [ -z "$base" ]; then
+    [ -n "${HOME:-}" ] || return 1
+    base="$HOME/.kimiflow"
+  fi
+  [ -n "$base" ] && [ "$base" != "/" ] || return 1
+  printf '%s/metrics' "$base"
+}
+
+global_metrics_display_path() {
+  printf '~/.kimiflow/metrics/token-economics.jsonl'
+}
+
+hash_text() {
+  local out
+  if command -v shasum >/dev/null 2>&1; then
+    out="$(shasum -a 256 2>/dev/null | awk '{print $1}')"
+    if [ -n "$out" ]; then
+      printf '%s\n' "$out"
+      return 0
+    fi
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    out="$(sha256sum 2>/dev/null | awk '{print $1}')"
+    if [ -n "$out" ]; then
+      printf '%s\n' "$out"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+ensure_global_metrics_salt() {
+  local dir="$1" salt_file="$dir/salt" salt old_umask
+  mkdir -p "$dir" || return 1
+  chmod 700 "$dir" 2>/dev/null || true
+  if [ ! -f "$salt_file" ]; then
+    if command -v openssl >/dev/null 2>&1; then
+      salt="$(openssl rand -hex 32 2>/dev/null || true)"
+    fi
+    [ -n "${salt:-}" ] || salt="$(printf '%s:%s:%s\n' "$(iso_now)" "$$" "${RANDOM:-0}" | hash_text || true)"
+    [ -n "${salt:-}" ] || return 1
+    old_umask="$(umask)"
+    umask 077
+    if ! printf '%s\n' "$salt" > "$salt_file"; then
+      umask "$old_umask"
+      return 1
+    fi
+    umask "$old_umask"
+    chmod 600 "$salt_file" 2>/dev/null || true
+  fi
+  sed -n '1p' "$salt_file" 2>/dev/null
+}
+
+anonymous_hash_id() {
+  local salt="$1" value="$2"
+  printf '%s:%s' "$salt" "$value" | hash_text
+}
+
+project_size_bucket() {
+  local root="$1" count
+  count="$(git -C "$root" ls-files 2>/dev/null | wc -l | tr -d '[:space:]')"
+  case "$count" in ''|*[!0-9]*) count=0 ;; esac
+  if [ "$count" -lt 200 ]; then
+    printf 'small'
+  elif [ "$count" -lt 1000 ]; then
+    printf 'medium'
+  else
+    printf 'large'
+  fi
+}
+
+run_type_from_state() {
+  local run_dir="$1" state="$run_dir/STATE.md" mode=""
+  if [ -f "$state" ]; then
+    mode="$(awk -F': *' '
+      {
+        line = $0
+        gsub(/\r/, "", line)
+        gsub(/\*\*/, "", line)
+        sub(/^[[:space:]]*-[[:space:]]*/, "", line)
+        if (tolower(line) ~ /^mode:[[:space:]]*/) {
+          sub(/^[Mm]ode:[[:space:]]*/, "", line)
+          print tolower(line)
+          exit
+        }
+      }
+    ' "$state" 2>/dev/null)"
+  fi
+  case "$mode" in
+    *fix*|*bug*) printf 'bugfix' ;;
+    *audit*) printf 'audit' ;;
+    *doc*) printf 'docs' ;;
+    *refactor*) printf 'refactor' ;;
+    *feature*) printf 'feature' ;;
+    *)
+      if [ -f "$run_dir/PROBLEM.md" ] || [ -f "$run_dir/DIAGNOSIS.md" ]; then
+        printf 'bugfix'
+      elif [ -f "$run_dir/AUDIT.md" ] || [ -f "$run_dir/AUDIT-INTENT.md" ]; then
+        printf 'audit'
+      else
+        printf 'unknown'
+      fi
+      ;;
+  esac
+}
+
+global_efficiency_summary_json() {
+  local dir file enabled_json
+  if global_metrics_enabled; then enabled_json=true; else enabled_json=false; fi
+  dir="$(global_metrics_base_dir 2>/dev/null || true)"
+  file="$dir/token-economics.jsonl"
+  if [ "$enabled_json" != true ] || [ -z "$dir" ] || [ ! -f "$file" ]; then
+    jq -n \
+      --arg path "$(global_metrics_display_path)" \
+      --argjson enabled "$enabled_json" \
+      '{
+        enabled: $enabled,
+        present: false,
+        path: $path,
+        scope: "global_local_anonymous",
+        runs_tracked: 0,
+        projects_tracked: 0,
+        confidence: "none",
+        verdict: "no_data",
+        estimated_savings_percent: null,
+        action_required: false,
+        by_result: {},
+        totals: {
+          always_on_tokens: 0,
+          user_memory_tokens: 0,
+          recall_tokens: 0,
+          recall_hit_count: 0,
+          used_hit_count: 0,
+          estimated_avoided_scan_tokens: 0,
+          net_estimated_tokens_saved: 0
+        },
+        averages: {
+          net_estimated_tokens_saved_per_run: 0,
+          recall_hit_count_per_run: 0,
+          used_hit_count_per_run: 0
+        },
+        last_recorded_day: null,
+        privacy: {
+          local_only: true,
+          stores_content: false,
+          stores_paths: false,
+          stores_repo_name: false,
+          stores_prompts: false,
+          project_id_salted_hash: true
+        },
+        note: (if $enabled then "No global local efficiency rows recorded yet." else "Global local efficiency stats are disabled by KIMIFLOW_GLOBAL_METRICS." end)
+      }'
+    return 0
+  fi
+
+  jq -Rsc --arg path "$(global_metrics_display_path)" '
+    def n: tonumber? // 0;
+    split("\n")
+    | map(select(length > 0) | (fromjson? // empty)) as $rows
+    | ($rows | length) as $n
+    | ([$rows[]?.net_estimated_tokens_saved // 0] | add // 0) as $net
+    | ([$rows[]?.recall_hit_count // 0] | add // 0) as $hits
+    | ([$rows[]?.used_hit_count // 0] | add // 0) as $used
+    | ([$rows[]?.estimated_avoided_scan_tokens // 0] | add // 0) as $avoided
+    | ([$rows[]?.always_on_tokens // 0] | add // 0) as $always
+    | ([$rows[]?.user_memory_tokens // 0] | add // 0) as $user
+    | ([$rows[]?.recall_tokens // 0] | add // 0) as $recall_tokens
+    | ($rows | map(select((.result // "") == "saving")) | length) as $saving
+    | ($rows | map(select((.result // "") == "waste")) | length) as $waste
+    | {
+        enabled: true,
+        present: true,
+        path: $path,
+        scope: "global_local_anonymous",
+        runs_tracked: $n,
+        projects_tracked: ($rows | map(.project_id // empty) | unique | length),
+        confidence: (if $n == 0 then "none" elif $n < 8 then "low" elif $n < 20 then "medium" else "high" end),
+        verdict: (
+          if $n == 0 then "no_data"
+          elif $n < 8 then "insufficient_data"
+          elif ($net > 0 and $saving >= $waste) then "saving_likely"
+          elif ($waste > $saving or $net < 0) then "waste_risk"
+          else "neutral"
+          end
+        ),
+        estimated_savings_percent: (if $avoided > 0 then ((($net * 100) / $avoided) | floor) else null end),
+        action_required: (if $n >= 8 and ($waste > $saving or $net < 0) then true else false end),
+        by_result: (reduce $rows[]? as $row ({}; ($row.result // "unknown") as $result | .[$result] = ((.[$result] // 0) + 1))),
+        totals: {
+          always_on_tokens: $always,
+          user_memory_tokens: $user,
+          recall_tokens: $recall_tokens,
+          recall_hit_count: $hits,
+          used_hit_count: $used,
+          estimated_avoided_scan_tokens: $avoided,
+          net_estimated_tokens_saved: $net
+        },
+        averages: {
+          net_estimated_tokens_saved_per_run: (if $n > 0 then (($net / $n) | floor) else 0 end),
+          recall_hit_count_per_run: (if $n > 0 then (($hits / $n) | floor) else 0 end),
+          used_hit_count_per_run: (if $n > 0 then (($used / $n) | floor) else 0 end)
+        },
+        last_recorded_day: ([$rows[]?.recorded_day // empty] | sort | last // null),
+        privacy: {
+          local_only: true,
+          stores_content: false,
+          stores_paths: false,
+          stores_repo_name: false,
+          stores_prompts: false,
+          project_id_salted_hash: true
+        },
+        note: (
+          if $n < 8 then "Too few global local runs for a reliable savings claim; show as an estimate only."
+          elif ($net > 0 and $saving >= $waste) then "Global local telemetry suggests memory is likely saving tokens."
+          elif ($waste > $saving or $net < 0) then "Global local telemetry suggests memory may cost more than it saves."
+          else "Global local telemetry is roughly neutral."
+          end
+        )
+      }
+  ' "$file"
 }
 
 learning_lifecycle_json() {
@@ -1114,7 +1347,7 @@ status_json() {
   local provider_manifest="$project/VAULT-PROVIDER.json"
   local proposal_rows="$project/PROPOSALS.jsonl"
 
-  local memory_tokens user_tokens memory_present learnings_present user_memory_present user_rows_present index_present recall_present recall_db_present run_history_present usage_present economics_present provider_present proposal_rows_present learning_json user_json proposals_json usage_json economics_json lifecycle_json provider_json provider_sync_json vault_json sqlite_available
+  local memory_tokens user_tokens memory_present learnings_present user_memory_present user_rows_present index_present recall_present recall_db_present run_history_present usage_present economics_present provider_present proposal_rows_present learning_json user_json proposals_json usage_json economics_json global_efficiency_json lifecycle_json provider_json provider_sync_json vault_json sqlite_available
   memory_tokens="$(word_count_file "$memory")"
   user_tokens="$(word_count_file "$user_memory")"
   memory_present=false; [ -f "$memory" ] && memory_present=true
@@ -1135,6 +1368,7 @@ status_json() {
   proposals_json="$(proposal_summary_json "$proposal_rows")"
   usage_json="$(usage_summary_json "$usage_file")"
   economics_json="$(economics_summary_json "$economics_file")"
+  global_efficiency_json="$(global_efficiency_summary_json)"
   lifecycle_json="$(learning_lifecycle_json "$learnings" "$usage_file")"
   provider_json="$(provider_status_json "$provider_manifest")"
   provider_sync_json="$(provider_sync_status_json "$root" "$learnings" "$provider_manifest")"
@@ -1177,6 +1411,7 @@ status_json() {
     --argjson proposals "$proposals_json" \
     --argjson usage "$usage_json" \
     --argjson economics "$economics_json" \
+    --argjson global_efficiency "$global_efficiency_json" \
     --argjson lifecycle "$lifecycle_json" \
     --argjson provider "$provider_json" \
     --argjson provider_sync "$provider_sync_json" \
@@ -1239,6 +1474,7 @@ status_json() {
       lifecycle: $lifecycle,
       usage: ($usage + {present: $usage_present, path: $usage_path}),
       economics: ($economics + {present: $economics_present, path: $economics_path}),
+      global_efficiency: $global_efficiency,
       proposals: $proposals,
       history: {
         present: $run_history_present,
@@ -1738,10 +1974,12 @@ cmd_history() {
 }
 
 cmd_metrics() {
-  local root="" pretty=0
+  local root="" pretty=0 global_only=0 global_purge=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --root) shift; root="${1:-}" ;;
+      --global) global_only=1 ;;
+      --global-purge) global_purge=1 ;;
       --pretty) pretty=1 ;;
       --help|-h) usage; exit 0 ;;
       *) die "metrics: unknown argument: $1" 2 ;;
@@ -1749,11 +1987,30 @@ cmd_metrics() {
     shift
   done
   need_jq
+  if [ "$global_purge" -eq 1 ]; then
+    local dir file salt_file removed=false salt_removed=false
+    dir="$(global_metrics_base_dir 2>/dev/null || true)"
+    file="$dir/token-economics.jsonl"
+    salt_file="$dir/salt"
+    if [ -n "$dir" ] && [ -f "$file" ]; then
+      rm -f "$file" && removed=true
+    fi
+    if [ -n "$dir" ] && [ -f "$salt_file" ]; then
+      rm -f "$salt_file" && salt_removed=true
+    fi
+    json_print "$(jq -n --arg path "$(global_metrics_display_path)" --argjson removed "$removed" --argjson salt_removed "$salt_removed" '{schema_version: 1, status: "purged", path: $path, removed: $removed, salt_removed: $salt_removed}')" "$pretty"
+    return 0
+  fi
+  if [ "$global_only" -eq 1 ]; then
+    json_print "$(global_efficiency_summary_json)" "$pretty"
+    return 0
+  fi
   root="$(resolve_root "$root")"
-  local usage run_economics out
+  local usage run_economics global_efficiency out
   usage="$(usage_summary_json "$root/.kimiflow/project/MEMORY-USAGE.json")"
   run_economics="$(economics_summary_json "$root/.kimiflow/project/MEMORY-ECONOMICS.jsonl")"
-  out="$(jq -n --argjson usage "$usage" --argjson run_economics "$run_economics" '$usage + {usage: $usage, run_economics: $run_economics}')"
+  global_efficiency="$(global_efficiency_summary_json)"
+  out="$(jq -n --argjson usage "$usage" --argjson run_economics "$run_economics" --argjson global_efficiency "$global_efficiency" '$usage + {usage: $usage, run_economics: $run_economics, global_efficiency: $global_efficiency}')"
   json_print "$out" "$pretty"
 }
 
@@ -2674,20 +2931,102 @@ write_economics_row() {
   mv "$tmp" "$file"
 }
 
+write_global_economics_row() {
+  local root="$1" run_dir="$2" local_row="$3"
+  local dir file salt project_hash run_hash run_type size_bucket host row tmp
+  if ! global_metrics_enabled; then
+    jq -n '{recorded: false, reason: "disabled"}'
+    return 0
+  fi
+  dir="$(global_metrics_base_dir 2>/dev/null || true)"
+  [ -n "$dir" ] || { jq -n '{recorded: false, reason: "home_unavailable"}'; return 0; }
+  salt="$(ensure_global_metrics_salt "$dir" 2>/dev/null || true)"
+  [ -n "$salt" ] || { jq -n '{recorded: false, reason: "salt_unavailable"}'; return 0; }
+
+  project_hash="$(anonymous_hash_id "$salt" "$root" 2>/dev/null || true)"
+  run_hash="$(anonymous_hash_id "$salt" "$root:$(rel_path "$root" "$run_dir")" 2>/dev/null || true)"
+  [ -n "$project_hash" ] && [ -n "$run_hash" ] || { jq -n '{recorded: false, reason: "hash_unavailable"}'; return 0; }
+  run_type="$(run_type_from_state "$run_dir")"
+  size_bucket="$(project_size_bucket "$root")"
+  case "${KIMIFLOW_HOST:-unknown}" in
+    codex|claude) host="${KIMIFLOW_HOST:-unknown}" ;;
+    *) host="unknown" ;;
+  esac
+
+  row="$(printf '%s\n' "$local_row" | jq -c \
+    --arg project_id "$project_hash" \
+    --arg run_id "$run_hash" \
+    --arg recorded_day "$(date_now)" \
+    --arg host "$host" \
+    --arg run_type "$run_type" \
+    --arg project_size_bucket "$size_bucket" \
+    '{
+      schema_version: 1,
+      recorded_day: $recorded_day,
+      host: $host,
+      run_type: $run_type,
+      project_size_bucket: $project_size_bucket,
+      project_id: $project_id,
+      run_id: $run_id,
+      always_on_tokens: ((.always_on_tokens // 0) | tonumber? // 0),
+      user_memory_tokens: ((.user_memory_tokens // 0) | tonumber? // 0),
+      recall_tokens: ((.recall_tokens // 0) | tonumber? // 0),
+      recall_hit_count: ((.recall_hit_count // 0) | tonumber? // 0),
+      used_hit_count: ((.used_hit_count // 0) | tonumber? // 0),
+      estimated_avoided_scan_tokens: ((.estimated_avoided_scan_tokens // 0) | tonumber? // 0),
+      net_estimated_tokens_saved: ((.net_estimated_tokens_saved // 0) | tonumber? // 0),
+      estimated_savings_percent: (if ((.estimated_avoided_scan_tokens // 0) | tonumber? // 0) > 0 then ((((.net_estimated_tokens_saved // 0) | tonumber? // 0) * 100 / ((.estimated_avoided_scan_tokens // 0) | tonumber? // 0)) | floor) else null end),
+      result: ((.result // "unknown") as $result | if (["unknown","saving","neutral","waste"] | index($result)) then $result else "unknown" end),
+      confidence: ((.confidence // "low") as $confidence | if (["none","low","medium","high"] | index($confidence)) then $confidence else "low" end),
+      basis: {
+        heuristic: "directional_estimate_only",
+        stores_content: false,
+        stores_paths: false,
+        local_only: true
+      }
+    }')"
+  mkdir -p "$dir" || { jq -n '{recorded: false, reason: "mkdir_failed"}'; return 0; }
+  chmod 700 "$dir" 2>/dev/null || true
+  file="$dir/token-economics.jsonl"
+  tmp="$(mktemp "${file}.tmp.XXXXXX")" || { jq -n '{recorded: false, reason: "mktemp_failed"}'; return 0; }
+  if [ -f "$file" ]; then
+    jq -Rsc --argjson row "$row" '
+      split("\n")
+      | map(select(length > 0) | (fromjson? // empty))
+      | map(select((.run_id // "") != ($row.run_id // "")))
+      | . + [$row]
+      | .[]
+    ' "$file" > "$tmp" || { rm -f "$tmp"; jq -n '{recorded: false, reason: "write_failed"}'; return 0; }
+  else
+    printf '%s\n' "$row" | jq -c . > "$tmp" || { rm -f "$tmp"; jq -n '{recorded: false, reason: "write_failed"}'; return 0; }
+  fi
+  chmod 600 "$tmp" 2>/dev/null || true
+  mv "$tmp" "$file" || { rm -f "$tmp"; jq -n '{recorded: false, reason: "move_failed"}'; return 0; }
+  chmod 600 "$file" 2>/dev/null || true
+  jq -n --arg path "$(global_metrics_display_path)" --argjson summary "$(global_efficiency_summary_json)" '{
+    recorded: true,
+    path: $path,
+    summary: $summary
+  }'
+}
+
 record_run_economics_json() {
-  local root="$1" run_dir="$2" row summary
+  local root="$1" run_dir="$2" row summary global_update
   row="$(run_economics_row_json "$root" "$run_dir")"
   write_economics_row "$root" "$row"
   summary="$(economics_summary_json "$root/.kimiflow/project/MEMORY-ECONOMICS.jsonl")"
+  global_update="$(write_global_economics_row "$root" "$run_dir" "$row")"
   jq -n \
     --arg path ".kimiflow/project/MEMORY-ECONOMICS.jsonl" \
     --argjson row "$row" \
     --argjson summary "$summary" \
+    --argjson global "$global_update" \
     '{
       recorded: true,
       path: $path,
       row: $row,
-      summary: $summary
+      summary: $summary,
+      global: $global
     }'
 }
 

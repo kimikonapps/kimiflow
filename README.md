@@ -215,9 +215,14 @@ summaries and canonical `findings/*.md` are searchable through history/recall bu
 project facts, classify new learnings, write the required run-close learning review, and curate the index
 without rereading the whole repo or Vault every time. Persisted recall/history writes are measured in
 `MEMORY-USAGE.json`; completed runs append cautious, directional token-efficiency estimates to
-`MEMORY-ECONOMICS.jsonl`; `memory-router.sh metrics` reports legacy usage economics at `.economics` and
-run-economics at `.run_economics`, normalizing older rows to the current `used_hit_count` heuristic. Fewer than
-8 recorded runs are reported as insufficient data, so Kimiflow does not pretend savings are proven too early.
+`MEMORY-ECONOMICS.jsonl`; `memory-router.sh metrics` reports legacy usage economics at `.economics`,
+run-economics at `.run_economics`, and a global local anonymous aggregate at `.global_efficiency`, normalizing
+older rows to the current `used_hit_count` heuristic. Fewer than 8 recorded runs are reported as insufficient
+data, so Kimiflow does not pretend savings are proven too early. The global aggregate lives under
+`~/.kimiflow/metrics/token-economics.jsonl`, can be disabled with `KIMIFLOW_GLOBAL_METRICS=off`, and stores only
+numbers/enums plus salted hash IDs: no code, prompts, repo names, file paths, Vault contents, or learnings text.
+The launcher can show a compact estimate such as "estimated token savings", but it is always labelled as an
+estimate, not billing truth.
 `MEMORY.md` prioritizes frequently used, high-confidence, recent publish-safe learnings instead of forcing every
 row into the prompt.
 
@@ -531,9 +536,14 @@ Memory-Freshness zu prüfen, relevante Projektfakten abzurufen, neue Learnings z
 verpflichtende Run-Abschluss-Review zu schreiben und den Index zu kuratieren, ohne jedes Mal das ganze Repo
 oder den ganzen Vault zu lesen. Persistierte Recall-/History-Snapshots werden in `MEMORY-USAGE.json`
 gemessen; abgeschlossene Runs schreiben vorsichtige Token-Effizienz-Schaetzungen in `MEMORY-ECONOMICS.jsonl`;
-`memory-router.sh metrics` zeigt die bisherige Usage-Economics unter `.economics` und Run-Economics unter `.run_economics`
-und normalisiert aeltere Zeilen auf die aktuelle `used_hit_count`-Heuristik. Unter 8 aufgezeichneten Runs meldet Kimiflow
-`insufficient_data`, damit keine falsche Sparbehauptung entsteht. `MEMORY.md` priorisiert häufig genutzte,
+`memory-router.sh metrics` zeigt die bisherige Usage-Economics unter `.economics`, Run-Economics unter `.run_economics`
+und ein globales lokales anonymes Aggregat unter `.global_efficiency`; aeltere Zeilen werden auf die aktuelle
+`used_hit_count`-Heuristik normalisiert. Unter 8 aufgezeichneten Runs meldet Kimiflow `insufficient_data`, damit
+keine falsche Sparbehauptung entsteht. Das globale Aggregat liegt unter `~/.kimiflow/metrics/token-economics.jsonl`,
+kann mit `KIMIFLOW_GLOBAL_METRICS=off` deaktiviert werden und speichert nur Zahlen/Enums plus gesalzene Hash-IDs:
+keinen Code, keine Prompts, keine Repo-Namen, keine Dateipfade, keine Vault-Inhalte und keine Learnings im Klartext.
+Der Launcher darf daraus eine kompakte Schaetzung wie "geschaetzte Token Savings" anzeigen, aber immer als
+Schaetzung, nie als Abrechnungswahrheit. `MEMORY.md` priorisiert häufig genutzte,
 vertrauenswürdige, aktuelle publish-safe Learnings statt jede Zeile in den Prompt zu laden.
 
 Diese Schicht ist local-first und funktioniert ohne Vault-MCP. `provider status` erkennt eine laufende

@@ -24,6 +24,7 @@ Kimiflow Start
 
 Projektkarte: standard · aktuell
 Memory: 820/900 Tokens · aktuell
+Effizienz: geschätzt 18% Token Savings · 12 Runs · Sicherheit niedrig
 Offene Findings: 4
 Geparkte Runs: 2
 Repo-Doku: vorhanden
@@ -633,7 +634,7 @@ files work without any API key, subscription, or MCP server.
   USER.jsonl         evidence-backed user/workflow preferences
   MEMORY-INDEX.json  cheap lookup/curation index
   MEMORY-USAGE.json  local use_count/last_used plus bounded recall/history cost events
-  MEMORY-ECONOMICS.jsonl run-level directional token-efficiency estimates
+  MEMORY-ECONOMICS.jsonl project-local run-level directional token-efficiency estimates
   RECALL.sqlite      optional local FTS5 recall index
   RECALL.md          last/project recall log, or run-local recall when written there
   RUN-HISTORY.json   last on-demand run/session history snapshot
@@ -662,7 +663,7 @@ plugin-root rule as other helpers):
 memory-router.sh status [--root <path>] [--pretty]
 memory-router.sh recall --query <text>|--query-file <path> [--max <n>] [--write <path>]
 memory-router.sh history [--query <text>|--query-file <path>] [--max <n>] [--write]
-memory-router.sh metrics
+memory-router.sh metrics [--global] [--global-purge]
 memory-router.sh classify --input <path>|--text <text>
 memory-router.sh record --summary <text> --topic <topic> --evidence <ref>...
 memory-router.sh review-run --run <path> [--write] [--skip <reason>]
@@ -738,9 +739,18 @@ directly to repo docs or Vault.
 `use_count`, `last_used_at`, and a bounded event log for recall/history writes: hit count, approximate output-token
 cost, and the recalled keys. A run-local `RECALL.json` is written beside `RECALL.md` so `review-run --write` can
 append one idempotent row to `MEMORY-ECONOMICS.jsonl`: always-on/user memory tokens, recall tokens, recall hits,
-used hits, estimated avoided scan tokens from used hits, net estimate, result (`unknown|saving|neutral|waste`), and confidence.
-This is directional telemetry, not billing truth; fewer than 8 runs report `insufficient_data`. `memory-router.sh
-metrics` keeps legacy usage economics at top-level `.economics` and returns run-economics at `.run_economics`;
+used hits, estimated avoided scan tokens from used hits, net estimate, estimated savings percent, result (`unknown|saving|neutral|waste`), and confidence.
+This is directional telemetry, not billing truth; fewer than 8 runs report `insufficient_data`. `review-run --write`
+also appends a **global local anonymous** row to `~/.kimiflow/metrics/token-economics.jsonl` unless
+`KIMIFLOW_GLOBAL_METRICS=off`. That global row is a strict allowlist of numbers/enums plus salted hash IDs:
+host, run type, project-size bucket, always-on tokens, recall tokens, hit counts, estimated avoided scan tokens,
+net estimate, estimated savings percent, result, and confidence. It never stores code, prompts, Learnings text,
+repo names, branch names, commit messages, file paths, Vault contents, or raw project identifiers; the salt stays
+local on the user's machine. `memory-router.sh metrics` keeps legacy usage economics at top-level `.economics`,
+returns run-economics at `.run_economics`, and returns the anonymous aggregate at `.global_efficiency`;
+`metrics --global` prints only that aggregate, and `metrics --global-purge` deletes the local global JSONL file.
+The launcher may show a single compact line such as `Effizienz: geschätzt 18% Token Savings · 12 Runs · Sicherheit niedrig`;
+it must label the value as estimated and must not show it as proven truth.
 older rows are normalized to the current `used_hit_count` heuristic when summaries are calculated so legacy
 `recall_hit_count` estimates cannot inflate savings.
 `curate --write` folds those metrics into

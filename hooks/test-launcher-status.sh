@@ -8,6 +8,7 @@ MEMORY_ROUTER="$(cd "$(dirname "$0")" && pwd)/memory-router.sh"
 WORK="$(mktemp -d)"
 REPO="$WORK/repo"
 INDEX="$REPO/.kimiflow/project/INDEX.json"
+export KIMIFLOW_HOME="$WORK/home"
 trap 'rm -rf "$WORK"' EXIT
 
 FAILS=0
@@ -32,6 +33,7 @@ hash_file() {
 
 reset_repo() {
   rm -rf "$REPO"
+  rm -rf "$KIMIFLOW_HOME"
   mkdir -p "$REPO/src" "$REPO/docs" "$REPO/.kimiflow/project"
   ( cd "$REPO" && git init -q && git config user.email "kimiflow@example.test" && git config user.name "kimiflow test" )
   printf '.kimiflow/\n' > "$REPO/.gitignore"
@@ -158,9 +160,14 @@ EOF
 cat > "$REPO/.kimiflow/project/VAULT-PROVIDER.json" <<'EOF'
 {"schema_version":1,"type":"obsidian","available":true,"mode":"local-first","vault_path":"","last_prefetch_at":"2026-06-25T00:00:00Z","last_write_at":null,"updated_at":"2026-06-25T00:00:00Z"}
 EOF
+mkdir -p "$KIMIFLOW_HOME/metrics"
+cat > "$KIMIFLOW_HOME/metrics/token-economics.jsonl" <<'EOF'
+{"schema_version":1,"recorded_day":"2026-06-25","host":"codex","run_type":"feature","project_size_bucket":"small","project_id":"anon_project","run_id":"anon_run","always_on_tokens":100,"user_memory_tokens":0,"recall_tokens":100,"recall_hit_count":3,"used_hit_count":1,"estimated_avoided_scan_tokens":1200,"net_estimated_tokens_saved":1000,"estimated_savings_percent":83,"result":"saving","confidence":"medium","basis":{"heuristic":"directional_estimate_only","stores_content":false,"stores_paths":false,"local_only":true}}
+EOF
 out="$(run_status)"
 assert_jq "$out" '.memory.present == true and .memory.learnings.current == 1 and .memory.curation.recommended == true and (.maintenance.reasons | index("memory_curation_recommended"))' "memory_status_reports_index_missing_curation"
 assert_jq "$out" '.memory.history.present == true and .memory.usage.total_uses == 2 and .memory.provider.available == true and .memory.vault.available == true' "launcher_surfaces_history_usage_provider"
+assert_jq "$out" '.efficiency.present == true and .efficiency.runs_tracked == 1 and .efficiency.estimated_savings_percent == 83 and .efficiency.confidence == "low" and .efficiency.privacy.stores_paths == false and .memory.global_efficiency.runs_tracked == 1' "launcher_surfaces_global_efficiency"
 
 "$MEMORY_ROUTER" curate --root "$REPO" --write >/dev/null
 out="$(run_status)"

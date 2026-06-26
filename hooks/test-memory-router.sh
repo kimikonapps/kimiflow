@@ -6,6 +6,7 @@ set -u
 SCRIPT="$(cd "$(dirname "$0")" && pwd)/memory-router.sh"
 WORK="$(mktemp -d)"
 REPO="$WORK/repo"
+export KIMIFLOW_HOME="$WORK/home"
 trap 'rm -rf "$WORK"' EXIT
 
 FAILS=0
@@ -28,6 +29,7 @@ unset KIMIFLOW_VAULT_AVAILABLE KIMIFLOW_OBSIDIAN_URL
 
 reset_repo() {
   rm -rf "$REPO"
+  rm -rf "$KIMIFLOW_HOME"
   mkdir -p "$REPO/src" "$REPO/hooks" "$REPO/.kimiflow/project"
   ( cd "$REPO" && git init -q && git config user.email "kimiflow@example.test" && git config user.name "kimiflow test" )
   ( cd "$REPO" && git remote add origin https://github.com/kimikonapps/kimiflow.git )
@@ -347,7 +349,14 @@ out="$(run_router review-run --run .kimiflow/demo-run --write)"
 assert_jq "$out" '.status == "recorded" and .recorded_count == 4 and .memory_updated == true' "review_run_records_four_questions"
 assert_jq "$out" '.notification.kind == "learning_proposals" and .proposal_update.proposals.pending >= 1' "review_run_reports_learning_notification"
 assert_jq "$out" '.economics.recorded == true and .economics.row.result == "saving" and .economics.row.recall_hit_count >= 1 and .economics.row.used_hit_count >= 1 and .economics.row.estimated_avoided_scan_tokens == (.economics.row.used_hit_count * 1200) and (.economics.row.basis.heuristic | contains("used_hit_count")) and .economics.summary.runs_tracked >= 1' "review_run_records_memory_economics"
+assert_jq "$out" '.economics.global.recorded == true and .economics.global.summary.runs_tracked >= 1 and .economics.global.summary.projects_tracked == 1 and .economics.global.summary.privacy.stores_content == false and .economics.global.summary.privacy.stores_paths == false and .economics.global.summary.estimated_savings_percent != null' "review_run_records_global_efficiency_stats"
 [ -f "$REPO/.kimiflow/project/MEMORY-ECONOMICS.jsonl" ] && pass "review_run_writes_memory_economics_file" || fail "review_run_writes_memory_economics_file"
+[ -f "$KIMIFLOW_HOME/metrics/token-economics.jsonl" ] && pass "review_run_writes_global_efficiency_file" || fail "review_run_writes_global_efficiency_file"
+if grep -q "$REPO\\|demo-run\\|kimikonapps/kimiflow" "$KIMIFLOW_HOME/metrics/token-economics.jsonl"; then
+  fail "global_efficiency_stats_omit_paths_and_repo_names"
+else
+  pass "global_efficiency_stats_omit_paths_and_repo_names"
+fi
 [ -f "$REPO/.kimiflow/demo-run/LEARNING-REVIEW.md" ] && pass "review_run_writes_review" || fail "review_run_writes_review"
 [ -f "$REPO/.kimiflow/project/MEMORY.md" ] && pass "review_run_writes_bounded_memory" || fail "review_run_writes_bounded_memory"
 assert_jq "$(jq -Rsc 'split("\n") | map(select(length > 0) | (fromjson? // empty))' "$REPO/.kimiflow/project/LEARNINGS.jsonl")" 'map(select(.evidence_fingerprints and (.evidence_fingerprints | length > 0 and all(.[]; .status == "current" and (.digest | length > 0) and (.digest_algorithm | length > 0))))) | length >= 4' "review_run_records_evidence_fingerprints"
@@ -357,8 +366,44 @@ assert_jq "$(jq -Rsc 'split("\n") | map(select(length > 0) | (fromjson? // empty
 assert_jq "$(cat "$REPO/.kimiflow/project/MEMORY-INDEX.json")" '.learnings.total >= 8 and (.topics.decisions | length >= 1)' "review_run_refreshes_index"
 out="$(run_router status)"
 assert_jq "$out" '.economics.present == true and .economics.runs_tracked >= 1 and .economics.verdict == "insufficient_data" and .economics.confidence == "low"' "status_reports_memory_economics"
+assert_jq "$out" '.global_efficiency.present == true and .global_efficiency.runs_tracked >= 1 and .global_efficiency.verdict == "insufficient_data" and .global_efficiency.confidence == "low" and .global_efficiency.estimated_savings_percent != null' "status_reports_global_efficiency"
 out="$(run_router metrics)"
 assert_jq "$out" '.usage.events_tracked >= 2 and .economics.recall_writes >= 1 and .run_economics.present == true and .run_economics.totals.net_estimated_tokens_saved > 0' "metrics_reports_memory_economics"
+assert_jq "$out" '.global_efficiency.present == true and .global_efficiency.runs_tracked >= 1 and .global_efficiency.privacy.local_only == true and .global_efficiency.privacy.stores_prompts == false' "metrics_reports_global_efficiency"
+out="$(run_router metrics --global)"
+assert_jq "$out" '.scope == "global_local_anonymous" and .runs_tracked >= 1 and .estimated_savings_percent != null' "metrics_global_only_reports_summary"
+out="$(KIMIFLOW_GLOBAL_METRICS=off run_router metrics --global)"
+assert_jq "$out" '.enabled == false and .present == false and .verdict == "no_data"' "metrics_global_can_be_disabled"
+out="$(env -u HOME KIMIFLOW_HOME= "$SCRIPT" metrics --global)"
+assert_jq "$out" '.enabled == true and .present == false and .verdict == "no_data"' "metrics_global_missing_home_is_no_data"
+mkdir -p "$WORK/nohash"
+cat > "$WORK/nohash/openssl" <<'EOF'
+#!/usr/bin/env bash
+exit 127
+EOF
+cat > "$WORK/nohash/shasum" <<'EOF'
+#!/usr/bin/env bash
+exit 127
+EOF
+cat > "$WORK/nohash/sha256sum" <<'EOF'
+#!/usr/bin/env bash
+exit 127
+EOF
+chmod +x "$WORK/nohash/"*
+mkdir -p "$REPO/.kimiflow/nohash-run"
+global_before="$(wc -l < "$KIMIFLOW_HOME/metrics/token-economics.jsonl" | tr -d '[:space:]')"
+out="$(PATH="$WORK/nohash:$PATH" run_router review-run --run .kimiflow/nohash-run --write --skip "hash unavailable fixture")"
+assert_jq "$out" '.economics.global.recorded == false and .economics.global.reason == "hash_unavailable"' "global_efficiency_requires_strong_hash"
+global_after="$(wc -l < "$KIMIFLOW_HOME/metrics/token-economics.jsonl" | tr -d '[:space:]')"
+if [ "$global_before" = "$global_after" ]; then
+  pass "global_efficiency_no_weak_hash_row"
+else
+  fail "global_efficiency_no_weak_hash_row"
+fi
+out="$(run_router metrics --global-purge)"
+assert_jq "$out" '.status == "purged" and .removed == true and .salt_removed == true' "metrics_global_purge_removes_file"
+[ ! -f "$KIMIFLOW_HOME/metrics/token-economics.jsonl" ] && pass "metrics_global_purge_file_absent" || fail "metrics_global_purge_file_absent"
+[ ! -f "$KIMIFLOW_HOME/metrics/salt" ] && pass "metrics_global_purge_salt_absent" || fail "metrics_global_purge_salt_absent"
 cat >> "$REPO/.kimiflow/project/MEMORY-ECONOMICS.jsonl" <<'EOF'
 {"schema_version":1,"run":".kimiflow/legacy-economics","recorded_at":"2026-06-25T00:00:00Z","always_on_tokens":10,"user_memory_tokens":0,"recall_tokens":20,"recall_hit_count":20,"used_hit_count":1,"estimated_avoided_scan_tokens":999999,"net_estimated_tokens_saved":999969,"result":"saving","confidence":"medium","basis":{"heuristic":"avoided_scan_tokens = recall_hit_count * KIMIFLOW_ECONOMICS_AVOIDED_TOKENS_PER_HIT (default 1200); legacy directional only"}}
 EOF
