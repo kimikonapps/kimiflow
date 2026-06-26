@@ -1,6 +1,6 @@
 {
   "name": "kimiflow",
-  "version": "0.1.37",
+  "version": "0.1.38",
   "description": "Context-aware Kimiflow launcher, feature and bug-fix loop for Codex with mechanical quality gates, project intelligence maps, token-cheap memory/learning recall, Obsidian Terminal MCP setup, health/auth status, and Vault sync handoffs.",
   "author": {
     "name": "kimikon",

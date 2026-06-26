@@ -6,6 +6,20 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.1.38
+
+Ship **memory-economics normalization and commit-hook hardening**.
+
+### Added
+- README now documents the repository structure in English and German, including which generated `.kimiflow/`
+  project-intelligence files should stay local by default.
+
+### Fixed
+- `memory-router.sh metrics` now normalizes older run-economics rows to the current `used_hit_count` heuristic
+  so legacy `recall_hit_count` estimates cannot inflate token-savings totals.
+- `commit-secret-gate.sh` now fails closed for malformed git-like hook payloads inside Kimiflow repositories,
+  while preserving no-op behavior for malformed payloads outside `.kimiflow/` scope.
+
 ## 0.1.37
 
 Ship **Memory Economics and searchable review findings** for the Kimiflow learning loop.

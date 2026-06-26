@@ -740,7 +740,9 @@ cost, and the recalled keys. A run-local `RECALL.json` is written beside `RECALL
 append one idempotent row to `MEMORY-ECONOMICS.jsonl`: always-on/user memory tokens, recall tokens, recall hits,
 used hits, estimated avoided scan tokens from used hits, net estimate, result (`unknown|saving|neutral|waste`), and confidence.
 This is directional telemetry, not billing truth; fewer than 8 runs report `insufficient_data`. `memory-router.sh
-metrics` keeps legacy usage economics at top-level `.economics` and returns run-economics at `.run_economics`.
+metrics` keeps legacy usage economics at top-level `.economics` and returns run-economics at `.run_economics`;
+older rows are normalized to the current `used_hit_count` heuristic when summaries are calculated so legacy
+`recall_hit_count` estimates cannot inflate savings.
 `curate --write` folds those metrics into
 `MEMORY-INDEX.json` and reports lifecycle data such as stale learning candidates, cold/unused current rows, and the
 configured `KIMIFLOW_LEARNING_STALE_AFTER_DAYS` window. `MEMORY.md` stays always-on but use-aware:

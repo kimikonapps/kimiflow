@@ -75,6 +75,21 @@ EOF
 fi
 
 # ---- jq available: precise path ----
+if [ -n "$input" ] && ! printf '%s' "$input" | jq -e . >/dev/null 2>&1; then
+  if printf '%s' "$input" | grep -qE 'git.{0,200}(add|commit)'; then
+    cwd="$(printf '%s' "$input" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+    malformed_deny() { emit_deny "kimiflow commit-secret-gate: malformed hook payload for a git add/commit command — refusing to proceed fail-closed."; }
+    malformed_check() { r="$(git_root "$cwd" "$@")"; [ -n "$r" ] && [ -d "$r/.kimiflow" ] && malformed_deny; }
+    malformed_check
+    while IFS= read -r p; do
+      [ -n "$p" ] && malformed_check -C "$p"
+    done <<EOF
+$(printf '%s' "$input" | grep -oE -- '-C +[^ "]+' | sed -E 's/^-C +//')
+EOF
+  fi
+  exit 0
+fi
+
 cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // .tool_input.args.command // .command // .shell_command // .args.command // empty' 2>/dev/null || true)"
 cwd="$(printf '%s' "$input" | jq -r '.cwd // .tool_input.cwd // .working_directory // empty' 2>/dev/null || true)"
 [ -n "$cmd" ] || exit 0

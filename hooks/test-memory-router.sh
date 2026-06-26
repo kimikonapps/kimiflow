@@ -359,6 +359,11 @@ out="$(run_router status)"
 assert_jq "$out" '.economics.present == true and .economics.runs_tracked >= 1 and .economics.verdict == "insufficient_data" and .economics.confidence == "low"' "status_reports_memory_economics"
 out="$(run_router metrics)"
 assert_jq "$out" '.usage.events_tracked >= 2 and .economics.recall_writes >= 1 and .run_economics.present == true and .run_economics.totals.net_estimated_tokens_saved > 0' "metrics_reports_memory_economics"
+cat >> "$REPO/.kimiflow/project/MEMORY-ECONOMICS.jsonl" <<'EOF'
+{"schema_version":1,"run":".kimiflow/legacy-economics","recorded_at":"2026-06-25T00:00:00Z","always_on_tokens":10,"user_memory_tokens":0,"recall_tokens":20,"recall_hit_count":20,"used_hit_count":1,"estimated_avoided_scan_tokens":999999,"net_estimated_tokens_saved":999969,"result":"saving","confidence":"medium","basis":{"heuristic":"avoided_scan_tokens = recall_hit_count * KIMIFLOW_ECONOMICS_AVOIDED_TOKENS_PER_HIT (default 1200); legacy directional only"}}
+EOF
+out="$(run_router metrics)"
+assert_jq "$out" '.run_economics.normalized_legacy_rows >= 1 and .run_economics.totals.estimated_avoided_scan_tokens < 999999 and .run_economics.totals.net_estimated_tokens_saved < 999969' "metrics_normalizes_legacy_economics_rows"
 before_count="$(wc -l < "$REPO/.kimiflow/project/LEARNINGS.jsonl" | tr -d '[:space:]')"
 out="$(run_router review-run --run .kimiflow/demo-run --write)"
 after_count="$(wc -l < "$REPO/.kimiflow/project/LEARNINGS.jsonl" | tr -d '[:space:]')"

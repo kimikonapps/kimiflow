@@ -241,7 +241,9 @@ usage_summary_json() {
 }
 
 economics_summary_json() {
-  local economics_file="$1"
+  local economics_file="$1" avoided_per_hit
+  avoided_per_hit="${KIMIFLOW_ECONOMICS_AVOIDED_TOKENS_PER_HIT:-1200}"
+  case "$avoided_per_hit" in ''|*[!0-9]*) avoided_per_hit=1200 ;; esac
   if [ ! -f "$economics_file" ]; then
     jq -n --arg path ".kimiflow/project/MEMORY-ECONOMICS.jsonl" '{
       present: false,
@@ -250,6 +252,7 @@ economics_summary_json() {
       confidence: "none",
       verdict: "no_data",
       action_required: false,
+      normalized_legacy_rows: 0,
       by_result: {},
       totals: {
         always_on_tokens: 0,
@@ -271,9 +274,36 @@ economics_summary_json() {
     return 0
   fi
 
-  jq -Rsc '
+  jq -Rsc --argjson avoided_per_hit "$avoided_per_hit" '
+    def n: tonumber? // 0;
+    def normalized_row:
+      . as $row
+      | (($row.always_on_tokens // 0) | n) as $always
+      | (($row.user_memory_tokens // 0) | n) as $user
+      | (($row.recall_tokens // 0) | n) as $recall_tokens
+      | (($row.recall_hit_count // 0) | n) as $hits
+      | (($row.used_hit_count // 0) | n) as $used
+      | ($used * $avoided_per_hit) as $avoided
+      | ($avoided - $always - $user - $recall_tokens) as $net
+      | ($row + {
+          always_on_tokens: $always,
+          user_memory_tokens: $user,
+          recall_tokens: $recall_tokens,
+          recall_hit_count: $hits,
+          used_hit_count: $used,
+          estimated_avoided_scan_tokens: $avoided,
+          net_estimated_tokens_saved: $net,
+          result: (
+            if $hits == 0 then "unknown"
+            elif ($used > 0 and $net > 0) then "saving"
+            elif $net < 0 then "waste"
+            else "neutral"
+            end
+          )
+        });
     split("\n")
-    | map(select(length > 0) | (fromjson? // empty)) as $rows
+    | map(select(length > 0) | (fromjson? // empty)) as $raw_rows
+    | ($raw_rows | map(normalized_row)) as $rows
     | ($rows | length) as $n
     | ([$rows[]?.net_estimated_tokens_saved // 0] | add // 0) as $net
     | ([$rows[]?.recall_hit_count // 0] | add // 0) as $hits
@@ -298,6 +328,12 @@ economics_summary_json() {
           end
         ),
         action_required: (if $n >= 8 and ($waste > $saving or $net < 0) then true else false end),
+        normalized_legacy_rows: (
+          [range(0; $n) as $i
+            | select((($raw_rows[$i].estimated_avoided_scan_tokens // 0) | n) != (($rows[$i].estimated_avoided_scan_tokens // 0) | n)
+                or (($raw_rows[$i].net_estimated_tokens_saved // 0) | n) != (($rows[$i].net_estimated_tokens_saved // 0) | n))
+          ] | length
+        ),
         by_result: (reduce $rows[]? as $row ({}; ($row.result // "unknown") as $result | .[$result] = ((.[$result] // 0) + 1))),
         totals: {
           always_on_tokens: $always,

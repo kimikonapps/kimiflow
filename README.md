@@ -148,6 +148,19 @@ $kimiflow --resume <slug>
 $kimiflow --project-map standard
 ```
 
+## Project structure
+
+The repository is intentionally small and script-first:
+
+- `SKILL.md` and `reference.md` — canonical Kimiflow workflow contract and detailed rules.
+- `skills/kimiflow/SKILL.md` — Codex-facing wrapper that maps the canonical workflow to Codex.
+- `.claude-plugin/`, `.codex-plugin/`, `.agents/plugins/`, `hooks.json` — host/plugin manifests.
+- `hooks/` — mechanical gates, launcher/status helpers, memory router, Obsidian setup helpers, smoke tests,
+  and focused shell tests.
+- `docs/` and `examples/` — demos, design notes, and walkthrough examples.
+- `.kimiflow/` — local project intelligence, run state, memory, findings, and economics data. This directory is
+  generated during local runs and is not meant to be committed by default.
+
 ## Launcher
 
 If you invoke kimiflow without a concrete task (`/kimiflow` or `$kimiflow`), it opens a context-aware
@@ -202,7 +215,8 @@ summaries and canonical `findings/*.md` are searchable through history/recall bu
 project facts, classify new learnings, write the required run-close learning review, and curate the index
 without rereading the whole repo or Vault every time. Persisted recall/history writes are measured in
 `MEMORY-USAGE.json`; completed runs append cautious, directional token-efficiency estimates to
-`MEMORY-ECONOMICS.jsonl`; `memory-router.sh metrics` reports legacy usage economics at `.economics` and run-economics at `.run_economics`. Fewer than
+`MEMORY-ECONOMICS.jsonl`; `memory-router.sh metrics` reports legacy usage economics at `.economics` and
+run-economics at `.run_economics`, normalizing older rows to the current `used_hit_count` heuristic. Fewer than
 8 recorded runs are reported as insufficient data, so Kimiflow does not pretend savings are proven too early.
 `MEMORY.md` prioritizes frequently used, high-confidence, recent publish-safe learnings instead of forcing every
 row into the prompt.
@@ -447,6 +461,19 @@ $kimiflow --resume <slug>
 $kimiflow --project-map standard
 ```
 
+## Projektstruktur
+
+Das Repository ist bewusst klein und script-first aufgebaut:
+
+- `SKILL.md` und `reference.md` — kanonischer Kimiflow-Workflow und Detailregeln.
+- `skills/kimiflow/SKILL.md` — Codex-Wrapper fuer denselben Workflow.
+- `.claude-plugin/`, `.codex-plugin/`, `.agents/plugins/`, `hooks.json` — Host-/Plugin-Manifeste.
+- `hooks/` — mechanische Gates, Launcher-/Status-Helfer, Memory Router, Obsidian-Setup, Smoke-Checks und
+  fokussierte Shell-Tests.
+- `docs/` und `examples/` — Demos, Design-Notizen und Beispielablaeufe.
+- `.kimiflow/` — lokale Projektintelligenz, Run-State, Memory, Findings und Economics-Daten. Dieser Ordner wird
+  bei lokalen Runs erzeugt und standardmaessig nicht committed.
+
 ## Launcher
 
 Wenn du kimiflow ohne konkreten Auftrag startest (`/kimiflow` oder `$kimiflow`), öffnet es einen
@@ -504,7 +531,8 @@ Memory-Freshness zu prüfen, relevante Projektfakten abzurufen, neue Learnings z
 verpflichtende Run-Abschluss-Review zu schreiben und den Index zu kuratieren, ohne jedes Mal das ganze Repo
 oder den ganzen Vault zu lesen. Persistierte Recall-/History-Snapshots werden in `MEMORY-USAGE.json`
 gemessen; abgeschlossene Runs schreiben vorsichtige Token-Effizienz-Schaetzungen in `MEMORY-ECONOMICS.jsonl`;
-`memory-router.sh metrics` zeigt die bisherige Usage-Economics unter `.economics` und Run-Economics unter `.run_economics`. Unter 8 aufgezeichneten Runs meldet Kimiflow
+`memory-router.sh metrics` zeigt die bisherige Usage-Economics unter `.economics` und Run-Economics unter `.run_economics`
+und normalisiert aeltere Zeilen auf die aktuelle `used_hit_count`-Heuristik. Unter 8 aufgezeichneten Runs meldet Kimiflow
 `insufficient_data`, damit keine falsche Sparbehauptung entsteht. `MEMORY.md` priorisiert häufig genutzte,
 vertrauenswürdige, aktuelle publish-safe Learnings statt jede Zeile in den Prompt zu laden.
 

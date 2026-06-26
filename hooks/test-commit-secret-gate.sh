@@ -75,6 +75,17 @@ assert_deny  "git add ."           "bulk_add_dot"
 assert_deny  "git add --all"       "bulk_add_--all"
 assert_allow "git add safe.txt"    "named_add_allowed"
 
+# --- malformed JSON: empty input is a no-op, but malformed git-like payloads fail closed ---
+out="$(printf '' | "$HOOK")"
+if printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then fail "empty_input_allowed"; else pass "empty_input_allowed"; fi
+out="$(printf '{bad json git commit' | "$HOOK")"
+if printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then pass "malformed_git_payload_denied"; else fail "malformed_git_payload_denied (expected DENY, got: ${out:-<empty/allow>})"; fi
+out="$(printf '{bad json ls' | "$HOOK")"
+if printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then fail "malformed_nongit_payload_allowed"; else pass "malformed_nongit_payload_allowed"; fi
+MALFORMED_NOREPO="$WORK/malformed-norepo"; git init -q "$MALFORMED_NOREPO"
+out="$(printf '{bad json git commit \"cwd\":\"%s\"' "$MALFORMED_NOREPO" | "$HOOK")"
+if printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then fail "malformed_git_payload_out_of_scope_allowed"; else pass "malformed_git_payload_out_of_scope_allowed"; fi
+
 # --- bulk-pattern scoping: a bare `.` pathspec in a DIFFERENT subcommand of the same compound
 # command must NOT be misread as `git add .` (the bulk check is scoped to the add invocation's args) ---
 assert_allow "git add safe.txt && git grep -n foo -- ."       "named_add_then_grep_dot_pathspec"
@@ -191,7 +202,14 @@ assert_deny_at  "git -C $TREPO2 commit -am x"        "gitc_commit_am_outside"   
 # ============================================================================
 REALBASH="$(command -v bash)"
 NOJQ="$WORK/nojq-bin"; mkdir -p "$NOJQ"
-for t in cat grep sed head git tr; do s="$(command -v "$t")"; [ -n "$s" ] && ln -s "$s" "$NOJQ/$t"; done
+for t in bash cat grep sed head git tr; do
+  if [ "$t" = "git" ] && [ -x /usr/bin/git ]; then
+    s="/usr/bin/git"
+  else
+    s="$(command -v "$t")"
+  fi
+  [ -n "$s" ] && ln -s "$s" "$NOJQ/$t"
+done
 PLAIN="$WORK/plain"; git init -q "$PLAIN"   # git repo WITHOUT .kimiflow/
 
 deny_nojq()  { # $1=cmd $2=label [$3=repo]
