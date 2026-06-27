@@ -6,6 +6,10 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.1.45
+
+Ship **Agentic Readiness Layer**.
+
 ## 0.1.44
 
 Ship **natural Kimiflow mode shortcuts** for Claude Code and Codex.
