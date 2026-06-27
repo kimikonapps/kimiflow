@@ -222,7 +222,7 @@ assert_jq "$(cat "$REPO/.kimiflow/project/VAULT-PROVIDER.json")" '.type == "obsi
 out="$(PATH="$WORK/bin:$PATH" run_router provider health)"
 assert_jq "$out" '.status == "connected_local_only" and .recommended_action == "setup_auth" and .auth.status == "auth_required" and (.auth.setup_hint | contains("provider setup")) and .capabilities.write_review == true and .capabilities.search == false' "provider_health_reports_connected_local_only"
 out="$(OBSIDIAN_API_KEY=test-token PATH="$WORK/bin:$PATH" run_router provider setup --host all)"
-assert_jq "$out" '.status == "setup_plan" and .blocked == false and .mcp.url == "https://127.0.0.1:27124/mcp/" and .secret_policy.stores_token == false and .secret_policy.writes_token_to_repo == false and (.hosts.codex.snippet | contains("bearer_token_env_var = \"OBSIDIAN_API_KEY\"")) and (.hosts.claude.snippet.mcpServers.obsidian.headersHelper == "~/.kimiflow/obsidian-mcp-headers.sh") and .helpers.claude_headers_helper == "~/.kimiflow/obsidian-mcp-headers.sh" and .hosts.codex.enabled == true and .hosts.claude.enabled == true and .helpers.terminal_setup == "hooks/vault-mcp-open-terminal.sh --host all" and .helpers.interactive_setup == "hooks/vault-mcp-setup.sh --host all --interactive" and .next_command == "hooks/vault-mcp-open-terminal.sh --host all"' "provider_setup_returns_safe_host_plan"
+assert_jq "$out" '.status == "setup_plan" and .blocked == false and .mcp.url == "https://127.0.0.1:27124/mcp/" and .secret_policy.stores_token == false and .secret_policy.writes_token_to_repo == false and (.hosts.codex.snippet | contains("bearer_token_env_var = \"OBSIDIAN_API_KEY\"")) and (.hosts.claude.snippet.mcpServers.obsidian.headersHelper == "~/.kimiflow/obsidian-mcp-headers.sh") and .helpers.claude_headers_helper == "~/.kimiflow/obsidian-mcp-headers.sh" and .hosts.codex.enabled == true and .hosts.claude.enabled == true and .helpers.terminal_setup == "hooks/vault-mcp-open-terminal.sh --host all --url https://127.0.0.1:27124" and .helpers.interactive_setup == "hooks/vault-mcp-setup.sh --host all --url https://127.0.0.1:27124 --interactive" and .helpers.verify_setup == "hooks/vault-mcp-setup.sh --host all --url https://127.0.0.1:27124 --verify" and .next_command == "hooks/vault-mcp-open-terminal.sh --host all --url https://127.0.0.1:27124"' "provider_setup_returns_safe_host_plan"
 if printf '%s\n' "$out" | grep -q "test-token"; then
   fail "provider_setup_does_not_echo_env_token"
 else
@@ -235,6 +235,14 @@ else
 fi
 out="$(PATH="$WORK/bin:$PATH" run_router provider setup --host codex)"
 assert_jq "$out" '.status == "setup_plan" and .hosts.codex.enabled == true and .hosts.claude.enabled == false' "provider_setup_filters_host"
+cat > "$REPO/.kimiflow/project/VAULT-PROVIDER.json" <<'EOF'
+{"schema_version":1,"type":"obsidian","available":true,"mode":"local-first","vault_path":"http://127.0.0.1:27123","updated_at":"2026-01-02T00:00:00Z"}
+EOF
+out="$(PATH="$WORK/bin:$PATH" run_router provider setup --host codex)"
+assert_jq "$out" '.mcp.url == "http://127.0.0.1:27123/mcp/" and .mcp.certificate_url == "" and .helpers.terminal_setup == "hooks/vault-mcp-open-terminal.sh --host codex --url http://127.0.0.1:27123" and .helpers.interactive_setup == "hooks/vault-mcp-setup.sh --host codex --url http://127.0.0.1:27123 --interactive" and .helpers.verify_setup == "hooks/vault-mcp-setup.sh --host codex --url http://127.0.0.1:27123 --verify" and .next_command == "hooks/vault-mcp-open-terminal.sh --host codex --url http://127.0.0.1:27123"' "provider_setup_preserves_http_fallback_url"
+cat > "$REPO/.kimiflow/project/VAULT-PROVIDER.json" <<'EOF'
+{"schema_version":1,"type":"obsidian","available":true,"mode":"local-first","vault_path":"https://127.0.0.1:27124","updated_at":"2026-01-02T00:00:00Z"}
+EOF
 out="$(PATH="$WORK/bin:$PATH" run_router status)"
 assert_jq "$out" '(.curation.reasons | index("provider_auth_required")) and .provider.health.status == "connected_local_only" and .provider.sync.auth_status == "auth_required"' "status_surfaces_provider_auth_required"
 out="$(KIMIFLOW_VAULT_AUTHENTICATED=true PATH="$WORK/bin:$PATH" run_router provider health)"

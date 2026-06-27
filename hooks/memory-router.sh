@@ -916,6 +916,7 @@ provider_setup_plan_json() {
     "Copy the API key only into your shell environment or macOS Keychain; do not paste it into chat or commit it.",
     "Run hooks/vault-mcp-open-terminal.sh --host <codex|claude|all> to open the interactive terminal wizard.",
     "Paste the API key only into that terminal prompt; do not paste it into chat or commit it.",
+    "If the wizard reports a self-signed HTTPS certificate, trust the Obsidian Local REST API certificate in macOS Keychain, then rerun the wizard.",
     "Restart or reload the MCP client so the host, not Kimiflow, owns the bearer token."
   ]')"
 
@@ -949,7 +950,9 @@ provider_setup_plan_json() {
         url: (if $status == "blocked_non_loopback" then "" else $mcp_url end),
         base_url: $base_url,
         token_env_var: "OBSIDIAN_API_KEY",
-        auth_header: "Authorization: Bearer ${OBSIDIAN_API_KEY}"
+        auth_header: "Authorization: Bearer ${OBSIDIAN_API_KEY}",
+        certificate_url: (if ($status != "blocked_non_loopback" and ($base_url | startswith("https://"))) then $base_url + "/obsidian-local-rest-api.crt" else "" end),
+        http_loopback_fallback: "http://127.0.0.1:27123/mcp/"
       },
       secret_policy: {
         stores_token: false,
@@ -961,11 +964,12 @@ provider_setup_plan_json() {
       },
       helpers: {
         setup_script: "hooks/vault-mcp-setup.sh",
-        terminal_setup: (if $status == "blocked_non_loopback" then "" else "hooks/vault-mcp-open-terminal.sh --host " + (if $host == "all" then "all" else $host end) end),
-        interactive_setup: (if $status == "blocked_non_loopback" then "" else "hooks/vault-mcp-setup.sh --host " + (if $host == "all" then "all" else $host end) + " --interactive" end),
+        terminal_setup: (if $status == "blocked_non_loopback" then "" else "hooks/vault-mcp-open-terminal.sh --host " + (if $host == "all" then "all" else $host end) + " --url " + $base_url end),
+        interactive_setup: (if $status == "blocked_non_loopback" then "" else "hooks/vault-mcp-setup.sh --host " + (if $host == "all" then "all" else $host end) + " --url " + $base_url + " --interactive" end),
+        verify_setup: (if $status == "blocked_non_loopback" then "" else "hooks/vault-mcp-setup.sh --host " + (if $host == "all" then "all" else $host end) + " --url " + $base_url + " --verify" end),
         claude_headers_helper: $helper_path,
-        write_codex_config: "hooks/vault-mcp-setup.sh --host codex --write-config",
-        write_claude_helper: "hooks/vault-mcp-setup.sh --host claude --write-helper"
+        write_codex_config: (if $status == "blocked_non_loopback" then "" else "hooks/vault-mcp-setup.sh --host codex --url " + $base_url + " --write-config" end),
+        write_claude_helper: (if $status == "blocked_non_loopback" then "" else "hooks/vault-mcp-setup.sh --host claude --url " + $base_url + " --write-helper" end)
       },
       hosts: {
         codex: {
@@ -982,7 +986,7 @@ provider_setup_plan_json() {
         }
       },
       manual_steps: $manual_steps,
-      next_command: (if $status == "blocked_non_loopback" then "provider configure --path <loopback Obsidian URL>" else "hooks/vault-mcp-open-terminal.sh --host " + (if $host == "all" then "all" else $host end) end)
+      next_command: (if $status == "blocked_non_loopback" then "provider configure --path <loopback Obsidian URL>" else "hooks/vault-mcp-open-terminal.sh --host " + (if $host == "all" then "all" else $host end) + " --url " + $base_url end)
     }'
 }
 

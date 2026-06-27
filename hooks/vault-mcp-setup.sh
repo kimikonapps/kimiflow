@@ -243,6 +243,68 @@ verify_local_rest_api() {
   esac
 }
 
+print_certificate_trust_guide() {
+  local cert_url="$url/obsidian-local-rest-api.crt"
+  cat <<EOF
+
+Obsidian HTTPS certificate trust is required for MCP clients.
+
+Recommended macOS fix:
+1. Keep Obsidian running with the Local REST API plugin enabled.
+2. Open/download this local certificate:
+   $cert_url
+3. Double-click the .crt file and add it to the System keychain.
+4. Open the certificate in Keychain Access, expand Trust, set SSL to Always Trust, then close and confirm.
+5. Restart Obsidian and restart/reload Codex or Claude Code.
+6. Re-run this setup wizard.
+
+Local-only fallback if you deliberately do not want to trust the certificate:
+   hooks/vault-mcp-open-terminal.sh --host $host --url http://127.0.0.1:27123
+   hooks/vault-mcp-setup.sh --host $host --url http://127.0.0.1:27123 --interactive
+
+EOF
+}
+
+verify_mcp_endpoint() {
+  local token escaped_token body err_file status payload mcp_url
+  command -v curl >/dev/null 2>&1 || die "curl is required for --verify" 2
+  token="$(read_token)" || die "missing valid token for --verify; run --store-keychain first or set OBSIDIAN_API_KEY" 2
+  escaped_token="$(printf '%s' "$token" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  token=""
+  err_file="$(mktemp "${TMPDIR:-/tmp}/kimiflow-obsidian-mcp-err.XXXXXX")" || die "cannot create temporary MCP verification file" 1
+  payload="$(printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"%s","capabilities":{},"clientInfo":{"name":"kimiflow-vault-setup","version":"1"}}}' "$mcp_protocol_version")"
+  mcp_url="$url/mcp/"
+  body="$(printf 'header = "Authorization: Bearer %s"\n' "$escaped_token" \
+    | curl -sS --connect-timeout 2 -m 8 --config - \
+        -H "Accept: application/json, text/event-stream" \
+        -H "Content-Type: application/json" \
+        -H "MCP-Protocol-Version: $mcp_protocol_version" \
+        --data "$payload" "$mcp_url" 2>"$err_file")"
+  status=$?
+  escaped_token=""
+  if [ "$status" -ne 0 ]; then
+    case "$url" in
+      https://*)
+        if grep -Eiq 'self signed|SSL certificate|certificate.*(verify|problem|invalid)|x509' "$err_file"; then
+          print_certificate_trust_guide >&2
+          rm -f "$err_file"
+          die "Obsidian MCP TLS verification failed; trust the local certificate or use the local HTTP fallback." 1
+        fi
+        ;;
+    esac
+    printf 'Obsidian MCP verification failed:\n' >&2
+    sed -n '1,6p' "$err_file" >&2
+    rm -f "$err_file"
+    die "Obsidian MCP endpoint did not respond at $mcp_url" 1
+  fi
+  rm -f "$err_file"
+  if printf '%s\n' "$body" | grep -Fq '"capabilities"' && printf '%s\n' "$body" | grep -Fq '"tools"'; then
+    printf 'Verified Obsidian MCP endpoint: %s\n' "$mcp_url"
+  else
+    die "Obsidian MCP endpoint responded, but did not advertise MCP tools; keep Obsidian running and verify the Local REST API plugin." 1
+  fi
+}
+
 print_codex() {
   local mcp_url="$1"
   cat <<EOF
@@ -254,6 +316,8 @@ bearer_token_env_var = "OBSIDIAN_API_KEY"
 default_tools_approval_mode = "prompt"
 
 Set OBSIDIAN_API_KEY outside the repo before starting Codex. Do not paste the key into chat or commit it.
+If Codex cannot connect to the HTTPS endpoint, trust the Obsidian Local REST API certificate in macOS Keychain
+or rerun the wizard with --url http://127.0.0.1:27123 as a local-only fallback.
 EOF
 }
 
@@ -299,6 +363,7 @@ set_launch_env=0
 verify=0
 interactive=0
 service="${KIMIFLOW_OBSIDIAN_KEYCHAIN_SERVICE:-kimiflow.obsidian.api-key}"
+mcp_protocol_version="${KIMIFLOW_MCP_PROTOCOL_VERSION:-2025-11-25}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -333,6 +398,10 @@ esac
 [ -n "$url" ] || die "--url cannot be empty" 2
 raw_url="$url"
 url="$(normalize_loopback_origin "$raw_url")" || die "refusing non-loopback or non-origin Obsidian URL: $raw_url" 2
+case "$mcp_protocol_version" in
+  [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+  *) die "KIMIFLOW_MCP_PROTOCOL_VERSION must use YYYY-MM-DD" 2 ;;
+esac
 
 [ -n "$data_dir" ] || die "--data-dir cannot be empty" 2
 case "$data_dir" in
@@ -355,6 +424,13 @@ if [ "$store_keychain" -eq 1 ]; then
   store_keychain_token "$service"
 fi
 
+if [ "$interactive" -eq 1 ] && [ "$verify" -eq 1 ]; then
+  verify_local_rest_api
+  verify_mcp_endpoint
+  printf '\n'
+  verify=0
+fi
+
 if [ "$write_helper" -eq 1 ] && host_includes claude; then
   write_headers_helper "$helper"
   printf 'Wrote Claude headers helper: %s\n\n' "$helper"
@@ -372,6 +448,7 @@ fi
 
 if [ "$verify" -eq 1 ]; then
   verify_local_rest_api
+  verify_mcp_endpoint
   printf '\n'
 fi
 

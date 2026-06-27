@@ -85,11 +85,20 @@ cat > "$WORK/bin/curl" <<'EOF'
 #!/usr/bin/env bash
 url=""
 config_stdin=0
+data=""
+headers=""
 prev=""
 for arg in "$@"; do
   case "$arg" in
     http://*|https://*) url="${arg%/}" ;;
   esac
+  if [ "$prev" = "--data" ]; then
+    data="$arg"
+  fi
+  if [ "$prev" = "-H" ]; then
+    headers="${headers}
+$arg"
+  fi
   if [ "$prev" = "--config" ] && [ "$arg" = "-" ]; then
     config_stdin=1
   fi
@@ -105,6 +114,28 @@ if [ "$config_stdin" -eq 1 ]; then
       printf '401'
       exit 0
       ;;
+    https://127.0.0.1:27124/mcp)
+      if [ "${KIMIFLOW_FAKE_TLS_FAIL:-0}" = "1" ]; then
+        printf 'curl: (60) SSL certificate problem: self signed certificate\n' >&2
+        exit 60
+      fi
+      case "$data" in
+        *'"protocolVersion":"2025-11-25"'*) ;;
+        *) printf '{"error":{"code":-32602,"message":"wrong protocol version"}}\n'; exit 0 ;;
+      esac
+      case "$headers" in
+        *"MCP-Protocol-Version: 2025-11-25"*) ;;
+        *) printf '{"error":{"code":-32602,"message":"missing protocol header"}}\n'; exit 0 ;;
+      esac
+      case "$config" in
+        *"Authorization: Bearer fixture-token"*)
+          printf 'event: message\ndata: {"result":{"capabilities":{"tools":{"listChanged":true}}},"jsonrpc":"2.0","id":1}\n'
+          exit 0
+          ;;
+      esac
+      printf '{"error":{"code":401}}\n'
+      exit 0
+      ;;
   esac
 fi
 exit 7
@@ -112,7 +143,20 @@ EOF
 chmod +x "$WORK/bin/curl"
 out="$(OBSIDIAN_API_KEY=fixture-token PATH="$WORK/bin:$PATH" "$ROOT/hooks/vault-mcp-setup.sh" --host codex --url https://127.0.0.1:27124 --data-dir "$WORK" --verify 2>&1)"
 contains "$out" "Verified Obsidian Local REST API auth: HTTP 204" "setup_verify_checks_local_rest_api"
+contains "$out" "Verified Obsidian MCP endpoint: https://127.0.0.1:27124/mcp/" "setup_verify_checks_mcp_endpoint"
 not_contains "$out" "fixture-token" "setup_verify_does_not_echo_token"
+
+out="$(OBSIDIAN_API_KEY=fixture-token KIMIFLOW_MCP_PROTOCOL_VERSION=2024-11-05 PATH="$WORK/bin:$PATH" "$ROOT/hooks/vault-mcp-setup.sh" --host codex --url https://127.0.0.1:27124 --data-dir "$WORK" --verify 2>&1 || true)"
+contains "$out" "Obsidian MCP endpoint responded, but did not advertise MCP tools" "setup_verify_rejects_stale_mcp_protocol"
+
+out="$(OBSIDIAN_API_KEY=fixture-token KIMIFLOW_MCP_PROTOCOL_VERSION='bad-version' PATH="$WORK/bin:$PATH" "$ROOT/hooks/vault-mcp-setup.sh" --host codex --url https://127.0.0.1:27124 --data-dir "$WORK" --verify 2>&1 || true)"
+contains "$out" "KIMIFLOW_MCP_PROTOCOL_VERSION must use YYYY-MM-DD" "setup_verify_rejects_malformed_mcp_protocol"
+
+out="$(OBSIDIAN_API_KEY=fixture-token KIMIFLOW_FAKE_TLS_FAIL=1 PATH="$WORK/bin:$PATH" "$ROOT/hooks/vault-mcp-setup.sh" --host codex --url https://127.0.0.1:27124 --data-dir "$WORK" --verify 2>&1 || true)"
+contains "$out" "Obsidian HTTPS certificate trust is required for MCP clients." "setup_verify_explains_certificate_trust"
+contains "$out" "hooks/vault-mcp-open-terminal.sh --host codex --url http://127.0.0.1:27123" "setup_verify_mentions_http_fallback"
+contains "$out" "hooks/vault-mcp-setup.sh --host codex --url http://127.0.0.1:27123 --interactive" "setup_verify_mentions_terminal_fallback"
+not_contains "$out" "fixture-token" "setup_verify_tls_failure_does_not_echo_token"
 
 if "$ROOT/hooks/vault-mcp-setup.sh" --host codex --url https://evil.example --data-dir "$WORK" >/dev/null 2>&1; then
   fail "setup_rejects_non_loopback_url"
