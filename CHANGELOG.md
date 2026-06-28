@@ -6,6 +6,25 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.1.48
+
+Release-hygiene check, consistent capability display, and project-map outputs framed as a local workqueue.
+
+### Added
+- **Release version-consistency check** (`hooks/release-consistency-check.sh` + test): a manual pre-release helper
+  that verifies one version across `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`,
+  `.claude-plugin/marketplace.json`, `COMPATIBILITY.md`, and a `## <ver>` `CHANGELOG.md` heading (manifest version
+  fields without a value are skipped). Wired as a CI unit test — not a release gate.
+- **Capability-display sync + drift guard**: the four core capabilities (feature/fix loop, project intelligence,
+  repo docs, local findings) are now named consistently across `README`, the Claude plugin/marketplace
+  descriptions, and the Codex `shortDescription` surfaces, with per-field smoke assertions that fail if a
+  capability is dropped (README via a delimited capabilities block; Codex per `shortDescription`).
+
+### Changed
+- **Project-map outputs documented as a local workqueue**: `reference.md` and `SKILL.md` now describe
+  `FINDINGS.md`/`IMPROVEMENTS.md`/`DOCS-PLAN.md` as an actionable local workqueue — findings/improvement slices are
+  launcher-surfaced and picked up by later fix/build runs; `DOCS-PLAN.md` is the docs-run output — not a static report.
+
 ## 0.1.47
 
 Keep the **project map fresh automatically** after Kimiflow runs, surface staleness, and make section lookup token-cheap.
