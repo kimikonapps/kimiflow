@@ -6,6 +6,23 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.1.47
+
+Keep the **project map fresh automatically** after Kimiflow runs, surface staleness, and make section lookup token-cheap.
+
+### Added
+- **A1 — `project-map-status.sh refresh --changed`**: after a run, auto-restamps the map sections whose files changed
+  (matched by `.files` membership or longest prefix), prunes deleted files, adopts new files under a section prefix,
+  re-indexes their `.sh` symbols, and advances the baseline (idempotent for committed deltas). Wired into the Phase-7
+  step in `SKILL.md`, so the project map no longer goes stale after building with Kimiflow.
+- **A2 — `map-staleness-nudge.sh`**: a non-blocking `Stop` hook that surfaces a `systemMessage` when the local
+  project map is stale (rate-limited; resolves its helper by absolute path before `cd`). Registered in both
+  `hooks.json` and `hooks/hooks.json`, so map drift is visible even after non-Kimiflow edits.
+- **B1 — `project-map-status.sh index-symbols`**: a dependency-free `.sh` symbol→section index stored under
+  `sections.<name>.symbols` in `INDEX.json` (additive; `schema_version` unchanged).
+- **B4 — `suggest-affected-sections.sh`**: ranks the likely-affected map sections (with representative paths for
+  `coverage --affected`) from intent/problem terms, so Phase 2 stops guessing affected paths blind.
+
 ## 0.1.46
 
 Fix the **false agentic-readiness MCP warning**; ship Claude Obsidian MCP auto-setup.
