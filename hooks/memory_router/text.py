@@ -20,5 +20,5 @@ def word_count_file(path):
     try:
         with open(path, "r", encoding="utf-8") as handle:
             return len(handle.read().split())
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return 0

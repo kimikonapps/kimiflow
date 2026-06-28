@@ -1,4 +1,4 @@
-import os, re, tempfile, unittest
+import os, tempfile, unittest
 from memory_router import paths, text, clock
 
 class TestPaths(unittest.TestCase):
