@@ -32,7 +32,24 @@ CASES=(
   "help_short::-h"
   "help_word::help"
   "unknown_cmd::bogus"
+  # classify — stateless: one token per arg, '|' separates argv tokens
+  "cls_security::classify|--text|found an sql injection and a leaked api token in env"
+  "cls_private::classify|--text|the file under /Users/sr is customer specific data here"
+  "cls_trivial_words::classify|--text|tiny note"
+  "cls_trivial_kw::classify|--text|done"
+  "cls_repo_doc::classify|--text|update the README and onboarding documentation for devs"
+  "cls_vault::classify|--text|a cross-project preference to always remember this lesson now"
+  "cls_project::classify|--text|the build and release convention for this kimiflow hook matters"
+  "cls_pretty::classify|--pretty|--text|the build convention for this project is important here"
+  "cls_unknown_arg::classify|--bogus"
+  "cls_no_args::classify"
 )
+
+# classify --input fixture (first-160-lines behavior; both impls read the same file)
+CLS_FIXTURE="$WORK/cls-input.md"
+printf 'the build convention for this kimiflow project is important\n' > "$CLS_FIXTURE"
+for i in $(seq 1 400); do printf 'filler line %s\n' "$i" >> "$CLS_FIXTURE"; done
+CASES+=("cls_input::classify|--input|$CLS_FIXTURE")
 
 normalize() { sed -e "s#$WORK#WORK#g" -e "s#$ROOT#ROOT#g"; }
 
@@ -51,7 +68,7 @@ for entry in "${CASES[@]}"; do
 
   # Capture stdout and stderr to files (preserves trailing newlines)
   bash "$OLD" ${args[@]+"${args[@]}"} > "$WORK/o.out" 2> "$WORK/o.err"; o_code=$?
-  python3 "$ROOT/hooks/memory_router" ${args[@]+"${args[@]}"} > "$WORK/n.out" 2> "$WORK/n.err"; n_code=$?
+  python3 -m hooks.memory_router ${args[@]+"${args[@]}"} > "$WORK/n.out" 2> "$WORK/n.err"; n_code=$?
 
   # Normalize all four streams (path replacement) into separate .norm files
   normalize < "$WORK/o.out" > "$WORK/o.out.norm"
