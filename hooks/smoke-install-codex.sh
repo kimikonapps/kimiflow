@@ -44,6 +44,18 @@ jq -e '[.. | strings] | join(" ") | test("full/grill/plan/build/quick/review/aud
 jq -e '[.hooks[]?[]?.hooks[]? | select(.type == "command")] | length == 6 and all(.[]; (.name // "" | length > 0) and (.description // "" | length > 0) and (.statusMessage // "" | length > 0))' "$ROOT/hooks.json" >/dev/null 2>&1 \
   && ok "codex plugin hooks are labelled" || bad "codex plugin hook labels missing"
 
+echo "== capability display sync (Codex) =="
+# Four canonical capabilities must each appear PER-FIELD in the prominent shortDescription surfaces (non-vacuous drift guard;
+# checking the concatenated long+short surface would let longDescription mask a drop in shortDescription).
+for m in 'feature[^.]*fix' 'project intelligence' 'repo docs' 'findings'; do
+  jq -e --arg m "$m" '((.interface.shortDescription // "") | test($m; "i"))' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
+    && ok "codex shortDescription names capability: $m" || bad "codex shortDescription missing capability: $m"
+done
+for m in 'feature[^.]*fix' 'project intelligence' 'repo docs' 'findings'; do
+  jq -e --arg m "$m" '((.interface.shortDescription // "") | test($m; "i"))' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
+    && ok "codex marketplace shortDescription names capability: $m" || bad "codex marketplace shortDescription missing capability: $m"
+done
+
 echo "== codex skill =="
 SKILL="$ROOT/skills/kimiflow/SKILL.md"
 if [ -f "$SKILL" ]; then ok "skill exists: skills/kimiflow/SKILL.md"; else bad "missing skills/kimiflow/SKILL.md"; fi

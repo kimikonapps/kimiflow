@@ -2,7 +2,7 @@
   "name": "kimiflow",
   "interface": {
     "displayName": "kimiflow",
-    "shortDescription": "Kimiflow full/grill/plan/build/quick/review/audit/fix modes, mandatory micro-grill, gates, memory, background handles, and agentic readiness for Codex"
+    "shortDescription": "Kimiflow feature & bug-fix loop for Codex: full/grill/plan/build/quick/review/audit/fix modes, mandatory micro-grill, gates, project intelligence (codebase/architecture map), repo docs generation, local findings, memory, background handles, and agentic readiness"
   },
   "plugins": [
     {

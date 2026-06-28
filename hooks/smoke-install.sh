@@ -39,6 +39,26 @@ jq -e '((.description // "") | test("full/grill/plan/build/quick/review/audit/fi
 jq -e '((.metadata.description // "") + " " + (.plugins[0].description // "") | test("full/grill/plan/build/quick/review/audit/fix"))' "$ROOT/.claude-plugin/marketplace.json" >/dev/null 2>&1 \
   && ok "Claude marketplace describes natural mode aliases" || bad "Claude marketplace missing natural mode aliases"
 
+echo "== capability display sync (Claude) =="
+# Four canonical capabilities must each appear in every prominent Claude surface (drift guard).
+# README is checked ONLY inside the delimited capabilities block so markers elsewhere can't satisfy it (non-vacuous).
+# Guard: both delimiters must exist, else an unclosed block would capture to EOF and the marker checks turn vacuous.
+{ grep -q '<!-- capabilities:start -->' "$ROOT/README.md" && grep -q '<!-- capabilities:end -->' "$ROOT/README.md"; } \
+  && ok "README capabilities block is delimited" || bad "README capabilities block delimiters missing/unbalanced"
+readme_caps="$(awk '/<!-- capabilities:start -->/{f=1;next} /<!-- capabilities:end -->/{f=0} f' "$ROOT/README.md")"
+for m in 'feature[^.]*fix' 'project intelligence' 'repo docs' 'findings'; do
+  printf '%s' "$readme_caps" | grep -qiE "$m" \
+    && ok "README capabilities block names: $m" || bad "README capabilities block missing: $m"
+done
+for m in 'feature[^.]*fix' 'project intelligence' 'repo docs' 'findings'; do
+  jq -e --arg m "$m" '((.description // "") | test($m; "i"))' "$ROOT/.claude-plugin/plugin.json" >/dev/null 2>&1 \
+    && ok "Claude plugin describes capability: $m" || bad "Claude plugin description missing capability: $m"
+done
+for m in 'feature[^.]*fix' 'project intelligence' 'repo docs' 'findings'; do
+  jq -e --arg m "$m" '(((.metadata.description // "") + " " + (.plugins[0].description // "")) | test($m; "i"))' "$ROOT/.claude-plugin/marketplace.json" >/dev/null 2>&1 \
+    && ok "Claude marketplace describes capability: $m" || bad "Claude marketplace missing capability: $m"
+done
+
 echo "== skill frontmatter (SKILL.md) =="
 fm="$(awk 'NR==1 && $0=="---"{f=1;next} f && $0=="---"{exit} f' "$ROOT/SKILL.md")"
 printf '%s\n' "$fm" | grep -qE '^name:[[:space:]]*kimiflow'                 && ok "name: kimiflow"                       || bad "name missing/wrong"

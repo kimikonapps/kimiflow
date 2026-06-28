@@ -11,6 +11,10 @@
 
 A **user-invoked** `/kimiflow` (Claude Code) / `$kimiflow` (Codex) skill+plugin that runs a disciplined **8-phase loop** for building features and fixing bugs — clarify → understand/diagnose → plan → plan-gate → implement → verify → code-review ensemble → commit. Its gates are **mechanical, not advisory**: reviewers write structured findings to files, tested **fail-closed** scripts count the open blockers, fix runs keep red/green evidence, and a "done" self-report can't talk its way past them.
 
+<!-- capabilities:start -->
+**What kimiflow does:** a disciplined **feature & bug-fix loop** with mechanical gates · **project intelligence** (codebase/architecture map + memory) · **repo docs** generation · local **findings** you can act on.
+<!-- capabilities:end -->
+
 > `SKILL.md` / `reference.md` are written in English. **kimiflow replies in the language you write in** — write in German and it grills/answers in German.
 
 ## Why this exists

@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "kimiflow",
-      "description": "Active-session feature & bug-fix loop for Claude Code with natural full/grill/plan/build/quick/review/audit/fix modes, mandatory small/quick micro-grill, background handles, agentic readiness, clean-worktree, red/green, plan-blocker gates, code-review ensembles, memory, Obsidian, and Vault gates. Replies in your language.",
+      "description": "Active-session feature & bug-fix loop for Claude Code with natural full/grill/plan/build/quick/review/audit/fix modes, mandatory small/quick micro-grill, background handles, agentic readiness, clean-worktree, red/green, plan-blocker gates, code-review ensembles, project intelligence (codebase/architecture map), repo docs generation, local findings, memory, Obsidian, and Vault gates. Replies in your language.",
       "version": "0.1.47",
       "author": {
         "name": "kimikon"
