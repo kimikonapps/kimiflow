@@ -26,13 +26,18 @@ USAGE = (
 
 # Subcommand table. Foundation registers none yet; per-subsystem plans add entries
 # mapping a command name to a `run(argv: list[str]) -> int` callable.
-COMMANDS = {}
+# (Registered at the bottom of the file after imports and function definitions.)
 
 
 def usage(stream=None):
     if stream is None:
         stream = sys.stderr
     stream.write(USAGE)
+
+
+def die(msg, code=1):
+    sys.stderr.write("memory-router: %s\n" % msg)
+    return code
 
 
 def main(argv):
@@ -45,10 +50,16 @@ def main(argv):
         return 0
     handler = COMMANDS.get(cmd)
     if handler is None:
-        sys.stderr.write(f"memory-router: unknown command: {cmd}\n")
-        return 2
+        return die("unknown command: %s" % cmd, 2)
     return handler(argv[1:])
 
+
+from . import classify as _classify
+
+# replace `COMMANDS = {}` (Plan 0) with:
+COMMANDS = {
+    "classify": _classify.run,
+}
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
