@@ -95,7 +95,7 @@ whitelist entry in the parity harness so the diff stays meaningful. No silent dr
 ## 6. Architecture (chosen: subsystem-modular package)
 
 ```
-hooks/memory-router.sh            # ~8-line shim: exec python3 .../memory_router "$@"
+hooks/memory-router.sh            # ~8-line shim: exec env PYTHONPATH=... python3 -m memory_router "$@"
 hooks/memory_router/
   __main__.py                     # argparse dispatch, exit codes, top-level error handling
   status.py recall.py history.py  # one module per subsystem
@@ -109,7 +109,7 @@ hooks/memory_router/
   __init__.py
 ```
 
-- **Shim:** resolve own dir, `exec python3 "$dir/memory_router" "$@"`. If `python3` is
+- **Shim:** resolve own dir, `exec env PYTHONPATH="$dir" python3 -m memory_router "$@"`. If `python3` is
   absent → clear stderr install hint + exit 1 (gates/orchestrator already treat non-zero as
   failure; this preserves the Bash's fail-closed posture).
 - Each module exposes one `run(args) -> int` (or pure helpers) and depends only on `store.py`

@@ -68,7 +68,7 @@ for entry in "${CASES[@]}"; do
 
   # Capture stdout and stderr to files (preserves trailing newlines)
   bash "$OLD" ${args[@]+"${args[@]}"} > "$WORK/o.out" 2> "$WORK/o.err"; o_code=$?
-  python3 -m hooks.memory_router ${args[@]+"${args[@]}"} > "$WORK/n.out" 2> "$WORK/n.err"; n_code=$?
+  PYTHONPATH="$ROOT/hooks" python3 -m memory_router ${args[@]+"${args[@]}"} > "$WORK/n.out" 2> "$WORK/n.err"; n_code=$?
 
   # Normalize all four streams (path replacement) into separate .norm files
   normalize < "$WORK/o.out" > "$WORK/o.out.norm"
