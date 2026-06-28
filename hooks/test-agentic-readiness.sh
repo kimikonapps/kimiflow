@@ -10,6 +10,10 @@ REPO="$WORK/repo"
 FAILS=0
 trap 'rm -rf "$WORK"' EXIT
 
+# Determinism: session-level vault signals must not leak in from the runner's env.
+unset KIMIFLOW_OBSIDIAN_MCP_AVAILABLE KIMIFLOW_VAULT_MCP_AVAILABLE \
+  KIMIFLOW_OBSIDIAN_AUTHENTICATED KIMIFLOW_VAULT_AUTHENTICATED
+
 pass() { printf 'PASS: %s\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1"; FAILS=$((FAILS + 1)); }
 
@@ -229,6 +233,17 @@ if KIMIFLOW_HOST=codex "$SCRIPT" packet --root "$REPO" --run .kimiflow/demo --ki
 else
   pass "packet_requires_audit_trail"
 fi
+
+# A connected, authenticated Obsidian/Vault MCP in this session (no network) supersedes
+# a stale or capability-less per-repo manifest, so the false "not direct ready" warning clears.
+reset_repo
+cat > "$REPO/.kimiflow/project/VAULT-PROVIDER.json" <<'EOF'
+{"schema_version":1,"available":true,"auth":{"authenticated":false,"status":"connected_local_only"},"capabilities":{"direct_search":false,"mcp_direct_write":false}}
+EOF
+out="$(KIMIFLOW_OBSIDIAN_MCP_AVAILABLE=1 KIMIFLOW_HOST=codex "$SCRIPT" status --root "$REPO" --run .kimiflow/demo)"
+assert_jq "$out" '.provider.mcp_ready == true and .provider.direct_search_ready == true and .provider.direct_write_ready == true and (.readiness.warnings | index("mcp_not_direct_ready") | not)' "mcp_session_signal_clears_warning"
+out="$(run_status)"
+assert_jq "$out" '.provider.mcp_ready == false and (.readiness.warnings | index("mcp_not_direct_ready"))' "mcp_no_signal_still_not_ready"
 
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi

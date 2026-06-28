@@ -147,6 +147,16 @@ background_json() {
 
 provider_json() {
   local root="$1" file="$root/.kimiflow/project/VAULT-PROVIDER.json"
+  # A connected, authenticated Obsidian/Vault MCP in this session is local truth (env only,
+  # no network) and supersedes the static per-repo manifest, which provider connect writes
+  # without live capabilities. Mirrors the KIMIFLOW_*_MCP_AVAILABLE precedence in
+  # memory-router.sh provider auth, so one session signal clears the false "not direct ready".
+  case "${KIMIFLOW_VAULT_MCP_AVAILABLE:-${KIMIFLOW_OBSIDIAN_MCP_AVAILABLE:-}}" in
+    1|true|TRUE|yes|YES)
+      jq -n '{present: true, source: "session_signal", status: "authenticated", configured: true, vault_ready: true, mcp_ready: true, direct_search_ready: true, direct_write_ready: true}'
+      return 0
+      ;;
+  esac
   if [ ! -f "$file" ]; then
     jq -n '{present: false, source: "local_artifact", status: "missing", vault_ready: false, mcp_ready: false, direct_search_ready: false, direct_write_ready: false}'
     return 0
