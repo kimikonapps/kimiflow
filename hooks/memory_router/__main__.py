@@ -56,7 +56,6 @@ def main(argv):
 
 from . import classify as _classify
 
-# replace `COMMANDS = {}` (Plan 0) with:
 COMMANDS = {
     "classify": _classify.run,
 }

@@ -48,6 +48,13 @@ class TestClassifyText(unittest.TestCase):
         self.assertEqual(r["target"], "project_memory")
         self.assertIn("project_reusable", r["reasons"])
 
+    def test_security_override_preserves_target_block_reason(self):
+        r = self.c("found an sql injection in the readme documentation for devs")
+        self.assertEqual(r["sensitivity"], "security")
+        self.assertEqual(r["target"], "project_memory")  # overridden from repo_doc_candidate
+        self.assertIn("security_sensitive", r["reasons"])
+        self.assertIn("documentation_candidate", r["reasons"])  # target-block reason survives
+
     def test_reasons_order_sensitivity_then_target(self):
         # private + documentation: private reason appended first, then target reason
         r = self.c("publish-safe documentation about a customer onboarding flow under /home/x")
