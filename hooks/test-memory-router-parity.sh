@@ -43,6 +43,7 @@ CASES=(
   "cls_pretty::classify|--pretty|--text|the build convention for this project is important here"
   "cls_unknown_arg::classify|--bogus"
   "cls_no_args::classify"
+  "cls_default::classify|--text|the quick brown fox jumped over"
 )
 
 # classify --input fixture (first-160-lines behavior; both impls read the same file)

@@ -3,10 +3,13 @@ import re
 import sys
 
 from . import contracts
+from .cli import die, usage
 
 # Lowercased-ASCII pattern set, lifted verbatim from Bash classify_text @ v0.1.50.
-# (Output depends only on these ASCII patterns, so str.lower() vs C-locale tr cannot
-#  change the result — only ASCII matches drive classification.)
+# In practice str.lower() and C-locale tr give identical results for these ASCII
+# patterns and kimiflow's macOS/ASCII inputs. Unicode case-folding could in theory
+# synthesize an ASCII match (e.g. U+212A KELVIN SIGN → 'k'), but none of these
+# patterns are affected, so divergence is not expected for real inputs.
 _SECURITY = re.compile(r"(secret|token|credential|password|private key|\.env|vulnerab|exploit|auth bypass|cve-|xss|csrf|sql injection)")
 _PRIVATE = re.compile(r"(/users/|/home/|customer|client|kunde|kundendaten|private|vault|obsidian)")
 _TRIVIAL = re.compile(r"^(ok|done|fixed|typo|scratch|temporary)$", re.MULTILINE)
@@ -74,14 +77,14 @@ def classify_text(text):
 
 
 def _read_input_head(path):
-    # Bash: text="$(sed -n '1,160p' "$input")" — first 160 lines, trailing newline stripped
-    # by command substitution. splitlines()[:160] joined by "\n" reproduces that.
-    with open(path, "r", encoding="utf-8") as handle:
-        return "\n".join(handle.read().splitlines()[:160])
+    # Bash: text="$(sed -n '1,160p' "$input")" — \n-delimited lines only (no universal-newline
+    # translation, no exotic line separators), first 160, trailing newlines stripped by $().
+    with open(path, "r", encoding="utf-8", newline="") as handle:
+        raw = handle.read()
+    return "\n".join(raw.split("\n")[:160]).rstrip("\n")
 
 
 def run(argv):
-    from .__main__ import die, usage  # lazy import: keeps module load acyclic
     text = ""
     input_path = ""
     pretty = False

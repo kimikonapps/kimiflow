@@ -70,6 +70,13 @@ class TestClassifyText(unittest.TestCase):
              "vault_allowed", "repo_doc_allowed", "sanitized_required"],
         )
 
+    def test_default_no_pattern_run_only(self):
+        # ≥4 words, no pattern matches → default branch: run_only / normal / []
+        r = classify.classify_text("the quick brown fox jumped over")["classification"]
+        self.assertEqual(r["target"], "run_only")
+        self.assertEqual(r["sensitivity"], "normal")
+        self.assertEqual(r["reasons"], [])
+
 class TestClassifyRun(unittest.TestCase):
     def _run(self, argv):
         out, err = io.StringIO(), io.StringIO()
@@ -121,6 +128,35 @@ class TestClassifyRun(unittest.TestCase):
             code = main(["classify", "--text", "the build convention here matters a lot"])
         self.assertEqual(code, 0)
         self.assertIn('"schema_version":1', out.getvalue())
+
+    def test_default_compact_reasons_empty(self):
+        # compact JSON must render "reasons":[] (not omitted, not "reasons": [])
+        import json
+        code, out, err = self._run(["--text", "the quick brown fox jumped over"])
+        self.assertEqual(code, 0)
+        result = json.loads(out)
+        self.assertEqual(result["classification"]["target"], "run_only")
+        self.assertEqual(result["classification"]["sensitivity"], "normal")
+        self.assertEqual(result["classification"]["reasons"], [])
+        self.assertIn('"reasons":[]', out)
+
+    def test_crlf_newline_preserved(self):
+        # _read_input_head must NOT strip \r (Bash sed keeps raw bytes).
+        # A file with CRLF lines: if \r were stripped, 'done' on its own line would
+        # match _TRIVIAL → target=="skip". With \r preserved, 'done\r' does not match
+        # ^done$ in MULTILINE ($ does not anchor before \r), so target!="skip".
+        import json
+        d = tempfile.mkdtemp()
+        p = os.path.join(d, "crlf.md")
+        with open(p, "wb") as f:
+            f.write(b"four words here present\r\ndone\r\n")
+        code, out, _ = self._run(["--input", p])
+        self.assertEqual(code, 0)
+        result = json.loads(out)
+        self.assertNotEqual(
+            result["classification"]["target"], "skip",
+            r"\r was stripped — CRLF not preserved; _TRIVIAL incorrectly matched 'done'",
+        )
 
 if __name__ == "__main__":
     unittest.main()
