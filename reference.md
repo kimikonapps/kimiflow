@@ -785,6 +785,9 @@ refresh only the changed areas:
   "file_hashes": {
     "hooks/commit-secret-gate.sh": "sha256:<content-hash>"
   },
+  "symbols": {
+    "main": "hooks/commit-secret-gate.sh:42"
+  },
   "last_scanned_commit": "cba4942",
   "depends_on": ["git", "jq"],
   "status": "current"
@@ -795,7 +798,11 @@ Use stable section names that match how future work is scoped (`hooks`, `api`, `
 `architecture`, `flows`, etc.). `files` are exact load-bearing paths. `prefixes` let the status
 resolver notice new files under known areas without reading the whole repo. `file_hashes` are content
 hashes for exact files; a matching hash can make an uncommitted but already-refreshed working-tree file
-current. `status` is one of `current|stale|potentially_stale|unknown`.
+current. `status` is one of `current|stale|potentially_stale|unknown`. `symbols` (B1, optional, additive —
+`schema_version` stays 1) maps a definition name to `path:line` for fast identifier→section lookup; it is
+populated only for `.sh` files (function definitions `name()` at line start, comment lines skipped). It is
+(re)indexed by `index-symbols` and by `refresh --changed` for the sections those touch; plain
+`refresh --section` re-hashes a section's files but does NOT touch its `symbols`.
 
 `FACTS.jsonl` is the compact evidence layer. One JSON object per line, stable English keys, concise
 human text in the user's language:
@@ -812,7 +819,9 @@ identifiers, paths, command names, schema keys, required tokens, and package nam
 - Structure: directory layout, entry points, where to add common kinds of code.
 - Architecture: components, responsibilities, data/control flow, invariants.
 - Quality: conventions, test strategy, verification commands.
-- Synthesis: writes/updates `INDEX.json`, compacts `FACTS.jsonl`, lists `OPEN-QUESTIONS.md`.
+- Synthesis: writes/updates `INDEX.json`, compacts `FACTS.jsonl`, lists `OPEN-QUESTIONS.md`. After writing
+  the sections, run `project-map-status.sh index-symbols` to populate each `.sh` section's `symbols` map
+  (B1 initial fill) so later runs can look up identifier→section without path-guessing.
 
 Each mapper writes directly to `.kimiflow/project/`; the orchestrator reports paths and does **not**
 paste full artifacts back into chat. If subagents are unavailable, perform the same passes sequentially
@@ -837,6 +846,32 @@ helpers):
 - `project-map-status.sh refresh --section <name>...` → after the mapper has refreshed the selected
   section artifacts, updates only those sections' `file_hashes`, `last_scanned_commit`, `status`, and
   `updated_at`.
+- `project-map-status.sh refresh --changed` (A1, no `--write`; mutates like `refresh --section`) →
+  re-stamps only the sections whose files changed vs `baseline_commit` (with a graceful working-tree-only
+  fallback when that commit is unreachable). A changed file is matched to a section by EXACT `.files`
+  membership OR `prefixes`. Deleted members are pruned from `.files`/`.file_hashes`; a new file under a
+  section prefix is adopted into `.files` (+sha256) — on multiple matching prefixes the LONGEST prefix
+  wins, ties resolve to the first section in INDEX order — and emits a `NEW-FILE<TAB><section><TAB><path>`
+  structure hint. Each refreshed section is re-indexed via `index-symbols`. No change → no mutation, exit 0.
+  This is the Phase-7 auto-refresh that keeps the map `current` after a run; it never writes auto-facts.
+- `project-map-status.sh index-symbols --section <name>...` (B1, no `--write`; mutates) → fills
+  `sections.<name>.symbols` from `.sh` function definitions (`name()` at line start, comment lines skipped).
+  The orchestrator calls it at Map Bootstrap after writing the sections; `refresh --changed` calls it for
+  each refreshed section.
+- `suggest-affected-sections.sh --intent <file>|--text "<terms>" [--index <path>] [--top <n>]` (B4,
+  read-only) → ranks candidate sections from intent/problem terms (a keyword hit in `symbols` keys scores
+  ×2, in `files`/`prefixes` ×1, in the section name ×3) and prints
+  `{"sections":[{"name","score","paths":[...]}]}` (score desc, ties alphabetical, top-N default 5). The
+  `paths` (a section's `prefixes` + representative `files`) feed straight into `coverage --affected`. A
+  missing/empty/invalid index or no match → `{"sections":[]}` exit 0.
+
+**Stop-hook map-staleness nudge (A2):** `hooks/map-staleness-nudge.sh` is a non-blocking Stop hook (wired
+into both `hooks.json` and `hooks/hooks.json`). On any Stop in a repo that has `.kimiflow/project/INDEX.json`
+it runs `project-map-status.sh status` once per UTC day (rate-limited via `.kimiflow/.map-nudge-stamp`,
+written in-dir-atomically with `umask 077`). When `stale + potentially_stale ≥ 1` it emits a USER-visible
+`{"systemMessage":"Kimiflow: Projekt-Map <N> Sektion(en) veraltet — …","hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"Project map: <N> section(s) need refresh."}}`
+with `<N> = stale + potentially_stale`. It honors the `stop_hook_active` loop-break, never blocks, exits 0
+on every path, and stays silent (exit 0) when there is no map or no jq.
 
 Impact rules:
 - Exact section file deleted or hash-mismatched → `stale`.

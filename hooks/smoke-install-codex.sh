@@ -41,7 +41,7 @@ jq -e '[.. | strings] | join(" ") | test("agentic readiness"; "i")' "$ROOT/.agen
   && ok "codex marketplace describes agentic readiness" || bad "codex marketplace missing agentic readiness"
 jq -e '[.. | strings] | join(" ") | test("full/grill/plan/build/quick/review/audit/fix"; "i")' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
   && ok "codex marketplace describes natural mode aliases" || bad "codex marketplace missing natural mode aliases"
-jq -e '[.hooks[]?[]?.hooks[]? | select(.type == "command")] | length == 5 and all(.[]; (.name // "" | length > 0) and (.description // "" | length > 0) and (.statusMessage // "" | length > 0))' "$ROOT/hooks.json" >/dev/null 2>&1 \
+jq -e '[.hooks[]?[]?.hooks[]? | select(.type == "command")] | length == 6 and all(.[]; (.name // "" | length > 0) and (.description // "" | length > 0) and (.statusMessage // "" | length > 0))' "$ROOT/hooks.json" >/dev/null 2>&1 \
   && ok "codex plugin hooks are labelled" || bad "codex plugin hook labels missing"
 
 echo "== codex skill =="
@@ -99,6 +99,10 @@ grep -q 'Project Map Bootstrap' "$ROOT/SKILL.md" && ok "canonical Project Map Bo
 grep -q 'FACTS.jsonl' "$ROOT/reference.md" && ok "project map evidence artifact documented" || bad "project map evidence artifact missing"
 if [ -x "$ROOT/hooks/project-map-status.sh" ] && bash -n "$ROOT/hooks/project-map-status.sh" 2>/dev/null; then ok "project map status helper ok"; else bad "project map status helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-project-map-status.sh" ] && bash -n "$ROOT/hooks/test-project-map-status.sh" 2>/dev/null; then ok "project map status test ok"; else bad "project map status test missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/suggest-affected-sections.sh" ] && bash -n "$ROOT/hooks/suggest-affected-sections.sh" 2>/dev/null; then ok "suggest-affected helper ok"; else bad "suggest-affected helper missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/test-suggest-affected-sections.sh" ] && bash -n "$ROOT/hooks/test-suggest-affected-sections.sh" 2>/dev/null; then ok "suggest-affected test ok"; else bad "suggest-affected test missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/map-staleness-nudge.sh" ] && bash -n "$ROOT/hooks/map-staleness-nudge.sh" 2>/dev/null; then ok "map staleness nudge helper ok"; else bad "map staleness nudge helper missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/test-map-staleness-nudge.sh" ] && bash -n "$ROOT/hooks/test-map-staleness-nudge.sh" 2>/dev/null; then ok "map staleness nudge test ok"; else bad "map staleness nudge test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/current-state-gate.sh" ] && bash -n "$ROOT/hooks/current-state-gate.sh" 2>/dev/null; then ok "current-state gate helper ok"; else bad "current-state gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-current-state-gate.sh" ] && bash -n "$ROOT/hooks/test-current-state-gate.sh" 2>/dev/null; then ok "current-state gate test ok"; else bad "current-state gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/working-tree-gate.sh" ] && bash -n "$ROOT/hooks/working-tree-gate.sh" 2>/dev/null; then ok "working-tree gate helper ok"; else bad "working-tree gate helper missing/not-exec/bad"; fi
@@ -118,6 +122,13 @@ if [ -x "$ROOT/hooks/test-vault-mcp-setup.sh" ] && bash -n "$ROOT/hooks/test-vau
 if [ -x "$ROOT/hooks/vault-mcp-open-terminal.sh" ] && bash -n "$ROOT/hooks/vault-mcp-open-terminal.sh" 2>/dev/null; then ok "vault MCP terminal helper ok"; else bad "vault MCP terminal helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-vault-mcp-open-terminal.sh" ] && bash -n "$ROOT/hooks/test-vault-mcp-open-terminal.sh" 2>/dev/null; then ok "vault MCP terminal test ok"; else bad "vault MCP terminal test missing/not-exec/bad"; fi
 grep -q 'project-map-status.sh' "$ROOT/reference.md" && ok "canonical project-map status helper documented" || bad "canonical project-map status helper missing"
+grep -q 'suggest-affected-sections.sh' "$ROOT/reference.md" && ok "canonical suggest-affected helper documented" || bad "canonical suggest-affected helper missing"
+grep -q 'map-staleness-nudge.sh' "$ROOT/reference.md" && ok "canonical map staleness nudge helper documented" || bad "canonical map staleness nudge helper missing"
+grep -q -- 'refresh --changed' "$ROOT/reference.md" && ok "canonical auto delta refresh documented" || bad "canonical refresh --changed missing"
+grep -q 'index-symbols' "$ROOT/reference.md" && ok "canonical symbol index documented" || bad "canonical index-symbols missing"
+grep -q -- 'refresh --changed' "$ROOT/SKILL.md" && ok "canonical skill documents Phase-7 auto-refresh" || bad "canonical Phase-7 auto-refresh missing"
+grep -q 'suggest-affected-sections.sh' "$SKILL" && ok "Codex wrapper maps suggest-affected helper" || bad "Codex wrapper missing suggest-affected helper"
+grep -q 'map-staleness-nudge.sh' "$SKILL" && ok "Codex wrapper maps map staleness nudge helper" || bad "Codex wrapper missing map staleness nudge helper"
 grep -q 'current-state-gate.sh' "$ROOT/reference.md" && ok "canonical current-state gate helper documented" || bad "canonical current-state gate helper missing"
 grep -q 'working-tree-gate.sh' "$ROOT/reference.md" && ok "canonical working-tree gate helper documented" || bad "canonical working-tree gate helper missing"
 grep -q 'clarify-gate.sh' "$ROOT/reference.md" && ok "canonical clarify gate helper documented" || bad "canonical clarify gate helper missing"

@@ -50,6 +50,13 @@
             "type": "command",
             "command": "KIMIFLOW_HOST=codex ${KIMIFLOW_PLUGIN_ROOT:-.}/hooks/active-run.sh stop-gate",
             "statusMessage": "Checking Kimiflow active session"
+          },
+          {
+            "name": "Kimiflow map staleness nudge",
+            "description": "Surfaces a non-blocking nudge when the local project map has stale sections, rate-limited to once per day.",
+            "type": "command",
+            "command": "KIMIFLOW_HOST=codex ${KIMIFLOW_PLUGIN_ROOT:-.}/hooks/map-staleness-nudge.sh",
+            "statusMessage": "Checking Kimiflow project map staleness"
           }
         ]
       }

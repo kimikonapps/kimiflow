@@ -5,16 +5,20 @@
 #   project-map-status.sh [status] [--index <path>] [--affected <path>]...
 #   project-map-status.sh coverage [--index <path>] [--affected <path>]...
 #   project-map-status.sh refresh [--index <path>] --section <name>...
+#   project-map-status.sh refresh [--index <path>] --changed
+#   project-map-status.sh index-symbols [--index <path>] [--section <name>...]   (default: all sections)
 #
 # Output is TSV-ish and stable:
 #   PROJECT_MAP <status> stale=<n> potentially_stale=<n> unknown=<n> affected_stale=<n> index=<path>
 #   PROJECT_MAP_COVERAGE <status> affected=<n> mapped=<n> unmapped=<n> affected_stale=<n> affected_unknown=<n> phase2_depth=<compressed|targeted|full> reason=<reason> index=<path>
 #   SECTION     <name>   <status> affected=<yes|no|all> reason=<reason> paths=<csv|->
 #   REFRESHED   <name>   files=<n> commit=<sha|NOT VERIFIED>
+#   NEW-FILE    <section> <path>
+#   SYMBOLS     <section>
 set -u
 
 usage() {
-  sed -n '1,15p' "$0" >&2
+  sed -n '1,17p' "$0" >&2
 }
 
 die() {
@@ -266,20 +270,186 @@ path_is_mapped() {
   return 1
 }
 
+section_members() {
+  read_section_list "$INDEX" "$1" '((.sections[$s].files // []) + ((.sections[$s].file_hashes // {}) | keys)) | unique[]'
+}
+
+section_owns() {
+  local s="$1" target="$2" m
+  while IFS= read -r m; do [ "$m" = "$target" ] && return 0; done < <(section_members "$s")
+  return 1
+}
+
+section_prefixes_effective() {
+  local s="$1" path
+  local pf
+  pf=()
+  while IFS= read -r path; do [ -n "$path" ] && pf+=("$path"); done < <(
+    read_section_list "$INDEX" "$s" '(.sections[$s].prefixes // [])[]'
+  )
+  if [ "${#pf[@]}" -eq 0 ]; then
+    while IFS= read -r path; do
+      [ -n "$path" ] || continue
+      case "$path" in
+        */*) pf+=("${path%/*}/") ;;
+        *) pf+=("$path") ;;
+      esac
+    done < <(section_members "$s")
+  fi
+  printf '%s\n' ${pf[@]+"${pf[@]}"}
+}
+
+longest_prefix_len() {
+  local path="$1" prefix best=-1
+  shift
+  for prefix in "$@"; do
+    [ -n "$prefix" ] || continue
+    case "$path" in
+      "$prefix"|"$prefix"/*) [ "${#prefix}" -gt "$best" ] && best="${#prefix}" ;;
+      *) case "$prefix" in */) case "$path" in "$prefix"*) [ "${#prefix}" -gt "$best" ] && best="${#prefix}" ;; esac ;; esac ;;
+    esac
+  done
+  printf '%s' "$best"
+}
+
+# B1 — extract shell function definitions (`name()` at line start, comment lines skipped)
+# into sections[$s].symbols = {"NAME":"path:line"}. .sh files only; schema stays additive.
+index_symbols_section() {
+  local s="$1" path name line rest grepline symbols tmp
+  symbols='{}'
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    case "$path" in *.sh) ;; *) continue ;; esac
+    [ -f "$ROOT/$path" ] || continue
+    while IFS= read -r grepline; do
+      [ -n "$grepline" ] || continue
+      line="${grepline%%:*}"
+      rest="${grepline#*:}"
+      name="${rest%%(*}"
+      [ -n "$name" ] || continue
+      symbols="$(printf '%s\n' "$symbols" | jq --arg n "$name" --arg loc "$path:$line" '. + {($n): $loc}')"
+    done < <(grep -nE '^[A-Za-z_][A-Za-z0-9_]*\(\)' "$ROOT/$path" 2>/dev/null)
+  done < <(section_members "$s")
+  tmp="$(mktemp)"
+  jq --arg s "$s" --argjson symbols "$symbols" '.sections[$s].symbols = $symbols' "$INDEX" > "$tmp" && mv "$tmp" "$INDEX"
+}
+
+# A1 — restamp only the sections whose files changed vs the baseline commit (with a graceful
+# working-tree-only fallback when the baseline is unreachable). Prunes deleted members, adopts new
+# files under a section prefix (longest prefix wins, ties resolve to the first INDEX section), and
+# re-indexes symbols of each refreshed section. No change → no mutation.
+do_refresh_changed() {
+  local base commit now path s m p len best_s best_len i h count tmp files_json
+  local ALL_SECTIONS ALL_MEMBERS UNIQUE_CHANGED AFFECTED_SECTIONS NEWFILE_SECTION NEWFILE_PATH pf final_files hashes
+  ALL_SECTIONS=(); ALL_MEMBERS=(); UNIQUE_CHANGED=(); AFFECTED_SECTIONS=(); NEWFILE_SECTION=(); NEWFILE_PATH=()
+
+  base="$(jq -r '.baseline_commit // "NOT VERIFIED"' "$INDEX" 2>/dev/null)"
+  collect_changed_paths "$ROOT" "$base"
+  commit="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || printf 'NOT VERIFIED')"
+  now="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+
+  while IFS= read -r s; do [ -n "$s" ] && ALL_SECTIONS+=("$s"); done < <(jq -r '.sections // {} | keys_unsorted[]' "$INDEX")
+  while IFS= read -r path; do [ -n "$path" ] && ALL_MEMBERS+=("$path"); done < <(
+    jq -r '[.sections[]? | (.files // [])[]?, ((.file_hashes // {}) | keys[]?)] | unique[]' "$INDEX"
+  )
+
+  for path in ${CHANGED_PATHS[@]+"${CHANGED_PATHS[@]}"}; do
+    contains "$path" ${UNIQUE_CHANGED[@]+"${UNIQUE_CHANGED[@]}"} || UNIQUE_CHANGED+=("$path")
+  done
+
+  for path in ${UNIQUE_CHANGED[@]+"${UNIQUE_CHANGED[@]}"}; do
+    if [ "${#ALL_MEMBERS[@]}" -gt 0 ] && contains "$path" ${ALL_MEMBERS[@]+"${ALL_MEMBERS[@]}"}; then
+      for s in ${ALL_SECTIONS[@]+"${ALL_SECTIONS[@]}"}; do
+        if section_owns "$s" "$path"; then
+          contains "$s" ${AFFECTED_SECTIONS[@]+"${AFFECTED_SECTIONS[@]}"} || AFFECTED_SECTIONS+=("$s")
+        fi
+      done
+    else
+      [ -e "$ROOT/$path" ] || continue
+      best_s=""; best_len=-1
+      for s in ${ALL_SECTIONS[@]+"${ALL_SECTIONS[@]}"}; do
+        pf=()
+        while IFS= read -r p; do [ -n "$p" ] && pf+=("$p"); done < <(section_prefixes_effective "$s")
+        [ "${#pf[@]}" -gt 0 ] || continue
+        len="$(longest_prefix_len "$path" ${pf[@]+"${pf[@]}"})"
+        if [ "$len" -gt "$best_len" ]; then best_len="$len"; best_s="$s"; fi
+      done
+      if [ -n "$best_s" ] && [ "$best_len" -ge 0 ]; then
+        NEWFILE_SECTION+=("$best_s"); NEWFILE_PATH+=("$path")
+        contains "$best_s" ${AFFECTED_SECTIONS[@]+"${AFFECTED_SECTIONS[@]}"} || AFFECTED_SECTIONS+=("$best_s")
+      fi
+    fi
+  done
+
+  [ "${#AFFECTED_SECTIONS[@]}" -gt 0 ] || return 0
+
+  i=0
+  while [ "$i" -lt "${#NEWFILE_PATH[@]}" ]; do
+    printf 'NEW-FILE\t%s\t%s\n' "${NEWFILE_SECTION[$i]}" "${NEWFILE_PATH[$i]}"
+    i=$((i + 1))
+  done
+
+  for s in ${AFFECTED_SECTIONS[@]+"${AFFECTED_SECTIONS[@]}"}; do
+    final_files=()
+    while IFS= read -r m; do
+      [ -n "$m" ] || continue
+      [ -e "$ROOT/$m" ] || continue
+      contains "$m" ${final_files[@]+"${final_files[@]}"} || final_files+=("$m")
+    done < <(section_members "$s")
+    i=0
+    while [ "$i" -lt "${#NEWFILE_PATH[@]}" ]; do
+      if [ "${NEWFILE_SECTION[$i]}" = "$s" ]; then
+        contains "${NEWFILE_PATH[$i]}" ${final_files[@]+"${final_files[@]}"} || final_files+=("${NEWFILE_PATH[$i]}")
+      fi
+      i=$((i + 1))
+    done
+    hashes='{}'; count=0
+    for path in ${final_files[@]+"${final_files[@]}"}; do
+      if [ -f "$ROOT/$path" ]; then
+        h="$(sha256_file "$ROOT/$path")"
+        hashes="$(printf '%s\n' "$hashes" | jq --arg p "$path" --arg h "$h" '. + {($p): $h}')"
+        count=$((count + 1))
+      fi
+    done
+    files_json="$(printf '%s\n' ${final_files[@]+"${final_files[@]}"} | jq -R . | jq -s 'map(select(length > 0))')"
+    tmp="$(mktemp)"
+    jq --arg s "$s" --arg commit "$commit" --arg now "$now" --argjson hashes "$hashes" --argjson files "$files_json" '
+      .sections[$s].files = $files |
+      .sections[$s].file_hashes = $hashes |
+      .sections[$s].last_scanned_commit = $commit |
+      .sections[$s].status = "current" |
+      .sections[$s].updated_at = $now
+    ' "$INDEX" > "$tmp" && mv "$tmp" "$INDEX"
+    index_symbols_section "$s"
+    printf 'REFRESHED\t%s\tfiles=%s\tcommit=%s\n' "$s" "$count" "$commit"
+  done
+
+  # Advance the baseline so an already-absorbed COMMITTED delta is not re-detected next run
+  # (idempotent for committed changes; working-tree staged/unstaged/untracked changes are still
+  # re-detected each run regardless of baseline). Only when HEAD is resolvable.
+  if [ "$commit" != "NOT VERIFIED" ]; then
+    tmp="$(mktemp)"
+    jq --arg commit "$commit" '.baseline_commit = $commit' "$INDEX" > "$tmp" && mv "$tmp" "$INDEX"
+  fi
+  return 0
+}
+
 mode="status"
 INDEX=""
 AFFECTED_PATHS=()
 REFRESH_SECTIONS=()
+REFRESH_CHANGED=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    status|coverage|refresh) mode="$1" ;;
+    status|coverage|refresh|index-symbols) mode="$1" ;;
     --index) shift; INDEX="${1:-}" ;;
     --affected) shift; AFFECTED_PATHS+=("${1:-}") ;;
     --section) shift; REFRESH_SECTIONS+=("${1:-}") ;;
+    --changed) REFRESH_CHANGED=1 ;;
     --help|-h) usage; exit 0 ;;
     *)
-      if [ "$mode" = "refresh" ]; then REFRESH_SECTIONS+=("$1"); else AFFECTED_PATHS+=("$1"); fi
+      if [ "$mode" = "refresh" ] || [ "$mode" = "index-symbols" ]; then REFRESH_SECTIONS+=("$1"); else AFFECTED_PATHS+=("$1"); fi
       ;;
   esac
   shift
@@ -320,7 +490,21 @@ if ! jq -e . "$INDEX" >/dev/null 2>&1; then
   exit 0
 fi
 
+if [ "$mode" = "index-symbols" ]; then
+  [ "${#REFRESH_SECTIONS[@]}" -gt 0 ] || while IFS= read -r s; do REFRESH_SECTIONS+=("$s"); done < <(jq -r '.sections // {} | keys[]' "$INDEX")
+  for section in ${REFRESH_SECTIONS[@]+"${REFRESH_SECTIONS[@]}"}; do
+    jq -e --arg s "$section" '.sections[$s]' "$INDEX" >/dev/null 2>&1 || die "unknown section: $section"
+    index_symbols_section "$section"
+    printf 'SYMBOLS\t%s\n' "$section"
+  done
+  exit 0
+fi
+
 if [ "$mode" = "refresh" ]; then
+  if [ "$REFRESH_CHANGED" = "1" ]; then
+    do_refresh_changed
+    exit 0
+  fi
   [ "${#REFRESH_SECTIONS[@]}" -gt 0 ] || while IFS= read -r s; do REFRESH_SECTIONS+=("$s"); done < <(jq -r '.sections // {} | keys[]' "$INDEX")
   commit="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || printf 'NOT VERIFIED')"
   now="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"

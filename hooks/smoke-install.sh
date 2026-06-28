@@ -92,6 +92,10 @@ for term in INDEX.json FACTS.jsonl CODEBASE.md ARCHITECTURE.md CONVENTIONS.md TE
 done
 if [ -x "$ROOT/hooks/project-map-status.sh" ] && bash -n "$ROOT/hooks/project-map-status.sh" 2>/dev/null; then ok "project map status helper ok"; else bad "project map status helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-project-map-status.sh" ] && bash -n "$ROOT/hooks/test-project-map-status.sh" 2>/dev/null; then ok "project map status test ok"; else bad "project map status test missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/suggest-affected-sections.sh" ] && bash -n "$ROOT/hooks/suggest-affected-sections.sh" 2>/dev/null; then ok "suggest-affected helper ok"; else bad "suggest-affected helper missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/test-suggest-affected-sections.sh" ] && bash -n "$ROOT/hooks/test-suggest-affected-sections.sh" 2>/dev/null; then ok "suggest-affected test ok"; else bad "suggest-affected test missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/map-staleness-nudge.sh" ] && bash -n "$ROOT/hooks/map-staleness-nudge.sh" 2>/dev/null; then ok "map staleness nudge helper ok"; else bad "map staleness nudge helper missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/test-map-staleness-nudge.sh" ] && bash -n "$ROOT/hooks/test-map-staleness-nudge.sh" 2>/dev/null; then ok "map staleness nudge test ok"; else bad "map staleness nudge test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/current-state-gate.sh" ] && bash -n "$ROOT/hooks/current-state-gate.sh" 2>/dev/null; then ok "current-state gate helper ok"; else bad "current-state gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-current-state-gate.sh" ] && bash -n "$ROOT/hooks/test-current-state-gate.sh" 2>/dev/null; then ok "current-state gate test ok"; else bad "current-state gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/working-tree-gate.sh" ] && bash -n "$ROOT/hooks/working-tree-gate.sh" 2>/dev/null; then ok "working-tree gate helper ok"; else bad "working-tree gate helper missing/not-exec/bad"; fi
@@ -111,6 +115,12 @@ if [ -x "$ROOT/hooks/test-vault-mcp-setup.sh" ] && bash -n "$ROOT/hooks/test-vau
 if [ -x "$ROOT/hooks/vault-mcp-open-terminal.sh" ] && bash -n "$ROOT/hooks/vault-mcp-open-terminal.sh" 2>/dev/null; then ok "vault MCP terminal helper ok"; else bad "vault MCP terminal helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-vault-mcp-open-terminal.sh" ] && bash -n "$ROOT/hooks/test-vault-mcp-open-terminal.sh" 2>/dev/null; then ok "vault MCP terminal test ok"; else bad "vault MCP terminal test missing/not-exec/bad"; fi
 grep -q 'project-map-status.sh' "$ROOT/reference.md" && ok "reference documents project-map status helper" || bad "missing project-map status helper in reference.md"
+grep -q 'suggest-affected-sections.sh' "$ROOT/reference.md" && ok "reference documents suggest-affected helper" || bad "missing suggest-affected helper in reference.md"
+grep -q 'map-staleness-nudge.sh' "$ROOT/reference.md" && ok "reference documents map staleness nudge helper" || bad "missing map staleness nudge helper in reference.md"
+grep -q -- 'refresh --changed' "$ROOT/reference.md" && ok "reference documents auto delta refresh" || bad "missing refresh --changed in reference.md"
+grep -q 'index-symbols' "$ROOT/reference.md" && ok "reference documents symbol index" || bad "missing index-symbols in reference.md"
+grep -q -- 'refresh --changed' "$ROOT/SKILL.md" && ok "canonical skill documents Phase-7 auto-refresh" || bad "missing Phase-7 auto-refresh in SKILL.md"
+grep -q 'suggest-affected-sections.sh' "$ROOT/SKILL.md" && ok "canonical skill documents Phase-2 section lookup" || bad "missing Phase-2 section lookup in SKILL.md"
 grep -q 'current-state-gate.sh' "$ROOT/reference.md" && ok "reference documents current-state gate helper" || bad "missing current-state gate helper in reference.md"
 grep -q 'working-tree-gate.sh' "$ROOT/reference.md" && ok "reference documents working-tree gate helper" || bad "missing working-tree gate helper in reference.md"
 grep -q 'clarify-gate.sh' "$ROOT/reference.md" && ok "reference documents clarify gate helper" || bad "missing clarify gate helper in reference.md"

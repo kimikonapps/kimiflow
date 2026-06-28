@@ -89,6 +89,10 @@ run_coverage() {
   ( cd "$REPO" && "$SCRIPT" coverage "$@" )
 }
 
+run_index_symbols() {
+  ( cd "$REPO" && "$SCRIPT" index-symbols "$@" )
+}
+
 # missing index
 reset_repo
 rm -f "$INDEX"
@@ -177,6 +181,139 @@ out="$(run_coverage --affected mystery/new.txt)"
 assert_has "$out" $'PROJECT_MAP_COVERAGE\tunknown' "coverage_marks_affected_unknown_section"
 assert_has "$out" 'affected_unknown=1' "coverage_counts_affected_unknown_section"
 assert_has "$out" 'phase2_depth=targeted' "coverage_affected_unknown_uses_targeted_phase2"
+
+# A1 — refresh --changed restamps only the section whose file changed
+reset_repo
+BASE="$(cd "$REPO" && git rev-parse --short HEAD)"
+write_index "$BASE" "$(hash_file "$REPO/hooks/a.sh")" "$(hash_file "$REPO/docs/guide.md")"
+printf 'two\n' > "$REPO/hooks/a.sh"
+out="$(run_refresh --changed)"
+assert_has "$out" $'REFRESHED\thooks\t' "refresh_changed_reports_affected_section"
+assert_eq "$(jq -r '.sections.hooks.status' "$INDEX")" "current" "refresh_changed_restamps_only_affected"
+assert_eq "$(jq -r '.sections.hooks.file_hashes["hooks/a.sh"]' "$INDEX")" "$(hash_file "$REPO/hooks/a.sh")" "refresh_changed_updates_affected_hash"
+assert_eq "$(jq -r '.sections.docs.status' "$INDEX")" "stale" "refresh_changed_leaves_unaffected_section_alone"
+
+# A1 — section matched purely by .files membership (genuinely prefix-less member)
+reset_repo
+printf 'root\n' > "$REPO/foo.md"
+( cd "$REPO" && git add foo.md && git commit -q -m foo )
+BASE="$(cd "$REPO" && git rev-parse --short HEAD)"
+jq -n --arg base "$BASE" --arg fh "$(hash_file "$REPO/foo.md")" '{
+  schema_version: 1, language: "de", scan_depth: "standard", baseline_commit: $base,
+  created_at: "2026-06-25T00:00:00Z",
+  sections: {
+    rootdoc: {files: ["foo.md"], prefixes: ["docs/"], file_hashes: {"foo.md": $fh}, last_scanned_commit: $base, status: "stale"}
+  },
+  artifacts: {}
+}' > "$INDEX"
+printf 'changed\n' > "$REPO/foo.md"
+out="$(run_refresh --changed)"
+assert_eq "$(jq -r '.sections.rootdoc.status' "$INDEX")" "current" "refresh_changed_restamps_section_by_files_membership"
+assert_eq "$(jq -r '.sections.rootdoc.file_hashes["foo.md"]' "$INDEX")" "$(hash_file "$REPO/foo.md")" "refresh_changed_membership_updates_hash"
+
+# A1 — new file under a section prefix is adopted; longest prefix wins
+reset_repo
+BASE="$(cd "$REPO" && git rev-parse --short HEAD)"
+mkdir -p "$REPO/hooks/deep"
+jq -n --arg base "$BASE" --arg ah "$(hash_file "$REPO/hooks/a.sh")" '{
+  schema_version: 1, language: "de", scan_depth: "standard", baseline_commit: $base,
+  created_at: "2026-06-25T00:00:00Z",
+  sections: {
+    hooks: {files: ["hooks/a.sh"], prefixes: ["hooks/"], file_hashes: {"hooks/a.sh": $ah}, last_scanned_commit: $base, status: "current"},
+    hooksdeep: {files: [], prefixes: ["hooks/deep/"], file_hashes: {}, last_scanned_commit: $base, status: "current"}
+  },
+  artifacts: {}
+}' > "$INDEX"
+printf 'x\n' > "$REPO/hooks/deep/x.sh"
+out="$(run_refresh --changed)"
+assert_has "$out" $'NEW-FILE\thooksdeep\thooks/deep/x.sh' "refresh_changed_adds_new_file_by_prefix"
+assert_eq "$(jq -r '.sections.hooksdeep.files | index("hooks/deep/x.sh")' "$INDEX")" "0" "refresh_changed_new_file_added_to_files"
+assert_eq "$(jq -r '.sections.hooksdeep.file_hashes["hooks/deep/x.sh"]' "$INDEX")" "$(hash_file "$REPO/hooks/deep/x.sh")" "refresh_changed_new_file_hashed"
+assert_eq "$(jq -r '.sections.hooks.files | index("hooks/deep/x.sh")' "$INDEX")" "null" "refresh_changed_new_file_not_in_shorter_prefix"
+
+# A1 — clean tree → no mutation, exit 0
+reset_repo
+BASE="$(cd "$REPO" && git rev-parse --short HEAD)"
+write_index "$BASE" "$(hash_file "$REPO/hooks/a.sh")" "$(hash_file "$REPO/docs/guide.md")"
+before="$(cat "$INDEX")"
+out="$(run_refresh --changed)"; rc=$?
+after="$(cat "$INDEX")"
+assert_eq "$after" "$before" "refresh_changed_noop_when_clean"
+assert_eq "$rc" "0" "refresh_changed_noop_exit0"
+
+# A1 — a COMMITTED change is absorbed once; baseline advances so a re-run is a true no-op (idempotent)
+reset_repo
+BASE="$(cd "$REPO" && git rev-parse --short HEAD)"
+write_index "$BASE" "$(hash_file "$REPO/hooks/a.sh")" "$(hash_file "$REPO/docs/guide.md")"
+printf 'changed-and-committed\n' > "$REPO/hooks/a.sh"
+( cd "$REPO" && git add hooks/a.sh && git commit -q -m change )
+HEAD2="$(cd "$REPO" && git rev-parse --short HEAD)"
+out1="$(run_refresh --changed)"
+assert_has "$out1" $'REFRESHED\thooks\t' "refresh_changed_absorbs_committed_change"
+assert_eq "$(jq -r '.baseline_commit' "$INDEX")" "$HEAD2" "refresh_changed_advances_baseline_to_head"
+before2="$(cat "$INDEX")"
+out2="$(run_refresh --changed)"; rc2=$?
+after2="$(cat "$INDEX")"
+assert_eq "$out2" "" "refresh_changed_idempotent_after_commit"
+assert_eq "$after2" "$before2" "refresh_changed_idempotent_no_mutation"
+assert_eq "$rc2" "0" "refresh_changed_idempotent_exit0"
+
+# A1/AC-16 — deleted member is pruned, remaining member kept, section reports current
+reset_repo
+printf 'bee\n' > "$REPO/hooks/b.sh"
+( cd "$REPO" && git add hooks/b.sh && git commit -q -m addb )
+BASE="$(cd "$REPO" && git rev-parse --short HEAD)"
+jq -n --arg base "$BASE" --arg ah "$(hash_file "$REPO/hooks/a.sh")" --arg bh "$(hash_file "$REPO/hooks/b.sh")" '{
+  schema_version: 1, language: "de", scan_depth: "standard", baseline_commit: $base,
+  created_at: "2026-06-25T00:00:00Z",
+  sections: {
+    multi: {files: ["hooks/a.sh", "hooks/b.sh"], prefixes: ["hooks/"], file_hashes: {"hooks/a.sh": $ah, "hooks/b.sh": $bh}, last_scanned_commit: $base, status: "current"}
+  },
+  artifacts: {}
+}' > "$INDEX"
+( cd "$REPO" && git rm -q hooks/b.sh && git commit -q -m rmb )
+out="$(run_refresh --changed)"
+assert_eq "$(jq -r '.sections.multi.files | index("hooks/b.sh")' "$INDEX")" "null" "refresh_changed_prunes_deleted_file"
+assert_eq "$(jq -r '.sections.multi.file_hashes["hooks/b.sh"] // "gone"' "$INDEX")" "gone" "refresh_changed_prunes_deleted_hash"
+assert_eq "$(jq -r '.sections.multi.files | index("hooks/a.sh")' "$INDEX")" "0" "refresh_changed_keeps_remaining_file"
+out="$(run_status)"
+assert_has "$out" $'SECTION\tmulti\tcurrent' "refresh_changed_pruned_section_status_current"
+
+# B1 — index-symbols extracts shell functions, skips comment lines
+reset_repo
+BASE="$(cd "$REPO" && git rev-parse --short HEAD)"
+printf '#!/usr/bin/env bash\nfoo() {\n  echo hi\n}\n# bar() {\n#   echo no\n# }\nbaz() {\n  echo b\n}\n' > "$REPO/hooks/sym.sh"
+jq -n --arg base "$BASE" --arg sh "$(hash_file "$REPO/hooks/sym.sh")" '{
+  schema_version: 1, language: "de", scan_depth: "standard", baseline_commit: $base,
+  created_at: "2026-06-25T00:00:00Z",
+  sections: {
+    syms: {files: ["hooks/sym.sh"], prefixes: ["hooks/"], file_hashes: {"hooks/sym.sh": $sh}, last_scanned_commit: $base, status: "current"}
+  },
+  artifacts: {}
+}' > "$INDEX"
+out="$(run_index_symbols --section syms)"
+assert_eq "$(jq -r '.sections.syms.symbols.foo' "$INDEX")" "hooks/sym.sh:2" "index_symbols_populates_and_skips_comments"
+assert_eq "$(jq -r '.sections.syms.symbols.bar // "none"' "$INDEX")" "none" "index_symbols_skips_comment_function"
+assert_eq "$(jq -r '.sections.syms.symbols.baz' "$INDEX")" "hooks/sym.sh:8" "index_symbols_records_second_function"
+assert_eq "$(jq -r '.schema_version' "$INDEX")" "1" "index_symbols_keeps_schema_version"
+
+# B1 wiring — refresh --changed re-indexes symbols of a refreshed .sh section
+reset_repo
+printf '#!/usr/bin/env bash\nfoo() {\n  echo hi\n}\n' > "$REPO/hooks/sym2.sh"
+( cd "$REPO" && git add hooks/sym2.sh && git commit -q -m sym2 )
+BASE="$(cd "$REPO" && git rev-parse --short HEAD)"
+jq -n --arg base "$BASE" --arg sh "$(hash_file "$REPO/hooks/sym2.sh")" '{
+  schema_version: 1, language: "de", scan_depth: "standard", baseline_commit: $base,
+  created_at: "2026-06-25T00:00:00Z",
+  sections: {
+    syms2: {files: ["hooks/sym2.sh"], prefixes: ["hooks/"], file_hashes: {"hooks/sym2.sh": $sh}, last_scanned_commit: $base, status: "current"}
+  },
+  artifacts: {}
+}' > "$INDEX"
+printf '#!/usr/bin/env bash\nfoo() {\n  echo hi\n}\nqux() {\n  echo q\n}\n' > "$REPO/hooks/sym2.sh"
+out="$(run_refresh --changed)"
+assert_eq "$(jq -r '.sections.syms2.symbols.qux' "$INDEX")" "hooks/sym2.sh:5" "refresh_changed_reindexes_symbols"
+assert_eq "$(jq -r '.sections.syms2.symbols.foo' "$INDEX")" "hooks/sym2.sh:2" "refresh_changed_reindex_keeps_existing_symbol"
 
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi
