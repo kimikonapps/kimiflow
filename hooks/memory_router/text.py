@@ -22,3 +22,12 @@ def word_count_file(path):
             return len(handle.read().split())
     except (OSError, UnicodeDecodeError):
         return 0
+
+
+# jq `ascii_downcase` / C-locale `tr '[:upper:]' '[:lower:]'`: lowers ONLY ASCII A-Z,
+# leaving every other codepoint (incl. non-ASCII letters) untouched. Never str.lower().
+_ASCII_DOWNCASE = {c: chr(c + 32) for c in range(ord("A"), ord("Z") + 1)}
+
+
+def ascii_lower(s):
+    return s.translate(_ASCII_DOWNCASE)

@@ -7,7 +7,7 @@ import os
 import re
 import sqlite3
 
-from . import clock, paths, store
+from . import clock, paths, store, text
 
 # Source of truth: Bash 2562-2563.
 _SCHEMA = (
@@ -28,6 +28,11 @@ _ARTIFACT_NAMES = frozenset((
     "ADVISORIES.md",
 ))
 _MIDDOT = "\u00b7"  # U+00B7 MIDDLE DOT; never write the literal char (handoff gotcha).
+
+# run_artifact_rows_json's find (Bash 1668) matches the SAME basenames as
+# build_recall_index PLUS `STATE.md` (Bash 2619 omits it). The recall/history run-artifact
+# source therefore uses a wider name set than the index builder. Grounded divergence.
+_RUN_ARTIFACT_NAMES = _ARTIFACT_NAMES | frozenset(("STATE.md",))
 
 
 def fts5_available():
@@ -145,9 +150,11 @@ def _artifact_title(rel):
     return second + " " + _MIDDOT + " " + rel[prefix_len:]
 
 
-def _iter_run_artifacts(root):
+def _iter_run_artifacts(root, names=_ARTIFACT_NAMES):
     # Bash find: traverse $root/.kimiflow, prune the project dir, then yield regular
-    # files whose basename is a matched name OR whose path is */findings/*.md.
+    # files whose basename is a matched name OR whose path is */findings/*.md. `names`
+    # defaults to the index set (build_recall_index, Bash 2619); run_artifact_rows_json
+    # passes the wider _RUN_ARTIFACT_NAMES (Bash 1668, +STATE.md).
     base = os.path.join(root, ".kimiflow")
     project = os.path.join(base, "project")
     matches = []
@@ -158,7 +165,7 @@ def _iter_run_artifacts(root):
         for name in filenames:
             full = os.path.join(dirpath, name)
             rel = paths.rel_path(root, full)
-            if name in _ARTIFACT_NAMES or ("/findings/" in rel and rel.endswith(".md")):
+            if name in names or ("/findings/" in rel and rel.endswith(".md")):
                 matches.append((rel, full))
     # find's native order is filesystem-dependent; sort for deterministic insertion
     # (observable only via fts_hits_json LIMIT, which has no ORDER BY).
@@ -226,3 +233,60 @@ def build_recall_index(root, db_path):
     finally:
         con.close()
     return 0
+
+
+_WS_STRIP = " \t\r\f\v"                            # leading/trailing ASCII [[:space:]] (line has no \n)
+_HEADING_RE = re.compile(r"#{1,6}[ \t\r\f\v]")     # ^#{1,6}[[:space:]] (ASCII, not Unicode \s)
+_WS_RUN_RE = re.compile(r"[ \t\r\f\v]+")           # [[:space:]]+ collapse (ASCII)
+
+
+def _artifact_summary(body):
+    # Bash awk (1639-1651): first body line that, after stripping ASCII whitespace, is
+    # non-empty, not a `#`x1-6 heading, not a ``` fence; collapse internal whitespace runs
+    # to a single space; then cut -c1-420 (char-truncation, per the slugify `cut -c` convention).
+    for raw in body.split("\n"):
+        line = raw.strip(_WS_STRIP)
+        if line == "":
+            continue
+        if _HEADING_RE.match(line):
+            continue
+        if line.startswith("```"):
+            continue
+        return _WS_RUN_RE.sub(" ", line)[:420]
+    return ""
+
+
+def run_artifact_rows_json(root):
+    # Bash run_artifact_rows_json (1624-1670): one row per run-artifact file (sorted),
+    # using the STATE.md-inclusive name set. Missing .kimiflow -> [].
+    if not os.path.isdir(os.path.join(root, ".kimiflow")):
+        return []
+    rows = []
+    for rel, full in _iter_run_artifacts(root, _RUN_ARTIFACT_NAMES):
+        parts = rel.split("/")
+        slug = parts[1] if len(parts) > 1 else ""     # awk -F/ '{print $2}'
+        artifact = "/".join(parts[2:])                 # cut -d/ -f3-
+        body = _first_lines(_read_body(full))
+        rows.append({
+            "kind": "run_artifact",
+            "slug": slug,
+            "artifact": artifact,
+            "path": rel,
+            "ref": rel,
+            "title": slug + " " + _MIDDOT + " " + artifact,
+            "summary": _artifact_summary(body),
+            "text": body,
+        })
+    return rows
+
+
+def run_artifact_hits_json(root, terms, max_hits):
+    # Bash run_artifact_hits_json (1672-1685): keep rows whose slug+artifact+summary+text
+    # matches any (non-empty) term (ascii_downcase substring), take the first max, drop `text`.
+    matches = []
+    for row in run_artifact_rows_json(root):
+        blob = row["slug"] + " " + row["artifact"] + " " + row["summary"] + " " + row["text"]
+        lowered = text.ascii_lower(blob)
+        if any(term != "" and term in lowered for term in terms):
+            matches.append(row)
+    return [{k: v for k, v in row.items() if k != "text"} for row in matches[:max_hits]]
