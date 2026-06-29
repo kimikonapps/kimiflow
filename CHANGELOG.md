@@ -6,6 +6,20 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.1.51
+
+Additive Python (stdlib) port of the `memory-router` hook, built and verified behind the scenes. The Bash `hooks/memory-router.sh` stays the active runtime — this release ships the new `hooks/memory_router/` package and its test suite alongside it, with no cutover and no behaviour change yet.
+
+### Added
+- **`memory_router` Python package** — a stdlib-only port of `memory-router.sh`, grounded byte-for-byte against the pinned `kimiflow--v0.1.50` Bash. Wired subcommands: `classify`, `index`, `status`, `curate`, `record`, `recall`, `history`, over the full read/write/recall stack — bounded `MEMORY.md`/`USER.md` writers, the learning-row write path + security gate, the `RECALL.sqlite` FTS5 engine + index builder, the summary aggregators (usage/economics/lifecycle/global-efficiency), the provider/vault status chain, and the `MEMORY-USAGE.json` metrics writer. Shared layers: jq-faithful JSON serialization, atomic IO + lenient readers, and row/path/text/clock primitives.
+- **Parity + unit test suite** (`hooks/memory_router/tests/`) including harnesses that shell to the pinned Bash for byte-for-byte verification, gated into CI and the release loop.
+
+### Fixed
+- **memory_router parity hardening**: UTF-8-tolerant `word_count_file`; newline-faithful `--input`/parity reads; location-independent parity launch (`PYTHONPATH` + `-m`); a bash-3.2 empty-array false-green under `set -u`; and a Bash-style unknown-command error (stderr + exit 2).
+
+### Changed
+- Planning + handoff docs for the port (`docs/superpowers/`), the CLI design spec, and `.gitignore` for Python bytecode + SDD scratch.
+
 ## 0.1.50
 
 ShellCheck cleanup across the hooks: a real `local` path-derivation bug plus dead `case` patterns, unused variables, and two error-level parsing ambiguities.
