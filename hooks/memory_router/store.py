@@ -38,6 +38,16 @@ def read_text(path, default=""):
         return default
 
 
+def read_json(path, default=None):
+    # Lenient single-object JSON read (Bash guards with `jq -e . file`): returns
+    # `default` when the file is missing, unreadable, or not valid JSON.
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, ValueError):
+        return default
+
+
 def read_jsonl(path):
     rows = []
     try:
