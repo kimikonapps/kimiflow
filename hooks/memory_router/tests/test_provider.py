@@ -185,6 +185,95 @@ class StatusCase(unittest.TestCase):
         ])
 
 
+class _RootCase(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.project = os.path.join(self.root, ".kimiflow", "project")
+        os.makedirs(self.project)
+
+    def evidence(self, rel, content="data\n"):
+        path = os.path.join(self.root, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        from memory_router import rows
+        return rows.evidence_fingerprints_json(self.root, [rel])   # the fresh fingerprint
+
+    def learnings(self, rows_):
+        path = os.path.join(self.project, "LEARNINGS.jsonl")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("".join(json.dumps(r) + "\n" for r in rows_))
+        return path
+
+    def manifest(self, obj):
+        path = os.path.join(self.project, "VAULT-PROVIDER.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(obj))
+        return path
+
+    def missing(self, name):
+        return os.path.join(self.project, name)
+
+
+class SyncStatusCase(_RootCase):
+    AVAIL = {"type": "obsidian", "available": True, "updated_at": "2026-06-01T00:00:00Z"}
+
+    def sync(self, learnings, manifest_file, probe=(None, "")):
+        with _clean_env(), mock.patch.object(provider, "_http_probe", return_value=probe):
+            return provider.sync_status_json(self.root, learnings, manifest_file)
+
+    def test_pending_and_exclusions(self):
+        fp = self.evidence("src/a.py")
+        stale = [dict(fp[0], sha256="deadbeef", digest="deadbeef")]
+        learnings = self.learnings([
+            {"id": "L1", "status": "current", "sensitivity": "normal", "evidence": ["src/a.py"], "evidence_fingerprints": fp},
+            {"id": "Lpriv", "status": "current", "sensitivity": "private", "evidence": ["src/a.py"], "evidence_fingerprints": fp},
+            {"id": "Lnoev", "status": "current", "evidence": []},
+            {"id": "Lnv", "status": "current", "evidence": ["NOT VERIFIED"], "evidence_fingerprints": fp},
+            {"id": "Lstale", "status": "current", "evidence": ["src/a.py"], "evidence_fingerprints": stale},
+            {"id": "Larch", "status": "archived", "evidence": ["src/a.py"], "evidence_fingerprints": fp},
+        ])
+        manifest = self.manifest(self.AVAIL)
+        s = self.sync(learnings, manifest)
+        self.assertEqual((s["status"], s["available"]), ("pending", True))
+        self.assertEqual((s["pending_count"], s["pending_ids"], s["exportable_count"]), (1, ["L1"], 1))
+
+    def test_synced_id_excluded_current(self):
+        fp = self.evidence("src/a.py")
+        learnings = self.learnings([{"id": "L1", "status": "current", "evidence": ["src/a.py"], "evidence_fingerprints": fp}])
+        manifest = self.manifest(dict(self.AVAIL, synced_learning_ids=["L1"]))
+        self.assertEqual(self.sync(learnings, manifest)["status"], "current")
+
+    def test_unavailable_still_counts_exportable(self):
+        fp = self.evidence("src/a.py")
+        learnings = self.learnings([{"id": "L1", "status": "current", "evidence": ["src/a.py"], "evidence_fingerprints": fp}])
+        s = self.sync(learnings, self.missing("nope.json"))   # no manifest -> detection probes -> None -> unavailable
+        self.assertEqual((s["status"], s["available"], s["pending_count"], s["exportable_count"]), ("provider_unavailable", False, 0, 1))
+
+
+class VaultStatusCase(_RootCase):
+    def vault(self, index, manifest_file="", probe=(None, ""), **env):
+        with _clean_env(**env), mock.patch.object(provider, "_http_probe", return_value=probe):
+            return provider.vault_status_json(index, manifest_file)
+
+    def test_env_available(self):
+        v = self.vault(self.missing("no.json"), KIMIFLOW_VAULT_AVAILABLE="1")
+        self.assertEqual((v["available"], v["provider"]), (True, None))
+
+    def test_index_fills_provider_nulls(self):
+        manifest = self.manifest({"type": "obsidian", "available": True, "updated_at": "2026-06-01T00:00:00Z",
+                                  "last_prefetch_at": None, "last_write_at": "2026-05-02T00:00:00Z"})
+        index = os.path.join(self.project, "MEMORY-INDEX.json")
+        with open(index, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"vault": {"available": True, "last_recall_at": "2026-04-01", "last_write_at": "2026-04-02"}}))
+        v = self.vault(index, manifest)
+        self.assertEqual(v["available"], True)
+        self.assertEqual(v["last_recall_at"], "2026-04-01")          # provider null -> index
+        self.assertEqual(v["last_write_at"], "2026-05-02T00:00:00Z")  # provider non-null wins
+        self.assertIsNotNone(v["provider"])
+
+
 class HttpProbeRedirectCase(unittest.TestCase):
     def _serve(self, handler):
         srv = HTTPServer(("127.0.0.1", 0), handler)

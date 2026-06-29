@@ -11,7 +11,7 @@ import ssl
 import urllib.error
 import urllib.request
 
-from . import store
+from . import contracts, rows, store
 
 _PROVIDER_PATH = ".kimiflow/project/VAULT-PROVIDER.json"
 _DEFAULT_DETECT_TIMEOUT = 0.35
@@ -469,4 +469,127 @@ def status_json(manifest_file):
         "detection": detection,
         "auth": auth,
         "health": health,
+    }
+
+
+_SYNC_PATH = ".kimiflow/project/VAULT-SYNC.md"
+
+
+def _sync_base_candidates(learnings, manifest):
+    # Bash provider_sync_base_candidates_json (1294-1307): current, non-private/security
+    # learnings that have evidence + all-current evidence_fingerprints, an id, and are not
+    # already in manifest.synced_learning_ids.
+    synced = _jq_or(manifest.get("synced_learning_ids"), [])
+    if not isinstance(synced, list):
+        synced = []
+    out = []
+    for row in store.read_jsonl(learnings):
+        if _jq_or(row.get("status"), "current") != "current":
+            continue
+        sensitivity = _jq_or(row.get("sensitivity"), "normal")
+        if sensitivity in ("security", "private"):
+            continue
+        evidence = _jq_or(row.get("evidence"), [])
+        if not isinstance(evidence, list) or len(evidence) == 0:
+            continue
+        if any(e == "NOT VERIFIED" or e == "OUTSIDE_REPO" for e in evidence):
+            continue
+        fingerprints = _jq_or(row.get("evidence_fingerprints"), [])
+        if not isinstance(fingerprints, list) or len(fingerprints) == 0:
+            continue
+        if not all(isinstance(fp, dict) and fp.get("status") == "current" for fp in fingerprints):
+            continue
+        rid = _jq_or(row.get("id"), "")
+        if rid == "" or rid in synced:
+            continue
+        out.append(row)
+    return out
+
+
+def _sync_candidates(root, learnings, manifest_file):
+    # Bash provider_sync_candidates_json (1309-1323): keep base candidates whose STORED
+    # evidence_fingerprints still match a fresh recompute (evidence unchanged on disk).
+    manifest = manifest_json(manifest_file)
+    fresh = []
+    for row in _sync_base_candidates(learnings, manifest):
+        evidence = _jq_or(row.get("evidence"), [])
+        if not isinstance(evidence, list):
+            evidence = []
+        stored = _jq_or(row.get("evidence_fingerprints"), [])
+        current = rows.evidence_fingerprints_json(root, evidence)
+        # Bash compares the two `jq -c` strings; contracts.dumps is the order-preserving
+        # compact equivalent.
+        if contracts.dumps(stored) == contracts.dumps(current):
+            fresh.append(row)
+    return fresh
+
+
+def sync_status_json(root, learnings, manifest_file):
+    # Bash provider_sync_status_json (1325-1351): provider status + the count/ids of
+    # learnings that are exportable to the vault and not yet synced.
+    provider = status_json(manifest_file)
+    candidates = _sync_candidates(root, learnings, manifest_file)
+    available = provider.get("available") is True
+    detection_available = isinstance(provider.get("detection"), dict) and provider["detection"].get("available") is True
+    health = provider.get("health") if isinstance(provider.get("health"), dict) else {}
+    auth = provider.get("auth") if isinstance(provider.get("auth"), dict) else {}
+    count = len(candidates)
+
+    if not available and detection_available:
+        status = "provider_detected_unconfigured"
+    elif not available:
+        status = "provider_unavailable"
+    elif count > 0:
+        status = "pending"
+    else:
+        status = "current"
+
+    return {
+        "path": _SYNC_PATH,
+        "available": available,
+        "pending_count": count if available else 0,
+        "pending_ids": [c.get("id") for c in candidates] if available else [],
+        "exportable_count": count,
+        "health_status": _jq_or(health.get("status"), "unknown"),
+        "auth_status": _jq_or(auth.get("status"), "unknown"),
+        "direct_write_ready": health.get("direct_write_ready") is True,
+        "status": status,
+    }
+
+
+def vault_status_json(index, provider_manifest=""):
+    # Bash vault_status_json (1353-1397): merges env / provider / MEMORY-INDEX.json vault
+    # availability and the last recall/write timestamps (provider wins, index fills nulls).
+    available = (os.environ.get("KIMIFLOW_VAULT_AVAILABLE") or "") in _TRUTHY
+    last_recall = None
+    last_write = None
+    provider = None
+
+    if provider_manifest:
+        provider = status_json(provider_manifest)
+        if provider.get("available") is True:
+            available = True
+        last_recall = _jq_or(provider.get("last_prefetch_at"), None)
+        last_write = _jq_or(provider.get("last_write_at"), None)
+
+    if os.path.isfile(index):
+        data = store.read_json(index)
+        if data is not None and data is not False:   # Bash `jq -e .` (valid + truthy)
+            vault = data.get("vault") if isinstance(data, dict) else None
+            if not isinstance(vault, dict):
+                vault = {}
+            if vault.get("available") is True:
+                available = True
+            index_recall = _jq_or(vault.get("last_recall_at"), None)
+            index_write = _jq_or(vault.get("last_write_at"), None)
+            if last_recall is None:
+                last_recall = index_recall
+            if last_write is None:
+                last_write = index_write
+
+    return {
+        "available": available,
+        "last_recall_at": last_recall,
+        "last_write_at": last_write,
+        "provider": provider,
     }
