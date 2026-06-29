@@ -293,7 +293,9 @@ when recall is written. Local review
 summaries and canonical `findings/*.md` are searchable through history/recall but stay local-only by default.
 `hooks/memory-router.sh` gives the launcher and Phase 2 a cheap way to check memory freshness, recall relevant
 project facts, classify new learnings, write the required run-close learning review, and curate the index
-without rereading the whole repo or Vault every time. Persisted recall/history writes are measured in
+without rereading the whole repo or Vault every time. (As of the current release the router is a stdlib-only
+Python implementation — `hooks/memory_router/` — behind the unchanged `memory-router.sh <cmd> …` entrypoint;
+it requires `python3` >= 3.9. See `COMPATIBILITY.md`.) Persisted recall/history writes are measured in
 `MEMORY-USAGE.json`; `status` exposes compact hot/warm/cold/stale usefulness tiers, `recall --write` explains
 which sources were included or omitted, and completed runs append cautious, directional token-efficiency estimates to
 `MEMORY-ECONOMICS.jsonl`; `memory-router.sh metrics` reports legacy usage economics at `.economics`,

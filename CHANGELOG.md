@@ -4,7 +4,17 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+The `memory-router` hook is now powered by the Python (stdlib) port. `hooks/memory-router.sh` is a thin shim that execs `python3 -m memory_router`, and the ~4400-line Bash implementation has been removed. The CLI contract is unchanged — every subcommand was ported byte-for-byte and grounded against the pinned `kimiflow--v0.1.50` Bash.
+
+### Changed
+- **memory-router runtime cut over to Python.** `hooks/memory-router.sh` now execs the stdlib `hooks/memory_router/` package across all 13 subcommands (`classify`, `index`, `status`, `curate`, `record`, `recall`, `history`, `metrics`, `verify-run`, `consolidate`, `propose`, `review-run`, `provider`). The Bash logic is deleted; behaviour is byte-for-byte identical — verified by the parity harness, the full Python test suite (run under system `python3` 3.9.6), and a direct shim spot-check (`status`/`verify-run`/`metrics`/`provider`/`classify`/`--help`/unknown-command all identical to the pinned Bash).
+- `hooks/test-memory-router-unit.sh` now runs the **full** `memory_router` test suite via discovery (was: three foundation modules), so all of it gates CI and releases.
+
+### Added
+- **Runtime requirement: `python3` >= 3.9** for the memory-router hook (documented in `COMPATIBILITY.md`). The previous Bash runtime already required `jq`.
+
+### Removed
+- `hooks/test-memory-router.sh` — the legacy Bash-implementation unit test, superseded by the Python suite + the parity harness. Its three Bash-only assertions (a `curl` stub and `openssl`/`shasum`-absent stubs) tested stdlib divergences (`urllib`/`hashlib`) that no longer apply.
 
 ## 0.1.51
 
