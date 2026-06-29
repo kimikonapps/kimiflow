@@ -24,10 +24,12 @@ def main(argv):
 
 from . import classify as _classify
 from . import index as _index
+from . import status as _status
 
 COMMANDS = {
     "classify": _classify.run,
     "index": _index.run,
+    "status": _status.run,
 }
 
 if __name__ == "__main__":
