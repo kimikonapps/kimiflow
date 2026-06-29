@@ -23,6 +23,7 @@ def main(argv):
 
 
 from . import classify as _classify
+from . import consolidate as _consolidate
 from . import curate as _curate
 from . import history as _history
 from . import index as _index
@@ -34,6 +35,7 @@ from . import status as _status
 
 COMMANDS = {
     "classify": _classify.run,
+    "consolidate": _consolidate.run,
     "curate": _curate.run,
     "history": _history.run,
     "index": _index.run,
