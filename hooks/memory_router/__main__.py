@@ -28,6 +28,7 @@ from . import curate as _curate
 from . import history as _history
 from . import index as _index
 from . import metrics as _metrics
+from . import propose as _propose
 from . import recall as _recall
 from . import record as _record
 from . import runs as _runs
@@ -40,6 +41,7 @@ COMMANDS = {
     "history": _history.run,
     "index": _index.run,
     "metrics": _metrics.run,
+    "propose": _propose.run,
     "recall": _recall.run,
     "record": _record.run,
     "status": _status.run,
