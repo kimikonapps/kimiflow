@@ -315,5 +315,31 @@ out="$(run_refresh --changed)"
 assert_eq "$(jq -r '.sections.syms2.symbols.qux' "$INDEX")" "hooks/sym2.sh:5" "refresh_changed_reindexes_symbols"
 assert_eq "$(jq -r '.sections.syms2.symbols.foo' "$INDEX")" "hooks/sym2.sh:2" "refresh_changed_reindex_keeps_existing_symbol"
 
+# Regression — many new files under a prefix must not exhaust subshells (bash 3.2 SIGTRAP).
+# do_refresh_changed used to recompute section_prefixes_effective per (changed-path × section),
+# spawning O(paths × sections) process substitutions; on large deltas macOS bash 3.2 died with
+# SIGTRAP (exit 133) mid-adoption. Many sections × many new files reproduces it.
+reset_repo
+mkdir -p "$REPO/bulk"
+BASE="$(cd "$REPO" && git rev-parse --short HEAD)"
+jq -n --arg base "$BASE" --arg ah "$(hash_file "$REPO/hooks/a.sh")" '{
+  schema_version: 1, language: "de", scan_depth: "standard", baseline_commit: $base,
+  created_at: "2026-06-25T00:00:00Z",
+  sections: (
+    {
+      hooks: {files: ["hooks/a.sh"], prefixes: ["hooks/"], file_hashes: {"hooks/a.sh": $ah}, last_scanned_commit: $base, status: "current"},
+      bulk:  {files: [], prefixes: ["bulk/"], file_hashes: {}, last_scanned_commit: $base, status: "current"}
+    }
+    + (reduce range(0;7) as $i ({}; . + {("extra\($i)"): {files: [], prefixes: ["extra\($i)/"], file_hashes: {}, last_scanned_commit: $base, status: "current"}}))
+  ),
+  artifacts: {}
+}' > "$INDEX"
+i=0; while [ "$i" -lt 60 ]; do printf 'n\n' > "$REPO/bulk/f_$i.md"; i=$((i + 1)); done
+out="$(run_refresh --changed)"; rc=$?
+assert_eq "$rc" "0" "refresh_changed_many_new_files_no_subshell_crash"
+assert_eq "$(jq -r '.sections.bulk.files | length' "$INDEX")" "60" "refresh_changed_adopts_all_new_files"
+assert_eq "$(jq -r '.sections.bulk.files | (index("bulk/f_59.md") != null)' "$INDEX")" "true" "refresh_changed_adopts_last_new_file"
+assert_eq "$(jq -r '.sections.bulk.file_hashes["bulk/f_0.md"]' "$INDEX")" "$(hash_file "$REPO/bulk/f_0.md")" "refresh_changed_hashes_new_files"
+
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi

@@ -274,12 +274,6 @@ section_members() {
   read_section_list "$INDEX" "$1" '((.sections[$s].files // []) + ((.sections[$s].file_hashes // {}) | keys)) | unique[]'
 }
 
-section_owns() {
-  local s="$1" target="$2" m
-  while IFS= read -r m; do [ "$m" = "$target" ] && return 0; done < <(section_members "$s")
-  return 1
-}
-
 section_prefixes_effective() {
   local s="$1" path
   local pf
@@ -297,19 +291,6 @@ section_prefixes_effective() {
     done < <(section_members "$s")
   fi
   printf '%s\n' ${pf[@]+"${pf[@]}"}
-}
-
-longest_prefix_len() {
-  local path="$1" prefix best=-1
-  shift
-  for prefix in "$@"; do
-    [ -n "$prefix" ] || continue
-    case "$path" in
-      "$prefix"|"$prefix"/*) [ "${#prefix}" -gt "$best" ] && best="${#prefix}" ;;
-      *) case "$prefix" in */) case "$path" in "$prefix"*) [ "${#prefix}" -gt "$best" ] && best="${#prefix}" ;; esac ;; esac ;;
-    esac
-  done
-  printf '%s' "$best"
 }
 
 # B1 — extract shell function definitions (`name()` at line start, comment lines skipped)
@@ -339,9 +320,11 @@ index_symbols_section() {
 # files under a section prefix (longest prefix wins, ties resolve to the first INDEX section), and
 # re-indexes symbols of each refreshed section. No change → no mutation.
 do_refresh_changed() {
-  local base commit now path s m p len best_s best_len i h count tmp files_json
-  local ALL_SECTIONS ALL_MEMBERS UNIQUE_CHANGED AFFECTED_SECTIONS NEWFILE_SECTION NEWFILE_PATH pf final_files hashes
+  local base commit now path s m i h count tmp files_json k prefix plen best_s best_len
+  local ALL_SECTIONS ALL_MEMBERS UNIQUE_CHANGED AFFECTED_SECTIONS NEWFILE_SECTION NEWFILE_PATH final_files hashes
+  local MEMBER_SECTION MEMBER_PATH PFX_SECTION PFX_VALUE
   ALL_SECTIONS=(); ALL_MEMBERS=(); UNIQUE_CHANGED=(); AFFECTED_SECTIONS=(); NEWFILE_SECTION=(); NEWFILE_PATH=()
+  MEMBER_SECTION=(); MEMBER_PATH=(); PFX_SECTION=(); PFX_VALUE=()
 
   base="$(jq -r '.baseline_commit // "NOT VERIFIED"' "$INDEX" 2>/dev/null)"
   collect_changed_paths "$ROOT" "$base"
@@ -353,26 +336,53 @@ do_refresh_changed() {
     jq -r '[.sections[]? | (.files // [])[]?, ((.file_hashes // {}) | keys[]?)] | unique[]' "$INDEX"
   )
 
+  # Precompute section attribution ONCE so the per-changed-path loop below stays pure-shell.
+  # Recomputing section_members / section_prefixes_effective *inside* that loop spawned
+  # O(changed_paths × sections) process substitutions, which crashes bash 3.2 (SIGTRAP, exit 133)
+  # on large deltas. member→section pairs in one jq pass (section order preserved):
+  while IFS="$(printf '\t')" read -r s path; do
+    [ -n "$s" ] && [ -n "$path" ] || continue
+    MEMBER_SECTION+=("$s"); MEMBER_PATH+=("$path")
+  done < <(jq -r '.sections | to_entries[] | .key as $s | ((.value.files // []) + ((.value.file_hashes // {}) | keys)) | unique[] | [$s, .] | @tsv' "$INDEX")
+  # effective prefixes, flattened to (section, prefix) pairs in section order (one subshell each):
+  for s in ${ALL_SECTIONS[@]+"${ALL_SECTIONS[@]}"}; do
+    while IFS= read -r prefix; do
+      [ -n "$prefix" ] || continue
+      PFX_SECTION+=("$s"); PFX_VALUE+=("$prefix")
+    done < <(section_prefixes_effective "$s")
+  done
+
   for path in ${CHANGED_PATHS[@]+"${CHANGED_PATHS[@]}"}; do
     contains "$path" ${UNIQUE_CHANGED[@]+"${UNIQUE_CHANGED[@]}"} || UNIQUE_CHANGED+=("$path")
   done
 
   for path in ${UNIQUE_CHANGED[@]+"${UNIQUE_CHANGED[@]}"}; do
     if [ "${#ALL_MEMBERS[@]}" -gt 0 ] && contains "$path" ${ALL_MEMBERS[@]+"${ALL_MEMBERS[@]}"}; then
-      for s in ${ALL_SECTIONS[@]+"${ALL_SECTIONS[@]}"}; do
-        if section_owns "$s" "$path"; then
+      k=0
+      while [ "$k" -lt "${#MEMBER_PATH[@]}" ]; do
+        if [ "${MEMBER_PATH[$k]}" = "$path" ]; then
+          s="${MEMBER_SECTION[$k]}"
           contains "$s" ${AFFECTED_SECTIONS[@]+"${AFFECTED_SECTIONS[@]}"} || AFFECTED_SECTIONS+=("$s")
         fi
+        k=$((k + 1))
       done
     else
       [ -e "$ROOT/$path" ] || continue
+      # longest matching prefix across all sections wins; ties resolve to the first section
+      # (PFX_* arrays are built in section order, and we only update on a strictly longer match).
       best_s=""; best_len=-1
-      for s in ${ALL_SECTIONS[@]+"${ALL_SECTIONS[@]}"}; do
-        pf=()
-        while IFS= read -r p; do [ -n "$p" ] && pf+=("$p"); done < <(section_prefixes_effective "$s")
-        [ "${#pf[@]}" -gt 0 ] || continue
-        len="$(longest_prefix_len "$path" ${pf[@]+"${pf[@]}"})"
-        if [ "$len" -gt "$best_len" ]; then best_len="$len"; best_s="$s"; fi
+      k=0
+      while [ "$k" -lt "${#PFX_VALUE[@]}" ]; do
+        prefix="${PFX_VALUE[$k]}"
+        plen=-1
+        if [ -n "$prefix" ]; then
+          case "$path" in
+            "$prefix"|"$prefix"/*) plen="${#prefix}" ;;
+            *) case "$prefix" in */) case "$path" in "$prefix"*) plen="${#prefix}" ;; esac ;; esac ;;
+          esac
+        fi
+        if [ "$plen" -gt "$best_len" ]; then best_len="$plen"; best_s="${PFX_SECTION[$k]}"; fi
+        k=$((k + 1))
       done
       if [ -n "$best_s" ] && [ "$best_len" -ge 0 ]; then
         NEWFILE_SECTION+=("$best_s"); NEWFILE_PATH+=("$path")

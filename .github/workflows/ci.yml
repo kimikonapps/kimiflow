@@ -88,5 +88,8 @@ jobs:
       - name: Parity tests (memory-router) — hard gate
         run: bash hooks/test-memory-router-parity.sh
 
+      - name: Unit tests (project-map-status) — hard gate
+        run: bash hooks/test-project-map-status.sh
+
       - name: ShellCheck (informational)
         run: shellcheck hooks/*.sh || true

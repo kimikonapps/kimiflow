@@ -4,7 +4,11 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Fixed
+- **`project-map-status.sh refresh --changed` no longer crashes on large deltas.** `do_refresh_changed` recomputed the per-section prefix/member attribution *inside* the per-changed-path loop, spawning `O(changed-paths × sections)` process substitutions. On macOS Bash 3.2 a delta with many new unmapped files (e.g. several sessions' worth of new docs) exhausted file descriptors and died with SIGTRAP (exit 133) — so the Phase-7 auto-refresh and the Stop-hook map-staleness nudge's recommended `bring-current` path silently failed. The attribution is now precomputed once and matched in pure shell (zero subshells in the hot loop); behaviour is unchanged (longest-prefix-wins, ties resolve to the first section). The now-orphaned `section_owns`/`longest_prefix_len` helpers were removed.
+
+### Changed
+- **`hooks/test-project-map-status.sh` is now a CI hard gate**, with a new regression test for the crash above. It previously ran only locally and as a `bash -n` smoke check, so the `refresh --changed` path was never exercised in CI.
 
 ## 0.1.52
 
