@@ -37,5 +37,20 @@ class TestStore(unittest.TestCase):
             f.write('{"a":1}\n\n  \nnot json\n{"b":2}\n')
         self.assertEqual(store.read_jsonl(p), [{"a": 1}, {"b": 2}])
 
+    def test_read_jsonl_with_lines_keeps_raw_and_pairs_rows(self):
+        p = os.path.join(self.d, "x.jsonl")
+        with open(p, "w") as f:
+            f.write('{"a":1}\n\nnot json\n5\n{"b":2}\n')
+        self.assertEqual(store.read_jsonl_with_lines(p), [
+            ('{"a":1}', {"a": 1}),
+            ("", None),
+            ("not json", None),
+            ("5", None),          # non-dict JSON stays raw-only (rewrite keeps it verbatim)
+            ('{"b":2}', {"b": 2}),
+        ])
+
+    def test_read_jsonl_with_lines_missing_file(self):
+        self.assertEqual(store.read_jsonl_with_lines(os.path.join(self.d, "nope")), [])
+
 if __name__ == "__main__":
     unittest.main()

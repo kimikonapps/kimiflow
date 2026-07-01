@@ -1,8 +1,9 @@
 """Learning-row write path: append_learning_row (security gate -> dedup ->
-supersession -> append/rewrite). Verbatim behavioral port of the Bash
-append_learning_row at kimiflow--v0.1.50 (2405-2512). Composes the row-validation
-helpers (rows.py), path/scope helpers (paths.py), slugify (text.py), the UTC clock
-(clock.py), jq-faithful serialization (contracts.py), and IO (store.py)."""
+supersession -> append/rewrite). Behavioral port of the Bash append_learning_row
+at kimiflow--v0.1.50 (2405-2512), with intentional divergences recorded in spec §12
+(gate scope, secret-value quarantine, verbatim-preserving rewrite). Composes the
+row-validation helpers (rows.py), path/scope helpers (paths.py), slugify (text.py),
+the UTC clock (clock.py), jq-faithful serialization (contracts.py), and IO (store.py)."""
 import os
 import subprocess
 
@@ -48,14 +49,22 @@ def append_learning_row(root, kind, scope, topic, summary, evidence,
     learnings = paths.rows_path_for_scope(root, scope)
     os.makedirs(project, exist_ok=True)
 
-    security_scan = rows.memory_security_json(summary)
+    # Gate scope widened from summary-only to summary+topic+evidence (audit fix B3-P3,
+    # spec §12). Fields are newline-joined: the phrase windows use `.` (no DOTALL), so
+    # patterns cannot match across field boundaries. Bare secret VALUES never close the
+    # gate — they force sensitivity=security, which blocks vault-sync candidacy.
+    scan_text = "\n".join([summary, topic] + [ref for ref in evidence if ref])
+    security_scan = rows.memory_security_json(scan_text)
     if status == "current" and not security_scan["ok"]:
         raise SecurityGateError(security_scan["reasons"])
+    if sensitivity != "security" and rows.has_secret_value(scan_text):
+        sensitivity = "security"
 
     stored_evidence = rows.sanitize_evidence_json(root, evidence)
     fingerprints = rows.evidence_fingerprints_json(root, stored_evidence)
 
-    existing = store.read_jsonl(learnings)
+    raw_lines = store.read_jsonl_with_lines(learnings)
+    existing = [row for _, row in raw_lines if row is not None]
     file_exists = os.path.isfile(learnings)
 
     # Dedup: first row matching identity + identical fingerprints + current status.
@@ -110,15 +119,16 @@ def append_learning_row(root, kind, scope, topic, summary, evidence,
     }
 
     if status == "current" and file_exists:
-        # Rewrite path: re-serialize existing rows (with supersession marks) + the
-        # new row, atomically. Matches Bash's `jq ... > tmp; mv tmp learnings` then
-        # `>> new`. Like the Bash rewrite, the lenient read drops malformed/blank
-        # lines. refuse_symlink=False matches Bash `mv` (replaces a symlinked rows
-        # file rather than writing through it).
-        out = existing + [new_row]
+        # Rewrite path: re-serialize parsed rows (with supersession marks) in place,
+        # keep blank/malformed lines verbatim (spec §12 — the Bash `jq` rewrite dropped
+        # them while the append path kept them), then add the new row. Atomic like
+        # Bash's `jq ... > tmp; mv tmp learnings`. refuse_symlink=False matches Bash
+        # `mv` (replaces a symlinked rows file rather than writing through it).
+        lines = [raw if row is None else contracts.dumps(row) for raw, row in raw_lines]
+        lines.append(contracts.dumps(new_row))
         store.atomic_write(
             learnings,
-            "".join(contracts.dumps(r) + "\n" for r in out),
+            "".join(line + "\n" for line in lines),
             refuse_symlink=False,
         )
     else:

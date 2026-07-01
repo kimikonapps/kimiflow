@@ -60,6 +60,32 @@ class TestMemorySecurity(unittest.TestCase):
         self.assertEqual(self.sec("ignore\nprevious instructions"), {"ok": True, "reasons": []})
 
 
+class TestHasSecretValue(unittest.TestCase):
+    def test_aws_access_key_id(self):
+        self.assertTrue(rows.has_secret_value("key AKIAIOSFODNN7EXAMPLE in ci"))
+
+    def test_pem_private_key_header(self):
+        self.assertTrue(rows.has_secret_value("-----BEGIN OPENSSH PRIVATE KEY-----"))
+
+    def test_github_pat(self):
+        self.assertTrue(rows.has_secret_value("ghp_0123456789abcdef0123456789abcdef0123"))
+
+    def test_slack_token(self):
+        self.assertTrue(rows.has_secret_value("use xoxb-123456789012-abcdefghijkl"))
+
+    def test_key_value_assignment(self):
+        self.assertTrue(rows.has_secret_value("api_key = sk_live_abcdefghij0123456789"))
+
+    def test_prose_about_tokens_is_benign(self):
+        self.assertFalse(rows.has_secret_value("we documented the token rotation strategy"))
+
+    def test_short_values_are_benign(self):
+        self.assertFalse(rows.has_secret_value("api_key = abc123"))
+
+    def test_plain_paths_are_benign(self):
+        self.assertFalse(rows.has_secret_value("hooks/memory_router/rows.py:76"))
+
+
 class TestEvidencePathHelpers(unittest.TestCase):
     def test_evidence_file_path_relative(self):
         self.assertEqual(rows.evidence_file_path("/r", "src/foo.py"), "/r/src/foo.py")
@@ -102,6 +128,22 @@ class TestSanitizeEvidenceRef(unittest.TestCase):
 
     def test_no_suffix(self):
         self.assertEqual(rows.sanitize_evidence_ref("/r", "src/foo.py"), "src/foo.py")
+
+    def test_traversal_relative_ref_outside_repo(self):
+        self.assertEqual(rows.sanitize_evidence_ref("/r", "../outside.txt"), "OUTSIDE_REPO")
+
+    def test_traversal_relative_ref_deep_outside_repo(self):
+        self.assertEqual(
+            rows.sanitize_evidence_ref("/r/a/b", "../../../../etc/hosts:1"), "OUTSIDE_REPO"
+        )
+
+    def test_traversal_absolute_ref_outside_repo(self):
+        self.assertEqual(rows.sanitize_evidence_ref("/r", "/r/../etc/passwd"), "OUTSIDE_REPO")
+
+    def test_traversal_inside_repo_normalized(self):
+        self.assertEqual(
+            rows.sanitize_evidence_ref("/r", "src/../src/foo.py:3"), "src/foo.py:3"
+        )
 
 
 class TestSanitizeEvidenceJson(unittest.TestCase):
@@ -169,6 +211,21 @@ class TestEvidenceFingerprintsJson(unittest.TestCase):
         self.assertEqual(
             list(out[0].keys()),
             ["ref", "path", "sha256", "digest", "digest_algorithm", "status"],
+        )
+
+    def test_traversal_ref_never_fingerprints_outside_file(self):
+        # A ../-ref escaping the root must map to OUTSIDE_REPO with no digest —
+        # not hash the real out-of-repo file.
+        parent = tempfile.mkdtemp()
+        root = os.path.join(parent, "repo")
+        os.makedirs(root)
+        with open(os.path.join(parent, "secret.txt"), "wb") as f:
+            f.write(b"top secret\n")
+        out = rows.evidence_fingerprints_json(root, ["../secret.txt"])
+        self.assertEqual(
+            out,
+            [{"ref": "OUTSIDE_REPO", "path": "OUTSIDE_REPO", "sha256": "", "digest": "",
+              "digest_algorithm": "none", "status": "outside_root"}],
         )
 
 

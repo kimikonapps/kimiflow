@@ -63,3 +63,27 @@ def read_jsonl(path):
     except OSError:
         return []
     return rows
+
+
+def read_jsonl_with_lines(path):
+    # Lenient JSONL read that keeps the raw lines: [(raw_line, row_or_None)]. row is
+    # None for blank/malformed/non-dict lines, so rewrite callers can re-serialize the
+    # parsed rows while preserving everything else verbatim, in place (audit fix B3-P2).
+    entries = []
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            for line in handle:
+                raw = line.rstrip("\n")
+                row = None
+                stripped = raw.strip()
+                if stripped:
+                    try:
+                        parsed = json.loads(stripped)
+                    except json.JSONDecodeError:
+                        parsed = None
+                    if isinstance(parsed, dict):
+                        row = parsed
+                entries.append((raw, row))
+    except OSError:
+        return []
+    return entries

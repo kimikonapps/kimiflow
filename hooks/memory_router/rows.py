@@ -1,7 +1,9 @@
 """Row-validation helpers: the prompt-injection/exfiltration security gate and the
-evidence sanitization/fingerprinting helpers. Verbatim behavioral ports of the Bash
-at kimiflow--v0.1.50. These return Python objects (dict/list); serialization to
-stdout stays at the contracts.dumps boundary in the calling subcommand."""
+evidence sanitization/fingerprinting helpers. Behavioral ports of the Bash at
+kimiflow--v0.1.50, with intentional divergences recorded in spec §12 (path-traversal
+fix in sanitize_evidence_ref, secret-value scan). These return Python objects
+(dict/list); serialization to stdout stays at the contracts.dumps boundary in the
+calling subcommand."""
 import hashlib
 import os
 import re
@@ -42,6 +44,25 @@ def memory_security_json(text):
     return {"ok": len(reasons) == 0, "reasons": reasons}
 
 
+# Minimal secret-VALUE pattern class (audit fix B3-P3, spec §12): high-precision token
+# shapes only — AWS access-key ids, PEM private-key headers, GitHub/Slack tokens, and
+# key=value assignments with a long literal. A match never closes the gate (the learning
+# may legitimately describe a leak); the write path forces sensitivity=security instead,
+# which quarantines the row from vault-sync candidacy.
+_SECRET_VALUES = re.compile(
+    r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"
+    r"|-----BEGIN [A-Z ]*PRIVATE KEY-----"
+    r"|\bghp_[A-Za-z0-9]{36}\b"
+    r"|\bgithub_pat_[A-Za-z0-9_]{20,}\b"
+    r"|\bxox[baprs]-[A-Za-z0-9-]{10,}\b"
+    r"|(?i:api[_-]?key|secret|token|passwd|password)\s*[:=]\s*[\"']?[A-Za-z0-9_\-/+.]{16,}"
+)
+
+
+def has_secret_value(text):
+    return _SECRET_VALUES.search(text) is not None
+
+
 def file_digest_json(path):
     # Bash prefers shasum/sha256sum (sha256), then cksum, then unavailable. Python's stdlib
     # always provides sha256, so we always use it (identical hex to shasum on targets). The
@@ -69,11 +90,16 @@ def evidence_line_suffix(ref):
 
 
 def sanitize_evidence_ref(root, ref):
+    # Intentional divergence from the Bash `case "$root"/*|"$root"` (spec §12): the raw
+    # prefix check let `../`-refs escape the root (`/r/../etc/passwd` passed as in-repo).
+    # normpath is lexical only — no symlink resolution, so symlinked roots (e.g. /tmp on
+    # macOS) keep matching their own prefix.
     if ref in ("NOT VERIFIED", "OUTSIDE_REPO"):
         return ref
-    path = evidence_file_path(root, ref)
+    root = os.path.normpath(root)
+    path = os.path.normpath(evidence_file_path(root, ref))
     suffix = evidence_line_suffix(ref)
-    if path == root or path.startswith(root + "/"):   # case "$root"/*|"$root"
+    if path == root or path.startswith(root + "/"):
         return rel_path(root, path) + suffix
     return "OUTSIDE_REPO"
 
