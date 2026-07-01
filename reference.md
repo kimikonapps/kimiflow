@@ -111,8 +111,6 @@ hygiene pass, not an implementation mode:
   Vault sync that cannot write yet stay in `.launcher.maintenance.hidden_internal_reasons`; they are drilldown data,
   not front-door tasks. `memory-router.sh curate --write` remains token-cheap and non-destructive.
 
-**Working-tree start gate:** before any normal write-mode Kimiflow run starts (feature, fix, audit, project-map/update, docs write), run `hooks/working-tree-gate.sh`. The stable output is `WORKING_TREE_GATE<TAB>OPEN|CLOSED<TAB>dirty=<n><TAB>staged=<n><TAB>unstaged=<n><TAB>untracked=<n><TAB>reason=<code><TAB>detail=<paths>`. `OPEN` is required before slugging, active-session start, or file edits. `CLOSED` means: stop, show the dirty-path summary, and ask the user to commit, stash, or otherwise clean the worktree first. Do not continue by accepting the risk; the point is to avoid mixing an old diff with a new Kimiflow run. Read-only launcher/status/inspection may still run and report the dirty state. `.kimiflow/` local state is ignored by the gate.
-
 **Drilldowns, not dumps:**
 - Findings: if `findings.open > 0`, offer `summarize`, `fix highest priority`, `group by area`, `show details`,
   `back`. Read `.kimiflow/project/FINDINGS.md`; show a compact list only. A selected fix routes into a normal
@@ -177,6 +175,12 @@ first, refresh stale affected sections if accepted, compare plan assumptions aga
 
 Headless/no-answer behavior is always safe: print the snapshot summary, do not select a mode, do not resume
 implementation, and STOP.
+
+---
+
+## Working-tree start gate (Phase 0 · resume)
+
+Before any normal write-mode Kimiflow run starts (feature, fix, audit, project-map/update, docs write) — and before a resumed backlog run continues into Phase 5 — run `hooks/working-tree-gate.sh`. The stable output is `WORKING_TREE_GATE<TAB>OPEN|CLOSED<TAB>dirty=<n><TAB>staged=<n><TAB>unstaged=<n><TAB>untracked=<n><TAB>reason=<code><TAB>detail=<paths>`. `OPEN` is required before slugging, active-session start, or file edits. `CLOSED` means: stop, show the dirty-path summary, and ask the user to commit, stash, or otherwise clean the worktree first. Do not continue by accepting the risk; the point is to avoid mixing an old diff with a new Kimiflow run. Read-only launcher/status/inspection may still run and report the dirty state. `.kimiflow/` local state is ignored by the gate.
 
 ---
 
@@ -419,7 +423,7 @@ Kimiflow inherits the session model but **allocates deliberately**: the stronges
 - **Claude Code host:** `codex exec --output-last-message <tmpfile> "<prompt>"` — the `<tmpfile>` content is the reviewer output (raw stdout is an event/activity stream; never persist it). The read-only sandbox default is correct for review/diagnosis/verify seats; ONLY the best-of-2 implementer candidate runs `-s workspace-write` with its own worktree as cwd.
 - **Codex host:** `claude -p "<prompt>"` — the final message is stdout.
 - **Timeouts (set explicitly per call — the host default would kill the call and read as failure):** review/diagnosis/verify calls ~5 min; the best-of-2 implementer ~30 min, run in the background.
-- **Failure = fallback, never a block:** nonzero exit, timeout, interactive/auth prompt, or empty output → a same-family agent takes over the SAME seat **for the rest of the run** (sticky — limits reviewer-identity flapping across gate rounds; the one unavoidable mid-run switch may still trip the resolver's `oscillation` stop+ask, which is benign fail-closed behavior). Substitution, not an added spawn; note `cross_family: fallback (<reason>)` in STATE.md.
+- **Failure = fallback, never a block:** nonzero exit, timeout, interactive/auth prompt, or empty output → a same-family agent takes over the SAME seat **for the rest of the run** (sticky — limits reviewer-identity flapping across gate rounds; the one unavoidable mid-run switch may still trip the resolver's `oscillation` stop+ask, which is benign fail-closed behavior). Substitution, not an added spawn; note `cross_family: fallback (<reason>)` in STATE.md. **Exception — the best-of-2 implementer seat never substitutes same-family** (a same-family second candidate adds no selection diversity): its failure degrades the run to best-of-1 with a `best_of_2: degraded (<reason>)` STATE.md note instead.
 - A CLI exec call counts as **one subagent-equivalent** against the agent budget.
 - **Findings persist (external reviewers only):** an external CLI reviewer cannot write repo files itself; the orchestrator persists its final message **byte-for-byte verbatim** as that lens's findings file. The permitted operations are defined exhaustively in the Review rubric's immutability rule — they apply to grammar-invalid files only.
 
@@ -1515,6 +1519,8 @@ With that file present, the hook runs the command on stop; on failure it blocks 
 ## Commit hygiene (Phase 7 commit-gate)
 
 Before the commit, after explicit user OK:
+
+**One defined exception:** the Phase-5 **Red test commit** (tests committed before the implementation) does not wait for the Phase-7 gate — it is limited to test files, stages only explicitly named paths, and is announced in one line; production code never rides along. Every other commit goes through this gate.
 
 1. Read `git status` + `git diff --staged` before composing the message.
 2. **Stage only explicitly named paths** — no `git add -A` / `git add .`.
