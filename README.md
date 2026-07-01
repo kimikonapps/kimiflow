@@ -242,8 +242,10 @@ explain later why a handoff was trusted or refused.
 
 If you invoke kimiflow without a concrete task (`/kimiflow` or `$kimiflow`), it opens a context-aware
 launcher. The launcher first runs `hooks/launcher-status.sh` and summarizes the current project state:
-active session status, agentic readiness, background handles, project-map depth/status, memory/recall status, open findings, improvement slices, repo
-docs, dirty working tree, and active or backlog runs. It then routes your choice into the normal Kimiflow modes.
+one recommended next action, installed/cache version status, active session status, agentic readiness,
+background handles, project-map depth/status, memory/recall status, open findings, improvement slices, repo docs,
+dirty working tree, and active or backlog runs. Technical hygiene that does not need your decision stays in
+drilldowns instead of becoming front-page work. It then routes your choice into the normal Kimiflow modes.
 It also surfaces the short mode aliases (`full`, `grill`, `plan`, `build`, `quick`, `review`, `audit`, `fix`) so
 users can choose the desired depth without memorizing flags.
 
@@ -647,10 +649,12 @@ damit der Run später erklären kann, warum ein Handoff vertraut oder abgelehnt 
 
 Wenn du kimiflow ohne konkreten Auftrag startest (`/kimiflow` oder `$kimiflow`), öffnet es einen
 kontextbewussten Launcher. Der Launcher ruft zuerst `hooks/launcher-status.sh` auf und fasst den
-Projektzustand zusammen: aktive Session, Agentic Readiness, Background Handles, Projektkarten-Tiefe/-Status, Memory-/Recall-Status, offene Findings,
-Verbesserungs-Slices, Repo-Doku, dirty Working Tree und aktive oder geparkte Runs. Deine Auswahl wird danach
-in den normalen Kimiflow-Modus geroutet. Er zeigt auch die Kurzmodi (`full`, `grill`, `plan`, `build`, `quick`,
-`review`, `audit`, `fix`), damit du die gewünschte Tiefe ohne Flag-Wissen auswählen kannst.
+Projektzustand zusammen: eine empfohlene nächste Aktion, installierte/cache Version, aktive Session, Agentic
+Readiness, Background Handles, Projektkarten-Tiefe/-Status, Memory-/Recall-Status, offene Findings,
+Verbesserungs-Slices, Repo-Doku, dirty Working Tree und aktive oder geparkte Runs. Technische Hygiene, die keine
+Entscheidung braucht, bleibt im Drilldown statt als Aufgabe vorne aufzutauchen. Deine Auswahl wird danach in den
+normalen Kimiflow-Modus geroutet. Er zeigt auch die Kurzmodi (`full`, `grill`, `plan`, `build`, `quick`, `review`,
+`audit`, `fix`), damit du die gewünschte Tiefe ohne Flag-Wissen auswählen kannst.
 
 Resume ist abgesichert: Ein geparkter Plan wird nicht blind umgesetzt, wenn betroffene Dateien seit dem
 Plan-Commit geändert wurden oder die Plan-Basis unbekannt ist. Dann bietet kimiflow vor Phase 5 eine

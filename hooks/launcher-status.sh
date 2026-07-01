@@ -142,6 +142,12 @@ json_append_string() {
   printf '%s\n' "$json" | jq --arg value "$value" '. + [$value]'
 }
 
+manifest_value() {
+  local file="$1" expr="$2"
+  [ -f "$file" ] || return 0
+  jq -r "$expr // empty" "$file" 2>/dev/null | head -n 1
+}
+
 learning_review_status_json() {
   local root="$1" slug="$2"
   local run_rel=".kimiflow/$slug"
@@ -319,6 +325,37 @@ need_jq
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 [ -n "$ROOT" ] || ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 ROOT="$(cd "$ROOT" 2>/dev/null && pwd || printf '%s' "$ROOT")"
+
+SCRIPT_ROOT="${KIMIFLOW_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}"
+if [ -n "$SCRIPT_ROOT" ] && [ -d "$SCRIPT_ROOT" ]; then
+  SCRIPT_ROOT="$(cd "$SCRIPT_ROOT" && pwd)"
+else
+  SCRIPT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+fi
+
+PLUGIN_VERSION="$(manifest_value "$SCRIPT_ROOT/.codex-plugin/plugin.json" '.version')"
+[ -n "$PLUGIN_VERSION" ] || PLUGIN_VERSION="$(manifest_value "$SCRIPT_ROOT/.claude-plugin/plugin.json" '.version')"
+[ -n "$PLUGIN_VERSION" ] || PLUGIN_VERSION="unknown"
+REPO_PLUGIN_VERSION="$(manifest_value "$ROOT/.codex-plugin/plugin.json" '.version')"
+[ -n "$REPO_PLUGIN_VERSION" ] || REPO_PLUGIN_VERSION="$(manifest_value "$ROOT/.claude-plugin/plugin.json" '.version')"
+[ -n "$REPO_PLUGIN_VERSION" ] || REPO_PLUGIN_VERSION="unknown"
+
+INSTALLATION_MODE="source_checkout"
+case "$SCRIPT_ROOT" in
+  */.codex/plugins/cache/*|*/.claude/plugins/cache/*|*/.codex/.tmp/marketplaces/*|*/.claude/.tmp/marketplaces/*)
+    INSTALLATION_MODE="plugin_cache"
+    ;;
+esac
+
+CACHE_STATUS="$INSTALLATION_MODE"
+INSTALLATION_ACTION_REQUIRED=false
+if [ "$INSTALLATION_MODE" = "plugin_cache" ]; then
+  CACHE_STATUS="current"
+  if [ "$REPO_PLUGIN_VERSION" != "unknown" ] && [ "$PLUGIN_VERSION" != "unknown" ] && [ "$PLUGIN_VERSION" != "$REPO_PLUGIN_VERSION" ]; then
+    CACHE_STATUS="stale_cache"
+    INSTALLATION_ACTION_REQUIRED=true
+  fi
+fi
 
 REPO_PRESENT=false
 HEAD="NOT VERIFIED"
@@ -564,6 +601,11 @@ if printf '%s\n' "$MEMORY_JSON" | jq -e '(.proposals.needs_revalidation // 0) > 
 fi
 out="$(jq -n \
   --arg root "$ROOT" \
+  --arg plugin_root "$SCRIPT_ROOT" \
+  --arg plugin_version "$PLUGIN_VERSION" \
+  --arg repo_plugin_version "$REPO_PLUGIN_VERSION" \
+  --arg installation_mode "$INSTALLATION_MODE" \
+  --arg cache_status "$CACHE_STATUS" \
   --arg head "$HEAD" \
   --arg index "$MAP_INDEX" \
   --arg depth "$MAP_DEPTH" \
@@ -573,6 +615,7 @@ out="$(jq -n \
   --arg improvements_path "$IMPROVEMENTS_PATH" \
   --arg feature_check_path_pattern ".kimiflow/*/FEATURE-CHECK.md" \
   --argjson repo_present "$REPO_PRESENT" \
+  --argjson installation_action_required "$INSTALLATION_ACTION_REQUIRED" \
   --argjson dirty "$DIRTY" \
   --argjson map_present "$MAP_PRESENT" \
   --argjson map_valid "$MAP_VALID" \
@@ -600,9 +643,102 @@ out="$(jq -n \
   --argjson active_session "$ACTIVE_SESSION_JSON" \
   --argjson background "$BACKGROUND_JSON" \
   --argjson agentic_readiness "$AGENTIC_READINESS_JSON" \
-  '{
+  '
+  def memory_curation_visible(memory):
+    (((memory | .memory.over_budget) // false) == true)
+    or (((memory | .learnings.stale) // 0) > 0)
+    or (((memory | .proposals.needs_revalidation) // 0) > 0);
+
+  def memory_curation_hidden(memory):
+    (memory_curation_visible(memory) | not);
+
+  def visible_maintenance_reasons(memory):
+    [
+      .[] | select(
+        . == "working_tree_dirty" or
+        . == "active_session_open" or
+        . == "active_session_needs_revalidation" or
+        . == "background_handles_collectable" or
+        . == "background_handles_stale" or
+        . == "active_runs" or
+        . == "backlog_runs" or
+        . == "learning_reviews_need_attention" or
+        . == "learning_proposals_approved" or
+        . == "learning_proposals_need_revalidation" or
+        ((. == "memory_curation_recommended") and memory_curation_visible(memory)) or
+        startswith("project_map_")
+      )
+    ] | unique;
+
+  def hidden_internal_reasons(memory):
+    (
+      [
+        .[] | select(
+          ((. == "memory_curation_recommended") and memory_curation_hidden(memory)) or
+          . == "learning_proposals_pending"
+        )
+      ]
+      + ((memory | .curation.silent_reasons) // [])
+      + (if (((memory | .provider.sync.pending_count) // 0) > 0 and ((memory | .provider.sync.direct_write_ready) != true)) then ["provider_sync_waiting_for_user_setup"] else [] end)
+    ) | unique;
+
+  def drilldowns(s):
+    [
+      if (((s | .findings.open) // 0) > 0) then "findings" else empty end,
+      if (((s | .feature_checks.verified_findings_open) // 0) > 0) then "feature_checks" else empty end,
+      if (((s | .improvements.open) // 0) > 0) then "improvements" else empty end,
+      if (((s | .runs.backlog) // 0) > 0) then "backlog_runs" else empty end,
+      if (((s | .runs.active) // 0) > 0) then "active_runs" else empty end,
+      if (((s | .background.collectable) // 0) > 0 or (((s | .background.stale) // 0) > 0)) then "background" else empty end,
+      if (((s | .memory_summary.provider_sync.pending_count) // 0) > 0) then "vault_sync" else empty end,
+      if (((s | .memory_summary.curation.recommended) // false) == true or (((s | .memory.proposals.pending) // 0) > 0)) then "memory" else empty end,
+      if (((s | .installation.cache_status) // "") == "stale_cache") then "installation" else empty end
+    ] | unique;
+
+  def primary_action(s):
+    if ((s | .repo.dirty) == true) then
+      {id: "clean_worktree", label_key: "clean_worktree", priority: "blocker", blocking: true, reason_key: "working_tree_dirty"}
+    elif ((s | .active_session.present) == true and (s | .active_session.terminal) == false and (s | .active_session.stale_risk) == "needs_revalidation") then
+      {id: "revalidate_active_session", label_key: "revalidate_active_session", priority: "high", blocking: true, reason_key: "active_session_stale"}
+    elif ((s | .active_session.present) == true and (s | .active_session.terminal) == false) then
+      {id: "continue_active_session", label_key: "continue_active_session", priority: "high", blocking: false, reason_key: "active_session_open"}
+    elif (((s | .installation.cache_status) // "") == "stale_cache") then
+      {id: "update_installed_plugin", label_key: "update_installed_plugin", priority: "high", blocking: false, reason_key: "installed_cache_stale"}
+    elif (((s | .background.collectable) // 0) > 0) then
+      {id: "collect_background_handles", label_key: "collect_background_handles", priority: "medium", blocking: false, reason_key: "background_results_waiting"}
+    elif (((s | .project_map.present) // false) != true) then
+      {id: "project_map_bootstrap", label_key: "project_map_bootstrap", priority: "recommended", blocking: false, reason_key: "project_map_missing"}
+    elif (((s | .project_map.valid) // false) != true) then
+      {id: "project_map_rebuild", label_key: "project_map_rebuild", priority: "recommended", blocking: false, reason_key: "project_map_invalid"}
+    elif (((s | .project_map.status) // "unknown") != "current") then
+      {id: "bring_current", label_key: "bring_current", priority: "recommended", blocking: false, reason_key: ("project_map_" + ((s | .project_map.status) // "unknown"))}
+    elif (((s | .memory_summary.over_budget) // false) == true) then
+      {id: "curate_memory", label_key: "curate_memory", priority: "recommended", blocking: false, reason_key: "memory_over_budget"}
+    elif (((s | .feature_checks.verified_findings_open) // 0) > 0) then
+      {id: "review_feature_findings", label_key: "review_feature_findings", priority: "medium", blocking: false, reason_key: "feature_check_findings_open"}
+    elif (((s | .findings.open) // 0) > 0) then
+      {id: "review_findings", label_key: "review_findings", priority: "medium", blocking: false, reason_key: "findings_open"}
+    elif (((s | .improvements.open) // 0) > 0) then
+      {id: "review_improvements", label_key: "review_improvements", priority: "medium", blocking: false, reason_key: "improvements_open"}
+    elif (((s | .runs.backlog) // 0) > 0) then
+      {id: "resume_backlog", label_key: "resume_backlog", priority: "medium", blocking: false, reason_key: "backlog_runs_open"}
+    elif (((s | .memory_summary.provider_sync.pending_count) // 0) > 0 and ((s | .memory_summary.provider_sync.direct_write_ready) == true)) then
+      {id: "sync_vault", label_key: "sync_vault", priority: "optional", blocking: false, reason_key: "vault_sync_pending"}
+    else
+      {id: "start_kimiflow", label_key: "start_kimiflow", priority: "normal", blocking: false, reason_key: "ready"}
+    end;
+
+  ({
     schema_version: 1,
     repo: {present: $repo_present, root: $root, head: $head, dirty: $dirty},
+    installation: {
+      mode: $installation_mode,
+      plugin_root: $plugin_root,
+      version: $plugin_version,
+      repo_version: $repo_plugin_version,
+      cache_status: $cache_status,
+      action_required: $installation_action_required
+    },
     project_map: {present: $map_present, valid: $map_valid, depth: $depth, status: $map_status, index: $index, baseline_commit: $baseline},
     memory: $memory,
     memory_summary: $memory_summary,
@@ -635,7 +771,77 @@ out="$(jq -n \
       workflow_artifacts: $workflow_artifacts
     },
     repo_docs: {present: $docs_present}
-  }')"
+  } as $snapshot
+  | ($snapshot.maintenance.reasons | visible_maintenance_reasons($snapshot.memory)) as $visible_reasons
+  | ($snapshot.maintenance.reasons | hidden_internal_reasons($snapshot.memory)) as $hidden_reasons
+  | $snapshot
+    + {
+      maintenance: (
+        $snapshot.maintenance
+        + {
+          visible_reasons: $visible_reasons,
+          hidden_internal_reasons: $hidden_reasons
+        }
+      ),
+      launcher: {
+        schema_version: 1,
+        presentation: "calm",
+        primary_action: primary_action($snapshot),
+        status: {
+          installation: {
+            version: $snapshot.installation.version,
+            repo_version: $snapshot.installation.repo_version,
+            mode: $snapshot.installation.mode,
+            cache_status: $snapshot.installation.cache_status,
+            action_required: $snapshot.installation.action_required
+          },
+          project_map: {
+            present: $snapshot.project_map.present,
+            depth: $snapshot.project_map.depth,
+            status: $snapshot.project_map.status,
+            attention: (($snapshot.project_map.present != true) or ($snapshot.project_map.valid != true) or ($snapshot.project_map.status != "current"))
+          },
+          memory: {
+            present: $snapshot.memory_summary.present,
+            tokens_estimate: $snapshot.memory_summary.tokens_estimate,
+            budget: $snapshot.memory_summary.budget,
+            over_budget: $snapshot.memory_summary.over_budget,
+            current_learnings: $snapshot.memory_summary.learnings.current,
+            curation_recommended: $snapshot.memory_summary.curation.recommended
+          },
+          efficiency: {
+            present: ($snapshot.efficiency.present == true),
+            estimated_savings_percent: $snapshot.efficiency.estimated_savings_percent,
+            confidence: $snapshot.efficiency.confidence,
+            runs_tracked: ($snapshot.efficiency.runs_tracked // 0),
+            projects_tracked: ($snapshot.efficiency.projects_tracked // 0)
+          },
+          vault: {
+            health: ($snapshot.memory.provider.health.status // "not_detected"),
+            auth_status: ($snapshot.memory.provider.auth.status // "not_configured"),
+            authenticated: ($snapshot.memory.provider.auth.authenticated == true),
+            sync_pending_count: ($snapshot.memory_summary.provider_sync.pending_count // 0),
+            direct_write_ready: ($snapshot.memory_summary.provider_sync.direct_write_ready == true)
+          },
+          counts: {
+            findings_open: $snapshot.findings.open,
+            feature_check_findings_open: $snapshot.feature_checks.verified_findings_open,
+            improvements_open: $snapshot.improvements.open,
+            active_runs: $snapshot.runs.active,
+            backlog_runs: $snapshot.runs.backlog,
+            background_collectable: ($snapshot.background.collectable // 0),
+            background_stale: ($snapshot.background.stale // 0)
+          }
+        },
+        maintenance: {
+          visible_count: ($visible_reasons | length),
+          visible_reasons: $visible_reasons,
+          hidden_internal_count: ($hidden_reasons | length),
+          hidden_internal_reasons: $hidden_reasons
+        },
+        drilldowns: drilldowns($snapshot)
+      }
+    })')"
 
 if [ "$PRETTY" -eq 1 ]; then
   printf '%s\n' "$out" | jq .

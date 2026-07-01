@@ -78,6 +78,17 @@ rm -f "$INDEX"
 out="$(run_status)"
 assert_jq "$out" '.repo.present == true' "repo_present"
 assert_jq "$out" '.project_map.present == false and .project_map.status == "missing"' "missing_map_reports_missing"
+assert_jq "$out" '.installation.mode == "source_checkout" and .installation.version != "" and .launcher.presentation == "calm"' "launcher_exposes_installation_and_calm_presentation"
+assert_jq "$out" '.launcher.primary_action.id == "project_map_bootstrap" and .launcher.status.project_map.attention == true' "launcher_recommends_project_map_bootstrap"
+
+mkdir -p "$REPO/.codex-plugin"
+printf '{"version":"9.9.9"}\n' > "$REPO/.codex-plugin/plugin.json"
+( cd "$REPO" && git add .codex-plugin/plugin.json && git commit -q -m plugin-version )
+fake_cache="$WORK/home/.codex/plugins/cache/kimiflow/kimiflow/0.0.1"
+mkdir -p "$fake_cache/.codex-plugin"
+printf '{"version":"0.0.1"}\n' > "$fake_cache/.codex-plugin/plugin.json"
+out="$(KIMIFLOW_PLUGIN_ROOT="$fake_cache" run_status)"
+assert_jq "$out" '.installation.mode == "plugin_cache" and .installation.cache_status == "stale_cache" and .installation.action_required == true and .launcher.primary_action.id == "update_installed_plugin"' "launcher_detects_stale_installed_cache"
 
 reset_repo
 BASE="$(cd "$REPO" && git rev-parse --short HEAD)"
@@ -86,6 +97,7 @@ out="$(run_status)"
 assert_jq "$out" '.project_map.present == true and .project_map.depth == "standard" and .project_map.status == "current"' "current_map_reports_current"
 assert_jq "$out" '.repo.dirty == false' "ignored_kimiflow_does_not_dirty_repo"
 assert_jq "$out" '.maintenance.bring_current_recommended == false and .maintenance.commits_since_project_map_baseline == 0' "clean_current_repo_no_maintenance_recommended"
+assert_jq "$out" '.launcher.primary_action.id == "start_kimiflow" and .launcher.maintenance.visible_count == 0 and .launcher.status.installation.cache_status == "source_checkout"' "launcher_ready_state_is_quiet"
 assert_jq "$out" '.agentic_readiness.status == "readiness_status" and (.agentic_readiness.summary | test("Agentic readiness:")) and .agentic_readiness.privacy.network_calls == false' "agentic_readiness_visible"
 pretty_out="$("$SCRIPT" --root "$REPO" --pretty)"
 if printf '%s\n' "$pretty_out" | grep -Fq "Agentic readiness:"; then
@@ -103,6 +115,7 @@ printf 'two\n' > "$REPO/src/a.txt"
 out="$(run_status)"
 assert_jq "$out" '.project_map.status == "stale" and .repo.dirty == true' "stale_map_and_dirty_repo_reported"
 assert_jq "$out" '.maintenance.bring_current_recommended == true and (.maintenance.reasons | index("working_tree_dirty")) and (.maintenance.reasons | index("project_map_stale"))' "stale_dirty_repo_recommends_maintenance"
+assert_jq "$out" '.launcher.primary_action.id == "clean_worktree" and .launcher.primary_action.blocking == true and (.launcher.maintenance.visible_reasons | index("working_tree_dirty")) and (.launcher.maintenance.visible_reasons | index("project_map_stale"))' "launcher_prioritizes_clean_worktree"
 
 reset_repo
 BASE="$(cd "$REPO" && git rev-parse --short HEAD)"
@@ -216,6 +229,7 @@ FINDING MEDIUM src/a.txt:1 :: docs could be clearer
 EOF
 out="$(run_status)"
 assert_jq "$out" '.feature_checks.runs == 1 and .feature_checks.verified_findings_open == 1 and (.maintenance.reasons | index("feature_check_findings") | not) and .maintenance.bring_current_recommended == false' "feature_check_findings_surface_without_maintenance_noise"
+assert_jq "$out" '.launcher.primary_action.id == "review_feature_findings" and (.launcher.drilldowns | index("feature_checks"))' "launcher_recommends_feature_check_drilldown"
 rm -rf "$REPO/.kimiflow/feature-check-demo"
 
 cat > "$REPO/.kimiflow/project/MEMORY.md" <<'EOF'
@@ -261,20 +275,24 @@ EOF
 "$MEMORY_ROUTER" curate --root "$REPO" --write >/dev/null
 out="$(KIMIFLOW_OBSIDIAN_URL=http://127.0.0.1:1 KIMIFLOW_MEMORY_CURATE_AFTER_LEARNINGS=3 run_status)"
 assert_jq "$out" '.memory.curation.recommended == false and .memory.curation.internal_recommended == true and (.memory.curation.silent_reasons | index("many_learnings")) and .maintenance.bring_current_recommended == false and (.maintenance.reasons | index("memory_curation_recommended") | not)' "launcher_hides_benign_many_learnings_signal"
+assert_jq "$out" '(.launcher.maintenance.hidden_internal_reasons | index("many_learnings")) and (.launcher.maintenance.visible_reasons | index("many_learnings") | not)' "launcher_keeps_benign_memory_hygiene_internal"
 
 cat > "$REPO/.kimiflow/project/PROPOSALS.jsonl" <<'EOF'
 {"id":"learn_memory","learning_id":"learn_memory","type":"standard","kind":"project_rule_confirmed","target_path":".kimiflow/STANDARDS.md","summary":"Project rule confirmed: launcher status exposes pending learning proposals.","evidence":["hooks/launcher-status.sh:1"],"status":"pending","created_at":"2026-06-25T00:00:00Z","updated_at":"2026-06-25T00:00:00Z"}
 EOF
 out="$(run_status)"
 assert_jq "$out" '.memory.proposals.pending == 1 and (.maintenance.reasons | index("learning_proposals_pending"))' "pending_learning_proposals_surface_in_launcher"
+assert_jq "$out" '(.launcher.maintenance.hidden_internal_reasons | index("learning_proposals_pending")) and (.launcher.maintenance.visible_reasons | index("learning_proposals_pending") | not)' "launcher_hides_pending_learning_proposals_from_primary_menu"
 perl -0pi -e 's/"status":"pending"/"status":"approved"/' "$REPO/.kimiflow/project/PROPOSALS.jsonl"
 out="$(run_status)"
 assert_jq "$out" '.memory.proposals.approved == 1 and (.maintenance.reasons | index("learning_proposals_approved"))' "approved_learning_proposals_surface_in_launcher"
+assert_jq "$out" '(.launcher.maintenance.visible_reasons | index("learning_proposals_approved"))' "launcher_surfaces_approved_learning_proposals"
 rm "$REPO/.kimiflow/project/PROPOSALS.jsonl"
 
 awk 'BEGIN{for(i=0;i<950;i++) printf "word "}' > "$REPO/.kimiflow/project/MEMORY.md"
 out="$(run_status)"
 assert_jq "$out" '.memory.memory.over_budget == true and .memory.curation.recommended == true and (.maintenance.reasons | index("memory_curation_recommended"))' "memory_over_budget_surfaces_in_launcher"
+assert_jq "$out" '.launcher.primary_action.id == "curate_memory" and (.launcher.maintenance.visible_reasons | index("memory_curation_recommended"))' "launcher_surfaces_memory_over_budget_as_action"
 
 mkdir -p "$REPO/.kimiflow/parked"
 cat > "$REPO/.kimiflow/parked/STATE.md" <<EOF

@@ -13,15 +13,21 @@ requests.
 
 **Mechanical snapshot:** before showing options, run `hooks/launcher-status.sh --pretty` from the installed
 Kimiflow root (Codex: with `KIMIFLOW_HOST=codex`). The script is read-only and returns JSON for:
-repo status, dirty working tree, project-map depth/status, memory/recall status, curation needs, agentic readiness, background handles (`total`, status counts, collectable/stale counts, items), open findings,
-open feature-check findings, open improvement slices, repo-doc presence, active-session status, and active/backlog/done runs. The orchestrator may summarize this
-JSON, but must not invent counts.
+repo status, dirty working tree, installed/cache version status, project-map depth/status, memory/recall status,
+curation needs, agentic readiness, background handles (`total`, status counts, collectable/stale counts, items),
+open findings, open feature-check findings, open improvement slices, repo-doc presence, active-session status, and
+active/backlog/done runs. Use the top-level `.launcher` object for the first screen: it contains
+`primary_action`, compact status groups, `maintenance.visible_reasons`, `maintenance.hidden_internal_reasons`, and
+drilldown names. Raw fields remain for detail views only. The orchestrator may summarize this JSON, but must not
+invent counts.
 
 **Start menu (user language):** show a compact numbered menu, tuned to the snapshot. Typical full menu:
 
 ```text
 Kimiflow Start
 
+Empfohlen: Projektkarte anlegen
+Installation: 0.1.54 · Cache aktuell
 Projektkarte: standard · aktuell
 Memory: 820/900 Tokens · aktuell
 Effizienz: geschätzt 18% Token Savings · 12 Runs · Konfidenz niedrig
@@ -54,6 +60,10 @@ Was willst du tun?
 16. Background Handles ansehen/einsammeln
 ```
 
+Only show one clear recommendation from `.launcher.primary_action` above the menu. Render `label_key` and
+`reason_key` in the user's language. Do not show local plugin cache paths unless the user opens an installation
+drilldown or there is a stale-cache action; the path is user-local and may differ on every machine.
+
 **Natural mode aliases:** users may type short mode words instead of remembering flags. Treat `/kimiflow full`,
 `$kimiflow full`, `@kimiflow full`, or plain "kimiflow full" as the same alias family. If the target is omitted,
 use the current conversation topic only when it is unambiguous; otherwise ask one plain-language question.
@@ -76,9 +86,10 @@ If `.kimiflow/project/INDEX.json` is missing, bias the first menu toward Project
 then only relevant `FACTS.jsonl` lines and markdown sections. New code exploration is for stale/unknown/gap
 areas only.
 
-**"Bring Kimiflow current" offer:** `launcher-status.sh` reports
-`maintenance.bring_current_recommended` plus terse `maintenance.reasons`. If it is true, the menu should offer
-a first-class "Kimiflow auf aktuellen Stand bringen" action before feature/fix work. It is an interactive
+**"Bring Kimiflow current" offer:** prefer `.launcher.primary_action` and
+`.launcher.maintenance.visible_reasons` for the first screen. The raw `maintenance.reasons` list is still present
+for compatibility and drilldowns, but it may include internal hygiene signals. If a visible reason recommends it,
+offer a first-class "Kimiflow auf aktuellen Stand bringen" action before feature/fix work. It is an interactive
 hygiene pass, not an implementation mode:
 - **Run-state hygiene first:** normalize completed runs to `Status: done` when `STATE.md` explicitly says
   Phase 7 is done / `RUN COMPLETE`; ask before changing ambiguous runs. `Status: backlog` remains a deliberate
@@ -94,10 +105,11 @@ hygiene pass, not an implementation mode:
   reconcile with the current code. Do not bulk-ingest another tool's full archive.
 - **Then refresh:** update only stale `.kimiflow/project/` sections and run-state metadata. Raw maps remain
   local/private; repo docs are updated only when the user chooses a docs/storage action.
-- **Memory hygiene:** if `memory.curation.recommended` is true, offer a token-cheap memory curation action.
-  This runs `memory-router.sh curate --write`, updates `MEMORY-INDEX.json`, and never rewrites/delete-learns
-  destructively without a later explicit action. Ignore `memory.curation.silent_reasons` in normal UI; for example
-  `many_learnings` is an internal health/threshold hint, not user-facing work when memory is under budget and fresh.
+- **Memory hygiene:** surface memory curation as a user action only when `.launcher.primary_action.id ==
+  "curate_memory"` or `.launcher.maintenance.visible_reasons` contains `memory_curation_recommended` (for example
+  memory over budget or stale evidence). Benign signals such as `many_learnings`, pending draft proposals, or a
+  Vault sync that cannot write yet stay in `.launcher.maintenance.hidden_internal_reasons`; they are drilldown data,
+  not front-door tasks. `memory-router.sh curate --write` remains token-cheap and non-destructive.
 
 **Working-tree start gate:** before any normal write-mode Kimiflow run starts (feature, fix, audit, project-map/update, docs write), run `hooks/working-tree-gate.sh`. The stable output is `WORKING_TREE_GATE<TAB>OPEN|CLOSED<TAB>dirty=<n><TAB>staged=<n><TAB>unstaged=<n><TAB>untracked=<n><TAB>reason=<code><TAB>detail=<paths>`. `OPEN` is required before slugging, active-session start, or file edits. `CLOSED` means: stop, show the dirty-path summary, and ask the user to commit, stash, or otherwise clean the worktree first. Do not continue by accepting the risk; the point is to avoid mixing an old diff with a new Kimiflow run. Read-only launcher/status/inspection may still run and report the dirty state. `.kimiflow/` local state is ignored by the gate.
 
