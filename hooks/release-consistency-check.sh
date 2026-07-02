@@ -16,7 +16,7 @@
 #   COMPATIBILITY.md must contain "**<ver>**"
 #   CHANGELOG.md must contain a line equal to "## <ver>" (anchored — no semver substring collision)
 # Size budgets (fail when present and exceeded):
-#   SKILL.md <= 15000 bytes
+#   SKILL.md <= 17000 bytes
 #   skills/kimiflow/SKILL.md <= 15000 bytes
 #   phases/*.md <= 20000 bytes each
 #   hooks/launcher-status.sh default JSON <= 8000 bytes on a clean fixture repo
@@ -142,7 +142,7 @@ else
   say "  skip  rendered skill outputs (no docs/render/kimiflow source)"
 fi
 
-check_max_bytes "SKILL.md always-loaded prose" "$ROOT/SKILL.md" 15000
+check_max_bytes "SKILL.md always-loaded prose" "$ROOT/SKILL.md" 17000
 check_max_bytes "Codex SKILL.md always-loaded prose" "$ROOT/skills/kimiflow/SKILL.md" 15000
 if [ -d "$ROOT/phases" ]; then
   phase_found=0

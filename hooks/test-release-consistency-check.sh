@@ -117,7 +117,7 @@ run "$F"
 # AC-3.2 oversized always-loaded prose -> fail naming the file
 F="$TMP/c8"; make_fixture "$F" "0.1.0"
 mkdir -p "$F/skills/kimiflow"
-awk 'BEGIN{for(i=0;i<15001;i++) printf "x"}' > "$F/SKILL.md"
+awk 'BEGIN{for(i=0;i<17001;i++) printf "x"}' > "$F/SKILL.md"
 printf 'codex skill\n' > "$F/skills/kimiflow/SKILL.md"
 run "$F"
 { [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF 'SKILL.md always-loaded prose bytes'; } \

@@ -124,6 +124,11 @@ INV-121	2026-07-02-token-restructuring-invariants.md + 2026-07-02-invariant-chec
 INV-122	2026-07-02-token-restructuring-invariants.md + 2026-07-02-invariant-check.sh:SKILL rules	BEFORE fan-out	core-always-or-approved-target	class=CORE-ALWAYS; current_target=SKILL.md
 INV-123	2026-07-02-token-restructuring-invariants.md + 2026-07-02-invariant-check.sh:SKILL rules	uncommitted	core-always-or-approved-target	class=CORE-ALWAYS; current_target=SKILL.md
 INV-124	2026-07-02-token-restructuring-invariants.md + 2026-07-02-invariant-check.sh:SKILL rules	never wired into CI	core-always-or-approved-target	class=CORE-ALWAYS; current_target=SKILL.md
+INV-125	2026-07-02-independent-merge-review.md step1 deletion-blind-spot	Default stays lean (1 implementer, 1–2 reviewers)	core-always-or-approved-target	class=CORE-ALWAYS; current_target=SKILL.md
+INV-126	2026-07-02-independent-merge-review.md step1 deletion-blind-spot	The budget applies per fan-out decision, not cumulatively per run	core-always-or-approved-target	class=CORE-ALWAYS; current_target=SKILL.md
+INV-127	2026-07-02-independent-merge-review.md step1 deletion-blind-spot	Same-seat substitutions are not new spawns	core-always-or-approved-target	class=CORE-ALWAYS; current_target=SKILL.md
+INV-128	2026-07-02-independent-merge-review.md step1 deletion-blind-spot	Phase colors — announce each phase with its marker	core-always-or-approved-target	class=CORE-ALWAYS; current_target=SKILL.md
+INV-129	2026-07-02-independent-merge-review.md step1 deletion-blind-spot	then re-presents the pre-build summary when the build-gate is	core-always-or-approved-target	class=CORE-ALWAYS; current_target=SKILL.md
 SMOKE-SKILL-001	hooks/smoke-install.sh + hooks/smoke-install-codex.sh + 2026-07-02-invariant-check.sh:SKILL smoke	Launcher / menu	literal-smoke-target	class=SMOKE-CONTRACT; current_target=SKILL.md
 SMOKE-SKILL-002	hooks/smoke-install.sh + hooks/smoke-install-codex.sh + 2026-07-02-invariant-check.sh:SKILL smoke	Natural mode aliases	core-always-or-approved-target	class=CORE-ALWAYS; current_target=SKILL.md
 SMOKE-SKILL-003	hooks/smoke-install.sh + hooks/smoke-install-codex.sh + 2026-07-02-invariant-check.sh:SKILL smoke	pre-build approval stop	core-always-or-approved-target	class=CORE-ALWAYS; current_target=SKILL.md
