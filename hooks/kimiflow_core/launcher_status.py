@@ -132,7 +132,7 @@ def state_value(path, label):
             for raw in handle:
                 line = raw.rstrip("\n").replace("\r", "").replace("**", "")
                 line = re.sub(r"^[ \t]*-[ \t]*", "", line)
-                match = re.match(r"^%s:[ \t]*(.*)$" % re.escape(label), line)
+                match = re.match(r"^%s:[ \t]*(.*)$" % re.escape(label), line, re.IGNORECASE)
                 if match:
                     return match.group(1)
     except OSError:
@@ -584,7 +584,7 @@ def build_snapshot(root, script_dir):
     commits_since_map = None
     if map_present:
         data = load_json_file(index_path)
-        if data is not None:
+        if isinstance(data, dict):
             map_valid = True
             map_depth = data.get("scan_depth", "unknown")
             map_baseline = data.get("baseline_commit", "NOT VERIFIED")

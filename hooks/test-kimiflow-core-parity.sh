@@ -62,6 +62,13 @@ hash_file() {
   fi
 }
 
+file_mode() {
+  case "$(uname -s)" in
+    Darwin|FreeBSD) stat -f %Lp "$1" ;;
+    *) stat -c %a "$1" ;;
+  esac
+}
+
 write_project_map_index() {
   local repo="$1" base hook_hash
   base="$(git -C "$repo" rev-parse --short HEAD)"
@@ -151,6 +158,13 @@ EOF
   }' > "$repo/.kimiflow/session/ACTIVE_RUN.json"
 }
 
+write_active_item() {
+  local repo="$1" status="${2:-pending}"
+  cat > "$repo/.kimiflow/demo/ITEMS.jsonl" <<EOF
+{"schema_version":1,"id":"item_001","title":"Do thing","kind":"change","status":"$status","created_at":"2026-07-02T00:00:00Z","updated_at":"2026-07-02T00:00:00Z","reason":""}
+EOF
+}
+
 write_gate_fixture() {
   local repo="$1" run
   run="$repo/.kimiflow/demo"
@@ -193,6 +207,15 @@ bad() { printf 'BAD  %s\n' "$1"; FAILS=$((FAILS + 1)); }
 expected_divergence() {
   local label="$1" old_code="$2" new_code="$3"
   case "$label" in
+    active_mark_built_write|active_mark_accepted_write|active_mark_rejected_write|active_drop_item_write|active_park_write|active_fail_write|active_abort_write)
+      [ "$old_code" = "$new_code" ] || return 1
+      cmp -s "$WORK/o.out.norm" "$WORK/n.out.norm" || return 1
+      cmp -s "$WORK/o.err.norm" "$WORK/n.err.norm" || return 1
+      sed -E 's/\tmode=[0-9]+//' "$WORK/o.files.norm" > "$WORK/o.files.nomode"
+      sed -E 's/\tmode=[0-9]+//' "$WORK/n.files.norm" > "$WORK/n.files.nomode"
+      cmp -s "$WORK/o.files.nomode" "$WORK/n.files.nomode" || return 1
+      return 0
+      ;;
     background_malformed_id)
       [ "$old_code" = "1" ] || return 1
       [ "$new_code" = "2" ] || return 1
@@ -217,6 +240,26 @@ normalize() {
     -e 's/[0-9a-f]{40}/COMMIT/g'
 }
 
+normalized_file_hash() {
+  if command -v shasum >/dev/null 2>&1; then
+    normalize < "$1" | shasum -a 256 | awk '{print "sha256:" $1}'
+  else
+    normalize < "$1" | sha256sum | awk '{print "sha256:" $1}'
+  fi
+}
+
+file_state() {
+  local dir="$1" rel norm_rel path
+  (
+    cd "$dir" || exit 1
+    find . -path './.git' -prune -o -type f -print | sort | while IFS= read -r rel; do
+      path="$dir/${rel#./}"
+      norm_rel="$(printf '%s\n' "${rel#./}" | normalize)"
+      printf '%s\tmode=%s\thash=%s\n' "$norm_rel" "$(file_mode "$path")" "$(normalized_file_hash "$path")"
+    done
+  )
+}
+
 run_one() {
   local label="$1" script="$2" argstr="$3" old_script new_script diverged case_old case_new arg old_args new_args
   old_script="$OLD_HOOKS/$script"
@@ -232,6 +275,9 @@ run_one() {
   cp -R "$REPO" "$case_new"
 
   case "$label" in
+    active_start_write)
+      rm -rf "$case_old/.kimiflow/session" "$case_new/.kimiflow/session"
+      ;;
     project_map_status_current|project_map_coverage_current|project_map_index_symbols|project_map_refresh_section|project_map_refresh_changed_new)
       write_project_map_index "$case_old"
       write_project_map_index "$case_new"
@@ -244,11 +290,16 @@ run_one() {
       ;;
   esac
   case "$label" in
-    background_invalid_files_json)
+    background_invalid_files_json|background_scalar_files_json)
       write_background_handle "$case_old" "bh_test" "pending" "yes"
       write_background_handle "$case_new" "bh_test" "pending" "yes"
-      printf '{bad json\n' > "$case_old/invalid-files.json"
-      printf '{bad json\n' > "$case_new/invalid-files.json"
+      if [ "$label" = "background_scalar_files_json" ]; then
+        printf 'null\n' > "$case_old/invalid-files.json"
+        printf 'null\n' > "$case_new/invalid-files.json"
+      else
+        printf '{bad json\n' > "$case_old/invalid-files.json"
+        printf '{bad json\n' > "$case_new/invalid-files.json"
+      fi
       ;;
     background_result_tampering)
       write_background_handle "$case_old" "bh_test" "ready" "no"
@@ -260,6 +311,14 @@ run_one() {
       write_background_handle "$case_old" "bh_test" "cancelled" "yes"
       write_background_handle "$case_new" "bh_test" "cancelled" "yes"
       ;;
+    background_status_ready|background_collect_open)
+      write_background_handle "$case_old" "bh_test" "ready" "yes"
+      write_background_handle "$case_new" "bh_test" "ready" "yes"
+      ;;
+    background_cancel_write|background_mark_stale_write)
+      write_background_handle "$case_old" "bh_test" "pending" "yes"
+      write_background_handle "$case_new" "bh_test" "pending" "yes"
+      ;;
     launcher_no_kimiflow)
       rm -rf "$case_old/.kimiflow" "$case_new/.kimiflow"
       ;;
@@ -268,6 +327,11 @@ run_one() {
       printf '{bad json\n' > "$case_old/.kimiflow/project/INDEX.json"
       printf '{bad json\n' > "$case_new/.kimiflow/project/INDEX.json"
       ;;
+    launcher_scalar_map_json)
+      mkdir -p "$case_old/.kimiflow/project" "$case_new/.kimiflow/project"
+      printf 'null\n' > "$case_old/.kimiflow/project/INDEX.json"
+      printf 'null\n' > "$case_new/.kimiflow/project/INDEX.json"
+      ;;
     launcher_stale_plugin_cache)
       mkdir -p "$case_old/.codex-plugin" "$case_new/.codex-plugin" "$case_old/fake-cache/.codex-plugin" "$case_new/fake-cache/.codex-plugin"
       printf '{"version":"9.9.9"}\n' > "$case_old/.codex-plugin/plugin.json"
@@ -275,9 +339,25 @@ run_one() {
       printf '{"version":"0.0.1"}\n' > "$case_old/fake-cache/.codex-plugin/plugin.json"
       printf '{"version":"0.0.1"}\n' > "$case_new/fake-cache/.codex-plugin/plugin.json"
       ;;
-    active_append_preview|active_park_write|active_prompt_payload)
+    active_append_preview|active_finish_preview|active_park_write|active_fail_write|active_abort_write|active_prompt_payload|active_stop_gate|active_refresh_baseline_write)
       write_active_fixture "$case_old"
       write_active_fixture "$case_new"
+      ;;
+    active_mark_built_write|active_mark_accepted_write|active_mark_rejected_write|active_drop_item_write)
+      write_active_fixture "$case_old"
+      write_active_fixture "$case_new"
+      write_active_item "$case_old" "pending"
+      write_active_item "$case_new" "pending"
+      ;;
+    improvements_reopen_write)
+      for f in "$case_old/.kimiflow/project/IMPROVEMENTS.md" "$case_new/.kimiflow/project/IMPROVEMENTS.md"; do
+        awk '{
+          print
+          if ($0 == "### 1. Release-Doku-Konsistenz automatischer machen") {
+            print "<!-- kimiflow:queue-done id=release-doku-konsistenz-automatischer-machen commit=abc123 date=2026-07-02 -->"
+          }
+        }' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+      done
       ;;
     clarify_markdown_state|plan_blocker_markdown_state)
       write_gate_fixture "$case_old"
@@ -303,6 +383,11 @@ run_one() {
   old_env=(HOME="$HOME_DIR" KIMIFLOW_OBSIDIAN_URL= KIMIFLOW_OBSIDIAN_API_KEY=)
   new_env=(HOME="$HOME_DIR" KIMIFLOW_OBSIDIAN_URL= KIMIFLOW_OBSIDIAN_API_KEY=)
   case "$label" in
+    active_*)
+      mkdir -p "$case_old/fake-plugin" "$case_new/fake-plugin"
+      old_env+=(KIMIFLOW_PLUGIN_ROOT="$case_old/fake-plugin")
+      new_env+=(KIMIFLOW_PLUGIN_ROOT="$case_new/fake-plugin")
+      ;;
     launcher_stale_plugin_cache)
       old_env+=(KIMIFLOW_PLUGIN_ROOT="$case_old/fake-cache")
       new_env+=(KIMIFLOW_PLUGIN_ROOT="$case_new/fake-cache")
@@ -312,11 +397,16 @@ run_one() {
   old_stdin="/dev/null"
   new_stdin="/dev/null"
   case "$label" in
-    active_prompt_payload)
+    active_prompt_payload|active_stop_gate)
       old_stdin="$WORK/old.stdin"
       new_stdin="$WORK/new.stdin"
-      printf '{"cwd":"%s","prompt":"must not persist"}' "$case_old" > "$old_stdin"
-      printf '{"cwd":"%s","prompt":"must not persist"}' "$case_new" > "$new_stdin"
+      if [ "$label" = "active_stop_gate" ]; then
+        printf '{"cwd":"%s"}' "$case_old" > "$old_stdin"
+        printf '{"cwd":"%s"}' "$case_new" > "$new_stdin"
+      else
+        printf '{"cwd":"%s","prompt":"must not persist"}' "$case_old" > "$old_stdin"
+        printf '{"cwd":"%s","prompt":"must not persist"}' "$case_new" > "$new_stdin"
+      fi
       ;;
   esac
 
@@ -327,11 +417,14 @@ run_one() {
   normalize < "$WORK/o.err" > "$WORK/o.err.norm"
   normalize < "$WORK/n.out" > "$WORK/n.out.norm"
   normalize < "$WORK/n.err" > "$WORK/n.err.norm"
+  file_state "$case_old" > "$WORK/o.files.norm"
+  file_state "$case_new" > "$WORK/n.files.norm"
 
   diverged=""
   [ "$o_code" != "$n_code" ] && diverged="${diverged}exit($o_code!=$n_code) "
   cmp -s "$WORK/o.out.norm" "$WORK/n.out.norm" || diverged="${diverged}stdout "
   cmp -s "$WORK/o.err.norm" "$WORK/n.err.norm" || diverged="${diverged}stderr "
+  cmp -s "$WORK/o.files.norm" "$WORK/n.files.norm" || diverged="${diverged}file-state "
 
   if [ -z "$diverged" ]; then
     ok "$label"
@@ -355,25 +448,47 @@ run_one() {
     printf '  [stderr diff]\n'
     diff -u "$WORK/o.err.norm" "$WORK/n.err.norm" | sed 's/^/  /' || true
   fi
+  if ! cmp -s "$WORK/o.files.norm" "$WORK/n.files.norm"; then
+    printf '  [file-state diff]\n'
+    diff -u "$WORK/o.files.norm" "$WORK/n.files.norm" | sed 's/^/  /' || true
+  fi
 }
 
 CASES=(
   "active_status_none::active-run.sh::status|--root|__REPO__"
   "active_malformed_arg::active-run.sh::status|--root|__REPO__|--bogus"
+  "active_start_write::active-run.sh::start|--root|__REPO__|--run|.kimiflow/demo|--write"
   "active_append_preview::active-run.sh::append-item|--root|__REPO__|--title|Do thing"
+  "active_mark_built_write::active-run.sh::mark-built|--root|__REPO__|--id|item_001|--write"
+  "active_mark_accepted_write::active-run.sh::mark-accepted|--root|__REPO__|--id|item_001|--write"
+  "active_mark_rejected_write::active-run.sh::mark-rejected|--root|__REPO__|--id|item_001|--reason|needs work|--write"
+  "active_drop_item_write::active-run.sh::drop-item|--root|__REPO__|--id|item_001|--reason|out of scope|--write"
+  "active_refresh_baseline_write::active-run.sh::refresh-baseline|--root|__REPO__|--write"
+  "active_finish_preview::active-run.sh::finish|--root|__REPO__"
   "active_park_write::active-run.sh::park|--root|__REPO__|--reason|waiting|--write"
+  "active_fail_write::active-run.sh::fail|--root|__REPO__|--reason|failed|--write"
+  "active_abort_write::active-run.sh::abort|--root|__REPO__|--reason|aborted|--write"
   "active_prompt_payload::active-run.sh::prompt-context"
+  "active_stop_gate::active-run.sh::stop-gate"
   "background_list_empty::background-run.sh::list|--root|__REPO__|--json"
   "background_start_preview::background-run.sh::start|--root|__REPO__|--kind|docs|--title|Docs|--affected|hooks"
+  "background_start_write::background-run.sh::start|--root|__REPO__|--kind|docs|--title|Docs|--affected|hooks|--write"
   "background_malformed_id::background-run.sh::status|--root|__REPO__|--id|../escape"
+  "background_status_ready::background-run.sh::status|--root|__REPO__|--id|bh_test"
   "background_invalid_files_json::background-run.sh::update|--root|__REPO__|--id|bh_test|--status|ready|--files|invalid-files.json|--write"
+  "background_scalar_files_json::background-run.sh::update|--root|__REPO__|--id|bh_test|--status|ready|--files|invalid-files.json|--write"
+  "background_collect_open::background-run.sh::collect|--root|__REPO__|--id|bh_test"
+  "background_cancel_write::background-run.sh::cancel|--root|__REPO__|--id|bh_test|--reason|not needed|--write"
+  "background_mark_stale_write::background-run.sh::mark-stale|--root|__REPO__|--id|bh_test|--reason|base moved|--write"
   "background_result_tampering::background-run.sh::collect|--root|__REPO__|--id|bh_test"
   "background_terminal_refusal::background-run.sh::update|--root|__REPO__|--id|bh_test|--status|ready|--write"
   "improvements_list_open::improvements-status.sh::list|--root|__REPO__"
   "improvements_json_open::improvements-status.sh::list|--root|__REPO__|--json"
+  "improvements_list_findings::improvements-status.sh::list|--root|__REPO__|--queue|findings"
   "improvements_unknown_queue::improvements-status.sh::list|--root|__REPO__|--queue|bogus"
   "improvements_dry_run::improvements-status.sh::mark-done|release|--root|__REPO__|--commit|abc123"
   "improvements_mark_write::improvements-status.sh::mark-done|release|--root|__REPO__|--commit|abc123|--write"
+  "improvements_reopen_write::improvements-status.sh::reopen|release|--root|__REPO__|--write"
   "project_map_status_missing::project-map-status.sh::status"
   "project_map_coverage_missing::project-map-status.sh::coverage|--affected|hooks/a.sh"
   "project_map_status_current::project-map-status.sh::status"
@@ -384,7 +499,9 @@ CASES=(
   "launcher_missing_root::launcher-status.sh::--root|$WORK/missing-root"
   "launcher_no_kimiflow::launcher-status.sh::--root|__REPO__"
   "launcher_invalid_map_json::launcher-status.sh::--root|__REPO__"
+  "launcher_scalar_map_json::launcher-status.sh::--root|__REPO__"
   "launcher_pretty::launcher-status.sh::--root|__REPO__|--pretty"
+  "launcher_full::launcher-status.sh::--root|__REPO__|--full"
   "launcher_stale_plugin_cache::launcher-status.sh::--root|__REPO__"
   "clarify_missing_dir::clarify-gate.sh::$WORK/missing-run"
   "clarify_markdown_state::clarify-gate.sh::__RUN__"

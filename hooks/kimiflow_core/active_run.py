@@ -137,20 +137,6 @@ def resolve_run_dir(root, run):
     return path
 
 
-def state_value(path, label):
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            for raw in handle:
-                line = raw.rstrip("\n").replace("\r", "").replace("**", "")
-                line = re.sub(r"^[ \t]*-[ \t]*", "", line)
-                match = re.match(r"^%s:[ \t]*(.*)$" % re.escape(label), line)
-                if match:
-                    return match.group(1)
-    except OSError:
-        pass
-    return ""
-
-
 def pathish_affected_entry(value):
     names = {"Dockerfile", "Containerfile", "Makefile", "Procfile", "Justfile", "Rakefile", "Gemfile", "Vagrantfile"}
     return "/" in value or "." in value or value in names
@@ -741,6 +727,10 @@ def cmd_finish(args):
                 review_args.extend(["--skip", opts["--skip-learning"]])
             review_proc = run_cmd(review_args)
             if review_proc.returncode != 0:
+                if review_proc.stderr:
+                    sys.stderr.write(review_proc.stderr)
+                    if not review_proc.stderr.endswith("\n"):
+                        sys.stderr.write("\n")
                 return review_proc.returncode or 1
             try:
                 review = json.loads(review_proc.stdout)

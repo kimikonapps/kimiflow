@@ -84,6 +84,11 @@ id2="$(start_handle docs "Docs" hooks)"
 printf '"not object"\n' > "$REPO/.kimiflow/background/$id1/STATUS.json"
 out="$(run_bg list --json)"
 assert_jq "$out" '.total == 1 and .pending == 1 and .items[0].id == "'"$id2"'"' "list_skips_corrupt_scalar_status"
+if run_bg status --id "$id1" >/dev/null 2>&1; then
+  fail "status_rejects_scalar_status_json"
+else
+  pass "status_rejects_scalar_status_json"
+fi
 
 reset_repo
 id="$(start_handle docs "Docs" hooks)"
@@ -194,6 +199,17 @@ if [ "$(cat "$REPO/.kimiflow/background/$id/RESULT.md")" = "$old_result" ] && jq
   pass "invalid_files_update_left_existing_files_intact"
 else
   fail "invalid_files_update_left_existing_files_intact"
+fi
+printf 'null\n' > "$WORK/scalar-files.json"
+if run_bg update --id "$id" --status ready --result "$WORK/new-result.md" --files "$WORK/scalar-files.json" --write >/dev/null 2>&1; then
+  fail "scalar_files_update_rejected"
+else
+  pass "scalar_files_update_rejected"
+fi
+if [ "$(cat "$REPO/.kimiflow/background/$id/RESULT.md")" = "$old_result" ] && jq -e 'type == "array"' "$REPO/.kimiflow/background/$id/FILES.json" >/dev/null 2>&1; then
+  pass "scalar_files_update_left_existing_files_intact"
+else
+  fail "scalar_files_update_left_existing_files_intact"
 fi
 
 reset_repo

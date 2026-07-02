@@ -109,6 +109,15 @@ out="$(run_coverage --affected hooks/a.sh)"
 assert_has "$out" $'PROJECT_MAP_COVERAGE\tmissing' "missing_index_coverage_reports_missing"
 assert_has "$out" 'phase2_depth=full' "missing_index_coverage_uses_full_depth"
 
+# syntactically valid but structurally invalid index
+reset_repo
+printf 'null\n' > "$INDEX"
+out="$(run_status)"
+assert_has "$out" $'PROJECT_MAP\tunknown' "scalar_index_reports_unknown"
+out="$(run_coverage --affected hooks/a.sh)"
+assert_has "$out" $'PROJECT_MAP_COVERAGE\tunknown' "scalar_index_coverage_reports_unknown"
+assert_has "$out" 'reason=invalid-index' "scalar_index_coverage_reports_invalid_reason"
+
 # current section from matching hashes
 reset_repo
 BASE="$(cd "$REPO" && git rev-parse --short HEAD)"

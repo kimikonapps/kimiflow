@@ -651,6 +651,9 @@ def main(argv=None):
     except (OSError, json.JSONDecodeError):
         output_invalid(mode, affected_paths, index_path)
         return 0
+    if not isinstance(data, dict):
+        output_invalid(mode, affected_paths, index_path)
+        return 0
 
     if mode == "index-symbols":
         return cmd_index_symbols(root, index_path, data, refresh_sections)

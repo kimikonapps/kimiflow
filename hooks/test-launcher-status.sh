@@ -306,13 +306,13 @@ mkdir -p "$REPO/.kimiflow/parked"
 cat > "$REPO/.kimiflow/parked/STATE.md" <<EOF
 # STATE
 
-- **Status:** backlog
+- **status:** backlog
 - **Mode:** feature
 - **Scope:** small
 Plan commit: $BASE
 Affected files:
 - src/a.txt
-Plan status: approved
+plan status: approved
 EOF
 out="$(run_status)"
 assert_jq "$out" '.runs.backlog == 1 and (.runs | has("items") | not)' "default_omits_run_items_keeps_counts"
@@ -413,6 +413,9 @@ reset_repo
 printf '{bad json\n' > "$INDEX"
 out="$(run_status)"
 assert_jq "$out" '.project_map.present == true and .project_map.valid == false and .project_map.status == "unknown"' "invalid_map_reports_unknown"
+printf 'null\n' > "$INDEX"
+out="$(run_status)"
+assert_jq "$out" '.project_map.present == true and .project_map.valid == false and .project_map.status == "unknown" and .project_map.depth == "unknown"' "scalar_map_reports_unknown"
 
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi

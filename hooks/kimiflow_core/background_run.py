@@ -231,9 +231,12 @@ def load_status(root, ident):
         die("handle not found: %s" % ident, 1)
     try:
         with open(file_path, "r", encoding="utf-8") as handle:
-            return json.load(handle)
+            data = json.load(handle)
     except (OSError, json.JSONDecodeError):
         die("invalid handle status: %s" % ident, 1)
+    if not isinstance(data, dict):
+        die("invalid handle status: %s" % ident, 1)
+    return data
 
 
 def changed_paths(root, base):
@@ -530,8 +533,8 @@ def validate_files_json(path):
         return False
     try:
         with open(path, "r", encoding="utf-8") as handle:
-            json.load(handle)
-        return True
+            data = json.load(handle)
+        return isinstance(data, list)
     except (OSError, json.JSONDecodeError):
         return False
 
