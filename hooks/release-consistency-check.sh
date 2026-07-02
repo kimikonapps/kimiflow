@@ -19,7 +19,8 @@
 # Exit 0 = consistent; non-zero = drift / required version missing.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 QUIET=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -82,6 +83,32 @@ elif awk -v v="## ${ver}" 'index($0,v)==1 { r=substr($0,length(v)+1); if (r=="" 
   say "  ok    CHANGELOG.md (## ${ver})"
 else
   say "  FAIL  CHANGELOG.md has no '## ${ver}' heading  [$changelog]"; fails=$((fails+1))
+fi
+
+# Rendered skill outputs: the source files live under docs/render/kimiflow, while the host-facing
+# SKILL.md files stay committed. Re-render and let git catch any drift in those generated outputs.
+render_source="$ROOT/docs/render/kimiflow"
+if [ -d "$render_source" ]; then
+  if ! command -v python3 >/dev/null 2>&1; then
+    say "  FAIL  rendered skill outputs: python3 required"
+    fails=$((fails+1))
+  elif ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    say "  FAIL  rendered skill outputs: git worktree required for drift check"
+    fails=$((fails+1))
+  elif (cd "$ROOT" && PYTHONPATH="$SCRIPT_DIR" python3 -m kimiflow_core.render --root "$ROOT" --quiet); then
+    if git -C "$ROOT" diff --exit-code --quiet -- SKILL.md skills/kimiflow/SKILL.md; then
+      say "  ok    rendered skill outputs"
+    else
+      say "  FAIL  rendered skill outputs drift from docs/render/kimiflow"
+      git -C "$ROOT" diff --name-only -- SKILL.md skills/kimiflow/SKILL.md | sed 's/^/        /'
+      fails=$((fails+1))
+    fi
+  else
+    say "  FAIL  rendered skill outputs could not be rendered"
+    fails=$((fails+1))
+  fi
+else
+  say "  skip  rendered skill outputs (no docs/render/kimiflow source)"
 fi
 
 if [ "$fails" -ne 0 ]; then

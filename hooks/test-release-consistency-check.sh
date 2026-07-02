@@ -21,6 +21,18 @@ make_fixture() {
   printf '# Changelog\n\n## %s\n\n- stuff\n' "$v" > "$d/CHANGELOG.md"
 }
 
+make_render_fixture() {
+  local d="$1" v="$2"
+  make_fixture "$d" "$v"
+  mkdir -p "$d/docs/render/kimiflow/claude" "$d/docs/render/kimiflow/codex" "$d/skills/kimiflow"
+  printf 'claude skill source\n' > "$d/docs/render/kimiflow/claude/SKILL.md"
+  printf 'codex skill source\n' > "$d/docs/render/kimiflow/codex/SKILL.md"
+  cp "$d/docs/render/kimiflow/claude/SKILL.md" "$d/SKILL.md"
+  cp "$d/docs/render/kimiflow/codex/SKILL.md" "$d/skills/kimiflow/SKILL.md"
+  git -C "$d" init -q
+  git -C "$d" add .
+}
+
 run() { OUT="$("$SCRIPT" --root "$1" 2>&1)"; RC=$?; }
 
 # AC-1.1 consistent fixture passes
@@ -65,6 +77,20 @@ printf 'Compatibility notes without the version token.\n' > "$F/COMPATIBILITY.md
 run "$F"
 { [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF 'COMPATIBILITY.md'; } \
   && pass "missing_compat_version" || fail "missing_compat_version: rc=$RC :: $OUT"
+
+# AC-2.1 render sources present and host outputs current -> pass
+F="$TMP/c5"; make_render_fixture "$F" "0.1.0"
+run "$F"
+{ [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -qF 'rendered skill outputs'; } \
+  && pass "rendered_outputs_current" || fail "rendered_outputs_current: rc=$RC :: $OUT"
+
+# AC-2.2 committed host output drift -> fail naming the rendered outputs
+F="$TMP/c6"; make_render_fixture "$F" "0.1.0"
+printf 'manual drift\n' > "$F/SKILL.md"
+git -C "$F" add SKILL.md
+run "$F"
+{ [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF 'rendered skill outputs drift'; } \
+  && pass "rendered_output_drift_detected" || fail "rendered_output_drift_detected: rc=$RC :: $OUT"
 
 # NOTE: real-repo version consistency is verified MANUALLY before a release
 # (`bash hooks/release-consistency-check.sh`), NOT asserted here — this unit test must stay a

@@ -8,8 +8,8 @@ und persistente Artefakte geerdet.
 
 | Schicht | Dateien | Aufgabe |
 |---|---|---|
-| Canonical Engine | `SKILL.md`, `reference.md` | Definiert Modi, Phasen, Scope-Regeln, Project Map, Review- und Commit-Kontrakt. |
-| Host Packaging | `.claude-plugin/`, `.codex-plugin/`, `.agents/plugins/`, `skills/kimiflow/` | Macht dieselbe Engine fuer Claude Code und Codex installierbar und sichtbar. |
+| Canonical Engine | `docs/render/kimiflow/`, `reference.md` | Definiert Modi, Phasen, Scope-Regeln, Project Map, Review- und Commit-Kontrakt und rendert die Host-Skills. |
+| Host Packaging | `SKILL.md`, `.claude-plugin/`, `.codex-plugin/`, `.agents/plugins/`, `skills/kimiflow/` | Macht dieselbe Engine fuer Claude Code und Codex installierbar und sichtbar. |
 | Mechanical Layer | `hooks/*.sh`, `hooks.json`, `hooks/hooks.json` | Implementiert Gate-Resolver, Host-Hooks, Installer und strukturelle Checks. |
 | Project Intelligence | `.kimiflow/project/`, `hooks/project-map-status.sh`, `hooks/memory-router.sh` | Baut lokale Projektkarten, erkennt Staleness, routet bounded Memory/Recall und trennt lokale Analyse von Repo-Doku. |
 | Validation & Docs | `.github/workflows/ci.yml`, `docs/`, `examples/`, `evals/` | Verifiziert Packaging, Hooks und Verhalten; erklaert die Nutzung publish-safe. |
@@ -26,9 +26,17 @@ User request
   -> Commit-Gate stoppt fuer explizites OK
 ```
 
-Claude Code nutzt den Root-Skill und plugin-bundled Hooks. Codex nutzt einen Adapter-Skill unter
-`skills/kimiflow/` und stabile Hook-Wrapper, die per `hooks/install-codex-hooks.sh` in das lokale Codex-Home
-geschrieben werden.
+Claude Code nutzt den gerenderten Root-Skill und plugin-bundled Hooks. Codex nutzt einen gerenderten
+Adapter-Skill unter `skills/kimiflow/` und stabile Hook-Wrapper, die per `hooks/install-codex-hooks.sh` in
+das lokale Codex-Home geschrieben werden. Beide Skill-Dateien bleiben committed, werden aber aus
+`docs/render/kimiflow/` materialisiert:
+
+```bash
+PYTHONPATH="$PWD/hooks" python3 -m kimiflow_core.render
+```
+
+`hooks/release-consistency-check.sh` rendert vor dem Release neu und faellt bei Drift in `SKILL.md` oder
+`skills/kimiflow/SKILL.md` fehl.
 
 ## Wichtige Invarianten
 
@@ -42,10 +50,11 @@ geschrieben werden.
 
 ## Aenderungsachsen
 
-- Workflow-Aenderungen beginnen in `SKILL.md`; Detailregeln gehoeren in `reference.md`.
+- Workflow-Aenderungen beginnen in `docs/render/kimiflow/claude/SKILL.md`; danach wird `SKILL.md`
+  gerendert. Detailregeln gehoeren in `reference.md`.
 - Claude-spezifisches Packaging liegt in `.claude-plugin/` und `hooks/hooks.json`.
-- Codex-spezifisches Packaging liegt in `.codex-plugin/`, `.agents/plugins/`, `skills/kimiflow/` und
-  `hooks/install-codex-hooks.sh`.
+- Codex-spezifisches Packaging liegt in `.codex-plugin/`, `.agents/plugins/`, `skills/kimiflow/`,
+  `docs/render/kimiflow/codex/SKILL.md` und `hooks/install-codex-hooks.sh`.
 - Hook-Verhalten braucht in der Regel ein passendes `hooks/test-*.sh` und Smoke-Coverage.
 - Project-Map-Verhalten braucht Updates in `reference.md`, `hooks/project-map-status.sh` und
   `hooks/test-project-map-status.sh`.
