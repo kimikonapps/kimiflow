@@ -121,9 +121,10 @@ if [ -x "$ROOT/hooks/test-improvements-status.sh" ] && bash -n "$ROOT/hooks/test
 if [ -x "$ROOT/hooks/improvements-staleness-nudge.sh" ] && bash -n "$ROOT/hooks/improvements-staleness-nudge.sh" 2>/dev/null; then ok "workqueue closeback nudge ok"; else bad "workqueue closeback nudge missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-improvements-staleness-nudge.sh" ] && bash -n "$ROOT/hooks/test-improvements-staleness-nudge.sh" 2>/dev/null; then ok "workqueue closeback nudge test ok"; else bad "workqueue closeback nudge test missing/not-exec/bad"; fi
 # Stop nudge must be registered in BOTH manifests in each manifest's own form (rich vs minimal).
-grep -q 'KIMIFLOW_HOST=codex ${KIMIFLOW_PLUGIN_ROOT:-.}/hooks/improvements-staleness-nudge.sh' "$ROOT/hooks.json" \
+# The root expansion is QUOTED in the manifests (audit fix: spaced install paths must not word-split).
+grep -qF 'KIMIFLOW_HOST=codex \"${KIMIFLOW_PLUGIN_ROOT:-.}\"/hooks/improvements-staleness-nudge.sh' "$ROOT/hooks.json" \
   && ok "closeback nudge registered (rich form, hooks.json)" || bad "closeback nudge missing/wrong form in hooks.json"
-grep -q '${KIMIFLOW_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/improvements-staleness-nudge.sh' "$ROOT/hooks/hooks.json" \
+grep -qF '\"${KIMIFLOW_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\"/hooks/improvements-staleness-nudge.sh' "$ROOT/hooks/hooks.json" \
   && ok "closeback nudge registered (minimal form, hooks/hooks.json)" || bad "closeback nudge missing/wrong form in hooks/hooks.json"
 grep -q 'improvements-status.sh' "$ROOT/reference.md" && ok "reference documents workqueue closeback helper" || bad "missing workqueue closeback helper in reference.md"
 grep -q 'improvements-status.sh' "$ROOT/SKILL.md" && ok "canonical skill documents workqueue closeback step" || bad "missing workqueue closeback step in SKILL.md"
@@ -172,7 +173,7 @@ grep -q 'AGENTIC-AUDIT.jsonl' "$ROOT/reference.md" && ok "reference documents ag
 grep -q 'context-packets' "$ROOT/reference.md" && ok "reference documents agentic context packets" || bad "missing agentic context packets in reference.md"
 grep -q 'Active Session Contract' "$ROOT/SKILL.md" && ok "canonical skill documents Active Session Contract" || bad "missing Active Session Contract in SKILL.md"
 grep -q 'Background Handles' "$ROOT/SKILL.md" && ok "canonical skill documents Background Handles" || bad "missing Background Handles in SKILL.md"
-grep -q 'Current-State Gate' "$ROOT/SKILL.md" && ok "canonical skill documents Current-State Gate" || bad "missing Current-State Gate in SKILL.md"
+grep -q 'Current-State Pulse / Gate' "$ROOT/SKILL.md" && ok "canonical skill documents Current-State Pulse / Gate" || bad "missing Current-State Pulse / Gate in SKILL.md"
 grep -q 'working-tree-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents working-tree gate" || bad "missing working-tree gate in SKILL.md"
 grep -q 'clarify-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents clarify gate" || bad "missing clarify gate in SKILL.md"
 grep -q 'red-green-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents red-green gate" || bad "missing red-green gate in SKILL.md"
