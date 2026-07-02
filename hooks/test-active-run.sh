@@ -6,6 +6,7 @@ set -u
 SCRIPT="$(cd "$(dirname "$0")" && pwd)/active-run.sh"
 WORK="$(mktemp -d)"
 REPO="$WORK/repo"
+PLUGIN="$WORK/plugin"
 FAKE_ROUTER="$WORK/fake-memory-router.sh"
 ROUTER_LOG="$WORK/router.log"
 trap 'rm -rf "$WORK"' EXIT
@@ -35,6 +36,10 @@ cat > "$FAKE_ROUTER" <<'EOF'
 printf '%s\n' "$*" >> "${KIMIFLOW_FAKE_ROUTER_LOG:?}"
 case "${1:-}" in
   review-run)
+    if [ "${KIMIFLOW_FAKE_REVIEW_FAIL:-0}" = "1" ]; then
+      printf 'synthetic review failure\n' >&2
+      exit 17
+    fi
     root=""
     while [ "$#" -gt 0 ]; do
       case "$1" in
@@ -65,9 +70,9 @@ EOF
 chmod +x "$FAKE_ROUTER"
 
 reset_repo() {
-  rm -rf "$REPO"
+  rm -rf "$REPO" "$PLUGIN"
   : > "$ROUTER_LOG"
-  mkdir -p "$REPO/src" "$REPO/.kimiflow/demo"
+  mkdir -p "$REPO/src" "$REPO/.kimiflow/demo" "$PLUGIN"
   ( cd "$REPO" && git init -q && git config user.email "kimiflow@example.test" && git config user.name "kimiflow test" )
   printf '.kimiflow/\n' > "$REPO/.gitignore"
   printf 'one\n' > "$REPO/src/a.txt"
@@ -101,8 +106,8 @@ EOF
 }
 
 write_phase_manifest() {
-  mkdir -p "$REPO/phases"
-  cat > "$REPO/phases/PHASES.json" <<'EOF'
+  mkdir -p "$PLUGIN/phases"
+  cat > "$PLUGIN/phases/PHASES.json" <<'EOF'
 {
   "schema_version": 1,
   "phases": [
@@ -118,12 +123,12 @@ write_phase_manifest() {
 }
 EOF
   for i in 0 1 2 3 4 5 6 7; do
-    printf 'phase %s\n' "$i" > "$REPO/phases/phase-$i.md"
+    printf 'phase %s\n' "$i" > "$PLUGIN/phases/phase-$i.md"
   done
 }
 
 run_active() {
-  KIMIFLOW_MEMORY_ROUTER="$FAKE_ROUTER" KIMIFLOW_FAKE_ROUTER_LOG="$ROUTER_LOG" "$SCRIPT" "$@" --root "$REPO"
+  KIMIFLOW_PLUGIN_ROOT="$PLUGIN" KIMIFLOW_MEMORY_ROUTER="$FAKE_ROUTER" KIMIFLOW_FAKE_ROUTER_LOG="$ROUTER_LOG" "$SCRIPT" "$@" --root "$REPO"
 }
 
 reset_repo
@@ -264,6 +269,16 @@ else
 fi
 
 reset_repo
+run_active start --run .kimiflow/demo --write >/dev/null
+err="$(KIMIFLOW_PLUGIN_ROOT="$PLUGIN" KIMIFLOW_MEMORY_ROUTER="$FAKE_ROUTER" KIMIFLOW_FAKE_ROUTER_LOG="$ROUTER_LOG" KIMIFLOW_FAKE_REVIEW_FAIL=1 "$SCRIPT" finish --root "$REPO" --write 2>&1 >/dev/null)"; rc=$?
+if [ "$rc" = "17" ]; then
+  pass "finish_returns_review_failure_code"
+else
+  fail "finish_returns_review_failure_code (rc=$rc)"
+fi
+assert_contains "$err" "synthetic review failure" "finish_passes_through_review_stderr"
+
+reset_repo
 write_phase_manifest
 out="$(run_active start --run .kimiflow/demo --write)"
 assert_jq "$out" '.phase_reads_required == true' "start_with_manifest_sets_phase_reads"
@@ -278,7 +293,7 @@ assert_contains "$out" "phase_1_read_missing" "phase_read_gate_missing_detail"
 run_active phase-read --run .kimiflow/demo --phase 1 --file phases/phase-1.md --write >/dev/null
 out="$(run_active phase-read-gate --run .kimiflow/demo --through-phase 1)"
 assert_contains "$out" "PHASE_READ_GATE"$'\t'"OPEN" "phase_read_gate_opens_fresh"
-printf 'changed\n' >> "$REPO/phases/phase-1.md"
+printf 'changed\n' >> "$PLUGIN/phases/phase-1.md"
 out="$(run_active phase-read-gate --run .kimiflow/demo --through-phase 1)"
 assert_contains "$out" "phase_1_read_stale" "phase_read_gate_stale_detail"
 if run_active phase-read --run .kimiflow/demo --phase 1 --file ../phase-1.md --write >/dev/null 2>&1; then
@@ -286,15 +301,15 @@ if run_active phase-read --run .kimiflow/demo --phase 1 --file ../phase-1.md --w
 else
   pass "phase_read_rejects_traversal"
 fi
-ln -sf "$WORK/outside-phase.md" "$REPO/phases/phase-2.md"
+ln -sf "$WORK/outside-phase.md" "$PLUGIN/phases/phase-2.md"
 printf 'outside\n' > "$WORK/outside-phase.md"
 if run_active phase-read --run .kimiflow/demo --phase 2 --file phases/phase-2.md --write >/dev/null 2>&1; then
   fail "phase_read_rejects_symlink_escape"
 else
   pass "phase_read_rejects_symlink_escape"
 fi
-rm "$REPO/phases/phase-2.md"
-printf 'phase 2\n' > "$REPO/phases/phase-2.md"
+rm "$PLUGIN/phases/phase-2.md"
+printf 'phase 2\n' > "$PLUGIN/phases/phase-2.md"
 if run_active finish --write >/dev/null 2>&1; then
   fail "finish_blocks_missing_phase_reads"
 else
@@ -358,6 +373,20 @@ rc=$?
 PATH="$NOJQ" "$REALBASH" "$SCRIPT" status --root "$REPO" >/dev/null 2>&1
 rc=$?
 [ "$rc" -eq 2 ] && pass "cli_subcommands_still_require_jq" || fail "cli_subcommands_still_require_jq (rc=$rc)"
+
+NOPY="$WORK/nopy-bin"; mkdir -p "$NOPY"
+for t in bash cat grep sed head git tr dirname pwd jq; do
+  s="$(command -v "$t")" && [ -n "$s" ] && ln -s "$s" "$NOPY/$t" 2>/dev/null
+done
+printf '{"cwd":"%s"}' "$REPO" | PATH="$NOPY" "$REALBASH" "$SCRIPT" prompt-context >/dev/null 2>&1
+rc=$?
+[ "$rc" -eq 0 ] && pass "prompt_context_degrades_to_exit0_without_python3" || fail "prompt_context_degrades_to_exit0_without_python3 (rc=$rc)"
+printf '{"cwd":"%s","stop_hook_active":false}' "$REPO" | PATH="$NOPY" "$REALBASH" "$SCRIPT" stop-gate >/dev/null 2>&1
+rc=$?
+[ "$rc" -eq 0 ] && pass "stop_gate_degrades_to_exit0_without_python3" || fail "stop_gate_degrades_to_exit0_without_python3 (rc=$rc)"
+PATH="$NOPY" "$REALBASH" "$SCRIPT" status --root "$REPO" >/dev/null 2>&1
+rc=$?
+[ "$rc" -eq 2 ] && pass "cli_subcommands_report_missing_python3" || fail "cli_subcommands_report_missing_python3 (rc=$rc)"
 
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi

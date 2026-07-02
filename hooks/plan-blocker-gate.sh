@@ -67,9 +67,8 @@ add_blocker() {
 }
 
 phase_read_blocker() {
-  local marker root run_rel gate out status detail
-  marker="$(kimiflow_state_value "$state" "Phase reads required" | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
-  case "$marker" in yes|true|1|required) ;; *) return 0 ;; esac
+  local root run_rel gate out status detail
+  kimiflow_phase_reads_required "$run_dir" "$state" || return 0
   root="$(kimiflow_run_root "$run_dir" 2>/dev/null || true)"
   [ -n "$root" ] || { printf 'phase_read_root_unknown\n'; return 0; }
   run_rel="$(kimiflow_run_rel "$root" "$run_dir" 2>/dev/null || true)"

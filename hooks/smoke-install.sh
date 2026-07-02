@@ -214,6 +214,29 @@ if deny 'git add .' "$tmp1"; then ok "blocks 'git add .' in a .kimiflow repo"; e
 if deny 'git add .' "$tmp2"; then bad "wrongly blocked 'git add .' OUTSIDE a kimiflow repo"; else ok "allows 'git add .' outside a kimiflow repo"; fi
 rm -rf "$tmp1" "$tmp2"
 
+echo "== phase-read enforcement (consumer-shaped scratch project) =="
+consumer="$(mktemp -d)"
+( cd "$consumer" && git init -q )
+active_out="$(KIMIFLOW_PLUGIN_ROOT="$ROOT" "$ROOT/hooks/active-run.sh" start --root "$consumer" --run .kimiflow/demo --write 2>/dev/null || true)"
+if printf '%s\n' "$active_out" | jq -e '.phase_reads_required == true' >/dev/null 2>&1; then
+  ok "active-run start enables phase reads from plugin root"
+else
+  bad "active-run start did not enable phase reads in scratch consumer"
+fi
+if [ ! -e "$consumer/phases" ]; then
+  ok "scratch consumer has no local phases directory"
+else
+  bad "scratch consumer unexpectedly has local phases directory"
+fi
+phase_gate="$(KIMIFLOW_PLUGIN_ROOT="$ROOT" "$ROOT/hooks/active-run.sh" phase-read-gate --root "$consumer" --run .kimiflow/demo --through-phase 1 2>/dev/null || true)"
+if printf '%s\n' "$phase_gate" | grep -q $'PHASE_READ_GATE\tCLOSED' \
+  && printf '%s\n' "$phase_gate" | grep -q 'phase_0_read_missing'; then
+  ok "phase-read gate closes on missing consumer read"
+else
+  bad "phase-read gate did not close on missing consumer read"
+fi
+rm -rf "$consumer"
+
 echo "== MANUAL (needs a live Claude Code session — cannot be automated) =="
 cat <<'MANUAL'
   [ ] /plugin marketplace add kimikonapps/kimiflow && /plugin install kimiflow@kimiflow → restart

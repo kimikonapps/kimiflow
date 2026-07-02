@@ -12,15 +12,22 @@ class PhaseReadError(ValueError):
     pass
 
 
-def manifest_path(root):
-    return os.path.join(root, "phases", "PHASES.json")
+def plugin_root():
+    env_root = os.environ.get("KIMIFLOW_PLUGIN_ROOT")
+    if env_root:
+        return os.path.abspath(env_root)
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+
+def manifest_path(root=None):
+    return os.path.join(plugin_root(), "phases", "PHASES.json")
 
 
 def reads_path(run_dir):
     return os.path.join(run_dir, "PHASE-READS.json")
 
 
-def manifest_exists(root):
+def manifest_exists(root=None):
     return os.path.isfile(manifest_path(root))
 
 
@@ -37,11 +44,12 @@ def _safe_phase_file(rel):
 
 def resolve_phase_file(root, rel):
     norm = _safe_phase_file(rel)
-    path = os.path.join(root, norm)
-    root_real = os.path.realpath(root)
+    base = plugin_root()
+    path = os.path.join(base, norm)
+    root_real = os.path.realpath(base)
     file_real = os.path.realpath(path)
     if not (file_real == root_real or file_real.startswith(root_real + os.sep)):
-        raise PhaseReadError("phase file must stay inside the project")
+        raise PhaseReadError("phase file must stay inside the plugin")
     if os.path.islink(path):
         raise PhaseReadError("phase file must not be a symlink")
     if not os.path.isfile(path):

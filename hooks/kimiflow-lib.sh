@@ -49,3 +49,17 @@ kimiflow_run_rel() {
     *) return 1 ;;
   esac
 }
+
+kimiflow_phase_reads_required() {
+  local run_dir="$1" state_file="$2" marker root run_rel active
+  marker="$(kimiflow_state_value "$state_file" "Phase reads required" | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
+  case "$marker" in yes|true|1|required) return 0 ;; esac
+  command -v jq >/dev/null 2>&1 || return 1
+  root="$(kimiflow_run_root "$run_dir" 2>/dev/null || true)"
+  [ -n "$root" ] || return 1
+  run_rel="$(kimiflow_run_rel "$root" "$run_dir" 2>/dev/null || true)"
+  [ -n "$run_rel" ] || return 1
+  active="$root/.kimiflow/session/ACTIVE_RUN.json"
+  [ -f "$active" ] || return 1
+  jq -e --arg run "$run_rel" '.run == $run and .phase_reads_required == true' "$active" >/dev/null 2>&1
+}

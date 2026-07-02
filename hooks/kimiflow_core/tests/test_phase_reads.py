@@ -13,8 +13,17 @@ class TestPhaseReads(unittest.TestCase):
         self.run = os.path.join(self.root, ".kimiflow", "demo")
         os.makedirs(self.run)
         self.addCleanup(shutil.rmtree, self.root)
+        self.old_plugin_root = os.environ.get("KIMIFLOW_PLUGIN_ROOT")
+        os.environ["KIMIFLOW_PLUGIN_ROOT"] = self.root
+        self.addCleanup(self.restore_plugin_root)
         self.write_manifest()
         self.write_phase_files()
+
+    def restore_plugin_root(self):
+        if self.old_plugin_root is None:
+            os.environ.pop("KIMIFLOW_PLUGIN_ROOT", None)
+        else:
+            os.environ["KIMIFLOW_PLUGIN_ROOT"] = self.old_plugin_root
 
     def write_manifest(self):
         os.makedirs(os.path.join(self.root, "phases"), exist_ok=True)

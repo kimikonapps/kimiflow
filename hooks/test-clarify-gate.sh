@@ -40,7 +40,7 @@ Build a small feature after two user answers.
 EOF
 }
 
-run_gate() { "$SCRIPT" "$RUN"; }
+run_gate() { KIMIFLOW_PLUGIN_ROOT="$WORK" "$SCRIPT" "$RUN"; }
 
 write_phase_fixture() {
   mkdir -p "$WORK/phases"
@@ -55,7 +55,7 @@ EOF
 }
 
 record_phase() {
-  "$ACTIVE" phase-read --root "$WORK" --run .kimiflow/demo --phase "$1" --file "phases/phase-$1.md" --write >/dev/null
+  KIMIFLOW_PLUGIN_ROOT="$WORK" "$ACTIVE" phase-read --root "$WORK" --run .kimiflow/demo --phase "$1" --file "phases/phase-$1.md" --write >/dev/null
 }
 
 reset_run
@@ -172,6 +172,14 @@ if command -v jq >/dev/null 2>&1; then
   record_phase 1
   out="$(run_gate)"
   assert_field "$out" 2 OPEN "phase_reads_fresh_open_clarify"
+
+  reset_run
+  write_phase_fixture
+  mkdir -p "$WORK/.kimiflow/session"
+  printf '{"run":".kimiflow/demo","phase_reads_required":true}\n' > "$WORK/.kimiflow/session/ACTIVE_RUN.json"
+  out="$(run_gate)"
+  assert_field "$out" 2 CLOSED "active_json_phase_reads_missing_closes_clarify"
+  assert_contains "$out" "phase_0_read_missing" "active_json_phase_reads_missing_clarify_detail"
 else
   pass "phase_reads_clarify_skipped_without_jq"
 fi

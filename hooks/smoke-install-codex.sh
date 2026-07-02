@@ -241,7 +241,28 @@ bash "$ACTIVE_HOOK" start --root "$tmp1" --run .kimiflow/demo --write >/dev/null
 bash "$ACTIVE_HOOK" append-item --root "$tmp1" --title "synthetic active-session item" --write >/dev/null
 if active_prompt_context "$tmp1"; then ok "active session hook injects Codex prompt context"; else bad "active session hook did not inject Codex prompt context"; fi
 if active_stop_blocks "$tmp1"; then ok "active session Stop hook blocks unfinished session"; else bad "active session Stop hook did not block unfinished session"; fi
-rm -rf "$tmp1" "$tmp2" "$tmp_home"
+
+tmp3="$(mktemp -d)"
+( cd "$tmp3" && git init -q )
+active_phase_out="$(bash "$ACTIVE_HOOK" start --root "$tmp3" --run .kimiflow/demo --write 2>/dev/null || true)"
+if printf '%s\n' "$active_phase_out" | jq -e '.phase_reads_required == true' >/dev/null 2>&1; then
+  ok "active session wrapper enables phase reads from plugin root"
+else
+  bad "active session wrapper did not enable phase reads in scratch consumer"
+fi
+if [ ! -e "$tmp3/phases" ]; then
+  ok "Codex scratch consumer has no local phases directory"
+else
+  bad "Codex scratch consumer unexpectedly has local phases directory"
+fi
+phase_gate="$(bash "$ACTIVE_HOOK" phase-read-gate --root "$tmp3" --run .kimiflow/demo --through-phase 1 2>/dev/null || true)"
+if printf '%s\n' "$phase_gate" | grep -q $'PHASE_READ_GATE\tCLOSED' \
+  && printf '%s\n' "$phase_gate" | grep -q 'phase_0_read_missing'; then
+  ok "active session wrapper phase-read gate closes on missing read"
+else
+  bad "active session wrapper phase-read gate did not close on missing read"
+fi
+rm -rf "$tmp1" "$tmp2" "$tmp3" "$tmp_home"
 
 echo "== MANUAL (needs Codex app/CLI plugin browser) =="
 cat <<'MANUAL'
