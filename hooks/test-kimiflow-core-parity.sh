@@ -118,6 +118,39 @@ write_background_handle() {
   fi
 }
 
+write_active_fixture() {
+  local repo="$1" base
+  base="$(git -C "$repo" rev-parse HEAD)"
+  mkdir -p "$repo/.kimiflow/demo" "$repo/.kimiflow/session"
+  cat > "$repo/.kimiflow/demo/STATE.md" <<'EOF'
+Status: active
+Mode: feature
+Scope: small
+Affected files: hooks/a.sh
+Phase 0: done
+Phase 1: done
+Phase 2: done
+Phase 3: done
+Phase 4: done
+Phase 5: in-progress
+Phase 6: open
+Phase 7: open
+EOF
+  jq -n --arg base "$base" '{
+    schema_version: 1,
+    status: "active",
+    run: ".kimiflow/demo",
+    mode: "feature",
+    scope: "small",
+    host: "codex",
+    started_at: "2026-07-02T00:00:00Z",
+    updated_at: "2026-07-02T00:00:00Z",
+    started_head: $base,
+    last_checked_head: $base,
+    affected_files_at_start: ["hooks/a.sh"]
+  }' > "$repo/.kimiflow/session/ACTIVE_RUN.json"
+}
+
 FAILS=0
 ok() { printf 'ok   %s\n' "$1"; }
 bad() { printf 'BAD  %s\n' "$1"; FAILS=$((FAILS + 1)); }
@@ -207,6 +240,10 @@ run_one() {
       printf '{"version":"0.0.1"}\n' > "$case_old/fake-cache/.codex-plugin/plugin.json"
       printf '{"version":"0.0.1"}\n' > "$case_new/fake-cache/.codex-plugin/plugin.json"
       ;;
+    active_append_preview|active_park_write|active_prompt_payload)
+      write_active_fixture "$case_old"
+      write_active_fixture "$case_new"
+      ;;
   esac
 
   old_args=()
@@ -230,8 +267,19 @@ run_one() {
       ;;
   esac
 
-  (cd "$case_old" && env "${old_env[@]}" bash "$old_script" ${old_args[@]+"${old_args[@]}"}) > "$WORK/o.out" 2> "$WORK/o.err"; o_code=$?
-  (cd "$case_new" && env "${new_env[@]}" bash "$new_script" ${new_args[@]+"${new_args[@]}"}) > "$WORK/n.out" 2> "$WORK/n.err"; n_code=$?
+  old_stdin="/dev/null"
+  new_stdin="/dev/null"
+  case "$label" in
+    active_prompt_payload)
+      old_stdin="$WORK/old.stdin"
+      new_stdin="$WORK/new.stdin"
+      printf '{"cwd":"%s","prompt":"must not persist"}' "$case_old" > "$old_stdin"
+      printf '{"cwd":"%s","prompt":"must not persist"}' "$case_new" > "$new_stdin"
+      ;;
+  esac
+
+  (cd "$case_old" && env "${old_env[@]}" bash "$old_script" ${old_args[@]+"${old_args[@]}"} < "$old_stdin") > "$WORK/o.out" 2> "$WORK/o.err"; o_code=$?
+  (cd "$case_new" && env "${new_env[@]}" bash "$new_script" ${new_args[@]+"${new_args[@]}"} < "$new_stdin") > "$WORK/n.out" 2> "$WORK/n.err"; n_code=$?
 
   normalize < "$WORK/o.out" > "$WORK/o.out.norm"
   normalize < "$WORK/o.err" > "$WORK/o.err.norm"
@@ -269,6 +317,10 @@ run_one() {
 
 CASES=(
   "active_status_none::active-run.sh::status|--root|__REPO__"
+  "active_malformed_arg::active-run.sh::status|--root|__REPO__|--bogus"
+  "active_append_preview::active-run.sh::append-item|--root|__REPO__|--title|Do thing"
+  "active_park_write::active-run.sh::park|--root|__REPO__|--reason|waiting|--write"
+  "active_prompt_payload::active-run.sh::prompt-context"
   "background_list_empty::background-run.sh::list|--root|__REPO__|--json"
   "background_start_preview::background-run.sh::start|--root|__REPO__|--kind|docs|--title|Docs|--affected|hooks"
   "background_malformed_id::background-run.sh::status|--root|__REPO__|--id|../escape"

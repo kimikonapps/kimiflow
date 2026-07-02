@@ -115,6 +115,12 @@ if run_active start --run "$WORK/outside" --write >/dev/null 2>&1; then
 else
   pass "start_rejects_outside_run_path"
 fi
+missing_root="$WORK/missing-root"
+out="$("$SCRIPT" status --root "$missing_root")"
+assert_jq "$out" '.present == false and .status == "none"' "invalid_root_status_observational"
+err="$("$SCRIPT" start --root "$missing_root" --run .kimiflow/demo --write 2>&1 >/dev/null)"; rc=$?
+if [ "$rc" = "2" ]; then pass "invalid_root_write_fails_closed"; else fail "invalid_root_write_fails_closed"; fi
+assert_contains "$err" "cannot resolve root" "invalid_root_write_reports_resolution_error"
 
 out="$(run_active start --run .kimiflow/demo --write)"
 assert_jq "$out" '.present == true and .run == ".kimiflow/demo" and .stale_risk == "current" and .item_counts.open == 0' "start_creates_active_session"
