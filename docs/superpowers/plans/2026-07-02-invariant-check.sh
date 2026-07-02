@@ -1,177 +1,218 @@
 #!/usr/bin/env bash
-# B4 preservation-invariant check (plan tooling, not a runtime hook).
-# One verbatim needle per invariants-artifact row, fixed-string-grepped against
-# SKILL.md / reference.md. Fails on ANY miss. Must pass against the pre-compaction
-# files (sanity) and gates every B4 commit that touches SKILL.md/reference.md.
+# R2 preservation-invariant check (plan tooling, not a runtime hook).
+# Joins the immutable invariant corpus to the target map by id and greps the
+# corpus strong_needle against the exact authoritative target path.
 # Run: bash docs/superpowers/plans/2026-07-02-invariant-check.sh
 set -u
-ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+CORPUS_REL="docs/superpowers/plans/2026-07-02-invariant-corpus.tsv"
+TARGETS_REL="docs/superpowers/plans/2026-07-02-invariant-targets.tsv"
+CORPUS_ARG=""
+TARGETS_ARG=""
+
+usage() {
+  cat >&2 <<'EOF'
+usage: invariant-check.sh [--root DIR] [--corpus PATH] [--targets PATH]
+
+PATH values are resolved relative to --root unless absolute.
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --root)
+      [ "$#" -ge 2 ] || { usage; exit 2; }
+      ROOT="$(cd "$2" 2>/dev/null && pwd -P)" || { printf 'invalid --root: %s\n' "$2" >&2; exit 2; }
+      shift 2
+      ;;
+    --corpus)
+      [ "$#" -ge 2 ] || { usage; exit 2; }
+      CORPUS_ARG="$2"
+      shift 2
+      ;;
+    --targets)
+      [ "$#" -ge 2 ] || { usage; exit 2; }
+      TARGETS_ARG="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage
+      printf 'unknown argument: %s\n' "$1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+abs_path() {
+  case "$1" in
+    /*) printf '%s\n' "$1" ;;
+    *) printf '%s/%s\n' "$ROOT" "$1" ;;
+  esac
+}
+
+CORPUS="$(abs_path "${CORPUS_ARG:-$CORPUS_REL}")"
+TARGETS="$(abs_path "${TARGETS_ARG:-$TARGETS_REL}")"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/kimiflow-invariants.XXXXXX")" || exit 2
+trap 'rm -rf "$WORK"' EXIT
+
 FAILS=0
-need() { # $1=file $2=needle
-  if grep -qF -- "$2" "$ROOT/$1"; then :; else
-    printf 'MISS %s :: %s\n' "$1" "$2"; FAILS=$((FAILS + 1))
+fail() {
+  printf 'MISS %s\n' "$1"
+  FAILS=$((FAILS + 1))
+}
+
+sha256_text() {
+  if command -v shasum >/dev/null 2>&1; then
+    printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+  else
+    printf '%s' "$1" | sha256sum | awk '{print $1}'
   fi
 }
 
-# --- SKILL.md: always-loaded rules (artifact rows) ---
-while IFS= read -r n; do [ -n "$n" ] && need SKILL.md "$n"; done <<'NEEDLES'
-Do NOT auto-trigger on ordinary feature/bug/refactor requests
-never writes code directly and never auto-picks a risky action
-otherwise ask one plain-language question
-STOP at the pre-build approval gate
-then STOP. No plan and no code
-STOP with a resumable backlog run
-do not silently invent a plan
-Never use when the user asked for
-ONE code-review lens
-No code edits
-no edits until the user chooses a slice
-phases 0–4, then STOP
-blind implementation is forbidden
-shows them for approval
-It does not edit code
-never auto-committed
-exploit paths
-never persisted
-HARD RULE
-NEVER paste a full artifact into chat
-Gate verdict = ONE line
-Narration ≠ persistence
-Density NEVER costs rigor
-never for gate criteria, scores, or thresholds
-No speculative abstractions, no features beyond the request
-Severity never higher than provable
-done/green/root cause found
-Beyond ~10 → stop and ask the user first
-blocks the review-gate call
-hooks/active-run.sh start --run .kimiflow/<slug>
-hooks/background-run.sh
-cannot be applied blindly
-hooks/agentic-readiness.sh status|gate
-Never loop forever
-verbatim only for a snippet under ~15 lines
-hooks/launcher-status.sh --pretty
-do not auto-pick
-hooks/working-tree-gate.sh
-STOP before changing files
-ask one simple question
-requires a target path
-refresh-baseline --write
-git rev-parse --is-inside-work-tree
-In doubt, the smaller tier
-resolve-verbosity.sh
-you MUST ask once
-project-map-status.sh
-PMS coverage --affected
-one plain-language question only if the request lacks
-never auto-pick
-Does this match?
-Did I understand the problem correctly?
-Is this the right cleanup scope?
-hooks/clarify-gate.sh
-<!-- kimiflow:clarify-evidence mode=questions count=2 confirmed=yes source=current-run -->
-hooks/memory-router.sh status
-MR recall --query-file
-record the graceful skip and continue
-current-state-gate.sh
-CSG verify --assessment
-suggest-affected-sections.sh --intent
-a plan-blocking unknown → resolve first
-before changing production code
-find AND prove the cause
-root cause not proven → do NOT fix
-should this exist at all
-repo-wide pre-delete grep
-git-history-freshness
-Caller-grep is a MINIMUM
-only if a vault MCP is connected
-never structural merges
-do not send it to reviewers
-hooks/plan-blocker-gate.sh
-required before spawning reviewers
-A cut survives only if no reviewer finds one
-tests green before+after
-No self-reported count
-hooks/resolve-review-gate.sh
---round <N> --expect <lensCSV>
-stop + ask, gate CLOSED
-never auto-proceed
-Status: backlog
-resolve-build-gate.sh
-Approve to build, change something, or defer to backlog?
-do NOT build
-production code never rides along
-no proof → don't delete
-don't burn a blind second attempt
-hooks/red-green-gate.sh
---mode fix
-hooks/lsp-diagnostics.sh
-re-run the decisive command
-back to phase 5
---kind review --write
-review light
-bug-regression
-add the third when the diff touches hooks
-CANDIDATE <SEVERITY> <ref> :: <claim> :: verify=<smallest check>
-active refutation attempt
-never raw candidates
-never silently skip the advisory channel
-test-weakening-scan.sh
-secret-content-scan.sh
---expect code-verified
-Wait for explicit OK
-no co-author/AI trailer
-never staged or committed
-Never batch slices
-MR review-run --run
---skip "<reason>"
-a CLOSED result blocks completion
-neither `.kimiflow/` nor repo files store the key
-never patches skills or writes external notes blindly
-SKILL-DRAFTS
-PMS refresh --changed
-map-staleness-nudge.sh
-mark-done <id> --commit <sha> --write
-never auto-guess
-improvements-staleness-nudge.sh
-Only after the commit gate and learning review are open
-never gates, cost, quality, or behavior
-BEFORE fan-out
-uncommitted
-never wired into CI
-NEEDLES
+is_test_only_target() {
+  case "$1" in
+    hooks/test-*|*/test-*|tests/*|*/tests/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
-# --- SKILL.md: smoke phrase contracts (smoke-install*.sh greps) ---
-while IFS= read -r n; do [ -n "$n" ] && need SKILL.md "$n"; done <<'NEEDLES'
-Launcher / menu
-Natural mode aliases
-pre-build approval stop
-mandatory micro-grill
-Vault Pulse
-Project Map Bootstrap
-improvements-status.sh
-refresh --changed
-Agentic Readiness Layer
-Active Session Contract
-Background Handles
-Current-State Pulse / Gate
---verify-feature <feature-or-path>
-Memory Router & Learning Loop
-code-review ensemble
-NEEDLES
+validate_rel_path() {
+  case "$1" in
+    ""|/*|../*|*/../*|*/..) return 1 ;;
+    *) return 0 ;;
+  esac
+}
 
-# --- reference.md: WS3-exception clauses (rows 145-146 canonical in rubric) + smoke lines ---
-while IFS= read -r n; do [ -n "$n" ] && need reference.md "$n"; done <<'NEEDLES'
-fixes the verified root cause
-non-contradictory
-no invented assumptions
-does it address the cause, not the symptom
-`kimiflow grill` — clarify/spec only, no code.
-`kimiflow plan` — clarify + understand + plan + plan-gate, then park/resume, no code.
-`kimiflow review` — read-only existing-feature/current-change review, no code.
-`kimiflow audit` — read-only cleanup/refactoring scan first, no code until a slice is approved.
-CANDIDATE <SEVERITY> <ref> :: <claim> :: verify=<smallest check>
-NEEDLES
+parse_corpus() {
+  awk -F '\t' '
+    function err(msg) { printf "INVALID corpus:%s: %s\n", FNR, msg > "/dev/stderr"; bad = 1 }
+    /^#/ || NF == 0 { next }
+    NF != 5 { err("expected 5 tab-separated columns, got " NF); next }
+    $1 == "" { err("empty id") }
+    $2 == "" { err("empty source") }
+    $3 == "" { err("empty strong_needle") }
+    $4 == "" { err("empty target_constraint") }
+    seen[$1]++ { err("duplicate id " $1) }
+    $1 != "" && $3 != "" { print $1 "\t" $3 "\t" $4 "\t" $5 }
+    END { exit bad ? 1 : 0 }
+  ' "$CORPUS" > "$WORK/corpus.parsed"
+}
+
+parse_targets() {
+  awk -F '\t' '
+    function err(msg) { printf "INVALID targets:%s: %s\n", FNR, msg > "/dev/stderr"; bad = 1 }
+    /^#/ || NF == 0 { next }
+    NF != 4 { err("expected 4 tab-separated columns; target map must not define or override needles"); next }
+    $1 == "" { err("empty id") }
+    $2 == "" { err("empty authoritative_target") }
+    $4 ~ /(^|[;[:space:]])(strong_needle|needle)=/ { err("target map notes must not define needles") }
+    seen[$1]++ { err("duplicate id " $1) }
+    {
+      verify = $3
+      if (verify == "") verify = "-"
+      if ($1 != "" && $2 != "") print $1 "\t" $2 "\t" verify "\t" $4
+    }
+    END { exit bad ? 1 : 0 }
+  ' "$TARGETS" > "$WORK/targets.parsed"
+}
+
+if [ ! -f "$CORPUS" ]; then
+  fail "corpus file missing: $CORPUS"
+fi
+if [ ! -f "$TARGETS" ]; then
+  fail "target map missing: $TARGETS"
+fi
+
+if [ "$FAILS" -eq 0 ]; then
+  if ! parse_corpus; then
+    FAILS=$((FAILS + 1))
+  fi
+  if ! parse_targets; then
+    FAILS=$((FAILS + 1))
+  fi
+fi
+
+if [ "$FAILS" -eq 0 ]; then
+  cut -f1 "$WORK/corpus.parsed" | sort > "$WORK/corpus.ids"
+  cut -f1 "$WORK/targets.parsed" | sort > "$WORK/target.ids"
+
+  comm -23 "$WORK/corpus.ids" "$WORK/target.ids" > "$WORK/missing.ids"
+  while IFS= read -r id; do
+    [ -n "$id" ] && fail "target-map id missing: $id"
+  done < "$WORK/missing.ids"
+
+  comm -13 "$WORK/corpus.ids" "$WORK/target.ids" > "$WORK/extra.ids"
+  while IFS= read -r id; do
+    [ -n "$id" ] && fail "target-map id has no corpus row: $id"
+  done < "$WORK/extra.ids"
+fi
+
+if [ "$FAILS" -eq 0 ]; then
+  awk -F '\t' '
+    NR == FNR { needle[$1] = $2; constraint[$1] = $3; corpus_notes[$1] = $4; next }
+    { print $1 "\t" $2 "\t" $3 "\t" $4 "\t" needle[$1] "\t" constraint[$1] "\t" corpus_notes[$1] }
+  ' "$WORK/corpus.parsed" "$WORK/targets.parsed" > "$WORK/joined.tsv"
+
+  TAB="$(printf '\t')"
+  while IFS="$TAB" read -r id target verify target_notes needle constraint corpus_notes; do
+    expected_hash="$(printf '%s\n' "$target_notes" | sed -n 's/.*needle_sha256=\([0-9a-f][0-9a-f]*\).*/\1/p')"
+    if [ -z "$expected_hash" ]; then
+      fail "$id target map missing needle_sha256 lock"
+    else
+      actual_hash="$(sha256_text "$needle")"
+      if [ "$actual_hash" != "$expected_hash" ]; then
+        fail "$id corpus strong_needle hash mismatch"
+      fi
+    fi
+
+    if ! validate_rel_path "$target"; then
+      fail "$id unsafe authoritative target: $target"
+      continue
+    fi
+
+    if is_test_only_target "$target" && [ "$constraint" != "literal-smoke-target" ]; then
+      fail "$id test-only authoritative target rejected: $target"
+      continue
+    fi
+
+    target_file="$(abs_path "$target")"
+    if [ ! -f "$target_file" ]; then
+      fail "$id missing target file: $target"
+      continue
+    fi
+
+    if ! grep -qF -- "$needle" "$target_file"; then
+      fail "$id missing needle in $target :: $needle"
+    fi
+
+    if [ "$verify" != "-" ]; then
+      OLD_IFS="$IFS"
+      IFS=","
+      for verification_path in $verify; do
+        IFS="$OLD_IFS"
+        if ! validate_rel_path "$verification_path"; then
+          fail "$id unsafe verification path: $verification_path"
+        elif [ ! -e "$(abs_path "$verification_path")" ]; then
+          fail "$id missing verification path: $verification_path"
+        fi
+        IFS=","
+      done
+      IFS="$OLD_IFS"
+    fi
+  done < "$WORK/joined.tsv"
+fi
 
 echo "----"
-if [ "$FAILS" -eq 0 ]; then echo "INVARIANTS OK"; exit 0; else echo "$FAILS MISSING"; exit 1; fi
+if [ "$FAILS" -eq 0 ]; then
+  echo "INVARIANTS OK"
+  exit 0
+else
+  echo "$FAILS FAILURES"
+  exit 1
+fi
