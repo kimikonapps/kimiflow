@@ -13,13 +13,15 @@ requests.
 
 **Mechanical snapshot:** before showing options, run `hooks/launcher-status.sh --pretty` from the installed
 Kimiflow root (Codex: with `KIMIFLOW_HOST=codex`). The script is read-only and returns JSON for:
-repo status, dirty working tree, installed/cache version status, project-map depth/status, memory/recall status,
-curation needs, agentic readiness, background handles (`total`, status counts, collectable/stale counts, items),
+repo status, dirty working tree, installed/cache version status, project-map depth/status, memory summary,
+curation needs, agentic readiness, background handles (`total`, status counts, collectable/stale counts),
 open findings, open feature-check findings, open improvement slices, repo-doc presence, active-session status, and
-active/backlog/done runs. Use the top-level `.launcher` object for the first screen: it contains
+active/backlog/done run counts. The default output is the compact first screen — `runs.items`,
+`background.items`, and the full `memory` object are omitted; re-run with `--full` when a drilldown needs the
+item lists or memory detail. Use the top-level `.launcher` object for the first screen: it contains
 `primary_action`, compact status groups, `maintenance.visible_reasons`, `maintenance.hidden_internal_reasons`, and
-drilldown names. Raw fields remain for detail views only. The orchestrator may summarize this JSON, but must not
-invent counts.
+drilldown names. Raw fields remain for detail views only (`--full`). The orchestrator may summarize this JSON, but
+must not invent counts.
 
 **Start menu (user language):** show a compact numbered menu, tuned to the snapshot. Typical full menu:
 
@@ -115,14 +117,16 @@ hygiene pass, not an implementation mode:
 - Findings: if `findings.open > 0`, offer `summarize`, `fix highest priority`, `group by area`, `show details`,
   `back`. Read `.kimiflow/project/FINDINGS.md`; show a compact list only. A selected fix routes into a normal
   `--fix`, docs, or improve run with its own state dir.
-- Backlog runs: list slug, status, mode, scope, plan commit, affected-file count, and stale risk from the
-  snapshot. Selecting a run starts the resume safety check; it never jumps directly to implementation.
+- Backlog runs: list slug, status, mode, scope, plan commit, affected-file count, and stale risk from
+  `runs.items` (re-run `launcher-status.sh --full` — the default snapshot carries only the counts). Selecting a
+  run starts the resume safety check; it never jumps directly to implementation.
 - Active session: if `active_session.present` and not terminal, show it before the normal menu. Offer
   `continue`, `show items`, `finish after verification`, `park`, `fail`, or `abort`. If
   `active_session.stale_risk == "needs_revalidation"`, the first action is revalidation; blind finish is not
   allowed.
 - Background handles: if `background.collectable > 0`, offer `collect results`, `show handles`, `mark stale`,
-  `cancel`, or `back`. Use `hooks/background-run.sh collect --id <id>` before trusting any result. A `CLOSED`
+  `cancel`, or `back` (`show handles` reads `background.items` — re-run `launcher-status.sh --full`). Use
+  `hooks/background-run.sh collect --id <id>` before trusting any result. A `CLOSED`
   collect verdict means the foreground orchestrator must re-run/revalidate the work instead of applying it. If
   `background.stale > 0`, surface it as maintenance but do not delete anything automatically.
 - Done runs: count `Status: done`; for legacy states, a Phase-7-done / `RUN COMPLETE` signal may be inferred as
@@ -140,7 +144,9 @@ hygiene pass, not an implementation mode:
   launcher text. `full` always includes the grill/spec phase and the pre-build approval stop; `grill`, `plan`,
   `review`, and `audit` are no-code until the user explicitly approves a later build/fix. `quick` is lean, not
   assumption-free: it must run the mandatory micro-grill for small feature/fix work.
-- Memory: list `MEMORY.md` budget, learning counts by status, vault availability, and curation reasons. Offer
+- Memory: list `MEMORY.md` budget, learning counts by status, vault availability, and curation reasons (the
+  full `memory` object — incl. the `memory.provider.*` fields used below — needs `launcher-status.sh --full`;
+  the default snapshot carries `memory_summary` only). Offer
   `recall for current task`, `curate index`, `show current learnings`, `back`; do not dump full Vault notes or
   full `LEARNINGS.jsonl`.
 - Vault/Obsidian: if `provider.available` is false but `provider.detection.available` is true, offer
@@ -300,7 +306,8 @@ foreground orchestrator verifies them with targeted reads/commands. A background
 memory rows, project-map facts, or canonical findings by itself.
 
 **Launcher:** `launcher-status.sh` includes `.background` with counts for `total`, `pending`, `running`, `ready`,
-`finished`, `collectable`, `stale`, `failed`, `cancelled`, and `items`. `collectable` counts handles whose current
+`finished`, `collectable`, `stale`, `failed`, `cancelled`; the `items` array is emitted only with `--full`
+(the default first screen carries the counts). `collectable` counts handles whose current
 `collect` verdict is `OPEN`, not merely handles with `ready`/`finished` status; `stale` also includes drift detected
 during list-time collection checks. `background_handles_collectable` and `background_handles_stale` appear as
 maintenance reasons.

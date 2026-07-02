@@ -73,6 +73,10 @@ run_status() {
   "$SCRIPT" --root "$REPO"
 }
 
+run_full() {
+  "$SCRIPT" --root "$REPO" --full
+}
+
 reset_repo
 rm -f "$INDEX"
 out="$(run_status)"
@@ -254,7 +258,11 @@ mkdir -p "$KIMIFLOW_HOME/metrics"
 cat > "$KIMIFLOW_HOME/metrics/token-economics.jsonl" <<'EOF'
 {"schema_version":1,"recorded_day":"2026-06-25","host":"codex","run_type":"feature","project_size_bucket":"small","project_id":"anon_project","run_id":"anon_run","always_on_tokens":100,"user_memory_tokens":0,"recall_tokens":100,"recall_hit_count":3,"used_hit_count":1,"estimated_avoided_scan_tokens":1200,"net_estimated_tokens_saved":1000,"estimated_savings_percent":83,"result":"saving","confidence":"medium","basis":{"heuristic":"directional_estimate_only","stores_content":false,"stores_paths":false,"local_only":true}}
 EOF
+# Default output = first screen: full .memory object and item arrays are omitted;
+# memory_summary, counts, maintenance and the .launcher block stay.
 out="$(run_status)"
+assert_jq "$out" '(has("memory") | not) and .memory_summary.usefulness.hot == 1 and (.maintenance.reasons | index("memory_curation_recommended")) and .launcher.presentation == "calm"' "default_omits_full_memory_keeps_summary_and_launcher"
+out="$(run_full)"
 assert_jq "$out" '.memory.present == true and .memory.learnings.current == 2 and .memory.curation.recommended == true and (.maintenance.reasons | index("memory_curation_recommended"))' "memory_status_reports_index_missing_curation"
 assert_jq "$out" '.memory.history.present == true and .memory.usage.total_uses == 2 and .memory.provider.available == true and .memory.vault.available == true' "launcher_surfaces_history_usage_provider"
 assert_jq "$out" '.memory.usefulness.hot.count == 1 and .memory_summary.usefulness.hot == 1 and .memory_summary.usefulness.cold >= 1 and (.memory_summary.next_actions | index("memory_index_missing"))' "launcher_surfaces_memory_usefulness_summary"
@@ -266,31 +274,31 @@ fi
 assert_jq "$out" '.efficiency.present == true and .efficiency.runs_tracked == 1 and .efficiency.estimated_savings_percent == 83 and .efficiency.confidence == "low" and .efficiency.privacy.stores_paths == false and .memory.global_efficiency.runs_tracked == 1' "launcher_surfaces_global_efficiency"
 
 "$MEMORY_ROUTER" curate --root "$REPO" --write >/dev/null
-out="$(run_status)"
+out="$(run_full)"
 assert_jq "$out" '.memory.curation.recommended == false and (.maintenance.reasons | index("memory_curation_recommended") | not)' "memory_index_clears_curation_recommendation"
 cat >> "$REPO/.kimiflow/project/LEARNINGS.jsonl" <<'EOF'
 {"id":"learn_many_one","kind":"process","scope":"project","topic":"memory","summary":"Additional healthy learning should not surface as user maintenance.","evidence":["hooks/launcher-status.sh:1"],"confidence":"high","sensitivity":"normal","last_verified":"2026-06-25","source_commit":"abc1234","status":"current"}
 {"id":"learn_many_two","kind":"process","scope":"project","topic":"memory","summary":"Healthy many-learnings threshold remains an internal signal only.","evidence":["hooks/launcher-status.sh:1"],"confidence":"high","sensitivity":"normal","last_verified":"2026-06-25","source_commit":"abc1234","status":"current"}
 EOF
 "$MEMORY_ROUTER" curate --root "$REPO" --write >/dev/null
-out="$(KIMIFLOW_OBSIDIAN_URL=http://127.0.0.1:1 KIMIFLOW_MEMORY_CURATE_AFTER_LEARNINGS=3 run_status)"
+out="$(KIMIFLOW_OBSIDIAN_URL=http://127.0.0.1:1 KIMIFLOW_MEMORY_CURATE_AFTER_LEARNINGS=3 run_full)"
 assert_jq "$out" '.memory.curation.recommended == false and .memory.curation.internal_recommended == true and (.memory.curation.silent_reasons | index("many_learnings")) and .maintenance.bring_current_recommended == false and (.maintenance.reasons | index("memory_curation_recommended") | not)' "launcher_hides_benign_many_learnings_signal"
 assert_jq "$out" '(.launcher.maintenance.hidden_internal_reasons | index("many_learnings")) and (.launcher.maintenance.visible_reasons | index("many_learnings") | not)' "launcher_keeps_benign_memory_hygiene_internal"
 
 cat > "$REPO/.kimiflow/project/PROPOSALS.jsonl" <<'EOF'
 {"id":"learn_memory","learning_id":"learn_memory","type":"standard","kind":"project_rule_confirmed","target_path":".kimiflow/STANDARDS.md","summary":"Project rule confirmed: launcher status exposes pending learning proposals.","evidence":["hooks/launcher-status.sh:1"],"status":"pending","created_at":"2026-06-25T00:00:00Z","updated_at":"2026-06-25T00:00:00Z"}
 EOF
-out="$(run_status)"
+out="$(run_full)"
 assert_jq "$out" '.memory.proposals.pending == 1 and (.maintenance.reasons | index("learning_proposals_pending"))' "pending_learning_proposals_surface_in_launcher"
 assert_jq "$out" '(.launcher.maintenance.hidden_internal_reasons | index("learning_proposals_pending")) and (.launcher.maintenance.visible_reasons | index("learning_proposals_pending") | not)' "launcher_hides_pending_learning_proposals_from_primary_menu"
 perl -0pi -e 's/"status":"pending"/"status":"approved"/' "$REPO/.kimiflow/project/PROPOSALS.jsonl"
-out="$(run_status)"
+out="$(run_full)"
 assert_jq "$out" '.memory.proposals.approved == 1 and (.maintenance.reasons | index("learning_proposals_approved"))' "approved_learning_proposals_surface_in_launcher"
 assert_jq "$out" '(.launcher.maintenance.visible_reasons | index("learning_proposals_approved"))' "launcher_surfaces_approved_learning_proposals"
 rm "$REPO/.kimiflow/project/PROPOSALS.jsonl"
 
 awk 'BEGIN{for(i=0;i<950;i++) printf "word "}' > "$REPO/.kimiflow/project/MEMORY.md"
-out="$(run_status)"
+out="$(run_full)"
 assert_jq "$out" '.memory.memory.over_budget == true and .memory.curation.recommended == true and (.maintenance.reasons | index("memory_curation_recommended"))' "memory_over_budget_surfaces_in_launcher"
 assert_jq "$out" '.launcher.primary_action.id == "curate_memory" and (.launcher.maintenance.visible_reasons | index("memory_curation_recommended"))' "launcher_surfaces_memory_over_budget_as_action"
 
@@ -307,10 +315,12 @@ Affected files:
 Plan status: approved
 EOF
 out="$(run_status)"
+assert_jq "$out" '.runs.backlog == 1 and (.runs | has("items") | not)' "default_omits_run_items_keeps_counts"
+out="$(run_full)"
 assert_jq "$out" '.runs.backlog == 1 and (.runs.items[] | select(.slug == "parked" and .stale_risk == "low"))' "backlog_run_low_risk_when_clean"
 
 printf 'changed\n' > "$REPO/src/a.txt"
-out="$(run_status)"
+out="$(run_full)"
 assert_jq "$out" '.runs.backlog == 1 and (.runs.items[] | select(.slug == "parked" and .stale_risk == "needs-revalidation"))' "backlog_run_needs_revalidation_when_affected_file_changed"
 
 reset_repo
@@ -355,7 +365,7 @@ cat > "$REPO/.kimiflow/not-done/STATE.md" <<'EOF'
 - **Status:** active
 - Phase 7: not done yet
 EOF
-out="$(run_status)"
+out="$(run_full)"
 assert_jq "$out" '.runs.done == 3 and .runs.active == 2 and (.runs.items[] | select(.slug == "legacy-active-done" and .status == "done")) and (.runs.items[] | select(.slug == "legacy-missing-done" and .status == "done")) and (.runs.items[] | select(.slug == "not-done" and .status == "active"))' "legacy_phase7_done_runs_inferred_done"
 assert_jq "$out" '.runs.learning_reviews.missing_done == 2 and (.runs.items[] | select(.slug == "legacy-active-done" and .learning_review.verdict == "CLOSED" and .learning_review.reason == "missing_review"))' "done_runs_without_learning_review_surface_without_legacy_noise"
 assert_jq "$out" '.runs.learning_reviews.needs_attention == 1 and (.maintenance.reasons | index("learning_reviews_need_attention")) and (.runs.items[] | select(.slug == "stale-review-done" and .learning_review.verdict == "CLOSED" and .learning_review.reason == "missing_learnings"))' "stale_existing_learning_review_recommends_attention"
@@ -394,6 +404,8 @@ printf '["hooks/a.sh"]\n' > "$WORK/files.json"
 "$BACKGROUND_RUN" update --root "$REPO" --id "$id2" --status finished --result "$WORK/result.md" --files "$WORK/files.json" --write >/dev/null
 "$BACKGROUND_RUN" mark-stale --root "$REPO" --id "$id3" --reason "base changed" --write >/dev/null
 out="$(run_status)"
+assert_jq "$out" '.background.total == 3 and .background.collectable == 2 and (.background | has("items") | not)' "default_omits_background_items_keeps_counts"
+out="$(run_full)"
 assert_jq "$out" '.background.total == 3 and .background.pending == 0 and .background.ready == 1 and .background.finished == 1 and .background.collectable == 2 and .background.stale == 1 and (.background.items[] | select(.id == "'"$id1"'"))' "launcher_surfaces_background_handles"
 assert_jq "$out" '(.maintenance.reasons | index("background_handles_collectable")) and (.maintenance.reasons | index("background_handles_stale"))' "launcher_background_handles_recommend_maintenance"
 

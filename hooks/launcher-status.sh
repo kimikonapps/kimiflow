@@ -2,9 +2,13 @@
 # kimiflow — read-only launcher status snapshot. Orchestrator-invoked, not a hook.
 #
 # Usage:
-#   launcher-status.sh [--root <path>] [--pretty]
+#   launcher-status.sh [--root <path>] [--pretty] [--full]
 #
-# Output: JSON. This script never writes project files.
+# Output: JSON. This script never writes project files. The default output is the
+# compact first screen: the heavy arrays (`runs.items`, `background.items`) and the
+# full `memory` object are omitted (counts, `memory_summary`, `maintenance` and the
+# `.launcher` block stay). `--full` emits the complete snapshot for drilldowns.
+# The snapshot itself is always computed in full — the trim is serialization-only.
 set -u
 
 usage() {
@@ -311,10 +315,12 @@ default_agentic_readiness_json() {
 
 ROOT=""
 PRETTY=0
+FULL=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --root) shift; ROOT="${1:-}" ;;
     --pretty) PRETTY=1 ;;
+    --full) FULL=1 ;;
     --help|-h) usage; exit 0 ;;
     *) die "unknown argument: $1" 2 ;;
   esac
@@ -843,8 +849,13 @@ out="$(jq -n \
       }
     })')"
 
+# Serialization-only trim: the snapshot (incl. the .launcher block, which reads
+# $snapshot.memory above) is always computed in full; the default first screen
+# drops only the heavy arrays and the full memory object on output.
+TRIM='del(.runs.items, .background.items, .memory)'
+[ "$FULL" -eq 1 ] && TRIM='.'
 if [ "$PRETTY" -eq 1 ]; then
-  printf '%s\n' "$out" | jq .
+  printf '%s\n' "$out" | jq "$TRIM"
 else
-  printf '%s\n' "$out" | jq -c .
+  printf '%s\n' "$out" | jq -c "$TRIM"
 fi
