@@ -237,7 +237,8 @@ normalize() {
     -e 's#WORK/cases/[A-Za-z0-9_.:-]+-(old|new)#REPO#g' \
     -e 's/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z/TIMESTAMP/g' \
     -e 's/bh_[A-Za-z0-9_:-]+/bh_ID/g' \
-    -e 's/[0-9a-f]{40}/COMMIT/g'
+    -e 's/[0-9a-f]{40}/COMMIT/g' \
+    -e 's/"version": ?"[0-9]+\.[0-9]+\.[0-9]+"/"version": "VERSION"/g'
 }
 
 normalized_file_hash() {
