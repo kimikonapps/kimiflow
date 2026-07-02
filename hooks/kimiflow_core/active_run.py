@@ -10,6 +10,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 
+from . import phase_reads
 from .atomic import atomic_write
 
 
@@ -23,6 +24,9 @@ USAGE = """#!/usr/bin/env bash
 #   active-run.sh mark-built|mark-accepted --id <id> [--root <path>] [--write] [--pretty]
 #   active-run.sh mark-rejected|drop-item --id <id> --reason <text> [--root <path>] [--write] [--pretty]
 #   active-run.sh refresh-baseline [--root <path>] [--write] [--pretty]
+#   active-run.sh phase-read --run <path> --phase <0-7> --file phases/<file>.md [--root <path>] [--write] [--pretty]
+#   active-run.sh phase-read-status --run <path> [--root <path>] [--json] [--pretty]
+#   active-run.sh phase-read-gate --run <path> --through-phase <0-7> [--root <path>]
 #   active-run.sh finish [--root <path>] [--write] [--skip-learning <reason>] [--pretty]
 #   active-run.sh park|fail|abort [--root <path>] --reason <text> [--write] [--pretty]
 #
@@ -311,7 +315,8 @@ def status_json(root):
     items = items_path(run_dir)
     counts = item_counts(read_items(items))
     status = active.get("status", "active")
-    return {
+    phase_required = phase_reads.phase_reads_required(root, run_dir, active=active)
+    result = {
         "schema_version": 1,
         "present": True,
         "status": status,
@@ -338,6 +343,9 @@ def status_json(root):
             else "finish_or_continue"
         ),
     }
+    if phase_required:
+        result["phase_reads_required"] = True
+    return result
 
 
 def write_active(root, value):
@@ -379,6 +387,25 @@ def update_state_status(run_dir, status):
                 out.append(line)
     if not done:
         out.append("Status: %s" % status)
+    atomic_write(state, "\n".join(out) + "\n", mode=0o600, refuse_symlink=False)
+
+
+def ensure_state_phase_reads_required(run_dir):
+    state = os.path.join(run_dir, "STATE.md")
+    out = []
+    done = False
+    if os.path.isfile(state):
+        with open(state, "r", encoding="utf-8") as handle:
+            for raw in handle:
+                line = raw.rstrip("\n")
+                plain = re.sub(r"^[ \t]*-[ \t]*", "", line.replace("**", ""))
+                if re.match(r"^Phase reads required:[ \t]*", plain, flags=re.IGNORECASE):
+                    out.append("Phase reads required: yes")
+                    done = True
+                else:
+                    out.append(line)
+    if not done:
+        out.append("Phase reads required: yes")
     atomic_write(state, "\n".join(out) + "\n", mode=0o600, refuse_symlink=False)
 
 
@@ -446,6 +473,7 @@ def cmd_start(args):
     existing = status_json(root)
     if existing.get("present") is True and existing.get("terminal") is False and existing.get("run") != run_rel:
         die("another active Kimiflow session exists: %s" % existing.get("run"), 1)
+    phase_required = phase_reads.manifest_exists(root)
     status = {
         "schema_version": 1,
         "status": "active",
@@ -459,8 +487,12 @@ def cmd_start(args):
         "last_checked_head": git_head(root),
         "affected_files_at_start": affected_paths(os.path.join(run_dir, "STATE.md")),
     }
+    if phase_required:
+        status["phase_reads_required"] = True
     if write:
         os.makedirs(run_dir, exist_ok=True)
+        if phase_required:
+            ensure_state_phase_reads_required(run_dir)
         write_active(root, status)
     json_print(status_json(root), opts["--pretty"])
 
@@ -535,6 +567,61 @@ def cmd_refresh_baseline(args):
     if opts["--write"]:
         write_active(root, refreshed)
     json_print(status_json(root), opts["--pretty"])
+
+
+def cmd_phase_read(args):
+    opts = parse_options(args, "phase-read", {"--root": "", "--run": "", "--phase": "", "--file": "", "--write": False, "--pretty": False})
+    need_jq()
+    if not opts["--run"]:
+        die("phase-read requires --run", 2)
+    if opts["--phase"] == "":
+        die("phase-read requires --phase", 2)
+    if not opts["--file"]:
+        die("phase-read requires --file", 2)
+    root = resolve_root(opts["--root"], strict=opts["--write"])
+    run_dir = resolve_run_dir(root, opts["--run"])
+    try:
+        record = phase_reads.record_read(root, run_dir, opts["--phase"], opts["--file"], iso_now(), write=opts["--write"])
+    except phase_reads.PhaseReadError as exc:
+        die(str(exc), 2)
+    json_print({"status": "phase_read_recorded", "written": opts["--write"] is True, "run": rel_path(root, run_dir), "record": record}, opts["--pretty"])
+
+
+def _active_for_run(root, run_rel):
+    active = load_active(root)
+    if active.get("present") is True and active.get("run") == run_rel:
+        return active
+    return None
+
+
+def cmd_phase_read_status(args):
+    opts = parse_options(args, "phase-read-status", {"--root": "", "--run": "", "--json": False, "--pretty": False})
+    need_jq()
+    if not opts["--run"]:
+        die("phase-read-status requires --run", 2)
+    root = resolve_root(opts["--root"], strict=False)
+    run_dir = resolve_run_dir(root, opts["--run"])
+    payload = phase_reads.status_payload(root, run_dir, active=_active_for_run(root, rel_path(root, run_dir)))
+    json_print(payload, opts["--pretty"])
+
+
+def cmd_phase_read_gate(args):
+    opts = parse_options(args, "phase-read-gate", {"--root": "", "--run": "", "--through-phase": "", "--pretty": False})
+    need_jq()
+    if not opts["--run"]:
+        die("phase-read-gate requires --run", 2)
+    if opts["--through-phase"] == "":
+        die("phase-read-gate requires --through-phase", 2)
+    root = resolve_root(opts["--root"], strict=False)
+    run_dir = resolve_run_dir(root, opts["--run"])
+    try:
+        verdict = phase_reads.gate(root, run_dir, opts["--through-phase"], active=_active_for_run(root, rel_path(root, run_dir)))
+    except phase_reads.PhaseReadError as exc:
+        die(str(exc), 2)
+    sys.stdout.write(
+        "PHASE_READ_GATE\t%s\tblockers=%s\treason=%s\tdetail=%s\n"
+        % (verdict.get("status", "CLOSED"), verdict.get("blockers", 1), verdict.get("reason", "phase-read-blockers"), verdict.get("detail", ""))
+    )
 
 
 def global_metrics_file():
@@ -635,6 +722,9 @@ def cmd_finish(args):
         die("finish refused: unresolved active-session items remain", 1)
     if status["stale_risk"] != "current":
         die("finish refused: active session requires revalidation (%s)" % status["stale_risk"], 1)
+    phase_gate = phase_reads.gate(root, run_dir, 7, active=load_active(root))
+    if phase_gate.get("status") == "CLOSED":
+        die("finish refused: phase-read gate closed (%s)" % phase_gate.get("detail", "unknown"), 1)
     router = os.environ.get("KIMIFLOW_MEMORY_ROUTER") or os.path.join(os.path.abspath(os.path.dirname(__file__) + "/.."), "memory-router.sh")
     if not (os.path.exists(router) and os.access(router, os.X_OK)):
         die("memory router missing or not executable: %s" % router, 1)
@@ -778,6 +868,12 @@ def main(argv=None):
             cmd_update_item(command, args)
         elif command == "refresh-baseline":
             cmd_refresh_baseline(args)
+        elif command == "phase-read":
+            cmd_phase_read(args)
+        elif command == "phase-read-status":
+            cmd_phase_read_status(args)
+        elif command == "phase-read-gate":
+            cmd_phase_read_gate(args)
         elif command == "finish":
             rc = cmd_finish(args)
             if isinstance(rc, int):

@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "phases": [
+    {
+      "id": 0,
+      "name": "setup",
+      "file": "phases/phase-0-setup.md"
+    },
+    {
+      "id": 1,
+      "name": "clarify",
+      "file": "phases/phase-1-clarify.md"
+    },
+    {
+      "id": 2,
+      "name": "understand",
+      "file": "phases/phase-2-understand.md"
+    },
+    {
+      "id": 3,
+      "name": "plan",
+      "file": "phases/phase-3-plan.md"
+    },
+    {
+      "id": 4,
+      "name": "review-approval",
+      "file": "phases/phase-4-review-approval.md"
+    },
+    {
+      "id": 5,
+      "name": "build",
+      "file": "phases/phase-5-build.md"
+    },
+    {
+      "id": 6,
+      "name": "verify",
+      "file": "phases/phase-6-verify.md"
+    },
+    {
+      "id": 7,
+      "name": "review-commit",
+      "file": "phases/phase-7-review-commit.md"
+    }
+  ]
+}

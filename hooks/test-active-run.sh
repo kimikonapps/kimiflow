@@ -100,6 +100,28 @@ EOF
   ( cd "$REPO" && git add .gitignore src/a.txt && git commit -q -m init )
 }
 
+write_phase_manifest() {
+  mkdir -p "$REPO/phases"
+  cat > "$REPO/phases/PHASES.json" <<'EOF'
+{
+  "schema_version": 1,
+  "phases": [
+    {"id": 0, "name": "p0", "file": "phases/phase-0.md"},
+    {"id": 1, "name": "p1", "file": "phases/phase-1.md"},
+    {"id": 2, "name": "p2", "file": "phases/phase-2.md"},
+    {"id": 3, "name": "p3", "file": "phases/phase-3.md"},
+    {"id": 4, "name": "p4", "file": "phases/phase-4.md"},
+    {"id": 5, "name": "p5", "file": "phases/phase-5.md"},
+    {"id": 6, "name": "p6", "file": "phases/phase-6.md"},
+    {"id": 7, "name": "p7", "file": "phases/phase-7.md"}
+  ]
+}
+EOF
+  for i in 0 1 2 3 4 5 6 7; do
+    printf 'phase %s\n' "$i" > "$REPO/phases/phase-$i.md"
+  done
+}
+
 run_active() {
   KIMIFLOW_MEMORY_ROUTER="$FAKE_ROUTER" KIMIFLOW_FAKE_ROUTER_LOG="$ROUTER_LOG" "$SCRIPT" "$@" --root "$REPO"
 }
@@ -125,6 +147,12 @@ assert_contains "$err" "cannot resolve root" "invalid_root_write_reports_resolut
 out="$(run_active start --run .kimiflow/demo --write)"
 assert_jq "$out" '.present == true and .run == ".kimiflow/demo" and .stale_risk == "current" and .item_counts.open == 0' "start_creates_active_session"
 [ -f "$REPO/.kimiflow/session/ACTIVE_RUN.json" ] && pass "start_writes_active_file" || fail "start_writes_active_file"
+assert_jq "$out" 'has("phase_reads_required") | not' "start_without_manifest_no_phase_reads"
+if grep -q '^Phase reads required:' "$REPO/.kimiflow/demo/STATE.md"; then
+  fail "start_without_manifest_no_state_marker"
+else
+  pass "start_without_manifest_no_state_marker"
+fi
 
 out="$(run_active append-item --title "Add first button" --kind feature --write)"
 assert_jq "$out" '.item.id == "item_001" and .item_counts.open == 1' "append_item_creates_stable_id"
@@ -234,6 +262,59 @@ if grep -q '^Status: done' "$REPO/.kimiflow/demo/STATE.md"; then
 else
   pass "failed_finish_does_not_mark_state_done"
 fi
+
+reset_repo
+write_phase_manifest
+out="$(run_active start --run .kimiflow/demo --write)"
+assert_jq "$out" '.phase_reads_required == true' "start_with_manifest_sets_phase_reads"
+grep -q '^Phase reads required: yes' "$REPO/.kimiflow/demo/STATE.md" && pass "start_with_manifest_marks_state" || fail "start_with_manifest_marks_state"
+out="$(run_active phase-read --run .kimiflow/demo --phase 0 --file phases/phase-0.md --write)"
+assert_jq "$out" '.status == "phase_read_recorded" and .record.phase == 0 and .record.file == "phases/phase-0.md"' "phase_read_records_phase"
+out="$(run_active phase-read-status --run .kimiflow/demo --json)"
+assert_jq "$out" '.phase_reads_required == true and .records.reads["0"].file == "phases/phase-0.md"' "phase_read_status_reports_record"
+out="$(run_active phase-read-gate --run .kimiflow/demo --through-phase 1)"
+assert_contains "$out" "PHASE_READ_GATE"$'\t'"CLOSED" "phase_read_gate_closes_missing"
+assert_contains "$out" "phase_1_read_missing" "phase_read_gate_missing_detail"
+run_active phase-read --run .kimiflow/demo --phase 1 --file phases/phase-1.md --write >/dev/null
+out="$(run_active phase-read-gate --run .kimiflow/demo --through-phase 1)"
+assert_contains "$out" "PHASE_READ_GATE"$'\t'"OPEN" "phase_read_gate_opens_fresh"
+printf 'changed\n' >> "$REPO/phases/phase-1.md"
+out="$(run_active phase-read-gate --run .kimiflow/demo --through-phase 1)"
+assert_contains "$out" "phase_1_read_stale" "phase_read_gate_stale_detail"
+if run_active phase-read --run .kimiflow/demo --phase 1 --file ../phase-1.md --write >/dev/null 2>&1; then
+  fail "phase_read_rejects_traversal"
+else
+  pass "phase_read_rejects_traversal"
+fi
+ln -sf "$WORK/outside-phase.md" "$REPO/phases/phase-2.md"
+printf 'outside\n' > "$WORK/outside-phase.md"
+if run_active phase-read --run .kimiflow/demo --phase 2 --file phases/phase-2.md --write >/dev/null 2>&1; then
+  fail "phase_read_rejects_symlink_escape"
+else
+  pass "phase_read_rejects_symlink_escape"
+fi
+rm "$REPO/phases/phase-2.md"
+printf 'phase 2\n' > "$REPO/phases/phase-2.md"
+if run_active finish --write >/dev/null 2>&1; then
+  fail "finish_blocks_missing_phase_reads"
+else
+  pass "finish_blocks_missing_phase_reads"
+fi
+for i in 0 1 2 3 4 5 6 7; do
+  run_active phase-read --run .kimiflow/demo --phase "$i" --file "phases/phase-$i.md" --write >/dev/null
+done
+out="$(run_active finish --write)"
+assert_jq "$out" '.status == "finished" and .outcome.outcome == "done"' "finish_allows_fresh_phase_reads"
+
+reset_repo
+run_active start --run .kimiflow/demo --write >/dev/null
+write_phase_manifest
+out="$(run_active status)"
+assert_jq "$out" 'has("phase_reads_required") | not' "legacy_run_stays_unmarked_after_manifest_added"
+out="$(run_active phase-read-gate --run .kimiflow/demo --through-phase 7)"
+assert_contains "$out" "reason=legacy" "legacy_phase_read_gate_opens"
+out="$(run_active finish --write)"
+assert_jq "$out" '.status == "finished" and .outcome.outcome == "done"' "legacy_finish_ignores_late_manifest"
 
 reset_repo
 run_active start --run .kimiflow/demo --write >/dev/null

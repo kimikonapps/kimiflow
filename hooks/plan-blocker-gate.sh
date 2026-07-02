@@ -65,6 +65,26 @@ add_blocker() {
   if [ -z "$details" ]; then details="$1"; else details="$details,$1"; fi
 }
 
+phase_read_blocker() {
+  local marker root run_rel gate out status detail
+  marker="$(kimiflow_state_value "$state" "Phase reads required" | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
+  case "$marker" in yes|true|1|required) ;; *) return 0 ;; esac
+  root="$(kimiflow_run_root "$run_dir" 2>/dev/null || true)"
+  [ -n "$root" ] || { printf 'phase_read_root_unknown\n'; return 0; }
+  run_rel="$(kimiflow_run_rel "$root" "$run_dir" 2>/dev/null || true)"
+  [ -n "$run_rel" ] || { printf 'phase_read_run_unknown\n'; return 0; }
+  gate="$SCRIPT_DIR/active-run.sh"
+  [ -x "$gate" ] || { printf 'phase_read_gate_missing\n'; return 0; }
+  out="$("$gate" phase-read-gate --root "$root" --run "$run_rel" --through-phase 4 2>/dev/null)"
+  status="$(printf '%s\n' "$out" | cut -f2)"
+  detail="$(printf '%s\n' "$out" | cut -f5 | sed 's/^detail=//')"
+  case "$status" in
+    OPEN) return 0 ;;
+    CLOSED) printf 'phase_read_gate_closed:%s\n' "${detail:-unknown}"; return 0 ;;
+    *) printf 'phase_read_gate_error\n'; return 0 ;;
+  esac
+}
+
 ac_token_pattern() {
   printf '(^|[^[:alnum:]_-])%s([^[:alnum:]_-]|$)' "$1"
 }
@@ -147,6 +167,9 @@ if [ -x "$clarify_gate" ]; then
 else
   add_blocker "clarify_gate_missing"
 fi
+
+phase_detail="$(phase_read_blocker)"
+[ -z "$phase_detail" ] || add_blocker "$phase_detail"
 
 if [ -f "$plan" ]; then
   if grep -Eiq '\b(TBD|TODO|FIXME|NEEDS CLARIFICATION|OPEN QUESTION|NOT VERIFIED|UNKNOWN)\b' "$plan"; then

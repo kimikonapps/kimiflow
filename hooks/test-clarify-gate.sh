@@ -3,6 +3,7 @@
 set -u
 
 SCRIPT="$(cd "$(dirname "$0")" && pwd)/clarify-gate.sh"
+ACTIVE="$(cd "$(dirname "$0")" && pwd)/active-run.sh"
 WORK="$(mktemp -d)"
 RUN="$WORK/.kimiflow/demo"
 FAILS=0
@@ -40,6 +41,22 @@ EOF
 }
 
 run_gate() { "$SCRIPT" "$RUN"; }
+
+write_phase_fixture() {
+  mkdir -p "$WORK/phases"
+  cat > "$WORK/phases/PHASES.json" <<'EOF'
+{"schema_version":1,"phases":[
+{"id":0,"name":"p0","file":"phases/phase-0.md"},
+{"id":1,"name":"p1","file":"phases/phase-1.md"}
+]}
+EOF
+  printf 'phase 0\n' > "$WORK/phases/phase-0.md"
+  printf 'phase 1\n' > "$WORK/phases/phase-1.md"
+}
+
+record_phase() {
+  "$ACTIVE" phase-read --root "$WORK" --run .kimiflow/demo --phase "$1" --file "phases/phase-$1.md" --write >/dev/null
+}
 
 reset_run
 out="$(run_gate)"
@@ -142,6 +159,22 @@ rm "$RUN/INTENT.md"
 out="$(run_gate)"
 assert_field "$out" 2 CLOSED "nontrivial_missing_artifact_closes"
 assert_contains "$out" "clarify_artifact_missing" "nontrivial_missing_artifact_detail"
+
+if command -v jq >/dev/null 2>&1; then
+  reset_run
+  write_phase_fixture
+  printf 'Phase reads required: yes\n' >> "$RUN/STATE.md"
+  out="$(run_gate)"
+  assert_field "$out" 2 CLOSED "phase_reads_missing_closes_clarify"
+  assert_contains "$out" "phase_0_read_missing" "phase_reads_missing_clarify_detail"
+
+  record_phase 0
+  record_phase 1
+  out="$(run_gate)"
+  assert_field "$out" 2 OPEN "phase_reads_fresh_open_clarify"
+else
+  pass "phase_reads_clarify_skipped_without_jq"
+fi
 
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi

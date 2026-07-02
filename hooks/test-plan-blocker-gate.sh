@@ -3,6 +3,7 @@
 set -u
 
 SCRIPT="$(cd "$(dirname "$0")" && pwd)/plan-blocker-gate.sh"
+ACTIVE="$(cd "$(dirname "$0")" && pwd)/active-run.sh"
 LIB="$(cd "$(dirname "$0")" && pwd)/kimiflow-lib.sh"
 WORK="$(mktemp -d)"
 RUN="$WORK/.kimiflow/demo"
@@ -57,6 +58,26 @@ EOF
 }
 
 run_gate() { "$SCRIPT" "$RUN"; }
+
+write_phase_fixture() {
+  mkdir -p "$WORK/phases"
+  cat > "$WORK/phases/PHASES.json" <<'EOF'
+{"schema_version":1,"phases":[
+{"id":0,"name":"p0","file":"phases/phase-0.md"},
+{"id":1,"name":"p1","file":"phases/phase-1.md"},
+{"id":2,"name":"p2","file":"phases/phase-2.md"},
+{"id":3,"name":"p3","file":"phases/phase-3.md"},
+{"id":4,"name":"p4","file":"phases/phase-4.md"}
+]}
+EOF
+  for i in 0 1 2 3 4; do
+    printf 'phase %s\n' "$i" > "$WORK/phases/phase-$i.md"
+  done
+}
+
+record_phase() {
+  "$ACTIVE" phase-read --root "$WORK" --run .kimiflow/demo --phase "$1" --file "phases/phase-$1.md" --write >/dev/null
+}
 
 reset_run
 out="$(run_gate)"
@@ -286,6 +307,23 @@ Remove dead code under src/legacy.ts; preserve behavior.
 EOF
 out="$(run_gate)"
 assert_field "$out" 2 CLOSED "audit_mode_skipped_grill_blocks"
+
+if command -v jq >/dev/null 2>&1; then
+  reset_run
+  write_phase_fixture
+  printf 'Phase reads required: yes\n' >> "$RUN/STATE.md"
+  out="$(run_gate)"
+  assert_field "$out" 2 CLOSED "phase_reads_missing_closes_plan_gate"
+  assert_contains "$out" "phase_0_read_missing" "phase_reads_missing_plan_detail"
+
+  for i in 0 1 2 3 4; do
+    record_phase "$i"
+  done
+  out="$(run_gate)"
+  assert_field "$out" 2 OPEN "phase_reads_fresh_open_plan_gate"
+else
+  pass "phase_reads_plan_gate_skipped_without_jq"
+fi
 
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi

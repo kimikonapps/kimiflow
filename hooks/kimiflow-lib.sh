@@ -30,3 +30,22 @@ kimiflow_resolve_root() {
     git rev-parse --show-toplevel 2>/dev/null || pwd -P
   fi
 }
+
+kimiflow_run_root() {
+  local run_dir="$1" abs
+  abs="$(cd "$run_dir" 2>/dev/null && pwd -P)" || return 1
+  case "$abs" in
+    */.kimiflow/*) printf '%s\n' "${abs%%/.kimiflow/*}" ;;
+    *) return 1 ;;
+  esac
+}
+
+kimiflow_run_rel() {
+  local root="$1" run_dir="$2" abs_root abs_run
+  abs_root="$(cd "$root" 2>/dev/null && pwd -P)" || return 1
+  abs_run="$(cd "$run_dir" 2>/dev/null && pwd -P)" || return 1
+  case "$abs_run" in
+    "$abs_root"/*) printf '%s\n' "${abs_run#"$abs_root"/}" ;;
+    *) return 1 ;;
+  esac
+}

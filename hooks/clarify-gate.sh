@@ -34,6 +34,35 @@ done
 
 state="$run_dir/STATE.md"
 
+phase_read_blocker() {
+  local marker root run_rel gate out status detail
+  marker="$(kimiflow_state_value "$state" "Phase reads required" | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
+  case "$marker" in yes|true|1|required) ;; *) return 0 ;; esac
+  root="$(kimiflow_run_root "$run_dir" 2>/dev/null || true)"
+  [ -n "$root" ] || { printf 'phase_read_root_unknown\n'; return 0; }
+  run_rel="$(kimiflow_run_rel "$root" "$run_dir" 2>/dev/null || true)"
+  [ -n "$run_rel" ] || { printf 'phase_read_run_unknown\n'; return 0; }
+  gate="$SCRIPT_DIR/active-run.sh"
+  [ -x "$gate" ] || { printf 'phase_read_gate_missing\n'; return 0; }
+  out="$("$gate" phase-read-gate --root "$root" --run "$run_rel" --through-phase 1 2>/dev/null)"
+  status="$(printf '%s\n' "$out" | cut -f2)"
+  detail="$(printf '%s\n' "$out" | cut -f5 | sed 's/^detail=//')"
+  case "$status" in
+    OPEN) return 0 ;;
+    CLOSED) printf 'phase_read_gate_closed:%s\n' "${detail:-unknown}"; return 0 ;;
+    *) printf 'phase_read_gate_error\n'; return 0 ;;
+  esac
+}
+
+emit_open() {
+  local detail
+  detail="$(phase_read_blocker)"
+  if [ -n "$detail" ]; then
+    emit CLOSED 1 phase-read-blockers "$detail"
+  fi
+  emit OPEN 0 clean ""
+}
+
 find_first() {
   local p
   for p in "$@"; do
@@ -55,7 +84,7 @@ alias_value="$(kimiflow_state_value "$state" alias | tr '[:upper:]' '[:lower:]')
 mode_value="$(kimiflow_state_value "$state" mode | tr '[:upper:]' '[:lower:]')"
 
 if [ "$scope" = "trivial" ]; then
-  emit OPEN 0 clean ""
+  emit_open
 fi
 
 if [ -z "$artifact" ] || [ ! -s "$artifact" ]; then
@@ -71,7 +100,7 @@ if printf '%s\n%s\n' "$alias_value" "$mode_value" | grep -Eiq '(^|[[:space:][:pu
 fi
 
 if [ "$needs_micro" -eq 0 ]; then
-  emit OPEN 0 clean ""
+  emit_open
 fi
 
 marker="$(grep -Eio '<!--[[:space:]]*kimiflow:clarify-evidence[^>]*-->|kimiflow:clarify-evidence[^[:cntrl:]]*' "$artifact" | head -1 || true)"
@@ -112,7 +141,7 @@ else
 fi
 
 if [ "$blockers" -eq 0 ]; then
-  emit OPEN 0 clean ""
+  emit_open
 fi
 
 emit CLOSED "$blockers" clarify-blockers "$details"
