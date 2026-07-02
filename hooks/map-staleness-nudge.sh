@@ -3,6 +3,7 @@
 # `systemMessage`, rate-limited to once per UTC day so a clean map pays the sha256 sweep at most
 # once per window. Fires on ANY Stop in a repo that has `.kimiflow/project/INDEX.json` (so it also
 # catches non-kimiflow edits). Never blocks; exits 0 on every path.
+# R2 invariant target: map-staleness-nudge.sh
 set -u
 
 # Resolve the helper path absolutely BEFORE any cd, so the later status call is cwd-independent.

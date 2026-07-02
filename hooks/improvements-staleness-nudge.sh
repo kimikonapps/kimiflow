@@ -4,6 +4,7 @@
 # `Status: done` runs has increased since the last check AND >=1 open slice exists in IMPROVEMENTS.md/FINDINGS.md.
 # A missing stamp SEEDS the baseline without firing (the repo already has many done runs — never fire spuriously
 # on first install). Rate-limited to at most once per UTC day. Never blocks; exits 0 on every path.
+# R2 invariant target: improvements-staleness-nudge.sh
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"

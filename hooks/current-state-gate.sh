@@ -8,6 +8,7 @@
 # Output:
 #   assess -> JSON
 #   verify -> CURRENT_STATE_GATE<TAB>OPEN|CLOSED<TAB>risk=<risk><TAB>reason=<code><TAB>detail=<detail>
+# R2 invariant target: CSG verify --assessment
 set -u
 
 usage() {

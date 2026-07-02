@@ -11,6 +11,7 @@
 # Usage: resolve-review-gate.sh <findings-dir> --round <N> --expect <lensA,lensB> [--cap 3]
 # Output (one TAB line, exit 0): <VERDICT>\t<open_count|->\t<reason_code>\t<detail>
 #   VERDICT ∈ {OPEN,CLOSED}; reason_code ∈ {clean,open-findings,incomplete,malformed,oscillation,reappeared,cap-reached}
+# R2 invariant targets: hooks/resolve-review-gate.sh; --round <N> --expect <lensCSV>; --expect code-verified
 set -u
 emit() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "${4:-}"; exit 0; }
 

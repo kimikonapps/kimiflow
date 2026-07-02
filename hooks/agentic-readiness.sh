@@ -5,6 +5,7 @@
 #   agentic-readiness.sh status [--root <path>] [--run .kimiflow/<slug>] [--pretty]
 #   agentic-readiness.sh gate --run .kimiflow/<slug> [--root <path>] [--min-level guided|agentic|governed|autonomous]
 #   agentic-readiness.sh packet --run .kimiflow/<slug> --kind plan|review|background|handoff [--root <path>] [--write]
+# R2 invariant targets: hooks/agentic-readiness.sh status|gate; --kind review --write
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

@@ -9,6 +9,7 @@
 #
 # Fix runs must prove RED before GREEN in BUG-REPRO.md. The gate verifies the
 # evidence contract; it intentionally does not execute the recorded commands.
+# R2 invariant target: hooks/red-green-gate.sh
 set -u
 
 emit() {

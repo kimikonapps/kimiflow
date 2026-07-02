@@ -5,6 +5,7 @@
 #
 # stdout: FLAG advisory lines only.
 # stderr: SKIPPED/ignored notes.
+# R2 invariant target: hooks/lsp-diagnostics.sh
 set -u
 
 root_arg=""

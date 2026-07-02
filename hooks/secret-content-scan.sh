@@ -10,6 +10,7 @@
 # blocks and never grants a false sense of coverage. The blocking path-hygiene gate
 # (commit-secret-gate) and its fail-closed behavior are entirely untouched by this script.
 #
+# R2 invariant target: secret-content-scan.sh
 # Exit-code contract (advisory): the chosen scanner returns non-zero when it finds something
 # (gitleaks: leaks found; trufflehog --fail: results found). A scanner *error* is also non-zero,
 # so a rare FLAG may be a tool error rather than a real secret — acceptable for a non-gating

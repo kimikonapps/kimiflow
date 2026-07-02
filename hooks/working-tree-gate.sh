@@ -6,6 +6,7 @@
 #
 # Output:
 #   WORKING_TREE_GATE<TAB>OPEN|CLOSED<TAB>dirty=<n><TAB>staged=<n><TAB>unstaged=<n><TAB>untracked=<n><TAB>reason=<code><TAB>detail=<paths>
+# R2 invariant target: hooks/working-tree-gate.sh
 set -u
 
 root_arg=""

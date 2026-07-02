@@ -10,6 +10,7 @@
 # This is intentionally conservative and language-agnostic. It does not judge whether
 # a plan is good; it blocks plans that are not implementable/verifiable enough to
 # deserve an expensive reviewer round.
+# R2 invariant target: hooks/plan-blocker-gate.sh
 set -u
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=hooks/kimiflow-lib.sh

@@ -10,6 +10,7 @@
 # For small/quick runs, Phase 1 must leave durable evidence that the agent asked
 # 2+ targeted questions OR confirmed a compact set of recommended assumptions
 # in the current Kimiflow run. Loose prior conversation is context, not consent.
+# R2 invariant target: hooks/clarify-gate.sh
 set -u
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=hooks/kimiflow-lib.sh
