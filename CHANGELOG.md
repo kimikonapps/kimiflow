@@ -4,7 +4,11 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-Audit-hardening: a 7-lens adversarial baseline audit of the flow prose, the hook layer, and the memory-router Python package; every confirmed finding fixed test-first.
+_No unreleased changes._
+
+## 0.1.56
+
+Audit-hardening plus the R0-R4 rebuild: a 7-lens adversarial baseline audit with every confirmed finding fixed test-first; the five large bash hooks ported to a tested Python core (`kimiflow_core`); `SKILL.md` inverted to a thin always-loaded driver with on-demand phase detail; both host skills rendered from one source; release byte budgets; and an independent merge review of the rebuild branch with all BLOCKER/HIGH findings fixed.
 
 ### Fixed
 - **Release launcher-budget check is hermetic:** `release-consistency-check.sh` now runs launcher output budgets with an isolated temp repo/home and counts stdout from a file, so user-local `KIMIFLOW_HOME` metrics cannot make releases fail spuriously and trailing newlines are counted.
