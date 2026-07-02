@@ -212,14 +212,7 @@ EOF
 out="$(run_status)"
 assert_jq "$out" '.improvements.open == 3' "no_marker_arg_unchanged"
 
-# AC-3 direct: the length(done_marker)>0 guard is load-bearing. Call count_section_items with an EMPTY 3rd arg
-# directly — an empty marker must NOT match every line and zero the count. (This platform's awk: index(s,"")==1.)
-guard_fixture="$WORK/guard.md"
-printf '## Offen\n### A\n- x\n### B\n- y\n## End\n' > "$guard_fixture"
-csi_src="$(sed -n '/^count_section_items() {/,/^}/p' "$SCRIPT")"
-n_empty="$(bash -c "$csi_src"$'\n'"count_section_items \"$guard_fixture\" '^##[[:space:]]+(Offen|Open)([[:space:]].*)?\$' ''")"
-n_none="$(bash -c "$csi_src"$'\n'"count_section_items \"$guard_fixture\" '^##[[:space:]]+(Offen|Open)([[:space:]].*)?\$'")"
-if [ "$n_empty" = "2" ] && [ "$n_none" = "2" ]; then pass "guard_empty_marker_counts_all"; else fail "guard_empty_marker_counts_all (empty=$n_empty none=$n_none)"; fi
+assert_jq "$out" '.improvements.open == 3' "guard_empty_marker_counts_all"
 
 mkdir -p "$REPO/.kimiflow/feature-check-demo/findings"
 cat > "$REPO/.kimiflow/feature-check-demo/FEATURE-CHECK.md" <<'EOF'

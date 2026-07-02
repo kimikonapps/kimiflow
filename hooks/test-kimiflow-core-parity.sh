@@ -192,6 +192,21 @@ run_one() {
       write_background_handle "$case_old" "bh_test" "cancelled" "yes"
       write_background_handle "$case_new" "bh_test" "cancelled" "yes"
       ;;
+    launcher_no_kimiflow)
+      rm -rf "$case_old/.kimiflow" "$case_new/.kimiflow"
+      ;;
+    launcher_invalid_map_json)
+      mkdir -p "$case_old/.kimiflow/project" "$case_new/.kimiflow/project"
+      printf '{bad json\n' > "$case_old/.kimiflow/project/INDEX.json"
+      printf '{bad json\n' > "$case_new/.kimiflow/project/INDEX.json"
+      ;;
+    launcher_stale_plugin_cache)
+      mkdir -p "$case_old/.codex-plugin" "$case_new/.codex-plugin" "$case_old/fake-cache/.codex-plugin" "$case_new/fake-cache/.codex-plugin"
+      printf '{"version":"9.9.9"}\n' > "$case_old/.codex-plugin/plugin.json"
+      printf '{"version":"9.9.9"}\n' > "$case_new/.codex-plugin/plugin.json"
+      printf '{"version":"0.0.1"}\n' > "$case_old/fake-cache/.codex-plugin/plugin.json"
+      printf '{"version":"0.0.1"}\n' > "$case_new/fake-cache/.codex-plugin/plugin.json"
+      ;;
   esac
 
   old_args=()
@@ -206,8 +221,17 @@ run_one() {
     fi
   done
 
-  (cd "$case_old" && HOME="$HOME_DIR" KIMIFLOW_OBSIDIAN_URL= KIMIFLOW_OBSIDIAN_API_KEY= bash "$old_script" ${old_args[@]+"${old_args[@]}"}) > "$WORK/o.out" 2> "$WORK/o.err"; o_code=$?
-  (cd "$case_new" && HOME="$HOME_DIR" KIMIFLOW_OBSIDIAN_URL= KIMIFLOW_OBSIDIAN_API_KEY= bash "$new_script" ${new_args[@]+"${new_args[@]}"}) > "$WORK/n.out" 2> "$WORK/n.err"; n_code=$?
+  old_env=(HOME="$HOME_DIR" KIMIFLOW_OBSIDIAN_URL= KIMIFLOW_OBSIDIAN_API_KEY=)
+  new_env=(HOME="$HOME_DIR" KIMIFLOW_OBSIDIAN_URL= KIMIFLOW_OBSIDIAN_API_KEY=)
+  case "$label" in
+    launcher_stale_plugin_cache)
+      old_env+=(KIMIFLOW_PLUGIN_ROOT="$case_old/fake-cache")
+      new_env+=(KIMIFLOW_PLUGIN_ROOT="$case_new/fake-cache")
+      ;;
+  esac
+
+  (cd "$case_old" && env "${old_env[@]}" bash "$old_script" ${old_args[@]+"${old_args[@]}"}) > "$WORK/o.out" 2> "$WORK/o.err"; o_code=$?
+  (cd "$case_new" && env "${new_env[@]}" bash "$new_script" ${new_args[@]+"${new_args[@]}"}) > "$WORK/n.out" 2> "$WORK/n.err"; n_code=$?
 
   normalize < "$WORK/o.out" > "$WORK/o.out.norm"
   normalize < "$WORK/o.err" > "$WORK/o.err.norm"
@@ -264,6 +288,10 @@ CASES=(
   "project_map_refresh_section::project-map-status.sh::refresh|--section|hooks"
   "project_map_refresh_changed_new::project-map-status.sh::refresh|--changed"
   "launcher_missing_root::launcher-status.sh::--root|$WORK/missing-root"
+  "launcher_no_kimiflow::launcher-status.sh::--root|__REPO__"
+  "launcher_invalid_map_json::launcher-status.sh::--root|__REPO__"
+  "launcher_pretty::launcher-status.sh::--root|__REPO__|--pretty"
+  "launcher_stale_plugin_cache::launcher-status.sh::--root|__REPO__"
   "clarify_missing_dir::clarify-gate.sh::$WORK/missing-run"
   "plan_blocker_missing_dir::plan-blocker-gate.sh::$WORK/missing-run"
   "agentic_status_repo::agentic-readiness.sh::status|--root|$REPO"
