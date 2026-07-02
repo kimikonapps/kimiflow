@@ -1432,7 +1432,10 @@ The vault is an **optional** notes MCP (e.g. Obsidian Local REST API's built-in 
 - **Reasoning before verdict.** Justify first, then severity.
 - **Every finding with a reference** (file:line / plan section). No evidence → no finding.
 - **Anti-hallucination:** a false finding is worse than a missed one. Unsure → drop it.
-- **Diverse lenses** (Phase 4): A = goal/completeness/measurability (goal-backward); B = security/edge/error/architecture/over-engineering. (Phase 7 has its own code-review ensemble below.)
+- **Diverse lenses** (Phase 4 — canonical definitions; SKILL.md carries 1-line summaries):
+  - **A — goal/completeness & understanding (goal-backward):** achieves the goal / fixes the verified root cause? criteria measurable, complete, non-contradictory? plan anchored in correct understanding, no invented assumptions?
+  - **B — risk:** security, edge cases, error handling, architecture breakage, over-engineering. Fix mode: does it address the cause, not the symptom?
+  (Phase 7 has its own code-review ensemble below; the audit-mode refute-the-cut lens is defined in SKILL.md Phase 4 and stays always-loaded.)
 - **Reviewers write findings to their own files — the gate counts them mechanically (closes self-report + silent-drop).** In Phase 4, each reviewer writes this round's findings to an append-only, orchestrator-immutable file `.kimiflow/<slug>/findings/r<N>-<lens>.md` — one canonical line per finding, at column 0, **no newline in the reason**:
   - `FINDING <SEVERITY> <ref> :: <one-line reason>` — `<SEVERITY>` is exactly one of `BLOCKER|HIGH|MEDIUM|LOW`; `<ref>` is `file:line` or `PLAN.md §section`. A reviewer that finds nothing writes the single sentinel line `NONE`.
   - Reviewers do NOT self-report a count; the orchestrator **reads** these files and never edits them — so no finding can be silently dropped or self-resolved.
