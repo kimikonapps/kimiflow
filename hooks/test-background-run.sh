@@ -152,6 +152,13 @@ else
   pass "double_slash_affected_rejected"
 fi
 
+missing_root="$WORK/missing-root"
+out="$("$SCRIPT" list --root "$missing_root" --json)"
+assert_jq "$out" '.present == false and .total == 0' "invalid_root_list_observational"
+err="$("$SCRIPT" start --root "$missing_root" --kind docs --title "Docs" --affected hooks --write 2>&1 >/dev/null)"; rc=$?
+if [ "$rc" = "2" ]; then pass "invalid_root_write_fails_closed"; else fail "invalid_root_write_fails_closed"; fi
+assert_contains "$err" "cannot resolve root" "invalid_root_write_reports_resolution_error"
+
 reset_repo
 if run_bg status --id '../escape' >/dev/null 2>&1; then
   fail "unsafe_id_rejected"

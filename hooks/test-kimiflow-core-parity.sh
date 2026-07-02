@@ -85,9 +85,56 @@ write_project_map_index() {
   }' > "$repo/.kimiflow/project/INDEX.json"
 }
 
+write_background_handle() {
+  local repo="$1" id="$2" status="$3" result="${4:-yes}" base dir
+  base="$(git -C "$repo" rev-parse HEAD)"
+  dir="$repo/.kimiflow/background/$id"
+  mkdir -p "$dir"
+  jq -n --arg id "$id" --arg status "$status" --arg base "$base" '{
+    schema_version: 1,
+    id: $id,
+    kind: "docs",
+    title: "Docs",
+    status: $status,
+    created_at: "2026-07-02T00:00:00Z",
+    updated_at: "2026-07-02T00:00:00Z",
+    base_commit: $base,
+    affected_paths: ["hooks"],
+    handoff_path: ".kimiflow/background/\($id)/HANDOFF.md",
+    result_path: ".kimiflow/background/\($id)/RESULT.md",
+    files_path: ".kimiflow/background/\($id)/FILES.json",
+    advisories_path: ".kimiflow/background/\($id)/ADVISORIES.md",
+    verify_path: ".kimiflow/background/\($id)/VERIFY.md",
+    candidate_only: false,
+    collect_policy: "foreground_orchestrator_verifies_before_apply"
+  }' > "$dir/STATUS.json"
+  printf '[]\n' > "$dir/FILES.json"
+  : > "$dir/ADVISORIES.md"
+  : > "$dir/VERIFY.md"
+  if [ "$result" = "yes" ]; then
+    printf '# Result\nDone.\n' > "$dir/RESULT.md"
+  else
+    rm -f "$dir/RESULT.md"
+  fi
+}
+
 FAILS=0
 ok() { printf 'ok   %s\n' "$1"; }
 bad() { printf 'BAD  %s\n' "$1"; FAILS=$((FAILS + 1)); }
+
+expected_divergence() {
+  local label="$1" old_code="$2" new_code="$3"
+  case "$label" in
+    background_malformed_id)
+      [ "$old_code" = "1" ] || return 1
+      [ "$new_code" = "2" ] || return 1
+      grep -Fxq 'background-run: unsafe handle id' "$WORK/n.err.norm" || return 1
+      [ "$(wc -l < "$WORK/n.err.norm" | tr -d ' ')" = "1" ] || return 1
+      return 0
+      ;;
+  esac
+  return 1
+}
 
 normalize() {
   sed -E \
@@ -128,6 +175,24 @@ run_one() {
       printf 'new\n' > "$case_new/hooks/new.sh"
       ;;
   esac
+  case "$label" in
+    background_invalid_files_json)
+      write_background_handle "$case_old" "bh_test" "pending" "yes"
+      write_background_handle "$case_new" "bh_test" "pending" "yes"
+      printf '{bad json\n' > "$case_old/invalid-files.json"
+      printf '{bad json\n' > "$case_new/invalid-files.json"
+      ;;
+    background_result_tampering)
+      write_background_handle "$case_old" "bh_test" "ready" "no"
+      write_background_handle "$case_new" "bh_test" "ready" "no"
+      jq '.result_path = "hooks/a.sh"' "$case_old/.kimiflow/background/bh_test/STATUS.json" > "$case_old/status.tmp" && mv "$case_old/status.tmp" "$case_old/.kimiflow/background/bh_test/STATUS.json"
+      jq '.result_path = "hooks/a.sh"' "$case_new/.kimiflow/background/bh_test/STATUS.json" > "$case_new/status.tmp" && mv "$case_new/status.tmp" "$case_new/.kimiflow/background/bh_test/STATUS.json"
+      ;;
+    background_terminal_refusal)
+      write_background_handle "$case_old" "bh_test" "cancelled" "yes"
+      write_background_handle "$case_new" "bh_test" "cancelled" "yes"
+      ;;
+  esac
 
   old_args=()
   new_args=()
@@ -159,6 +224,11 @@ run_one() {
     return 0
   fi
 
+  if expected_divergence "$label" "$o_code" "$n_code"; then
+    ok "$label (§12 divergence)"
+    return 0
+  fi
+
   bad "$label — diverged: $diverged"
   if [ "$o_code" != "$n_code" ]; then
     printf '  exit codes: old=%s new=%s\n' "$o_code" "$n_code"
@@ -176,6 +246,11 @@ run_one() {
 CASES=(
   "active_status_none::active-run.sh::status|--root|__REPO__"
   "background_list_empty::background-run.sh::list|--root|__REPO__|--json"
+  "background_start_preview::background-run.sh::start|--root|__REPO__|--kind|docs|--title|Docs|--affected|hooks"
+  "background_malformed_id::background-run.sh::status|--root|__REPO__|--id|../escape"
+  "background_invalid_files_json::background-run.sh::update|--root|__REPO__|--id|bh_test|--status|ready|--files|invalid-files.json|--write"
+  "background_result_tampering::background-run.sh::collect|--root|__REPO__|--id|bh_test"
+  "background_terminal_refusal::background-run.sh::update|--root|__REPO__|--id|bh_test|--status|ready|--write"
   "improvements_list_open::improvements-status.sh::list|--root|__REPO__"
   "improvements_json_open::improvements-status.sh::list|--root|__REPO__|--json"
   "improvements_unknown_queue::improvements-status.sh::list|--root|__REPO__|--queue|bogus"
