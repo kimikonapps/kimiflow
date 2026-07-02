@@ -27,6 +27,13 @@ hash_file() {
   fi
 }
 
+file_mode() {
+  case "$(uname -s)" in
+    Darwin|FreeBSD) stat -f %Lp "$1" ;;
+    *) stat -c %a "$1" ;;
+  esac
+}
+
 reset_repo() {
   rm -rf "$REPO"
   mkdir -p "$REPO/hooks" "$REPO/docs" "$REPO/.kimiflow/project"
@@ -156,6 +163,22 @@ assert_has "$out" $'REFRESHED\thooks\tfiles=1' "refresh_reports_selected_section
 assert_eq "$(jq -r '.sections.hooks.status' "$INDEX")" "current" "refresh_marks_selected_section_current"
 assert_eq "$(jq -r '.sections.docs.status' "$INDEX")" "stale" "refresh_leaves_other_section_status_alone"
 assert_eq "$(jq -r '.sections.hooks.file_hashes["hooks/a.sh"]' "$INDEX")" "$(hash_file "$REPO/hooks/a.sh")" "refresh_updates_hash"
+assert_eq "$(file_mode "$INDEX")" "600" "refresh_installs_index_mode_600"
+
+# R1 write-safety — no success line if the atomic install cannot create its temp file.
+if [ "$(id -u)" = "0" ]; then
+  pass "refresh_write_failure_no_success_skipped_as_root"
+else
+  reset_repo
+  BASE="$(cd "$REPO" && git rev-parse --short HEAD)"
+  write_index "$BASE" "$(hash_file "$REPO/hooks/a.sh")" "$(hash_file "$REPO/docs/guide.md")"
+  chmod 500 "$REPO/.kimiflow/project"
+  out="$(run_refresh --section hooks 2>&1)"; rc=$?
+  chmod 700 "$REPO/.kimiflow/project"
+  assert_eq "$rc" "1" "refresh_write_failure_exits_nonzero"
+  assert_has "$out" 'cannot install' "refresh_write_failure_reports_install_error"
+  case "$out" in *$'REFRESHED\t'*) fail "refresh_write_failure_does_not_print_success" ;; *) pass "refresh_write_failure_does_not_print_success" ;; esac
+fi
 
 # no section files/hashes is unknown, not silently current
 reset_repo
@@ -296,6 +319,18 @@ assert_eq "$(jq -r '.sections.syms.symbols.foo' "$INDEX")" "hooks/sym.sh:2" "ind
 assert_eq "$(jq -r '.sections.syms.symbols.bar // "none"' "$INDEX")" "none" "index_symbols_skips_comment_function"
 assert_eq "$(jq -r '.sections.syms.symbols.baz' "$INDEX")" "hooks/sym.sh:8" "index_symbols_records_second_function"
 assert_eq "$(jq -r '.schema_version' "$INDEX")" "1" "index_symbols_keeps_schema_version"
+assert_eq "$(file_mode "$INDEX")" "600" "index_symbols_installs_index_mode_600"
+
+if [ "$(id -u)" = "0" ]; then
+  pass "index_symbols_write_failure_no_success_skipped_as_root"
+else
+  chmod 500 "$REPO/.kimiflow/project"
+  out="$(run_index_symbols --section syms 2>&1)"; rc=$?
+  chmod 700 "$REPO/.kimiflow/project"
+  assert_eq "$rc" "1" "index_symbols_write_failure_exits_nonzero"
+  assert_has "$out" 'cannot install' "index_symbols_write_failure_reports_install_error"
+  case "$out" in *$'SYMBOLS\t'*) fail "index_symbols_write_failure_does_not_print_success" ;; *) pass "index_symbols_write_failure_does_not_print_success" ;; esac
+fi
 
 # B1 wiring — refresh --changed re-indexes symbols of a refreshed .sh section
 reset_repo

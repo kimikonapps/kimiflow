@@ -54,6 +54,37 @@ EOF
 git -C "$REPO" add README.md hooks/a.sh
 git -C "$REPO" commit -q -m init
 
+hash_file() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print "sha256:" $1}'
+  else
+    sha256sum "$1" | awk '{print "sha256:" $1}'
+  fi
+}
+
+write_project_map_index() {
+  local repo="$1" base hook_hash
+  base="$(git -C "$repo" rev-parse --short HEAD)"
+  hook_hash="$(hash_file "$repo/hooks/a.sh")"
+  jq -n --arg base "$base" --arg hook_hash "$hook_hash" '{
+    schema_version: 1,
+    language: "de",
+    scan_depth: "standard",
+    baseline_commit: $base,
+    created_at: "2026-07-02T00:00:00Z",
+    sections: {
+      hooks: {
+        files: ["hooks/a.sh"],
+        prefixes: ["hooks/"],
+        file_hashes: {"hooks/a.sh": $hook_hash},
+        last_scanned_commit: $base,
+        status: "current"
+      }
+    },
+    artifacts: {}
+  }' > "$repo/.kimiflow/project/INDEX.json"
+}
+
 FAILS=0
 ok() { printf 'ok   %s\n' "$1"; }
 bad() { printf 'BAD  %s\n' "$1"; FAILS=$((FAILS + 1)); }
@@ -84,6 +115,19 @@ run_one() {
   rm -rf "$case_old" "$case_new"
   cp -R "$REPO" "$case_old"
   cp -R "$REPO" "$case_new"
+
+  case "$label" in
+    project_map_status_current|project_map_coverage_current|project_map_index_symbols|project_map_refresh_section|project_map_refresh_changed_new)
+      write_project_map_index "$case_old"
+      write_project_map_index "$case_new"
+      ;;
+  esac
+  case "$label" in
+    project_map_refresh_changed_new)
+      printf 'new\n' > "$case_old/hooks/new.sh"
+      printf 'new\n' > "$case_new/hooks/new.sh"
+      ;;
+  esac
 
   old_args=()
   new_args=()
@@ -139,6 +183,11 @@ CASES=(
   "improvements_mark_write::improvements-status.sh::mark-done|release|--root|__REPO__|--commit|abc123|--write"
   "project_map_status_missing::project-map-status.sh::status"
   "project_map_coverage_missing::project-map-status.sh::coverage|--affected|hooks/a.sh"
+  "project_map_status_current::project-map-status.sh::status"
+  "project_map_coverage_current::project-map-status.sh::coverage|--affected|hooks/a.sh"
+  "project_map_index_symbols::project-map-status.sh::index-symbols|--section|hooks"
+  "project_map_refresh_section::project-map-status.sh::refresh|--section|hooks"
+  "project_map_refresh_changed_new::project-map-status.sh::refresh|--changed"
   "launcher_missing_root::launcher-status.sh::--root|$WORK/missing-root"
   "clarify_missing_dir::clarify-gate.sh::$WORK/missing-run"
   "plan_blocker_missing_dir::plan-blocker-gate.sh::$WORK/missing-run"
