@@ -21,6 +21,9 @@ USAGE = """#!/usr/bin/env bash
 #   background-run.sh update --id <id> --status <status> [--result <file>] [--files <file>] [--advisories <file>] [--verify <file>] [--reason <text>] [--root <path>] [--write] [--pretty]
 #   background-run.sh collect --id <id> [--root <path>]
 #   background-run.sh cancel|mark-stale --id <id> --reason <text> [--root <path>] [--write] [--pretty]
+#
+# R2 invariant example:
+#   hooks/background-run.sh
 set -u
 """
 

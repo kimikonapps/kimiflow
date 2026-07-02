@@ -36,7 +36,10 @@ PYTHONPATH="$PWD/hooks" python3 -m kimiflow_core.render
 ```
 
 `hooks/release-consistency-check.sh` rendert vor dem Release neu und faellt bei Drift in `SKILL.md` oder
-`skills/kimiflow/SKILL.md` fehl.
+`skills/kimiflow/SKILL.md` fehl. Derselbe Check haelt Byte-Budgets fuer die immer geladene Prosa
+(`SKILL.md` <= 56,000 Bytes, Codex-Skill <= 15,000 Bytes), fuer Phase-Dateien
+(`phases/*.md` jeweils <= 20,000 Bytes) und fuer die Launcher-Default-Ausgabe (JSON <= 8,000 Bytes,
+Pretty <= 12,000 Bytes auf einem sauberen Fixture-Repo).
 
 ## Wichtige Invarianten
 
@@ -50,11 +53,11 @@ PYTHONPATH="$PWD/hooks" python3 -m kimiflow_core.render
 
 ## Aenderungsachsen
 
-- Workflow-Aenderungen beginnen in `docs/render/kimiflow/claude/SKILL.md`; danach wird `SKILL.md`
+- Workflow-Aenderungen beginnen in `docs/render/kimiflow/canonical/SKILL.md`; danach wird `SKILL.md`
   gerendert. Detailregeln gehoeren in `reference.md`.
 - Claude-spezifisches Packaging liegt in `.claude-plugin/` und `hooks/hooks.json`.
 - Codex-spezifisches Packaging liegt in `.codex-plugin/`, `.agents/plugins/`, `skills/kimiflow/`,
-  `docs/render/kimiflow/codex/SKILL.md` und `hooks/install-codex-hooks.sh`.
+  `docs/render/kimiflow/overlays/codex.md` und `hooks/install-codex-hooks.sh`.
 - Hook-Verhalten braucht in der Regel ein passendes `hooks/test-*.sh` und Smoke-Coverage.
 - Project-Map-Verhalten braucht Updates in `reference.md`, `hooks/project-map-status.sh` und
   `hooks/test-project-map-status.sh`.

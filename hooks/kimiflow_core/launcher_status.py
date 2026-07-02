@@ -18,6 +18,9 @@ USAGE = """#!/usr/bin/env bash
 # compact first screen: the heavy arrays (`runs.items`, `background.items`) and the
 # full `memory` object are omitted (counts, `memory_summary`, `maintenance` and the
 # `.launcher` block stay). `--full` emits the complete snapshot for drilldowns.
+#
+# R2 invariant example:
+#   hooks/launcher-status.sh --pretty
 """
 
 

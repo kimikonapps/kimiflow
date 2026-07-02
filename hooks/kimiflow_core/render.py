@@ -7,9 +7,10 @@ from pathlib import Path
 from typing import Iterable
 
 
-RENDER_TARGETS = (
-    ("docs/render/kimiflow/claude/SKILL.md", "SKILL.md"),
-    ("docs/render/kimiflow/codex/SKILL.md", "skills/kimiflow/SKILL.md"),
+CANONICAL_SOURCE = "docs/render/kimiflow/canonical/SKILL.md"
+HOST_OVERLAYS = (("codex", "docs/render/kimiflow/overlays/codex.md", "skills/kimiflow/SKILL.md"),)
+RENDER_TARGETS = ((CANONICAL_SOURCE, "SKILL.md"),) + tuple(
+    (source, output) for _, source, output in HOST_OVERLAYS
 )
 
 
@@ -31,6 +32,10 @@ def render(root: Path, *, check: bool = False) -> list[str]:
     In check mode the files are not written.
     """
 
+    canonical = root / CANONICAL_SOURCE
+    if not canonical.is_file():
+        raise FileNotFoundError(f"missing canonical render source: {CANONICAL_SOURCE}")
+
     changed: list[str] = []
     for source_rel, output_rel in RENDER_TARGETS:
         source = root / source_rel
@@ -49,7 +54,7 @@ def render(root: Path, *, check: bool = False) -> list[str]:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Render Kimiflow Claude/Codex skill outputs from docs/render/kimiflow."
+        description="Render Kimiflow host skill outputs from the canonical source plus host overlays."
     )
     parser.add_argument("--root", default=".", help="repository root (default: current directory)")
     parser.add_argument("--check", action="store_true", help="report drift without writing outputs")

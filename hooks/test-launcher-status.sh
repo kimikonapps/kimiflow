@@ -20,6 +20,11 @@ assert_jq() {
   local json="$1" expr="$2" name="$3"
   if printf '%s\n' "$json" | jq -e "$expr" >/dev/null 2>&1; then pass "$name"; else fail "$name"; fi
 }
+assert_max_bytes() {
+  local data="$1" max="$2" name="$3" bytes
+  bytes="$(printf '%s' "$data" | wc -c | tr -d '[:space:]')"
+  if [ "$bytes" -le "$max" ]; then pass "$name"; else fail "$name ($bytes > $max bytes)"; fi
+}
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "SKIP: jq not installed — launcher-status uses jq"; exit 0
@@ -81,6 +86,7 @@ reset_repo
 rm -f "$INDEX"
 out="$(run_status)"
 assert_jq "$out" '.repo.present == true' "repo_present"
+assert_max_bytes "$out" 8000 "default_output_byte_budget"
 assert_jq "$out" '.project_map.present == false and .project_map.status == "missing"' "missing_map_reports_missing"
 assert_jq "$out" '.installation.mode == "source_checkout" and .installation.version != "" and .launcher.presentation == "calm"' "launcher_exposes_installation_and_calm_presentation"
 assert_jq "$out" '.launcher.primary_action.id == "project_map_bootstrap" and .launcher.status.project_map.attention == true' "launcher_recommends_project_map_bootstrap"
@@ -104,6 +110,7 @@ assert_jq "$out" '.maintenance.bring_current_recommended == false and .maintenan
 assert_jq "$out" '.launcher.primary_action.id == "start_kimiflow" and .launcher.maintenance.visible_count == 0 and .launcher.status.installation.cache_status == "source_checkout"' "launcher_ready_state_is_quiet"
 assert_jq "$out" '.agentic_readiness.status == "readiness_status" and (.agentic_readiness.summary | test("Agentic readiness:")) and .agentic_readiness.privacy.network_calls == false' "agentic_readiness_visible"
 pretty_out="$("$SCRIPT" --root "$REPO" --pretty)"
+assert_max_bytes "$pretty_out" 12000 "pretty_output_byte_budget"
 if printf '%s\n' "$pretty_out" | grep -Fq "Agentic readiness:"; then
   pass "agentic_readiness_pretty_summary_visible"
 else

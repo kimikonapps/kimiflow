@@ -24,11 +24,11 @@ make_fixture() {
 make_render_fixture() {
   local d="$1" v="$2"
   make_fixture "$d" "$v"
-  mkdir -p "$d/docs/render/kimiflow/claude" "$d/docs/render/kimiflow/codex" "$d/skills/kimiflow"
-  printf 'claude skill source\n' > "$d/docs/render/kimiflow/claude/SKILL.md"
-  printf 'codex skill source\n' > "$d/docs/render/kimiflow/codex/SKILL.md"
-  cp "$d/docs/render/kimiflow/claude/SKILL.md" "$d/SKILL.md"
-  cp "$d/docs/render/kimiflow/codex/SKILL.md" "$d/skills/kimiflow/SKILL.md"
+  mkdir -p "$d/docs/render/kimiflow/canonical" "$d/docs/render/kimiflow/overlays" "$d/skills/kimiflow"
+  printf 'canonical skill source\n' > "$d/docs/render/kimiflow/canonical/SKILL.md"
+  printf 'codex overlay source\n' > "$d/docs/render/kimiflow/overlays/codex.md"
+  cp "$d/docs/render/kimiflow/canonical/SKILL.md" "$d/SKILL.md"
+  cp "$d/docs/render/kimiflow/overlays/codex.md" "$d/skills/kimiflow/SKILL.md"
   git -C "$d" init -q
   git -C "$d" add .
 }
@@ -91,6 +91,39 @@ git -C "$F" add SKILL.md
 run "$F"
 { [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF 'rendered skill outputs drift'; } \
   && pass "rendered_output_drift_detected" || fail "rendered_output_drift_detected: rc=$RC :: $OUT"
+
+# AC-2.3 unstaged host output drift must fail and must not be overwritten
+F="$TMP/c6b"; make_render_fixture "$F" "0.1.0"
+printf 'unstaged drift\n' > "$F/SKILL.md"
+run "$F"
+{ [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF 'rendered skill outputs drift' && grep -qF 'unstaged drift' "$F/SKILL.md"; } \
+  && pass "rendered_unstaged_drift_not_overwritten" || fail "rendered_unstaged_drift_not_overwritten: rc=$RC :: $OUT"
+
+# AC-3.1 present always-loaded prose under budget -> pass
+F="$TMP/c7"; make_fixture "$F" "0.1.0"
+mkdir -p "$F/skills/kimiflow"
+printf 'root skill\n' > "$F/SKILL.md"
+printf 'codex skill\n' > "$F/skills/kimiflow/SKILL.md"
+run "$F"
+{ [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -qF 'SKILL.md always-loaded prose bytes'; } \
+  && pass "prose_budget_current" || fail "prose_budget_current: rc=$RC :: $OUT"
+
+# AC-3.2 oversized always-loaded prose -> fail naming the file
+F="$TMP/c8"; make_fixture "$F" "0.1.0"
+mkdir -p "$F/skills/kimiflow"
+awk 'BEGIN{for(i=0;i<56001;i++) printf "x"}' > "$F/SKILL.md"
+printf 'codex skill\n' > "$F/skills/kimiflow/SKILL.md"
+run "$F"
+{ [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF 'SKILL.md always-loaded prose bytes'; } \
+  && pass "prose_budget_oversize_detected" || fail "prose_budget_oversize_detected: rc=$RC :: $OUT"
+
+# AC-3.3 oversized phase detail prose -> fail naming the phase file
+F="$TMP/c9"; make_fixture "$F" "0.1.0"
+mkdir -p "$F/phases"
+awk 'BEGIN{for(i=0;i<20001;i++) printf "x"}' > "$F/phases/phase-0-setup.md"
+run "$F"
+{ [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF 'phases/phase-0-setup.md phase prose bytes'; } \
+  && pass "phase_budget_oversize_detected" || fail "phase_budget_oversize_detected: rc=$RC :: $OUT"
 
 # NOTE: real-repo version consistency is verified MANUALLY before a release
 # (`bash hooks/release-consistency-check.sh`), NOT asserted here — this unit test must stay a

@@ -29,6 +29,10 @@ USAGE = """#!/usr/bin/env bash
 #         findings     -> .kimiflow/project/FINDINGS.md      (open section "## Offen"/"## Open")
 # Slice id: explicit token (e.g. KF-F-001 -> kf-f-001) if the heading starts with one, else a title slug.
 # list is read-only; mark-done/reopen need --write to persist (else dry-run). Atomic write (mktemp + mv -f).
+#
+# R2 invariant examples:
+#   improvements-status.sh
+#   mark-done <id> --commit <sha> --write
 set -u
 """
 

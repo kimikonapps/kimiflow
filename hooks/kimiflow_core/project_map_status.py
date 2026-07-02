@@ -30,6 +30,11 @@ USAGE = """#!/usr/bin/env bash
 #   REFRESHED   <name>   files=<n> commit=<sha|NOT VERIFIED>
 #   NEW-FILE    <section> <path>
 #   SYMBOLS     <section>
+#
+# R2 invariant examples:
+#   project-map-status.sh
+#   PMS coverage --affected
+#   PMS refresh --changed
 set -u
 """
 

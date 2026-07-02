@@ -33,6 +33,10 @@ USAGE = """#!/usr/bin/env bash
 # Hook commands:
 #   active-run.sh prompt-context
 #   active-run.sh stop-gate
+#
+# R2 invariant examples:
+#   hooks/active-run.sh start --run .kimiflow/<slug>
+#   refresh-baseline --write
 """
 
 

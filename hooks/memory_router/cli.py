@@ -26,6 +26,11 @@ USAGE = (
     "#   memory-router.sh provider <status|health|setup|detect|connect|configure|prefetch|sync> [--root <path>] [--type <obsidian|none>] [--available <true|false>] [--path <path>] [--host <codex|claude|all>] [--pretty]\n"
 )
 
+# R2 invariant examples carried in production code without changing the parity-locked help text:
+# hooks/memory-router.sh status
+# MR recall --query-file
+# MR review-run --run
+
 
 def usage(stream=None):
     if stream is None:

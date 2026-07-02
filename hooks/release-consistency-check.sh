@@ -15,6 +15,12 @@
 # Required text targets (version MUST be present, else FAIL — never skip):
 #   COMPATIBILITY.md must contain "**<ver>**"
 #   CHANGELOG.md must contain a line equal to "## <ver>" (anchored — no semver substring collision)
+# Size budgets (fail when present and exceeded):
+#   SKILL.md <= 56000 bytes
+#   skills/kimiflow/SKILL.md <= 15000 bytes
+#   phases/*.md <= 20000 bytes each
+#   hooks/launcher-status.sh default JSON <= 8000 bytes on a clean fixture repo
+#   hooks/launcher-status.sh --pretty <= 12000 bytes on a clean fixture repo
 #
 # Exit 0 = consistent; non-zero = drift / required version missing.
 set -euo pipefail
@@ -34,6 +40,38 @@ done
 command -v jq >/dev/null 2>&1 || { echo "release-consistency-check: jq required" >&2; exit 2; }
 
 say() { [ "$QUIET" -eq 1 ] || printf '%s\n' "$1"; }
+
+check_max_bytes() {
+  local label="$1" file="$2" max="$3" bytes
+  if [ ! -f "$file" ]; then
+    say "  skip  $label byte budget (file absent)"
+    return 0
+  fi
+  bytes="$(wc -c < "$file" | tr -d '[:space:]')"
+  if [ "$bytes" -le "$max" ]; then
+    say "  ok    $label bytes ($bytes <= $max)"
+  else
+    say "  FAIL  $label bytes: $bytes (max $max)  [$file]"
+    fails=$((fails+1))
+  fi
+}
+
+check_output_bytes() {
+  local label="$1" max="$2"; shift 2
+  local out bytes
+  if out="$("$@" 2>/dev/null)"; then
+    bytes="$(printf '%s' "$out" | wc -c | tr -d '[:space:]')"
+    if [ "$bytes" -le "$max" ]; then
+      say "  ok    $label bytes ($bytes <= $max)"
+    else
+      say "  FAIL  $label bytes: $bytes (max $max)"
+      fails=$((fails+1))
+    fi
+  else
+    say "  FAIL  $label byte budget command failed"
+    fails=$((fails+1))
+  fi
+}
 
 sot_file="$ROOT/.claude-plugin/plugin.json"
 [ -f "$sot_file" ] || { echo "release-consistency-check: missing $sot_file" >&2; exit 2; }
@@ -86,29 +124,47 @@ else
 fi
 
 # Rendered skill outputs: the source files live under docs/render/kimiflow, while the host-facing
-# SKILL.md files stay committed. Re-render and let git catch any drift in those generated outputs.
+# SKILL.md files stay committed. Check without writing so manual output drift cannot be overwritten.
 render_source="$ROOT/docs/render/kimiflow"
 if [ -d "$render_source" ]; then
   if ! command -v python3 >/dev/null 2>&1; then
     say "  FAIL  rendered skill outputs: python3 required"
     fails=$((fails+1))
-  elif ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    say "  FAIL  rendered skill outputs: git worktree required for drift check"
-    fails=$((fails+1))
-  elif (cd "$ROOT" && PYTHONPATH="$SCRIPT_DIR" python3 -m kimiflow_core.render --root "$ROOT" --quiet); then
-    if git -C "$ROOT" diff --exit-code --quiet -- SKILL.md skills/kimiflow/SKILL.md; then
-      say "  ok    rendered skill outputs"
-    else
-      say "  FAIL  rendered skill outputs drift from docs/render/kimiflow"
-      git -C "$ROOT" diff --name-only -- SKILL.md skills/kimiflow/SKILL.md | sed 's/^/        /'
-      fails=$((fails+1))
-    fi
+  elif (cd "$ROOT" && PYTHONPATH="$SCRIPT_DIR" python3 -m kimiflow_core.render --root "$ROOT" --check --quiet); then
+    say "  ok    rendered skill outputs"
   else
-    say "  FAIL  rendered skill outputs could not be rendered"
+    say "  FAIL  rendered skill outputs drift from docs/render/kimiflow"
     fails=$((fails+1))
   fi
 else
   say "  skip  rendered skill outputs (no docs/render/kimiflow source)"
+fi
+
+check_max_bytes "SKILL.md always-loaded prose" "$ROOT/SKILL.md" 56000
+check_max_bytes "Codex SKILL.md always-loaded prose" "$ROOT/skills/kimiflow/SKILL.md" 15000
+if [ -d "$ROOT/phases" ]; then
+  phase_found=0
+  for phase_file in "$ROOT"/phases/*.md; do
+    [ -e "$phase_file" ] || continue
+    phase_found=1
+    check_max_bytes "${phase_file#$ROOT/} phase prose" "$phase_file" 20000
+  done
+  if [ "$phase_found" -eq 0 ]; then
+    say "  skip  phase prose byte budgets (no phases/*.md files)"
+  fi
+else
+  say "  skip  phase prose byte budgets (no phases directory)"
+fi
+
+launcher="$ROOT/hooks/launcher-status.sh"
+if [ -x "$launcher" ]; then
+  budget_tmp="$(mktemp -d)"
+  trap 'rm -rf "$budget_tmp"' EXIT
+  git -C "$budget_tmp" init -q
+  check_output_bytes "launcher-status default output" 8000 "$launcher" --root "$budget_tmp"
+  check_output_bytes "launcher-status --pretty output" 12000 "$launcher" --root "$budget_tmp" --pretty
+else
+  say "  skip  launcher-status output byte budgets (script absent)"
 fi
 
 if [ "$fails" -ne 0 ]; then
