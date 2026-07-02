@@ -125,8 +125,8 @@ never staged or committed
 Never batch slices
 MR review-run --run
 --skip "<reason>"
-blocks completion
-store the key
+a CLOSED result blocks completion
+neither `.kimiflow/` nor repo files store the key
 never patches skills or writes external notes blindly
 SKILL-DRAFTS
 PMS refresh --changed
@@ -166,6 +166,10 @@ fixes the verified root cause
 non-contradictory
 no invented assumptions
 does it address the cause, not the symptom
+`kimiflow grill` — clarify/spec only, no code.
+`kimiflow plan` — clarify + understand + plan + plan-gate, then park/resume, no code.
+`kimiflow review` — read-only existing-feature/current-change review, no code.
+`kimiflow audit` — read-only cleanup/refactoring scan first, no code until a slice is approved.
 CANDIDATE <SEVERITY> <ref> :: <claim> :: verify=<smallest check>
 NEEDLES
 
