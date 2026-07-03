@@ -6,6 +6,13 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.1.57
+
+Model-aware routing: kimiflow's per-role routing now accounts for model-family behaviour differences, not just tier + family.
+
+### Added
+- **Model-aware routing** (`reference.md` "Model routing (per-role)", `docs/kimiflow-scaling-knobs.md`, new `evals/scenarios/11-refusal-as-fallback.md`): a **refusal-shaped final message** from any seat is now a cross-family fallback trigger — recognized by the *shape* of the message, since the transport exposes no API status field; the **`failure-security` lens routes off the Fable family** (Fable 5 + Mythos 5) when another family is available and takes priority for the single cross-family review lens under a Fable session (no second seat, no budget change); and per-seat **`effort`** is documented as an advisory allocation dimension (`high`/`xhigh` for the quality-deciding roles, `low` for narrow read-only lenses). Advisory-only and degrades gracefully; no new gate or hook. A new out-of-CI eval scenario pins the refusal→fallback behaviour.
+
 ## 0.1.56
 
 Audit-hardening plus the R0-R4 rebuild: a 7-lens adversarial baseline audit with every confirmed finding fixed test-first; the five large bash hooks ported to a tested Python core (`kimiflow_core`); `SKILL.md` inverted to a thin always-loaded driver with on-demand phase detail; both host skills rendered from one source; release byte budgets; and an independent merge review of the rebuild branch with all BLOCKER/HIGH findings fixed.
