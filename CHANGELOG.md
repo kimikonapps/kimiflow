@@ -4,6 +4,12 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.1.58
+
+Gemini joins the cross-family reviewer chain: on a Claude Code host one review lens can now route to Gemini (via the Antigravity `agy` CLI) as a second independent family, ordered after Codex and before same-family — with a per-repo order token and a hardened, sandboxed transport.
+
 ### Added
 - **Gemini as a second cross-family reviewer** (`reference.md` "Model routing (per-role)", `docs/kimiflow-scaling-knobs.md`, new `evals/scenarios/12-cross-family-order.md`): on a Claude Code host the cross-family review seat is now an **ordered chain** — default Codex → Gemini (Antigravity `agy`, pinned `Gemini 3.5 Flash (High)`) → same-family. `.kimiflow/cross-family` gains an optional **order token** (`auto <order>`, an exact try-list, e.g. `auto gemini,codex` or `auto gemini` to skip Codex where it times out), also settable via `--settings`. The Gemini transport is **`agy -p … --sandbox`** with a mandatory no-tools instruction — unconstrained, `agy` is an agentic CLI that scans the filesystem and pollutes stdout; sandboxed it returns a clean final message. A **quota/usage-limit/rate-limit** response is now an explicit fallback trigger, and a **grammar-validity backstop** (any non-`FINDING`/`NONE` output = failure, never a result) guarantees a limit notice or tool-activity stream is never mis-persisted as a review. The `large` Phase-6 verifier prefers the Gemini tier (wide context); the `failure-security` off-Fable routing now names either non-Fable family. Advisory routing only — no new gate/hook, graceful degradation when a CLI is absent.
 
