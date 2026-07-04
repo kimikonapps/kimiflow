@@ -84,6 +84,7 @@ location (Judging), and run each eval subagent in an environment without the use
 | 09 | headless build-gate | 4 |
 | 10 | terse-output | all |
 | 11 | state-persistence | all |
+| 12 | cross-family order & 3-tier chain | 4/7 |
 
 **Reviewer-calibration** — a second dimension (does the *reviewer* judge cleanly under pressure, not
 just hold a gate?): [`reviewer-calibration.md`](reviewer-calibration.md) +

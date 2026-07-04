@@ -33,7 +33,8 @@ loop still runs.
 | Subagent spawning (fresh, isolated context) | every delegated phase (understand / plan / review / verify) | **Load-bearing** — spawn-model change → the whole delegation loop breaks |
 | Named agent types `general-purpose` · `Explore` · `Plan` · `code-review-audit` · `senior-reviewer` | research / plan / review / explore delegations | Graceful-ish — rename/removal needs a fallback type, but is recoverable |
 | Subagent `isolation: worktree` | parallel-implementation knob (opt-in, OFF by default) | Graceful — breaks the parallel knob only; default sequential path unaffected |
-| External `codex` CLI (optional) | cross-family reviewer knob | Graceful — absent → knob simply unavailable |
+| External `codex` CLI (optional) | cross-family reviewer knob (Claude-host tier 1) | Graceful — absent → knob simply unavailable |
+| External `agy` (Antigravity) CLI (optional) | cross-family reviewer knob (Claude-host Gemini tier); invoked `agy -p … --sandbox --model "Gemini 3.5 Flash (High)"` | Graceful — absent → tier skipped, chain falls to same-family. `--sandbox`+no-tools required (unconstrained `agy` is agentic); output validated by the FINDING-grammar backstop |
 | External `python3` >= 3.9 (stdlib only) | `hooks/memory-router.sh` is a shim that execs `python3 -m memory_router` (the memory-router runtime: status / recall / record / curate / review-run / provider / …) | **Load-bearing** — absent or < 3.9 → the memory-router hook fails; its callers (`launcher-status.sh`, `active-run.sh`) fail closed and degrade gracefully. Replaces the former in-process Bash runtime (which required `jq`). |
 | `WebSearch` / context7 / `WebFetch` (via subagents) | Phase 2 external research | Graceful — absent → research degrades, vault/codebase still ground the plan |
 | Optional notes MCP (e.g. Obsidian) | Phase 2 vault memory | Graceful — absent → skip + note in STATE.md |
