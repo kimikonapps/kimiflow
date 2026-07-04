@@ -161,7 +161,7 @@ hygiene pass, not an implementation mode:
   then restart/reload the MCP host so tools are loaded in a fresh session. If it is `authenticated`, distinguish
   local REST API validation from actual direct MCP tools before offering targeted Vault prefetch/sync. It does not
   store an API key in `.kimiflow/` and does not write external Vault notes blindly.
-- Vague idea/spec: route to existing Explore/Prepare in V1. Native `--spec` is a follow-up slice, not part of
+- Vague idea/spec: route to existing Prepare in V1. Native `--spec` is a follow-up slice, not part of
   launcher V1.
 
 **Resume safety check:** before any backlog/prepared run can enter Phase 5, validate the plan against current
@@ -432,8 +432,8 @@ Kimiflow inherits the session model but **allocates deliberately**: the session 
 - **Opus-pinned leaf seats — Claude Code host + Fable-family session only:** when the session model is the Fable family (Fable 5 + Mythos 5) and the host supports per-subagent model selection, spawn the session-model *leaf* seats at per-spawn `model: opus` — the next non-Fable Anthropic tier at half the price ($5/$25 vs $10/$50 per MTok), reserving Fable tokens for the orchestrator: **implementer, synthesizer, Phase-6 verification, and every same-family review lens** (any Phase-4/7 review lens that would otherwise inherit the session model — not a cross-family lens, not the already-non-Fable `failure-security` lens). A cross-family seat's same-family fallback takes `model: opus` if its role is a leaf seat above, or where opus is needed to keep a non-Fable requirement (the `failure-security` lens's fallback — overriding its "inherit the session model" floor while this rule is active). **Kept on the session model:** orchestrator, planner(s), Phase-2 understanding (incl. their same-family fallbacks). Advisory, **never a gate**; a **No-Op** when the session model is not the Fable family (never escalates a non-Fable session up to Fable); on the Codex host (no Opus tier) or any host without per-subagent selection the seats inherit the session model.
 - **Cross-family CLI (different family, when available):** one Phase-4 plan-review lens (`small` → the single reviewer; `large` → lens B) · one Phase-7 code-review lens (default `bug-regression`) · the Phase-5 escalation diagnosis call · at `large` additionally: one of the two dual-plan planners, the additive Phase-6 independent verifier (read-only), and the second best-of-2 candidate. On a Claude Code host **every cross-family seat except the best-of-2 implementer** (the plan/code-review lenses, the dual-plan planner, the diagnosis call, the verifier) is filled by an **ordered chain** of cross-family CLIs (default Codex → Gemini via `agy`, then same-family; configurable → "Opt-out & order"); the best-of-2 implementer seat is Codex-only and never substitutes (see Cross-family transport). The `large` Phase-6 independent verifier, when `agy`/Gemini is available, **starts its chain at the Gemini tier** (wide-context goal-backward sweep) then continues the configured order on failure — a seat-level reordering that still yields to an explicit order token.
 - **Security-sensitive lens family (advisory default) — non-Fable when available:** route the Phase-7 `failure-security` lens and any secret-scan interpretation to a model **outside the Fable family** (*"Fable family"* = Fable 5 + Mythos 5) **when another (non-Fable) family is available** — on a Claude Code host either non-Fable cross-family CLI qualifies (Codex/GPT-5.5 or Gemini via `agy`) — a Fable-family safety classifier can decline benign security-adjacent work, silently emptying the very lens meant to guard it; when no other family is available it silently inherits the session model (no force) — except under an active Fable-session leaf rule, where the fallback takes `model: opus` (see the leaf bullet above). Because a review gate carries only **one** cross-family/non-Fable *review lens* (default `bug-regression`), when the session model *is* the Fable family the `failure-security` lens takes **priority for that single lens seat** — it displaces `bug-regression` as that gate's cross-family review lens. **No second seat, no agent-budget/engine change.**
-- **Smallest suitable tier:** narrow read-only LLM lenses only — feature-check lenses and the 🧭 Explore *direction* fan-out. Explicitly NOT Phase-2 codebase understanding (the understanding backbone stays on the session model). Bash hooks carry no model and are out of scope.
-- **`effort` per seat (advisory — same "allocate deliberately" logic as tier/family):** where the host exposes per-subagent effort selection, allocate `high`/`xhigh` to the roles where quality is decided — planner(s), implementer, verifier (incl. the additive Phase-6 verifier), Phase-2 codebase understanding — and `low` to the narrow read-only lenses (feature-check, the 🧭 Explore *direction* fan-out). On current models (Fable 5, Opus 4.8, Sonnet 5) effort moves output quality more than on prior models, so it is worth allocating like any other routing dimension. Advisory allocation, **never a gate**; on hosts without per-subagent effort selection the seat simply inherits the session-model default (graceful degradation, no error).
+- **Smallest suitable tier:** narrow read-only LLM lenses only — feature-check lenses. Explicitly NOT Phase-2 codebase understanding (the understanding backbone stays on the session model). Bash hooks carry no model and are out of scope.
+- **`effort` per seat (advisory — same "allocate deliberately" logic as tier/family):** where the host exposes per-subagent effort selection, allocate `high`/`xhigh` to the roles where quality is decided — planner(s), implementer, verifier (incl. the additive Phase-6 verifier), Phase-2 codebase understanding — and `low` to the narrow read-only lenses (feature-check). On current models (Fable 5, Opus 4.8, Sonnet 5) effort moves output quality more than on prior models, so it is worth allocating like any other routing dimension. Advisory allocation, **never a gate**; on hosts without per-subagent effort selection the seat simply inherits the session-model default (graceful degradation, no error).
 - Record the applied routing once in `STATE.md` (e.g. `model_routing: cross_family=auto, cheap_lenses=on, leaf_model=opus`).
 
 **Cross-family transport (pinned — the reviewer-output channel is per transport, NOT always stdout):**
@@ -458,7 +458,7 @@ A user-approval checkpoint between the (internally vetted) plan and implementati
 - **Fires** at the end of Phase 4 (after the plan-gate opens) **iff `get`==`on` ∧ the session is interactive**.
 - **Summary content** (condensed from existing artifacts, not re-researched): Problem/Goal · Decisions · Plan/Design · Tests/Acceptance (`AC-N → test_name`) · Risks · Knobs (enabled knobs + planned Phase-5–7 fan-out; includes the best-of-2 offer when its trigger holds — → `docs/kimiflow-scaling-knobs.md`) · + artifact paths. A **bounded terse-output exemption** like the commit-gate: structured summary + paths, never a full-artifact dump (invariant (b) still holds).
 - **Outcomes:** approve → Phase 5; "change" → back to Phase 3 (revise → re-gate); **defer → backlog** → STOP, mark `Status: backlog` in STATE (a finished, plan-gate-approved plan parked before implementation: phases 0–4 done, 5 open), emit the `--resume` command — a *deliberate, offered* park; `off` → straight to Phase 5; **headless / no answer → treat like `--prepare`** (STOP, mark `Status: backlog`, emit the `--resume` command — never build unapproved).
-  - **Explicit defer vs. silent fallback:** the **defer** outcome and the **headless / no-answer** stop reach the *same* parked state and the *same* `Status: backlog` marker; the only difference is **intent** — defer is the explicit human choice ("good plan, not now"), headless is the silent fallback (no interactive approver). Both are mechanically the `--prepare` stop. The `backlog` marker is written only by these Phase-4 parks (and the step-6 plan-gate-open `--prepare` branch) reaching 0–4-done; an earlier stop (Explore, mid-phase) stays `active`. The `--resume` no-slug listing surfaces the marker (absent → `active`) so backlog items are visible as a backlog. **Resuming a `backlog` run into Phase 5 re-presents this summary** (iff `get`==`on` ∧ interactive, after the resume safety check) — a deferred plan gets the same approval a directly-built one gets.
+  - **Explicit defer vs. silent fallback:** the **defer** outcome and the **headless / no-answer** stop reach the *same* parked state and the *same* `Status: backlog` marker; the only difference is **intent** — defer is the explicit human choice ("good plan, not now"), headless is the silent fallback (no interactive approver). Both are mechanically the `--prepare` stop. The `backlog` marker is written only by these Phase-4 parks (and the step-6 plan-gate-open `--prepare` branch) reaching 0–4-done; an earlier mid-phase stop stays `active`. The `--resume` no-slug listing surfaces the marker (absent → `active`) so backlog items are visible as a backlog. **Resuming a `backlog` run into Phase 5 re-presents this summary** (iff `get`==`on` ∧ interactive, after the resume safety check) — a deferred plan gets the same approval a directly-built one gets.
 - **Set via `--settings`** (project scope only).
 
 ---
@@ -466,69 +466,6 @@ A user-approval checkpoint between the (internally vetted) plan and implementati
 ## Phase task list (all phases)
 
 A native task-list widget for glance-level progress. In Phase 0 create one task per phase actually run (`TaskCreate`/`TaskUpdate` in Claude Code; Codex plan/status updates in Codex), scaled to scope; mark `in_progress`/`completed` as phases open/close. It **complements**, never replaces: `STATE.md` is the durable, resume-able record (survives sessions; the widget is ephemeral per session) and the colored markers remain the per-phase event line. It satisfies the "reads at a glance" goal as structured output, not prose narration (see terse-output (e)). Subagents keep their own internal task-lists — keep those out of the orchestrator's phase list.
-
----
-
-## Explore phase (before Phase 1) — opt-in
-
-A divergent front-end that widens the **direction** space before the convergent Clarify locks the
-WHAT. Runs only on `--explore` or an accepted offer. **Feature mode only** — fix is
-root-cause-convergent, audit is itself a survey. If exploration reveals the real work is a fix or a
-cleanup, that's a **finding** → suggest `--fix`/`--audit`; don't force it through Explore.
-
-**Trigger & offer-on-detect.** The explicit `--explore` flag always runs the phase. Otherwise, when a
-request reads as open-ended **and** is not already a concrete spec (a clear WHAT with
-acceptance-shaped detail), kimiflow **offers once**: "This looks open-ended — explore a few
-directions first?". **Decline → normal routing. Headless / no interactive answer → skip the offer,
-proceed normally (never block).** Only `--explore` forces the phase. Detection markers (illustrative,
-in the user's language): EN "not sure how", "what are my options", "ideas for", "brainstorm",
-"explore", "which way", "how should I"; DE "Ideen für/zu", "weiß nicht wie", "welche Optionen", "wie
-am besten".
-
-**Flow — bound → fan-out → menu → pick:**
-1. **Bound (≤1 question).** If the request lacks what's needed to explore *relevantly* (goal, hard
-   constraints, what "better" means), ask ONE plain-language bounding question. Already bounded →
-   skip. A full interview is Clarify's job, later — not here.
-2. **Fan-out (2–3 explorers, parallel, read-only `Explore` agents).** Each is forced to a **distinct**
-   direction via a diverse lens (e.g. minimal/MVP · robust/long-horizon · sideways/reframe) and is
-   **codebase-grounded**: it reads what exists and cites `file:line` where a direction leans on
-   current code, marking speculation "NOT VERIFIED". Adversarial-diversity framing so they don't
-   converge. Each returns: framing · sketch · rough effort/risk · key trade-off · what it rules out.
-   Counts against the agent budget (2–3, within the lean default).
-3. **Synthesize → menu.** Dedup/merge into a terse menu of 2–3 directions (each ≤3 lines: name ·
-   essence · the deciding trade-off). Write `EXPLORE.md`; show the menu + path — a **bounded
-   terse-output exemption** (structured, like the pre-build summary; never a full-artifact dump,
-   invariant (b) still holds).
-4. **Pick — the Explore gate (human; no numeric score):**
-   - **continue** → the chosen direction **seeds Phase 1 Clarify** (`INTENT.md` anchored to it;
-     Clarify converges the details and does NOT re-ask the WHAT from scratch) → normal loop.
-   - **stop** → behave like `--prepare`: STOP, update STATE (Explore done + chosen direction), emit
-     `/kimiflow --resume <slug>` (resume re-enters at Clarify with the chosen direction).
-   - **none of these** → ONE re-fan-out using the user's steer (why none fit), bounded to a single
-     retry (anti-spin), then stop + ask.
-   - **headless / no answer** → never auto-pick a direction; behave like `--prepare`.
-
-**`EXPLORE.md`** (at `.kimiflow/<slug>/EXPLORE.md`, dense — artifact-economy):
-```
-# Explore: <fuzzy idea in plain words>
-## Bounding            (the constraints/goal that scoped the search)
-## Directions (2–3)
-   ### <Direction name>
-   - Essence        (1–2 sentences)
-   - Grounding      (file:line it leans on; "NOT VERIFIED" if speculative)
-   - Effort / risk  (rough, relative)
-   - Trade-off      (what you gain / give up)
-   - Rules out      (what choosing it forecloses)
-## Chosen             (the picked direction + why; or "none → re-explored / stopped")
-```
-
-**Handoff to Clarify:** Phase 1 reads `## Chosen` and seeds `INTENT.md` from it — the WHAT is now the
-chosen direction, which Clarify then narrows. **Resume:** Explore done with a chosen direction ⇒
-`--resume` starts at Phase 1 Clarify, seeded by it.
-
-**STATE:** the `Phase E (explore): open|in-progress|done` line is written **only when Explore runs** —
-it is **absent on non-explore runs** (the phase is purely additive; a run without `--explore`/an
-accepted offer is behaviorally unchanged).
 
 ---
 
