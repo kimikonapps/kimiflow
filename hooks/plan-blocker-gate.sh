@@ -100,6 +100,10 @@ file_has_path_evidence() {
   [ -f "$file" ] && grep -Eq "$PATH_RE" "$file"
 }
 
+# Accepted "Affected" header set (case-insensitive via tolower, POSIX awk) — keep in sync
+# with AFFECTED_HEADER_RE / run_affected_paths in hooks/kimiflow_core/active_run.py: every
+# header/source this gate accepts must also be visible to the staleness parser, or a plan
+# passes the gate but staleness stays unknown and finish wedges.
 file_declares_affected_paths() {
   local file="$1"
   [ -f "$file" ] || return 1
@@ -110,7 +114,7 @@ file_declares_affected_paths() {
       gsub(/\*\*/, "", line)
       plain = line
       sub(/^[[:space:]]*-[[:space:]]*/, "", plain)
-      if (plain ~ /^[[:space:]]*(Affected files|Affected paths|Files|Paths|Touches)[[:space:]]*:/) {
+      if (tolower(plain) ~ /^[[:space:]]*(affected files|affected paths|files|paths|touches)[[:space:]]*:/) {
         sub(/^[^:]*:[[:space:]]*/, "", plain)
         if (length(plain) > 0) print plain
         in_list = 1

@@ -24,6 +24,7 @@ USAGE = """#!/usr/bin/env bash
 #   active-run.sh mark-built|mark-accepted --id <id> [--root <path>] [--write] [--pretty]
 #   active-run.sh mark-rejected|drop-item --id <id> --reason <text> [--root <path>] [--write] [--pretty]
 #   active-run.sh refresh-baseline [--root <path>] [--write] [--pretty]
+#   active-run.sh await-user --run <path> [--reason <text>] [--root <path>] [--write] [--pretty]
 #   active-run.sh phase-read --run <path> --phase <0-7> --file phases/<file>.md [--root <path>] [--write] [--pretty]
 #   active-run.sh phase-read-status --run <path> [--root <path>] [--json] [--pretty]
 #   active-run.sh phase-read-gate --run <path> --through-phase <0-7> [--root <path>]
@@ -142,6 +143,14 @@ def pathish_affected_entry(value):
     return "/" in value or "." in value or value in names
 
 
+# Accepted "Affected" header set (case-insensitive) — keep in sync with
+# file_declares_affected_paths in hooks/plan-blocker-gate.sh: every header/source the plan
+# gate accepts must also be visible here (run_affected_paths mirrors the gate's
+# STATE.md-or-PLAN.md acceptance), or a plan passes the gate but staleness stays unknown
+# and finish wedges.
+AFFECTED_HEADER_RE = re.compile(r"^[ \t]*(Affected files|Affected paths|Files|Paths|Touches)[ \t]*:[ \t]*(.*)$", re.IGNORECASE)
+
+
 def affected_paths(path):
     if not os.path.isfile(path):
         return []
@@ -152,7 +161,7 @@ def affected_paths(path):
             for raw in handle:
                 line = raw.rstrip("\n").replace("\r", "").replace("**", "")
                 plain = re.sub(r"^[ \t]*-[ \t]*", "", line)
-                match = re.match(r"^(Affected files|Affected paths):[ \t]*(.*)$", plain)
+                match = AFFECTED_HEADER_RE.match(plain)
                 if match:
                     rest = match.group(2)
                     if rest:
@@ -174,6 +183,16 @@ def add_affected(out, raw):
     path = raw.strip()
     if path and pathish_affected_entry(path) and path not in out:
         out.append(path)
+
+
+def run_affected_paths(run_dir):
+    # STATE.md is authoritative; fall back to PLAN.md like the plan gate does
+    # (file_declares_affected_paths accepts either), so a run that declares its
+    # affected paths only in PLAN.md stays visible to staleness.
+    paths = affected_paths(os.path.join(run_dir, "STATE.md"))
+    if paths:
+        return paths
+    return affected_paths(os.path.join(run_dir, "PLAN.md"))
 
 
 def git_head(root):
@@ -294,12 +313,13 @@ def status_json(root):
             "item_counts": {"total": 0, "pending": 0, "built": 0, "accepted": 0, "rejected": 0, "dropped": 0, "open": 0},
             "stale_risk": "none",
             "stale": {"risk": "none", "changed_paths": [], "relevant_changed_paths": [], "reason": "no_active_session"},
+            "awaiting_user": False,
             "terminal": True,
         }
     run_rel = active.get("run", "")
     run_dir = resolve_run_dir(root, run_rel)
     state = os.path.join(run_dir, "STATE.md")
-    affected = affected_paths(state)
+    affected = run_affected_paths(run_dir)
     base = active.get("last_checked_head") or active.get("started_head") or "NOT VERIFIED"
     stale = stale_status(root, base, affected)
     items = items_path(run_dir)
@@ -324,6 +344,7 @@ def status_json(root):
         "item_counts": counts,
         "stale_risk": stale.get("risk", "unknown"),
         "stale": stale,
+        "awaiting_user": active.get("awaiting_user") is True,
         "terminal": status in ("done", "parked", "failed", "aborted"),
         "next_action": (
             "revalidate_then_refresh_baseline"
@@ -475,7 +496,7 @@ def cmd_start(args):
         "updated_at": iso_now(),
         "started_head": git_head(root),
         "last_checked_head": git_head(root),
-        "affected_files_at_start": affected_paths(os.path.join(run_dir, "STATE.md")),
+        "affected_files_at_start": run_affected_paths(run_dir),
     }
     if phase_required:
         status["phase_reads_required"] = True
@@ -553,10 +574,34 @@ def cmd_refresh_baseline(args):
     refreshed = dict(active)
     refreshed["updated_at"] = iso_now()
     refreshed["last_checked_head"] = git_head(root)
-    refreshed["affected_files_at_last_check"] = affected_paths(os.path.join(run_dir, "STATE.md"))
+    refreshed["affected_files_at_last_check"] = run_affected_paths(run_dir)
     if opts["--write"]:
         write_active(root, refreshed)
     json_print(status_json(root), opts["--pretty"])
+
+
+def cmd_await_user(args):
+    opts = parse_options(args, "await-user", {"--root": "", "--run": "", "--reason": "", "--write": False, "--pretty": False})
+    need_jq()
+    if not opts["--run"]:
+        die("await-user requires --run", 2)
+    root = resolve_root(opts["--root"], strict=opts["--write"])
+    status = require_active(root)
+    run_rel = rel_path(root, resolve_run_dir(root, opts["--run"]))
+    if run_rel != status["run"]:
+        die("await-user: --run does not match active session: %s" % status["run"], 1)
+    active = load_active(root)
+    updated = dict(active)
+    updated["awaiting_user"] = True
+    if opts["--reason"]:
+        updated["awaiting_reason"] = opts["--reason"]
+    else:
+        updated.pop("awaiting_reason", None)
+    updated["awaiting_since"] = iso_now()
+    updated["updated_at"] = iso_now()
+    if opts["--write"]:
+        write_active(root, updated)
+    json_print({"status": "awaiting_user", "written": opts["--write"] is True, "run": run_rel, "reason": opts["--reason"] or None}, opts["--pretty"])
 
 
 def cmd_phase_read(args):
@@ -806,6 +851,14 @@ def cmd_prompt_context():
     status = status_json(root)
     if not (status.get("present") is True and status.get("terminal") is False):
         return 0
+    active = load_active(root)
+    if active.get("awaiting_user") is True:
+        # The user answered the gate question the orchestrator was awaiting; resume the run.
+        resumed = dict(active)
+        for key in ("awaiting_user", "awaiting_reason", "awaiting_since"):
+            resumed.pop(key, None)
+        resumed["updated_at"] = iso_now()
+        write_active(root, resumed)
     run = status["run"]
     stale = status["stale_risk"]
     open_count = status["item_counts"]["open"]
@@ -835,6 +888,10 @@ def cmd_stop_gate():
     status = status_json(root)
     if not (status.get("present") is True and status.get("terminal") is False):
         return 0
+    if status.get("awaiting_user") is True:
+        # The orchestrator is legitimately waiting on a user answer at an engine gate
+        # (set via await-user); let the turn end instead of blocking the question.
+        return 0
     reason = (
         "kimiflow active-session gate: %s is still open. Open items: %s. Continue the Kimiflow loop, or close it mechanically with hooks/active-run.sh finish --write, park --write --reason <text>, fail --write --reason <text>, or abort --write --reason <text>."
         % (status["run"], status["item_counts"]["open"])
@@ -862,6 +919,8 @@ def main(argv=None):
             cmd_update_item(command, args)
         elif command == "refresh-baseline":
             cmd_refresh_baseline(args)
+        elif command == "await-user":
+            cmd_await_user(args)
         elif command == "phase-read":
             cmd_phase_read(args)
         elif command == "phase-read-status":

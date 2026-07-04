@@ -4,7 +4,15 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+Hardening from real-world incidents: the Codex cross-family transport is pinned instead of trusting host defaults, mechanical gate markers are spelled out verbatim for subagents, and the active-session Stop gate learns to yield while the orchestrator is legitimately waiting for a user answer.
+
+### Added
+- **`awaiting_user` state in the Active Session Contract** (`hooks/kimiflow_core/active_run.py`, `hooks/test-active-run.sh`, `hooks/kimiflow_core/tests/test_active_run.py`): new `await-user --run <dir> [--reason <text>] --write` subcommand marks the run as waiting for a user answer at an engine gate (micro-grill, pre-build approval); the Stop gate passes while the flag is set, and the next `prompt-context` call clears it automatically — no more park/restart cycles just to ask the user a question. `status` reports the flag; absent flag = `false` (backward compatible).
+
+### Changed
+- **Cross-family transport hardened** (`reference.md` "Cross-family transport"): review/diagnosis/verify seats now pin `codex exec -s read-only … </dev/null` explicitly — the host sandbox default is never assumed (a local `~/.codex/config.toml` can override it; a reviewer call executing write commands was a real incident), stdin must be closed (unredirected `codex exec` blocks on stdin), and every seat call or malformed-retry is a fresh `codex exec` session (never resume — cross-call context bleed is an observed failure mode).
+- **Gate markers spelled out for subagents** (`phases/phase-0-setup.md`, `phases/phase-2-understand.md`, `phases/phase-3-plan.md`): the literal `Affected files:` line (plan-blocker gate + staleness tracking) and the current-state evidence markers (`source_type:` enum, `source_url: https://…`, `Status: checked`) are now named verbatim where plans, STATE.md, and evidence files are authored — planner subagents must not have to guess mechanical marker syntax.
+- **Affected-header parsing unified** (`hooks/kimiflow_core/active_run.py`, `hooks/plan-blocker-gate.sh`, `hooks/test-plan-blocker-gate.sh`): `affected_paths` now accepts the same five headers as the plan-blocker gate (`Affected files|Affected paths|Files|Paths|Touches`), both parsers are case-insensitive, and staleness tracking falls back to `PLAN.md` when `STATE.md` carries no affected line (matching the gate's STATE-or-PLAN acceptance) — previously a plan using `Files:`/`Paths:`/`Touches:` or declaring paths only in `PLAN.md` passed the gate but was invisible to staleness tracking, wedging `finish` with `risk=unknown`. Both parsers carry keep-in-sync cross-references.
 
 ## 0.1.58
 

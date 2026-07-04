@@ -255,6 +255,27 @@ EOF
 out="$(run_gate)"
 assert_field "$out" 2 OPEN "extensionless_project_file_path_opens"
 
+# --- Header-set consistency: every Affected header this gate accepts must also be
+# visible to the staleness parser in hooks/kimiflow_core/active_run.py (keep in sync),
+# or a plan passes the gate but finish wedges on stale_risk=unknown -----------------
+for header in "Affected files" "Affected paths" "Files" "Paths" "Touches" "files"; do
+  reset_run
+  grep -v '^Affected files:' "$RUN/STATE.md" > "$RUN/STATE.tmp" && mv "$RUN/STATE.tmp" "$RUN/STATE.md"
+  printf '%s: src/feature.ts, tests/feature.test.ts\n' "$header" >> "$RUN/STATE.md"
+  out="$(run_gate)"
+  assert_field "$out" 2 OPEN "header_${header// /_}_opens_gate"
+  if command -v python3 >/dev/null 2>&1; then
+    got="$(PYTHONPATH="$(dirname "$SCRIPT")" python3 -c 'import sys; from kimiflow_core.active_run import affected_paths; print(",".join(affected_paths(sys.argv[1])))' "$RUN/STATE.md")"
+    if [ "$got" = "src/feature.ts,tests/feature.test.ts" ]; then
+      pass "header_${header// /_}_visible_to_staleness"
+    else
+      fail "header_${header// /_}_visible_to_staleness (got '$got')"
+    fi
+  else
+    pass "header_${header// /_}_staleness_check_skipped_without_python3"
+  fi
+done
+
 # --- Audit-mode profile (finding C1: audit runs carry AUDIT-INTENT.md + AUDIT.md, not
 # PLAN.md/ACCEPTANCE.md; the gate must not hard-require plan artifacts or it deadlocks) ---
 reset_audit() {

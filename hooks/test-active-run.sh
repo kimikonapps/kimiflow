@@ -192,6 +192,19 @@ assert_jq "$out" '.decision == "block" and (.reason | contains("active-session g
 out="$(printf '{"cwd":"%s","stop_hook_active":true}' "$REPO" | "$SCRIPT" stop-gate)"
 assert_empty "$out" "stop_gate_loop_break_allows_continuation"
 
+out="$(run_active await-user --run .kimiflow/demo --reason "engine gate: waiting for user answer" --write)"
+assert_jq "$out" '.status == "awaiting_user" and .written == true and .run == ".kimiflow/demo"' "await_user_sets_flag"
+out="$(run_active status)"
+assert_jq "$out" '.awaiting_user == true' "status_reports_awaiting_user"
+out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" stop-gate)"
+assert_empty "$out" "stop_gate_passes_while_awaiting_user"
+out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" prompt-context)"
+assert_jq "$out" '.hookSpecificOutput.hookEventName == "UserPromptSubmit"' "prompt_context_injects_while_awaiting_user"
+out="$(run_active status)"
+assert_jq "$out" '.awaiting_user == false' "prompt_context_clears_awaiting_user"
+out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" stop-gate)"
+assert_jq "$out" '.decision == "block"' "stop_gate_blocks_after_awaiting_user_cleared"
+
 printf 'two\n' > "$REPO/src/a.txt"
 ( cd "$REPO" && git add src/a.txt && git commit -q -m change-a )
 out="$(run_active status)"
@@ -233,6 +246,23 @@ printf 'two\n' > "$REPO/src/a.txt"
 ( cd "$REPO" && git add src/a.txt && git commit -q -m change-a )
 out="$(run_active status)"
 assert_jq "$out" '.affected_files == ["src/a.txt"] and .stale_risk == "needs_revalidation" and (.stale.relevant_changed_paths | index("src/a.txt"))' "markdown_affected_files_are_parsed"
+
+reset_repo
+sed 's/^Affected files:/Touches:/' "$REPO/.kimiflow/demo/STATE.md" > "$REPO/.kimiflow/demo/STATE.tmp" && mv "$REPO/.kimiflow/demo/STATE.tmp" "$REPO/.kimiflow/demo/STATE.md"
+run_active start --run .kimiflow/demo --write >/dev/null
+printf 'two\n' > "$REPO/src/a.txt"
+( cd "$REPO" && git add src/a.txt && git commit -q -m change-a )
+out="$(run_active status)"
+assert_jq "$out" '.affected_files == ["src/a.txt"] and .stale_risk == "needs_revalidation"' "touches_header_affected_files_are_parsed"
+
+reset_repo
+grep -v '^Affected files:' "$REPO/.kimiflow/demo/STATE.md" > "$REPO/.kimiflow/demo/STATE.tmp" && mv "$REPO/.kimiflow/demo/STATE.tmp" "$REPO/.kimiflow/demo/STATE.md"
+printf 'Affected files: src/a.txt\n' >> "$REPO/.kimiflow/demo/PLAN.md"
+run_active start --run .kimiflow/demo --write >/dev/null
+printf 'two\n' > "$REPO/src/a.txt"
+( cd "$REPO" && git add src/a.txt && git commit -q -m change-a )
+out="$(run_active status)"
+assert_jq "$out" '.affected_files == ["src/a.txt"] and .stale_risk == "needs_revalidation"' "plan_md_only_affected_files_fall_back"
 
 reset_repo
 grep -v '^Affected files:' "$REPO/.kimiflow/demo/STATE.md" > "$REPO/.kimiflow/demo/STATE.tmp" && mv "$REPO/.kimiflow/demo/STATE.tmp" "$REPO/.kimiflow/demo/STATE.md"

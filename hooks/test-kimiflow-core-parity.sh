@@ -227,6 +227,11 @@ expected_divergence() {
   return 1
 }
 
+# Post-R1 schema addition: active-session status output gained "awaiting_user"
+# (await-user engine gate, hooks/kimiflow_core/active_run.py). Pre-R1 bash never
+# emitted the field, so parity strips it (compact and pretty JSON) and keeps
+# comparing the shared fields; its semantics are covered by test-active-run.sh
+# and the kimiflow_core unit tests.
 normalize() {
   sed -E \
     -e "s#$OLD_ROOT#ROOT#g" \
@@ -238,7 +243,9 @@ normalize() {
     -e 's/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z/TIMESTAMP/g' \
     -e 's/bh_[A-Za-z0-9_:-]+/bh_ID/g' \
     -e 's/[0-9a-f]{40}/COMMIT/g' \
-    -e 's/"version": ?"[0-9]+\.[0-9]+\.[0-9]+"/"version": "VERSION"/g'
+    -e 's/"version": ?"[0-9]+\.[0-9]+\.[0-9]+"/"version": "VERSION"/g' \
+    -e 's/"awaiting_user":(true|false),//g' \
+    -e '/^[[:space:]]*"awaiting_user": (true|false),?$/d'
 }
 
 normalized_file_hash() {
