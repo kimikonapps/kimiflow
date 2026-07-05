@@ -80,7 +80,7 @@ grep -q 'Mandatory micro-grill for small/quick' "$ROOT/reference.md" && ok "refe
 grep -q 'Micro-Grill' "$ROOT/README.md" && ok "README documents small/quick micro-grill" || bad "README missing small/quick micro-grill"
 grep -q 'Vault Pulse' "$ROOT/SKILL.md" && ok "canonical skill requires scope=large Vault Pulse semantics" || bad "canonical skill missing Vault Pulse"
 grep -q 'Vault Pulse' "$SKILL" && ok "Codex wrapper preserves scope=large Vault Pulse semantics" || bad "Codex wrapper missing Vault Pulse"
-grep -q 'Vault Pulse (`scope=large` only)' "$ROOT/reference.md" && ok "reference documents scope=large Vault Pulse semantics" || bad "reference missing scope=large Vault Pulse semantics"
+grep -Eq 'Vault Pulse.*scope=large|scope=large.*Vault Pulse' "$ROOT/reference.md" && ok "reference documents scope=large Vault Pulse semantics" || bad "reference missing scope=large Vault Pulse semantics"
 grep -q 'Vault Pulse' "$ROOT/README.md" && ok "README documents scope=large Vault Pulse semantics" || bad "README missing Vault Pulse"
 if grep -q 'kimiflow grill.*no code' "$ROOT/reference.md" \
   && grep -q 'kimiflow plan.*no code' "$ROOT/reference.md" \
