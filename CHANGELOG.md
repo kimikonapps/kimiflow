@@ -4,7 +4,8 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Changed
+- **Pre-code simplicity ladder shipped in the spec** (`docs/render/kimiflow/canonical/SKILL.md` → `SKILL.md`, `reference.md`): the always-loaded Simplicity-first rule now names the decision ladder for new code — does this need to exist at all? → stdlib before hand-rolled → native platform features before a new dependency → one line before fifty. Ships with every install on both hosts (the Codex skill reads the canonical `SKILL.md`/`reference.md`), so the anti-over-engineering reflex no longer depends on a user's personal `CLAUDE.md`.
 
 ## 0.1.59
 

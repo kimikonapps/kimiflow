@@ -1180,7 +1180,7 @@ With that file present, the hook runs the command on stop; on failure it blocks 
 
 ## Code mandate (Phase 3 directive · Phase 5 build · Phase 7 review)
 
-- **Simplicity-first:** minimal code for the problem. No speculative abstractions, no configurability without a request, no error handling for impossible cases. "Would a senior call this overkill?" → yes → simplify.
+- **Simplicity-first:** minimal code for the problem. No speculative abstractions, no configurability without a request, no error handling for impossible cases. "Would a senior call this overkill?" → yes → simplify. Before new code, climb the ladder: does this need to exist at all? → stdlib before hand-rolled → native platform features before a new dependency → one line before fifty.
 - **Match the existing architecture** + project standards: adopt the project's patterns, naming, style. State-of-the-art means **fitting**, not **new at any cost**.
 - **Scales with the project:** prototype ≠ enterprise layers; a hot path needs performance awareness.
 - **Efficient & elegant:** readable, no needless recomputation in hot paths, clear single-purpose units.
