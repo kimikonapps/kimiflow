@@ -6,7 +6,6 @@ set -u
 SCRIPT="$(cd "$(dirname "$0")" && pwd)/launcher-status.sh"
 MEMORY_ROUTER="$(cd "$(dirname "$0")" && pwd)/memory-router.sh"
 ACTIVE_RUN="$(cd "$(dirname "$0")" && pwd)/active-run.sh"
-BACKGROUND_RUN="$(cd "$(dirname "$0")" && pwd)/background-run.sh"
 WORK="$(mktemp -d)"
 REPO="$WORK/repo"
 INDEX="$REPO/.kimiflow/project/INDEX.json"
@@ -108,14 +107,8 @@ assert_jq "$out" '.project_map.present == true and .project_map.depth == "standa
 assert_jq "$out" '.repo.dirty == false' "ignored_kimiflow_does_not_dirty_repo"
 assert_jq "$out" '.maintenance.bring_current_recommended == false and .maintenance.commits_since_project_map_baseline == 0' "clean_current_repo_no_maintenance_recommended"
 assert_jq "$out" '.launcher.primary_action.id == "start_kimiflow" and .launcher.maintenance.visible_count == 0 and .launcher.status.installation.cache_status == "source_checkout"' "launcher_ready_state_is_quiet"
-assert_jq "$out" '.agentic_readiness.status == "readiness_status" and (.agentic_readiness.summary | test("Agentic readiness:")) and .agentic_readiness.privacy.network_calls == false' "agentic_readiness_visible"
 pretty_out="$("$SCRIPT" --root "$REPO" --pretty)"
 assert_max_bytes "$pretty_out" 12000 "pretty_output_byte_budget"
-if printf '%s\n' "$pretty_out" | grep -Fq "Agentic readiness:"; then
-  pass "agentic_readiness_pretty_summary_visible"
-else
-  fail "agentic_readiness_pretty_summary_visible"
-fi
 
 printf '# Docs\nmore\n' > "$REPO/docs/guide.md"
 ( cd "$REPO" && git add docs/guide.md && git commit -q -m docs )
@@ -393,21 +386,6 @@ printf 'two\n' > "$REPO/src/a.txt"
 ( cd "$REPO" && git add src/a.txt && git commit -q -m change-a )
 out="$(run_status)"
 assert_jq "$out" '.active_session.stale_risk == "needs_revalidation" and (.maintenance.reasons | index("active_session_needs_revalidation"))' "launcher_surfaces_active_session_stale_risk"
-
-reset_repo
-id1="$("$BACKGROUND_RUN" start --root "$REPO" --kind deep-codebase --title "Map hooks" --affected hooks --write | jq -r '.id')"
-id2="$("$BACKGROUND_RUN" start --root "$REPO" --kind docs --title "Draft docs" --affected docs --write | jq -r '.id')"
-id3="$("$BACKGROUND_RUN" start --root "$REPO" --kind improve --title "Find levers" --affected src --write | jq -r '.id')"
-printf '# Result\nHooks mapped.\n' > "$WORK/result.md"
-printf '["hooks/a.sh"]\n' > "$WORK/files.json"
-"$BACKGROUND_RUN" update --root "$REPO" --id "$id1" --status ready --result "$WORK/result.md" --files "$WORK/files.json" --write >/dev/null
-"$BACKGROUND_RUN" update --root "$REPO" --id "$id2" --status finished --result "$WORK/result.md" --files "$WORK/files.json" --write >/dev/null
-"$BACKGROUND_RUN" mark-stale --root "$REPO" --id "$id3" --reason "base changed" --write >/dev/null
-out="$(run_status)"
-assert_jq "$out" '.background.total == 3 and .background.collectable == 2 and (.background | has("items") | not)' "default_omits_background_items_keeps_counts"
-out="$(run_full)"
-assert_jq "$out" '.background.total == 3 and .background.pending == 0 and .background.ready == 1 and .background.finished == 1 and .background.collectable == 2 and .background.stale == 1 and (.background.items[] | select(.id == "'"$id1"'"))' "launcher_surfaces_background_handles"
-assert_jq "$out" '(.maintenance.reasons | index("background_handles_collectable")) and (.maintenance.reasons | index("background_handles_stale"))' "launcher_background_handles_recommend_maintenance"
 
 reset_repo
 printf '{bad json\n' > "$INDEX"

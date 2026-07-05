@@ -53,8 +53,6 @@ You are the **orchestrator**. Run the phases as a state machine, keep only essen
 - **Model routing.** Session model orchestrates and plans; on a Claude Code host under a Fable session the leaf seats (implement/verify/synthesize + same-family review) run on Opus; a different model family takes one review lens when available. Details/fallback → reference.md "Model routing (per-role)".
 - **Persist phase progress (NOT optional, NOT terse-trimmable).** Phase 0 creates `.kimiflow/<slug>/STATE.md`; after every phase set `Phase N: open|in-progress|done`. Chat state is not enough: `state-gate` blocks the review-gate call when `STATE.md` is missing.
 - **Active Session Contract (not optional once Kimiflow starts).** Non-trivial runs start `hooks/active-run.sh start --run .kimiflow/<slug> --write`; follow-ups stay in that run until explicit exit/abort/park/fail/switch. Close mechanically with `finish|park|fail|abort --write`.
-- **Background Handles (optional, visible from launcher).** Register long read-only/draft work through `hooks/background-run.sh`; collect only through the foreground orchestrator. Stale/failed/cancelled work cannot be applied blindly.
-- **Agentic Readiness Layer (local, no network).** Before background trust, autonomous continuation, handoff reuse, or write-capable fan-out, consult `hooks/agentic-readiness.sh status|gate`; use `packet --write` for bounded packets.
 - **Stop criteria always active:** success-stop (gate/verification met), failure-stop (escalate — see phase 5), budget-stop (cap reached → stop + ask). Never loop forever.
 - **Subagents do NOT see your context.** Every delegation carries: objective, output format, allowed files/boundaries, the paths of the relevant state files. For reference.md content, pass the path `${CLAUDE_SKILL_DIR}/reference.md` + the exact section names to read — not the text verbatim (verbatim only for a snippet under ~15 lines). Subagents write results to the named paths.
 
@@ -71,7 +69,7 @@ Phase detail is loaded only when entering that phase. For post-R2 runs, `hooks/a
 | 4 Plan-gate / approval | `phases/phase-4-review-approval.md` | `plan-blocker-gate.sh`; reviewer lenses; `resolve-review-gate.sh`; pre-build approval stop; build-gate STOP/backlog rules. |
 | 5 Implement / fix | `phases/phase-5-build.md` | TDD, named Red-test commit exception, caller-grep before deletion, failure escalation. |
 | 6 Verify | `phases/phase-6-verify.md` | goal-backward verification; `red-green-gate.sh`; `lsp-diagnostics.sh`; regression and cold-start checks. |
-| 7 Review / commit | `phases/phase-7-review-commit.md` | code-review ensemble; Memory Router & Learning Loop; `agentic-readiness.sh packet`; `CANDIDATE` verification; named-path staging; advisory scans; `MR review-run`; `refresh --changed`; `improvements-status.sh`; `Status: done`. |
+| 7 Review / commit | `phases/phase-7-review-commit.md` | code-review ensemble; Memory Router & Learning Loop; `CANDIDATE` verification; named-path staging; advisory scans; `MR review-run`; `refresh --changed`; `improvements-status.sh`; `Status: done`. |
 
 ## Always-Loaded Protected Phase Rules
 

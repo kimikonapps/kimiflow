@@ -92,39 +92,6 @@ write_project_map_index() {
   }' > "$repo/.kimiflow/project/INDEX.json"
 }
 
-write_background_handle() {
-  local repo="$1" id="$2" status="$3" result="${4:-yes}" base dir
-  base="$(git -C "$repo" rev-parse HEAD)"
-  dir="$repo/.kimiflow/background/$id"
-  mkdir -p "$dir"
-  jq -n --arg id "$id" --arg status "$status" --arg base "$base" '{
-    schema_version: 1,
-    id: $id,
-    kind: "docs",
-    title: "Docs",
-    status: $status,
-    created_at: "2026-07-02T00:00:00Z",
-    updated_at: "2026-07-02T00:00:00Z",
-    base_commit: $base,
-    affected_paths: ["hooks"],
-    handoff_path: ".kimiflow/background/\($id)/HANDOFF.md",
-    result_path: ".kimiflow/background/\($id)/RESULT.md",
-    files_path: ".kimiflow/background/\($id)/FILES.json",
-    advisories_path: ".kimiflow/background/\($id)/ADVISORIES.md",
-    verify_path: ".kimiflow/background/\($id)/VERIFY.md",
-    candidate_only: false,
-    collect_policy: "foreground_orchestrator_verifies_before_apply"
-  }' > "$dir/STATUS.json"
-  printf '[]\n' > "$dir/FILES.json"
-  : > "$dir/ADVISORIES.md"
-  : > "$dir/VERIFY.md"
-  if [ "$result" = "yes" ]; then
-    printf '# Result\nDone.\n' > "$dir/RESULT.md"
-  else
-    rm -f "$dir/RESULT.md"
-  fi
-}
-
 write_active_fixture() {
   local repo="$1" base
   base="$(git -C "$repo" rev-parse HEAD)"
@@ -216,13 +183,6 @@ expected_divergence() {
       cmp -s "$WORK/o.files.nomode" "$WORK/n.files.nomode" || return 1
       return 0
       ;;
-    background_malformed_id)
-      [ "$old_code" = "1" ] || return 1
-      [ "$new_code" = "2" ] || return 1
-      grep -Fxq 'background-run: unsafe handle id' "$WORK/n.err.norm" || return 1
-      [ "$(wc -l < "$WORK/n.err.norm" | tr -d ' ')" = "1" ] || return 1
-      return 0
-      ;;
   esac
   return 1
 }
@@ -241,7 +201,6 @@ normalize() {
     -e "s#$WORK#WORK#g" \
     -e 's#WORK/cases/[A-Za-z0-9_.:-]+-(old|new)#REPO#g' \
     -e 's/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z/TIMESTAMP/g' \
-    -e 's/bh_[A-Za-z0-9_:-]+/bh_ID/g' \
     -e 's/[0-9a-f]{40}/COMMIT/g' \
     -e 's/"version": ?"[0-9]+\.[0-9]+\.[0-9]+"/"version": "VERSION"/g' \
     -e 's/"awaiting_user":(true|false),//g' \
@@ -298,35 +257,6 @@ run_one() {
       ;;
   esac
   case "$label" in
-    background_invalid_files_json|background_scalar_files_json)
-      write_background_handle "$case_old" "bh_test" "pending" "yes"
-      write_background_handle "$case_new" "bh_test" "pending" "yes"
-      if [ "$label" = "background_scalar_files_json" ]; then
-        printf 'null\n' > "$case_old/invalid-files.json"
-        printf 'null\n' > "$case_new/invalid-files.json"
-      else
-        printf '{bad json\n' > "$case_old/invalid-files.json"
-        printf '{bad json\n' > "$case_new/invalid-files.json"
-      fi
-      ;;
-    background_result_tampering)
-      write_background_handle "$case_old" "bh_test" "ready" "no"
-      write_background_handle "$case_new" "bh_test" "ready" "no"
-      jq '.result_path = "hooks/a.sh"' "$case_old/.kimiflow/background/bh_test/STATUS.json" > "$case_old/status.tmp" && mv "$case_old/status.tmp" "$case_old/.kimiflow/background/bh_test/STATUS.json"
-      jq '.result_path = "hooks/a.sh"' "$case_new/.kimiflow/background/bh_test/STATUS.json" > "$case_new/status.tmp" && mv "$case_new/status.tmp" "$case_new/.kimiflow/background/bh_test/STATUS.json"
-      ;;
-    background_terminal_refusal)
-      write_background_handle "$case_old" "bh_test" "cancelled" "yes"
-      write_background_handle "$case_new" "bh_test" "cancelled" "yes"
-      ;;
-    background_status_ready|background_collect_open)
-      write_background_handle "$case_old" "bh_test" "ready" "yes"
-      write_background_handle "$case_new" "bh_test" "ready" "yes"
-      ;;
-    background_cancel_write|background_mark_stale_write)
-      write_background_handle "$case_old" "bh_test" "pending" "yes"
-      write_background_handle "$case_new" "bh_test" "pending" "yes"
-      ;;
     launcher_no_kimiflow)
       rm -rf "$case_old/.kimiflow" "$case_new/.kimiflow"
       ;;
@@ -421,6 +351,24 @@ run_one() {
   (cd "$case_old" && env "${old_env[@]}" bash "$old_script" ${old_args[@]+"${old_args[@]}"} < "$old_stdin") > "$WORK/o.out" 2> "$WORK/o.err"; o_code=$?
   (cd "$case_new" && env "${new_env[@]}" bash "$new_script" ${new_args[@]+"${new_args[@]}"} < "$new_stdin") > "$WORK/n.out" 2> "$WORK/n.err"; n_code=$?
 
+  # Removed subsystems: pre-R1 launcher-status emitted `.background` and
+  # `.agentic_readiness` (plus their `launcher.status.counts.background_*` mirror);
+  # both were deleted with the Background Handles / Agentic Readiness layers. Strip
+  # them from the launcher snapshot on both sides so parity keeps comparing the
+  # shared fields against the frozen baseline.
+  case "$label" in
+    launcher_*)
+      for f in "$WORK/o.out" "$WORK/n.out"; do
+        if jq -e . "$f" >/dev/null 2>&1; then
+          jq 'del(.background, .agentic_readiness)
+              | if (.launcher.status.counts | type) == "object"
+                then .launcher.status.counts |= del(.background_collectable, .background_stale)
+                else . end' "$f" > "$f.stripped" && mv "$f.stripped" "$f"
+        fi
+      done
+      ;;
+  esac
+
   normalize < "$WORK/o.out" > "$WORK/o.out.norm"
   normalize < "$WORK/o.err" > "$WORK/o.err.norm"
   normalize < "$WORK/n.out" > "$WORK/n.out.norm"
@@ -478,18 +426,6 @@ CASES=(
   "active_abort_write::active-run.sh::abort|--root|__REPO__|--reason|aborted|--write"
   "active_prompt_payload::active-run.sh::prompt-context"
   "active_stop_gate::active-run.sh::stop-gate"
-  "background_list_empty::background-run.sh::list|--root|__REPO__|--json"
-  "background_start_preview::background-run.sh::start|--root|__REPO__|--kind|docs|--title|Docs|--affected|hooks"
-  "background_start_write::background-run.sh::start|--root|__REPO__|--kind|docs|--title|Docs|--affected|hooks|--write"
-  "background_malformed_id::background-run.sh::status|--root|__REPO__|--id|../escape"
-  "background_status_ready::background-run.sh::status|--root|__REPO__|--id|bh_test"
-  "background_invalid_files_json::background-run.sh::update|--root|__REPO__|--id|bh_test|--status|ready|--files|invalid-files.json|--write"
-  "background_scalar_files_json::background-run.sh::update|--root|__REPO__|--id|bh_test|--status|ready|--files|invalid-files.json|--write"
-  "background_collect_open::background-run.sh::collect|--root|__REPO__|--id|bh_test"
-  "background_cancel_write::background-run.sh::cancel|--root|__REPO__|--id|bh_test|--reason|not needed|--write"
-  "background_mark_stale_write::background-run.sh::mark-stale|--root|__REPO__|--id|bh_test|--reason|base moved|--write"
-  "background_result_tampering::background-run.sh::collect|--root|__REPO__|--id|bh_test"
-  "background_terminal_refusal::background-run.sh::update|--root|__REPO__|--id|bh_test|--status|ready|--write"
   "improvements_list_open::improvements-status.sh::list|--root|__REPO__"
   "improvements_json_open::improvements-status.sh::list|--root|__REPO__|--json"
   "improvements_list_findings::improvements-status.sh::list|--root|__REPO__|--queue|findings"
@@ -515,7 +451,6 @@ CASES=(
   "clarify_markdown_state::clarify-gate.sh::__RUN__"
   "plan_blocker_missing_dir::plan-blocker-gate.sh::$WORK/missing-run"
   "plan_blocker_markdown_state::plan-blocker-gate.sh::__RUN__"
-  "agentic_status_repo::agentic-readiness.sh::status|--root|$REPO"
 )
 
 for entry in "${CASES[@]}"; do

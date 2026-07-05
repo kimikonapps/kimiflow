@@ -27,18 +27,10 @@ jq -e '((.interface.longDescription // "") + " " + (.interface.shortDescription 
   && ok "codex plugin describes project intelligence" || bad "codex plugin description does not mention project intelligence"
 jq -e '((.interface.longDescription // "") + " " + (.description // "")) | test("code-review ensemble")' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
   && ok "codex plugin describes code-review ensemble" || bad "codex plugin description does not mention code-review ensemble"
-jq -e '((.interface.longDescription // "") + " " + (.description // "") + " " + ((.interface.defaultPrompt // []) | join(" "))) | test("background handles"; "i")' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
-  && ok "codex plugin describes background handles" || bad "codex plugin description does not mention background handles"
-jq -e '((.interface.longDescription // "") + " " + (.interface.shortDescription // "") + " " + (.description // "") + " " + ((.interface.defaultPrompt // []) | join(" "))) | test("agentic readiness"; "i")' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
-  && ok "codex plugin describes agentic readiness" || bad "codex plugin description does not mention agentic readiness"
 jq -e '((.interface.longDescription // "") + " " + (.interface.shortDescription // "") + " " + (.description // "") + " " + ((.interface.defaultPrompt // []) | join(" "))) | test("full/grill/plan/build/quick/review/audit/fix"; "i") and test("kimiflow full"; "i") and test("grill"; "i") and test("plan"; "i")' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
   && ok "codex plugin exposes natural mode aliases" || bad "codex plugin natural mode aliases missing"
 jq -e '.name == "kimiflow" and (.plugins[] | select(.name == "kimiflow" and .source.path == "./"))' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
   && ok "codex marketplace entry" || bad "codex marketplace entry"
-jq -e '[.. | strings] | join(" ") | test("background handles"; "i")' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
-  && ok "codex marketplace describes background handles" || bad "codex marketplace missing background handles"
-jq -e '[.. | strings] | join(" ") | test("agentic readiness"; "i")' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
-  && ok "codex marketplace describes agentic readiness" || bad "codex marketplace missing agentic readiness"
 jq -e '[.. | strings] | join(" ") | test("full/grill/plan/build/quick/review/audit/fix"; "i")' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
   && ok "codex marketplace describes natural mode aliases" || bad "codex marketplace missing natural mode aliases"
 jq -e '[.hooks[]?[]?.hooks[]? | select(.type == "command")] | length == 7 and all(.[]; (.name // "" | length > 0) and (.description // "" | length > 0) and (.statusMessage // "" | length > 0))' "$ROOT/hooks.json" >/dev/null 2>&1 \
@@ -106,10 +98,6 @@ if [ -x "$ROOT/hooks/launcher-status.sh" ] && bash -n "$ROOT/hooks/launcher-stat
 if [ -x "$ROOT/hooks/test-launcher-status.sh" ] && bash -n "$ROOT/hooks/test-launcher-status.sh" 2>/dev/null; then ok "launcher status test ok"; else bad "launcher status test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/active-run.sh" ] && bash -n "$ROOT/hooks/active-run.sh" 2>/dev/null; then ok "active session helper ok"; else bad "active session helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-active-run.sh" ] && bash -n "$ROOT/hooks/test-active-run.sh" 2>/dev/null; then ok "active session test ok"; else bad "active session test missing/not-exec/bad"; fi
-if [ -x "$ROOT/hooks/background-run.sh" ] && bash -n "$ROOT/hooks/background-run.sh" 2>/dev/null; then ok "background handles helper ok"; else bad "background handles helper missing/not-exec/bad"; fi
-if [ -x "$ROOT/hooks/test-background-run.sh" ] && bash -n "$ROOT/hooks/test-background-run.sh" 2>/dev/null; then ok "background handles test ok"; else bad "background handles test missing/not-exec/bad"; fi
-if [ -x "$ROOT/hooks/agentic-readiness.sh" ] && bash -n "$ROOT/hooks/agentic-readiness.sh" 2>/dev/null; then ok "agentic readiness helper ok"; else bad "agentic readiness helper missing/not-exec/bad"; fi
-if [ -x "$ROOT/hooks/test-agentic-readiness.sh" ] && bash -n "$ROOT/hooks/test-agentic-readiness.sh" 2>/dev/null; then ok "agentic readiness test ok"; else bad "agentic readiness test missing/not-exec/bad"; fi
 grep -q 'Project Map Bootstrap' "$ROOT/SKILL.md" && ok "canonical Project Map Bootstrap present" || bad "canonical Project Map Bootstrap missing"
 grep -q 'FACTS.jsonl' "$ROOT/reference.md" && ok "project map evidence artifact documented" || bad "project map evidence artifact missing"
 if [ -x "$ROOT/hooks/project-map-status.sh" ] && bash -n "$ROOT/hooks/project-map-status.sh" 2>/dev/null; then ok "project map status helper ok"; else bad "project map status helper missing/not-exec/bad"; fi
@@ -153,14 +141,6 @@ grep -q 'BUG-REPRO.md' "$ROOT/reference.md" && ok "canonical BUG-REPRO evidence 
 grep -q 'lsp-diagnostics.sh' "$ROOT/reference.md" && ok "canonical local diagnostics helper documented" || bad "canonical local diagnostics helper missing"
 grep -q 'memory-router.sh' "$ROOT/reference.md" && ok "canonical memory router helper documented" || bad "canonical memory router helper missing"
 grep -q 'active-run.sh' "$ROOT/reference.md" && ok "canonical active session helper documented" || bad "canonical active session helper missing"
-grep -q 'background-run.sh' "$ROOT/reference.md" && ok "canonical background handles helper documented" || bad "canonical background handles helper missing"
-grep -q 'Background Handles' "$ROOT/README.md" && ok "README documents Background Handles" || bad "README missing Background Handles"
-grep -q 'Agentic Readiness Layer' "$ROOT/SKILL.md" && ok "canonical Agentic Readiness Layer present" || bad "canonical Agentic Readiness Layer missing"
-grep -q 'Agentic Readiness Layer' "$ROOT/reference.md" && ok "canonical Agentic Readiness Layer documented" || bad "canonical Agentic Readiness Layer docs missing"
-grep -q 'Agentic Readiness Layer' "$ROOT/README.md" && ok "README documents Agentic Readiness Layer" || bad "README missing Agentic Readiness Layer"
-grep -q 'agentic-readiness.sh' "$ROOT/reference.md" && ok "canonical agentic readiness helper documented" || bad "canonical agentic readiness helper missing"
-grep -q 'AGENTIC-AUDIT.jsonl' "$ROOT/reference.md" && ok "canonical agentic audit trail documented" || bad "canonical agentic audit trail missing"
-grep -q 'context-packets' "$ROOT/reference.md" && ok "canonical agentic context packets documented" || bad "canonical agentic context packets missing"
 grep -q 'current-state-gate.sh' "$SKILL" && ok "Codex wrapper maps current-state gate helper" || bad "Codex wrapper missing current-state gate helper"
 grep -q 'working-tree-gate.sh' "$SKILL" && ok "Codex wrapper maps working-tree gate helper" || bad "Codex wrapper missing working-tree gate helper"
 grep -q 'clarify-gate.sh' "$SKILL" && ok "Codex wrapper maps clarify gate helper" || bad "Codex wrapper missing clarify gate helper"
@@ -169,8 +149,6 @@ grep -q 'red-green-gate.sh' "$SKILL" && ok "Codex wrapper maps red-green gate he
 grep -q 'lsp-diagnostics.sh' "$SKILL" && ok "Codex wrapper maps local diagnostics helper" || bad "Codex wrapper missing local diagnostics helper"
 grep -q 'memory-router.sh' "$SKILL" && ok "Codex wrapper maps memory router helper" || bad "Codex wrapper missing memory router helper"
 grep -q 'active-run.sh' "$SKILL" && ok "Codex wrapper maps active session helper" || bad "Codex wrapper missing active session helper"
-grep -q 'KIMIFLOW_PLUGIN_ROOT/hooks/background-run.sh' "$SKILL" && ok "Codex wrapper maps background handles helper" || bad "Codex wrapper missing background handles helper"
-grep -q 'KIMIFLOW_PLUGIN_ROOT/hooks/agentic-readiness.sh' "$SKILL" && ok "Codex wrapper maps agentic readiness helper" || bad "Codex wrapper missing agentic readiness helper"
 grep -q 'Existing feature check' "$ROOT/reference.md" && ok "canonical existing feature check documented" || bad "canonical existing feature check missing"
 grep -q 'Memory Router & Learning Loop' "$ROOT/SKILL.md" && ok "canonical Memory Router present" || bad "canonical Memory Router missing"
 grep -q 'code-review ensemble' "$ROOT/SKILL.md" && ok "canonical code-review ensemble present" || bad "canonical code-review ensemble missing"

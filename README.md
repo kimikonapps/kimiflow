@@ -19,7 +19,7 @@ A **user-invoked** `/kimiflow` (Claude Code) / `$kimiflow` (Codex) skill+plugin 
 
 ## Why this exists
 
-Claude Code and Codex both cover a lot with native planning, subagents and hooks — so why a skill? Because a prose instruction file *asks*; kimiflow *enforces*. The plan-gate and code-review gates are **tested, fail-closed resolver scripts** (`hooks/resolve-review-gate.sh`) that count open blockers mechanically — a verbose model can't argue past them. Phase 7 also uses a **review ensemble**: focused bug/regression, failure/security, and integration/contract lenses produce candidate findings, then the orchestrator verifies them before anything counts as a blocker. Background Handles keep long subagent/draft work visible until collected and stale-checked, and the Agentic Readiness Layer checks local blockers before riskier trust/apply handoffs. The secret-commit and test gates are real **PreToolUse/Stop hooks**, not reminders. And it travels: install once, identical gates in every repo, no per-project prompt drift. (kimiflow still reads project convention files such as `AGENTS.md` / `CLAUDE.md` as hints — it just never relies on them for a gate.)
+Claude Code and Codex both cover a lot with native planning, subagents and hooks — so why a skill? Because a prose instruction file *asks*; kimiflow *enforces*. The plan-gate and code-review gates are **tested, fail-closed resolver scripts** (`hooks/resolve-review-gate.sh`) that count open blockers mechanically — a verbose model can't argue past them. Phase 7 also uses a **review ensemble**: focused bug/regression, failure/security, and integration/contract lenses produce candidate findings, then the orchestrator verifies them before anything counts as a blocker. The secret-commit and test gates are real **PreToolUse/Stop hooks**, not reminders. And it travels: install once, identical gates in every repo, no per-project prompt drift. (kimiflow still reads project convention files such as `AGENTS.md` / `CLAUDE.md` as hints — it just never relies on them for a gate.)
 
 ## Install
 
@@ -127,7 +127,6 @@ Each ✋/✅ and the diagnose/commit stop is a real gate, not a prompt suggestio
 | **Plan-gate** | 4 | `hooks/resolve-review-gate.sh` counts open `BLOCKER/HIGH` over reviewer findings; cap 3; blocker-aware anti-oscillation | ✅ yes |
 | **Red/green fix gate** | 6 | `hooks/red-green-gate.sh` requires `BUG-REPRO.md` with red command/status/output, green command/status/output, and regression evidence before fix-mode review/learning can finish | ✅ yes |
 | **Local diagnostics advisory** | 6/7 | `hooks/lsp-diagnostics.sh` runs bounded existing local typecheck/lint/LSP-adjacent tools or one untracked local `.kimiflow/lsp-diagnostics` command; flags are triaged before commit | advisory |
-| **Agentic readiness gate** | 0/7/background | `hooks/agentic-readiness.sh` checks local blockers before background-result trust, autonomous continuation, prepared-plan reuse, or worker fan-out that may apply changes; no network calls | ✅ yes |
 | **Code-review gate** | 7 | focused review lenses produce candidates; the orchestrator verifies and promotes confirmed findings; the same resolver counts open `BLOCKER/HIGH` | ✅ yes |
 | **Commit-gate** | 7 | STOP + advisory triage; waits for your explicit OK before any commit | ✅ yes |
 | **Secret-commit hook** | any commit | `PreToolUse` hook — blocks staging secret-looking **paths** + bulk `git add -A`/`.` | ✅ yes |
@@ -210,40 +209,12 @@ The run keeps a small item backlog in `.kimiflow/<slug>/ITEMS.jsonl`. Kimiflow w
 pending, only built, rejected, or stale after relevant files changed. Positive learnings are written only on a
 successful `finish`; parked, failed, or aborted runs do not promote unverified memory.
 
-## Background handles
-
-Kimiflow can register long read-only or draft-producing work under `.kimiflow/background/`: deep codebase
-analysis, docs drafts, security/advisory review, and improvement scans. A handle stores the task handoff, status,
-affected paths, result, file list, advisories, and verification notes. The launcher shows collectable and stale
-handles so work does not disappear into chat.
-
-Collection is gated: `hooks/background-run.sh collect --id <handle>` must return `OPEN` before the foreground
-orchestrator trusts the result. If affected files changed, the handle becomes stale and must be revalidated or rerun.
-Security and improvement outputs remain candidates until verified; they never become repo docs, findings, memory, or
-project-map facts automatically.
-
-## Agentic Readiness Layer
-
-Kimiflow now has a small local readiness check for more agentic work. Before it trusts a background result, fans out
-workers that may apply changes, resumes an old plan, or hands compact context to another agent, it can run
-`hooks/agentic-readiness.sh status` or `gate`. The result is deliberately simple: `guided`, `governed`, or
-`autonomous`, plus blockers and warnings.
-
-Read-only review of the current diff can still use `status`/`packet` without requiring an open gate; the working
-tree is expected to be dirty while a feature is being reviewed.
-
-This layer is local-only. It reads the working tree, active session state, background handles, current-state gate,
-helper availability, and the local Vault provider manifest, but it does **not** call the network, Vault tools, or
-provider health. When it writes context packets, they stay under `.kimiflow/<slug>/context-packets/`, are capped in
-size, sanitize obvious secrets and local home paths, and append `.kimiflow/<slug>/AGENTIC-AUDIT.jsonl` so the run can
-explain later why a handoff was trusted or refused.
-
 ## Launcher
 
 If you invoke kimiflow without a concrete task (`/kimiflow` or `$kimiflow`), it opens a context-aware
 launcher. The launcher first runs `hooks/launcher-status.sh` and summarizes the current project state:
-one recommended next action, installed/cache version status, active session status, agentic readiness,
-background handles, project-map depth/status, memory/recall status, open findings, improvement slices, repo docs,
+one recommended next action, installed/cache version status, active session status,
+project-map depth/status, memory/recall status, open findings, improvement slices, repo docs,
 dirty working tree, and active or backlog runs. Technical hygiene that does not need your decision stays in
 drilldowns instead of becoming front-page work. It then routes your choice into the normal Kimiflow modes.
 It also surfaces the short mode aliases (`full`, `grill`, `plan`, `build`, `quick`, `review`, `audit`, `fix`) so
@@ -424,13 +395,13 @@ search/write stays disabled until a tool provider is actually present.
 
 # kimiflow — Feature- & Fix-Loop (Deutsch)
 
-Ein **user-invoked** `/kimiflow`- (Claude Code) / `$kimiflow`-Skill+Plugin (Codex), das einen disziplinierten **8-Phasen-Loop** fürs Bauen von Features und Fixen von Bugs fährt — Klärung → Verstehen/Diagnose → Plan → Plan-Gate → Umsetzung → Verifikation → Code-Review → Commit. Seine Gates sind **mechanisch, nicht beratend**: Reviewer schreiben strukturierte Findings in Dateien, getestete **fail-closed** Scripts zählen die offenen Blocker, Background Handles halten lange Nebenläufe sichtbar, und ein „fertig" lässt sich nicht daran vorbeireden.
+Ein **user-invoked** `/kimiflow`- (Claude Code) / `$kimiflow`-Skill+Plugin (Codex), das einen disziplinierten **8-Phasen-Loop** fürs Bauen von Features und Fixen von Bugs fährt — Klärung → Verstehen/Diagnose → Plan → Plan-Gate → Umsetzung → Verifikation → Code-Review → Commit. Seine Gates sind **mechanisch, nicht beratend**: Reviewer schreiben strukturierte Findings in Dateien, getestete **fail-closed** Scripts zählen die offenen Blocker, und ein „fertig" lässt sich nicht daran vorbeireden.
 
 > `SKILL.md` / `reference.md` sind auf Englisch geschrieben. **kimiflow antwortet in deiner Sprache** — schreibst du Deutsch, grillt/antwortet es auf Deutsch.
 
 ## Warum es das gibt
 
-Claude Code und Codex decken mit nativer Planung, Subagents und Hooks schon viel ab — warum also ein Skill? Weil eine prosaische Instruktionsdatei *bittet*; kimiflow *erzwingt*. Plan-Gate und Code-Review-Gate sind **getestete, fail-closed Resolver-Scripts** (`hooks/resolve-review-gate.sh`), die offene Blocker mechanisch zählen — ein geschwätziges Modell argumentiert sich da nicht vorbei. Background Handles halten lange Subagent-/Draft-Arbeit sichtbar, bis sie eingesammelt und auf Stale-State geprüft wurde, und der Agentic Readiness Layer prüft lokale Blocker vor riskanteren Trust-/Apply-Handoffs. Secret-Commit- und Test-Gate sind echte **PreToolUse/Stop-Hooks**, keine Erinnerungen. Und es reist mit: einmal installiert, identische Gates in jedem Repo, kein Per-Projekt-Prompt-Drift. (kimiflow liest Projektkonventionen wie `AGENTS.md` / `CLAUDE.md` als Hinweise — verlässt sich für ein Gate nur nie darauf.)
+Claude Code und Codex decken mit nativer Planung, Subagents und Hooks schon viel ab — warum also ein Skill? Weil eine prosaische Instruktionsdatei *bittet*; kimiflow *erzwingt*. Plan-Gate und Code-Review-Gate sind **getestete, fail-closed Resolver-Scripts** (`hooks/resolve-review-gate.sh`), die offene Blocker mechanisch zählen — ein geschwätziges Modell argumentiert sich da nicht vorbei. Secret-Commit- und Test-Gate sind echte **PreToolUse/Stop-Hooks**, keine Erinnerungen. Und es reist mit: einmal installiert, identische Gates in jedem Repo, kein Per-Projekt-Prompt-Drift. (kimiflow liest Projektkonventionen wie `AGENTS.md` / `CLAUDE.md` als Hinweise — verlässt sich für ein Gate nur nie darauf.)
 
 ## Installation
 
@@ -533,7 +504,6 @@ Jedes ✋/✅ sowie der Diagnose- und Commit-Stopp ist ein echtes Gate, kein Pro
 | **Clarify-Gate** | 1/4 | `hooks/clarify-gate.sh` verlangt Micro-Grill-Evidence für small/quick; `plan-blocker-gate.sh` prüft das vor den Reviewern erneut | ✅ ja |
 | **Planblocker-Gate** | 4 | `hooks/plan-blocker-gate.sh` blockt übersprungene Clarify-Evidence, ungelöste Marker, nicht gemappte Akzeptanzkriterien, fehlende Verifikation, fehlende Pfad-Evidence und nicht deklarierte betroffene Dateien vor den Reviewern | ✅ ja |
 | **Plan-Gate** | 4 | `hooks/resolve-review-gate.sh` zählt offene `BLOCKER/HIGH` über die Reviewer-Findings; Cap 3; blocker-aware Anti-Oszillation | ✅ ja |
-| **Agentic-Readiness-Gate** | 0/7/background | `hooks/agentic-readiness.sh` prüft lokale Blocker vor Background-Result-Trust, autonomer Fortsetzung, Prepared-Plan-Reuse oder Worker-Fan-out, der Änderungen anwenden kann; keine Netzwerkaufrufe | ✅ ja |
 | **Code-Review-Gate** | 7 | fokussierte Review-Linsen liefern Kandidaten; der Orchestrator verifiziert und promotet bestätigte Findings; derselbe Resolver zählt offene `BLOCKER/HIGH` | ✅ ja |
 | **Commit-Gate** | 7 | STOP + Advisory-Triage; wartet auf dein explizites OK vor jedem Commit | ✅ ja |
 | **Secret-Commit-Hook** | jeder Commit | `PreToolUse`-Hook — blockt secret-verdächtige **Pfade** + Bulk-`git add -A`/`.` | ✅ ja |
@@ -617,40 +587,12 @@ Items pending, nur gebaut, rejected oder nach relevanten Datei-Aenderungen stale
 nur bei erfolgreichem `finish` im Memory; geparkte, fehlgeschlagene oder abgebrochene Runs schreiben keine
 ungeprueften positiven Learnings.
 
-## Background Handles
-
-Kimiflow kann lange read-only oder draft-lastige Arbeit unter `.kimiflow/background/` registrieren:
-tiefere Codebase-Analyse, Doku-Entwürfe, Security-/Advisory-Reviews und Improvement-Scans. Ein Handle speichert
-Handoff, Status, betroffene Pfade, Ergebnis, Dateiliste, Advisories und Verifikationsnotizen. Der Launcher zeigt
-einsammelbare und stale Handles, damit Nebenläufe nicht im Chat verschwinden.
-
-Das Einsammeln ist gegated: `hooks/background-run.sh collect --id <handle>` muss `OPEN` liefern, bevor der
-Foreground-Orchestrator das Ergebnis nutzt. Haben sich betroffene Dateien geändert, wird der Handle stale und muss
-revalidiert oder neu gestartet werden. Security- und Improvement-Ergebnisse bleiben Kandidaten, bis sie verifiziert
-sind; sie werden nie automatisch Repo-Doku, Findings, Memory oder Projektkarten-Facts.
-
-## Agentic Readiness Layer
-
-Kimiflow hat eine kleine lokale Bereitschaftsprüfung für agentischeres Arbeiten. Bevor es ein Background-Ergebnis
-vertraut, Worker auffächert, die Änderungen anwenden können, einen alten Plan fortsetzt oder kompakten Kontext an einen anderen Agenten
-übergibt, kann es `hooks/agentic-readiness.sh status` oder `gate` laufen lassen. Das Ergebnis bleibt bewusst simpel:
-`guided`, `governed` oder `autonomous`, plus Blocker und Hinweise.
-
-Read-only Review des aktuellen Diffs kann weiterhin `status`/`packet` nutzen, ohne ein offenes Gate zu verlangen;
-der Working Tree ist während eines Reviews erwartbar dirty.
-
-Diese Schicht ist local-only. Sie liest Working Tree, aktive Session, Background Handles, Current-State-Gate,
-Helper-Verfügbarkeit und das lokale Vault-Provider-Manifest, ruft aber **kein** Netzwerk, keine Vault-Tools und kein
-Provider-Health auf. Context Packets landen unter `.kimiflow/<slug>/context-packets/`, sind größenbegrenzt,
-sanitisieren offensichtliche Secrets und lokale Home-Pfade und schreiben `.kimiflow/<slug>/AGENTIC-AUDIT.jsonl`,
-damit der Run später erklären kann, warum ein Handoff vertraut oder abgelehnt wurde.
-
 ## Launcher
 
 Wenn du kimiflow ohne konkreten Auftrag startest (`/kimiflow` oder `$kimiflow`), öffnet es einen
 kontextbewussten Launcher. Der Launcher ruft zuerst `hooks/launcher-status.sh` auf und fasst den
-Projektzustand zusammen: eine empfohlene nächste Aktion, installierte/cache Version, aktive Session, Agentic
-Readiness, Background Handles, Projektkarten-Tiefe/-Status, Memory-/Recall-Status, offene Findings,
+Projektzustand zusammen: eine empfohlene nächste Aktion, installierte/cache Version, aktive Session,
+Projektkarten-Tiefe/-Status, Memory-/Recall-Status, offene Findings,
 Verbesserungs-Slices, Repo-Doku, dirty Working Tree und aktive oder geparkte Runs. Technische Hygiene, die keine
 Entscheidung braucht, bleibt im Drilldown statt als Aufgabe vorne aufzutauchen. Deine Auswahl wird danach in den
 normalen Kimiflow-Modus geroutet. Er zeigt auch die Kurzmodi (`full`, `grill`, `plan`, `build`, `quick`, `review`,

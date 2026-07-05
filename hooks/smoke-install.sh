@@ -26,14 +26,6 @@ mv="$(jq -r '.plugins[0].version' "$ROOT/.claude-plugin/marketplace.json" 2>/dev
 if [ -n "$pv" ] && [ "$pv" = "$mv" ]; then ok "version consistent ($pv)"; else bad "version mismatch: plugin=$pv marketplace=$mv"; fi
 jq -e '((.description // "") | test("code-review ensembles"))' "$ROOT/.claude-plugin/plugin.json" >/dev/null 2>&1 \
   && ok "Claude plugin describes code-review ensembles" || bad "Claude plugin description missing code-review ensembles"
-jq -e '((.description // "") | test("background handles"; "i"))' "$ROOT/.claude-plugin/plugin.json" >/dev/null 2>&1 \
-  && ok "Claude plugin describes background handles" || bad "Claude plugin description missing background handles"
-jq -e '((.metadata.description // "") + " " + (.plugins[0].description // "") | test("background handles"; "i"))' "$ROOT/.claude-plugin/marketplace.json" >/dev/null 2>&1 \
-  && ok "Claude marketplace describes background handles" || bad "Claude marketplace missing background handles"
-jq -e '((.description // "") | test("agentic readiness"; "i"))' "$ROOT/.claude-plugin/plugin.json" >/dev/null 2>&1 \
-  && ok "Claude plugin describes agentic readiness" || bad "Claude plugin description missing agentic readiness"
-jq -e '((.metadata.description // "") + " " + (.plugins[0].description // "") | test("agentic readiness"; "i"))' "$ROOT/.claude-plugin/marketplace.json" >/dev/null 2>&1 \
-  && ok "Claude marketplace describes agentic readiness" || bad "Claude marketplace missing agentic readiness"
 jq -e '((.description // "") | test("full/grill/plan/build/quick/review/audit/fix"))' "$ROOT/.claude-plugin/plugin.json" >/dev/null 2>&1 \
   && ok "Claude plugin describes natural mode aliases" || bad "Claude plugin description missing natural mode aliases"
 jq -e '((.metadata.description // "") + " " + (.plugins[0].description // "") | test("full/grill/plan/build/quick/review/audit/fix"))' "$ROOT/.claude-plugin/marketplace.json" >/dev/null 2>&1 \
@@ -101,10 +93,6 @@ if [ -x "$ROOT/hooks/launcher-status.sh" ] && bash -n "$ROOT/hooks/launcher-stat
 if [ -x "$ROOT/hooks/test-launcher-status.sh" ] && bash -n "$ROOT/hooks/test-launcher-status.sh" 2>/dev/null; then ok "launcher status test ok"; else bad "launcher status test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/active-run.sh" ] && bash -n "$ROOT/hooks/active-run.sh" 2>/dev/null; then ok "active session helper ok"; else bad "active session helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-active-run.sh" ] && bash -n "$ROOT/hooks/test-active-run.sh" 2>/dev/null; then ok "active session test ok"; else bad "active session test missing/not-exec/bad"; fi
-if [ -x "$ROOT/hooks/background-run.sh" ] && bash -n "$ROOT/hooks/background-run.sh" 2>/dev/null; then ok "background handles helper ok"; else bad "background handles helper missing/not-exec/bad"; fi
-if [ -x "$ROOT/hooks/test-background-run.sh" ] && bash -n "$ROOT/hooks/test-background-run.sh" 2>/dev/null; then ok "background handles test ok"; else bad "background handles test missing/not-exec/bad"; fi
-if [ -x "$ROOT/hooks/agentic-readiness.sh" ] && bash -n "$ROOT/hooks/agentic-readiness.sh" 2>/dev/null; then ok "agentic readiness helper ok"; else bad "agentic readiness helper missing/not-exec/bad"; fi
-if [ -x "$ROOT/hooks/test-agentic-readiness.sh" ] && bash -n "$ROOT/hooks/test-agentic-readiness.sh" 2>/dev/null; then ok "agentic readiness test ok"; else bad "agentic readiness test missing/not-exec/bad"; fi
 grep -q 'Project Map Bootstrap' "$ROOT/SKILL.md" && ok "canonical skill documents Project Map Bootstrap" || bad "missing Project Map Bootstrap in SKILL.md"
 grep -q -- '--project-map quick|standard|deep' "$ROOT/reference.md" && ok "reference documents project-map depths" || bad "missing project-map depths in reference.md"
 for term in INDEX.json FACTS.jsonl CODEBASE.md ARCHITECTURE.md CONVENTIONS.md TESTING.md FLOWS.md OPEN-QUESTIONS.md; do
@@ -163,16 +151,7 @@ grep -q 'BUG-REPRO.md' "$ROOT/reference.md" && ok "reference documents BUG-REPRO
 grep -q 'lsp-diagnostics.sh' "$ROOT/reference.md" && ok "reference documents local diagnostics helper" || bad "missing local diagnostics helper in reference.md"
 grep -q 'memory-router.sh' "$ROOT/reference.md" && ok "reference documents memory router helper" || bad "missing memory router helper in reference.md"
 grep -q 'active-run.sh' "$ROOT/reference.md" && ok "reference documents active session helper" || bad "missing active session helper in reference.md"
-grep -q 'background-run.sh' "$ROOT/reference.md" && ok "reference documents background handles helper" || bad "missing background handles helper in reference.md"
-grep -q 'Background Handles' "$ROOT/README.md" && ok "README documents Background Handles" || bad "README missing Background Handles"
-grep -q 'Agentic Readiness Layer' "$ROOT/SKILL.md" && ok "canonical skill documents Agentic Readiness Layer" || bad "missing Agentic Readiness Layer in SKILL.md"
-grep -q 'Agentic Readiness Layer' "$ROOT/reference.md" && ok "reference documents Agentic Readiness Layer" || bad "missing Agentic Readiness Layer in reference.md"
-grep -q 'Agentic Readiness Layer' "$ROOT/README.md" && ok "README documents Agentic Readiness Layer" || bad "README missing Agentic Readiness Layer"
-grep -q 'agentic-readiness.sh' "$ROOT/reference.md" && ok "reference documents agentic readiness helper" || bad "missing agentic readiness helper in reference.md"
-grep -q 'AGENTIC-AUDIT.jsonl' "$ROOT/reference.md" && ok "reference documents agentic audit trail" || bad "missing agentic audit trail in reference.md"
-grep -q 'context-packets' "$ROOT/reference.md" && ok "reference documents agentic context packets" || bad "missing agentic context packets in reference.md"
 grep -q 'Active Session Contract' "$ROOT/SKILL.md" && ok "canonical skill documents Active Session Contract" || bad "missing Active Session Contract in SKILL.md"
-grep -q 'Background Handles' "$ROOT/SKILL.md" && ok "canonical skill documents Background Handles" || bad "missing Background Handles in SKILL.md"
 grep -q 'Current-State Pulse / Gate' "$ROOT/SKILL.md" && ok "canonical skill documents Current-State Pulse / Gate" || bad "missing Current-State Pulse / Gate in SKILL.md"
 grep -q 'working-tree-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents working-tree gate" || bad "missing working-tree gate in SKILL.md"
 grep -q 'clarify-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents clarify gate" || bad "missing clarify gate in SKILL.md"

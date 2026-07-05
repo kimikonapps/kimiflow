@@ -15,7 +15,7 @@ USAGE = """#!/usr/bin/env bash
 #   launcher-status.sh [--root <path>] [--pretty] [--full]
 #
 # Output: JSON. This script never writes project files. The default output is the
-# compact first screen: the heavy arrays (`runs.items`, `background.items`) and the
+# compact first screen: the heavy `runs.items` array and the
 # full `memory` object are omitted (counts, `memory_summary`, `maintenance` and the
 # `.launcher` block stay). `--full` emits the complete snapshot for drilldowns.
 #
@@ -411,20 +411,6 @@ def default_active_session():
     }
 
 
-def default_background():
-    return {"schema_version": 1, "present": False, "path": ".kimiflow/background", "total": 0, "pending": 0, "running": 0, "ready": 0, "finished": 0, "collectable": 0, "stale": 0, "failed": 0, "cancelled": 0, "items": []}
-
-
-def default_agentic_readiness():
-    return {
-        "schema_version": 1,
-        "status": "unavailable",
-        "summary": "Agentic readiness: unavailable",
-        "readiness": {"level": "guided", "confidence": "none", "blockers": [], "warnings": ["helper_missing"]},
-        "privacy": {"stores_secrets": False, "stores_prompts": False, "local_only": True, "network_calls": False},
-    }
-
-
 def call_json(script, args, root=None):
     if not (os.path.exists(script) and os.access(script, os.X_OK)):
         return None
@@ -456,8 +442,6 @@ def visible_maintenance_reasons(reasons, memory):
                 "working_tree_dirty",
                 "active_session_open",
                 "active_session_needs_revalidation",
-                "background_handles_collectable",
-                "background_handles_stale",
                 "active_runs",
                 "backlog_runs",
                 "learning_reviews_need_attention",
@@ -496,8 +480,6 @@ def drilldowns(snapshot):
         out.append("backlog_runs")
     if snapshot["runs"]["active"] > 0:
         out.append("active_runs")
-    if (snapshot["background"].get("collectable", 0) > 0) or (snapshot["background"].get("stale", 0) > 0):
-        out.append("background")
     if snapshot["memory_summary"]["provider_sync"]["pending_count"] > 0:
         out.append("vault_sync")
     if snapshot["memory_summary"]["curation"]["recommended"] or snapshot["memory"].get("proposals", {}).get("pending", 0) > 0:
@@ -517,8 +499,6 @@ def primary_action(snapshot):
         return {"id": "continue_active_session", "label_key": "continue_active_session", "priority": "high", "blocking": False, "reason_key": "active_session_open"}
     if snapshot["installation"]["cache_status"] == "stale_cache":
         return {"id": "update_installed_plugin", "label_key": "update_installed_plugin", "priority": "high", "blocking": False, "reason_key": "installed_cache_stale"}
-    if snapshot["background"].get("collectable", 0) > 0:
-        return {"id": "collect_background_handles", "label_key": "collect_background_handles", "priority": "medium", "blocking": False, "reason_key": "background_results_waiting"}
     if snapshot["project_map"]["present"] is not True:
         return {"id": "project_map_bootstrap", "label_key": "project_map_bootstrap", "priority": "recommended", "blocking": False, "reason_key": "project_map_missing"}
     if snapshot["project_map"]["valid"] is not True:
@@ -704,20 +684,6 @@ def build_snapshot(root, script_dir):
     if isinstance(maybe, dict):
         active_session = maybe
 
-    background = default_background()
-    maybe = call_json(os.path.join(script_dir, "background-run.sh"), ["list", "--root", root, "--json"], root=root)
-    if isinstance(maybe, dict):
-        background = maybe
-
-    agentic = default_agentic_readiness()
-    agentic_args = ["status", "--root", root]
-    active_run = active_session.get("run")
-    if active_run and active_run != "null":
-        agentic_args.extend(["--run", active_run])
-    maybe = call_json(os.path.join(script_dir, "agentic-readiness.sh"), agentic_args, root=root)
-    if isinstance(maybe, dict):
-        agentic = maybe
-
     reasons = []
     if dirty:
         append_reason(reasons, "working_tree_dirty")
@@ -725,10 +691,6 @@ def build_snapshot(root, script_dir):
         append_reason(reasons, "active_session_open")
     if active_session.get("stale_risk") == "needs_revalidation":
         append_reason(reasons, "active_session_needs_revalidation")
-    if background.get("collectable", 0) > 0:
-        append_reason(reasons, "background_handles_collectable")
-    if background.get("stale", 0) > 0:
-        append_reason(reasons, "background_handles_stale")
     if map_present is not True:
         append_reason(reasons, "project_map_missing")
     elif map_valid is not True:
@@ -760,8 +722,6 @@ def build_snapshot(root, script_dir):
         "memory_summary": memory_sum,
         "efficiency": memory.get("global_efficiency", default_efficiency()),
         "active_session": active_session,
-        "background": background,
-        "agentic_readiness": agentic,
         "findings": {"open": findings_open, "path": findings_path},
         "feature_checks": {"runs": feature_check_runs, "verified_findings_open": feature_check_findings, "path_pattern": ".kimiflow/*/FEATURE-CHECK.md"},
         "improvements": {"open": improvements_open, "path": improvements_path},
@@ -790,7 +750,7 @@ def build_snapshot(root, script_dir):
             "memory": {"present": memory_sum["present"], "tokens_estimate": memory_sum["tokens_estimate"], "budget": memory_sum["budget"], "over_budget": memory_sum["over_budget"], "current_learnings": memory_sum["learnings"]["current"], "curation_recommended": memory_sum["curation"]["recommended"]},
             "efficiency": {"present": snapshot["efficiency"].get("present") is True, "estimated_savings_percent": snapshot["efficiency"].get("estimated_savings_percent"), "confidence": snapshot["efficiency"].get("confidence"), "runs_tracked": snapshot["efficiency"].get("runs_tracked", 0), "projects_tracked": snapshot["efficiency"].get("projects_tracked", 0)},
             "vault": {"health": memory.get("provider", {}).get("health", {}).get("status", "not_detected"), "auth_status": memory.get("provider", {}).get("auth", {}).get("status", "not_configured"), "authenticated": memory.get("provider", {}).get("auth", {}).get("authenticated") is True, "sync_pending_count": memory_sum["provider_sync"]["pending_count"], "direct_write_ready": memory_sum["provider_sync"]["direct_write_ready"]},
-            "counts": {"findings_open": findings_open, "feature_check_findings_open": feature_check_findings, "improvements_open": improvements_open, "active_runs": active, "backlog_runs": backlog, "background_collectable": background.get("collectable", 0), "background_stale": background.get("stale", 0)},
+            "counts": {"findings_open": findings_open, "feature_check_findings_open": feature_check_findings, "improvements_open": improvements_open, "active_runs": active, "backlog_runs": backlog},
         },
         "maintenance": {"visible_count": len(visible), "visible_reasons": visible, "hidden_internal_count": len(hidden), "hidden_internal_reasons": hidden},
         "drilldowns": drilldowns(snapshot),
@@ -843,9 +803,6 @@ def main(argv=None):
         if isinstance(snapshot.get("runs"), dict):
             snapshot["runs"] = dict(snapshot["runs"])
             snapshot["runs"].pop("items", None)
-        if isinstance(snapshot.get("background"), dict):
-            snapshot["background"] = dict(snapshot["background"])
-            snapshot["background"].pop("items", None)
     sys.stdout.write((json_pretty(snapshot) if pretty else json_compact(snapshot)) + "\n")
     return 0
 
