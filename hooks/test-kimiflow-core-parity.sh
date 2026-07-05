@@ -351,18 +351,19 @@ run_one() {
   (cd "$case_old" && env "${old_env[@]}" bash "$old_script" ${old_args[@]+"${old_args[@]}"} < "$old_stdin") > "$WORK/o.out" 2> "$WORK/o.err"; o_code=$?
   (cd "$case_new" && env "${new_env[@]}" bash "$new_script" ${new_args[@]+"${new_args[@]}"} < "$new_stdin") > "$WORK/n.out" 2> "$WORK/n.err"; n_code=$?
 
-  # Removed subsystems: pre-R1 launcher-status emitted `.background` and
-  # `.agentic_readiness` (plus their `launcher.status.counts.background_*` mirror);
-  # both were deleted with the Background Handles / Agentic Readiness layers. Strip
-  # them from the launcher snapshot on both sides so parity keeps comparing the
-  # shared fields against the frozen baseline.
+  # Removed subsystems: pre-R1 launcher-status emitted `.background`,
+  # `.agentic_readiness` (plus their `launcher.status.counts.background_*` mirror),
+  # and `.feature_checks` (plus its `launcher.status.counts.feature_check_findings_open`
+  # mirror); all were deleted with the Background Handles / Agentic Readiness layers and
+  # the existing-feature-check simplification. Strip them from the launcher snapshot on
+  # both sides so parity keeps comparing the shared fields against the frozen baseline.
   case "$label" in
     launcher_*)
       for f in "$WORK/o.out" "$WORK/n.out"; do
         if jq -e . "$f" >/dev/null 2>&1; then
-          jq 'del(.background, .agentic_readiness)
+          jq 'del(.background, .agentic_readiness, .feature_checks)
               | if (.launcher.status.counts | type) == "object"
-                then .launcher.status.counts |= del(.background_collectable, .background_stale)
+                then .launcher.status.counts |= del(.background_collectable, .background_stale, .feature_check_findings_open)
                 else . end' "$f" > "$f.stripped" && mv "$f.stripped" "$f"
         fi
       done

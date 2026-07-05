@@ -15,7 +15,7 @@ requests.
 Kimiflow root (Codex: with `KIMIFLOW_HOST=codex`). The script is read-only and returns JSON for:
 repo status, dirty working tree, installed/cache version status, project-map depth/status, memory summary,
 curation needs,
-open findings, open feature-check findings, open improvement slices, repo-doc presence, active-session status, and
+open findings, open improvement slices, repo-doc presence, active-session status, and
 active/backlog/done run counts. The default output is the compact first screen — `runs.items`
 and the full `memory` object are omitted; re-run with `--full` when a drilldown needs the
 item lists or memory detail. Use the top-level `.launcher` object for the first screen: it contains
@@ -34,7 +34,6 @@ Projektkarte: standard · aktuell
 Memory: 820/900 Tokens · aktuell
 Effizienz: geschätzt 18% Token Savings · 12 Runs · Konfidenz niedrig
 Offene Findings: 4
-Feature-Check Findings: 1
 Geparkte Runs: 2
 Repo-Doku: vorhanden
 Working Tree: geändert
@@ -295,16 +294,15 @@ Tunes **how much the orchestrator prints** — nothing else.
 
 ## Model routing (per-role) (all phases)
 
-Kimiflow inherits the session model but **allocates deliberately**: the session model (strongest available) keeps orchestration, planning, and Phase-2 understanding; under a Fable session the leaf seats route to Opus (leaf rule below); a *different model family* breaks same-family blind spots; and the smallest tier takes narrow read-only lenses. Routing is advisory allocation — never a gate, never a block; on hosts without per-subagent model selection everything simply inherits the session model.
+Kimiflow inherits the session model but **allocates deliberately**: the session model (strongest available) keeps orchestration, planning, and Phase-2 understanding; under a Fable session the leaf seats route to Opus (leaf rule below); and a *different model family* breaks same-family blind spots. Routing is advisory allocation — never a gate, never a block; on hosts without per-subagent model selection everything simply inherits the session model.
 
 **Default seats (when the host supports per-subagent model selection):**
 - **Session model (strongest available):** orchestrator, planner(s), Phase-2 codebase understanding — EXCEPT the cross-family seats below.
 - **Opus-pinned leaf seats — Claude Code host + Fable-family session only:** when the session model is the Fable family (Fable 5 + Mythos 5) and the host supports per-subagent model selection, spawn the session-model *leaf* seats at per-spawn `model: opus` — the next non-Fable Anthropic tier at half the price ($5/$25 vs $10/$50 per MTok), reserving Fable tokens for the orchestrator: **implementer, synthesizer, Phase-6 verification, and every same-family review lens** (any Phase-4/7 review lens that would otherwise inherit the session model — not a cross-family lens, not the already-non-Fable `failure-security` lens). A cross-family seat's same-family fallback takes `model: opus` if its role is a leaf seat above, or where opus is needed to keep a non-Fable requirement (the `failure-security` lens's fallback — overriding its "inherit the session model" floor while this rule is active). **Kept on the session model:** orchestrator, planner(s), Phase-2 understanding (incl. their same-family fallbacks). Advisory, **never a gate**; a **No-Op** when the session model is not the Fable family (never escalates a non-Fable session up to Fable); on the Codex host (no Opus tier) or any host without per-subagent selection the seats inherit the session model.
 - **Cross-family CLI (different family, when available):** one Phase-4 plan-review lens (`small` → the single reviewer; `large` → lens B) · one Phase-7 code-review lens (default `bug-regression`) · the Phase-5 escalation diagnosis call · at `large` additionally: one of the two dual-plan planners, the additive Phase-6 independent verifier (read-only), and the second best-of-2 candidate. On a Claude Code host **every cross-family seat except the best-of-2 implementer** (the plan/code-review lenses, the dual-plan planner, the diagnosis call, the verifier) is filled by an **ordered chain** of cross-family CLIs (default Codex → Gemini via `agy`, then same-family; configurable → "Opt-out & order"); the best-of-2 implementer seat is Codex-only and never substitutes (see Cross-family transport). The `large` Phase-6 independent verifier, when `agy`/Gemini is available, **starts its chain at the Gemini tier** (wide-context goal-backward sweep) then continues the configured order on failure — a seat-level reordering that still yields to an explicit order token.
 - **Security-sensitive lens family (advisory default) — non-Fable when available:** route the Phase-7 `failure-security` lens and any secret-scan interpretation to a model **outside the Fable family** (*"Fable family"* = Fable 5 + Mythos 5) **when another (non-Fable) family is available** — on a Claude Code host either non-Fable cross-family CLI qualifies (Codex/GPT-5.5 or Gemini via `agy`) — a Fable-family safety classifier can decline benign security-adjacent work, silently emptying the very lens meant to guard it; when no other family is available it silently inherits the session model (no force) — except under an active Fable-session leaf rule, where the fallback takes `model: opus` (see the leaf bullet above). Because a review gate carries only **one** cross-family/non-Fable *review lens* (default `bug-regression`), when the session model *is* the Fable family the `failure-security` lens takes **priority for that single lens seat** — it displaces `bug-regression` as that gate's cross-family review lens. **No second seat, no agent-budget/engine change.**
-- **Smallest suitable tier:** narrow read-only LLM lenses only — feature-check lenses. Explicitly NOT Phase-2 codebase understanding (the understanding backbone stays on the session model). Bash hooks carry no model and are out of scope.
-- **`effort` per seat (advisory — same "allocate deliberately" logic as tier/family):** where the host exposes per-subagent effort selection, allocate `high`/`xhigh` to the roles where quality is decided — planner(s), implementer, verifier (incl. the additive Phase-6 verifier), Phase-2 codebase understanding — and `low` to the narrow read-only lenses (feature-check). On current models (Fable 5, Opus 4.8, Sonnet 5) effort moves output quality more than on prior models, so it is worth allocating like any other routing dimension. Advisory allocation, **never a gate**; on hosts without per-subagent effort selection the seat simply inherits the session-model default (graceful degradation, no error).
-- Record the applied routing once in `STATE.md` (e.g. `model_routing: cross_family=auto, cheap_lenses=on, leaf_model=opus`).
+- **`effort` per seat (advisory — same "allocate deliberately" logic as tier/family):** where the host exposes per-subagent effort selection, allocate `high`/`xhigh` to the roles where quality is decided — planner(s), implementer, verifier (incl. the additive Phase-6 verifier), Phase-2 codebase understanding. On current models (Fable 5, Opus 4.8, Sonnet 5) effort moves output quality more than on prior models, so it is worth allocating like any other routing dimension. Advisory allocation, **never a gate**; on hosts without per-subagent effort selection the seat simply inherits the session-model default (graceful degradation, no error). Bash hooks carry no model and are out of scope.
+- Record the applied routing once in `STATE.md` (e.g. `model_routing: cross_family=auto, leaf_model=opus`).
 
 **Cross-family transport (pinned — the reviewer-output channel is per transport, NOT always stdout):**
 - **Attempt condition:** Claude Code host → `command -v codex` and/or `command -v agy` (either present → available); Codex host → `command -v claude`. None present → same-family seat + `cross_family: unavailable` in STATE.md.
@@ -341,39 +339,13 @@ A native task-list widget for glance-level progress. In Phase 0 create one task 
 
 ## Existing feature check (`--verify-feature`)
 
-A review-only mode for features that are already implemented. It answers: does the feature exist, is it wired
-end-to-end, and what should be fixed next? It does not edit code or commit. If the user chooses a confirmed issue,
-start a new normal `--fix` or improve run with that finding as input.
-
-**Flow:**
-1. **Target.** Require a feature name, route, component, command, API path, or file path. If vague, ask one short
-   question for the target and expected user-visible behavior.
-2. **Recall first.** Use project map and Memory Router recall for the target. Prefer existing current maps/history
-   over fresh broad scans.
-3. **Cheap lens fan-out when available.** Send narrow read-only lens tasks to small/fast subagents when the host
-   supports model choice (Codex may use small model overrides for these lenses; Claude Code should use its cheapest
-   suitable subagent/model setting if available). Fallback is one sequential reviewer. Do not spawn duplicate lenses.
-4. **Lens set (choose only relevant lenses):**
-   - `behavior`: can a user actually trigger the feature and see the expected result?
-   - `wiring`: are frontend, backend, routes, commands, hooks, events, and exports connected?
-   - `contract`: do API/schema/types/config/env contracts match on both sides?
-   - `state-data`: is state, persistence, migration, cache, and error handling coherent?
-   - `tests`: do tests cover the real behavior rather than stubs or isolated helpers?
-   - `docs-security`: are docs accurate and are security/privacy implications handled?
-5. **Candidate format from each lens:** one line per issue:
-   `CANDIDATE <SEVERITY> <file:line|artifact> :: <claim> :: verify=<smallest check>`.
-   `NONE` if clean. No long prose, no full logs.
-6. **Orchestrator verification.** A candidate is not a Kimiflow finding until the orchestrator verifies it with
-   targeted code reads, commands, or reproduction. Unverified candidates are recorded as `UNVERIFIED` in
-   `FEATURE-CHECK.md`, not promoted to blockers.
-7. **Output.** Write `.kimiflow/<slug>/FEATURE-CHECK.md` with: target, evidence read, lens results, verified
-   findings, unverified candidates, recommended next actions. Confirmed HIGH/BLOCKER findings may also be written
-   to `findings/r1-feature-check.md` in the normal `FINDING <SEVERITY> <ref> :: <reason>` format so the launcher can
-   surface them.
-
-**Token rule:** the value comes from not loading everything into the orchestrator. Lenses get only target/context
-paths and return candidate lines. The orchestrator verifies only candidates, so total context stays bounded. If a
-lens would need a broad scan, prefer Project Map refresh first.
+A read-only entry point for features that are already implemented (the `review` alias maps here). Instead of a
+fresh build it runs the **normal Phase-7 code-review ensemble** — the same lenses, the same
+`CANDIDATE`→verify→promote mechanic, cross-family reviewer as usual — over the named feature/path or the current
+diff. Require a target (feature name, route, component, command, API path, or file path); if none is given, review
+the current diff. Findings land where every review writes them: `.kimiflow/<slug>/findings/` and `CODE-REVIEW.md`
+under a run slug. It does not edit code or commit; confirmed findings are a suggestion for a follow-up `--fix`/improve
+run, not an automatic edit.
 
 ---
 

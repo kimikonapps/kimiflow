@@ -212,37 +212,6 @@ def count_section_items(path, heading_pattern, done_marker=""):
     return count
 
 
-def count_feature_check_findings(root):
-    base = os.path.join(root, ".kimiflow")
-    total = 0
-    if not os.path.isdir(base):
-        return 0
-    for run in sorted(os.listdir(base)):
-        file_path = os.path.join(base, run, "findings")
-        if not os.path.isdir(file_path):
-            continue
-        for name in sorted(os.listdir(file_path)):
-            if not re.match(r"r.*-feature-check\.md$", name):
-                continue
-            try:
-                with open(os.path.join(file_path, name), "r", encoding="utf-8") as handle:
-                    total += sum(1 for line in handle if re.match(r"^FINDING (BLOCKER|HIGH) ", line))
-            except OSError:
-                pass
-    return total
-
-
-def count_feature_check_runs(root):
-    base = os.path.join(root, ".kimiflow")
-    if not os.path.isdir(base):
-        return 0
-    total = 0
-    for run in os.listdir(base):
-        if os.path.isfile(os.path.join(base, run, "FEATURE-CHECK.md")):
-            total += 1
-    return total
-
-
 def repo_docs_present(root):
     docs = os.path.join(root, "docs")
     if not os.path.isdir(docs):
@@ -472,8 +441,6 @@ def drilldowns(snapshot):
     out = []
     if snapshot["findings"]["open"] > 0:
         out.append("findings")
-    if snapshot["feature_checks"]["verified_findings_open"] > 0:
-        out.append("feature_checks")
     if snapshot["improvements"]["open"] > 0:
         out.append("improvements")
     if snapshot["runs"]["backlog"] > 0:
@@ -507,8 +474,6 @@ def primary_action(snapshot):
         return {"id": "bring_current", "label_key": "bring_current", "priority": "recommended", "blocking": False, "reason_key": "project_map_%s" % snapshot["project_map"]["status"]}
     if snapshot["memory_summary"]["over_budget"]:
         return {"id": "curate_memory", "label_key": "curate_memory", "priority": "recommended", "blocking": False, "reason_key": "memory_over_budget"}
-    if snapshot["feature_checks"]["verified_findings_open"] > 0:
-        return {"id": "review_feature_findings", "label_key": "review_feature_findings", "priority": "medium", "blocking": False, "reason_key": "feature_check_findings_open"}
     if snapshot["findings"]["open"] > 0:
         return {"id": "review_findings", "label_key": "review_findings", "priority": "medium", "blocking": False, "reason_key": "findings_open"}
     if snapshot["improvements"]["open"] > 0:
@@ -592,8 +557,6 @@ def build_snapshot(root, script_dir):
     marker = "kimiflow:queue-done"
     findings_open = count_section_items(os.path.join(root, findings_path), r"^##\s+(Offen|Open)(\s.*)?$", marker)
     improvements_open = count_section_items(os.path.join(root, improvements_path), r"^##\s+(Priorisierte Slices|Prioritized Slices)(\s.*)?$", marker)
-    feature_check_findings = count_feature_check_findings(root)
-    feature_check_runs = count_feature_check_runs(root)
 
     runs_items = []
     active = backlog = done = other = 0
@@ -723,7 +686,6 @@ def build_snapshot(root, script_dir):
         "efficiency": memory.get("global_efficiency", default_efficiency()),
         "active_session": active_session,
         "findings": {"open": findings_open, "path": findings_path},
-        "feature_checks": {"runs": feature_check_runs, "verified_findings_open": feature_check_findings, "path_pattern": ".kimiflow/*/FEATURE-CHECK.md"},
         "improvements": {"open": improvements_open, "path": improvements_path},
         "runs": {
             "active": active,
@@ -750,7 +712,7 @@ def build_snapshot(root, script_dir):
             "memory": {"present": memory_sum["present"], "tokens_estimate": memory_sum["tokens_estimate"], "budget": memory_sum["budget"], "over_budget": memory_sum["over_budget"], "current_learnings": memory_sum["learnings"]["current"], "curation_recommended": memory_sum["curation"]["recommended"]},
             "efficiency": {"present": snapshot["efficiency"].get("present") is True, "estimated_savings_percent": snapshot["efficiency"].get("estimated_savings_percent"), "confidence": snapshot["efficiency"].get("confidence"), "runs_tracked": snapshot["efficiency"].get("runs_tracked", 0), "projects_tracked": snapshot["efficiency"].get("projects_tracked", 0)},
             "vault": {"health": memory.get("provider", {}).get("health", {}).get("status", "not_detected"), "auth_status": memory.get("provider", {}).get("auth", {}).get("status", "not_configured"), "authenticated": memory.get("provider", {}).get("auth", {}).get("authenticated") is True, "sync_pending_count": memory_sum["provider_sync"]["pending_count"], "direct_write_ready": memory_sum["provider_sync"]["direct_write_ready"]},
-            "counts": {"findings_open": findings_open, "feature_check_findings_open": feature_check_findings, "improvements_open": improvements_open, "active_runs": active, "backlog_runs": backlog},
+            "counts": {"findings_open": findings_open, "improvements_open": improvements_open, "active_runs": active, "backlog_runs": backlog},
         },
         "maintenance": {"visible_count": len(visible), "visible_reasons": visible, "hidden_internal_count": len(hidden), "hidden_internal_reasons": hidden},
         "drilldowns": drilldowns(snapshot),

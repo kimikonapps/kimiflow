@@ -179,12 +179,11 @@ $kimiflow --project-map standard
 
 ## Existing feature check
 
-Use `/kimiflow --verify-feature <feature-or-path>` when a feature already exists and you want to know whether it
-is really wired correctly. Kimiflow checks the behavior from multiple lenses: user-visible flow, frontend/backend
-or command/API wiring, contracts/types/config, state/data handling, tests, and docs/security where relevant. Small
-read-only lens agents may collect candidate issues, but the orchestrator must verify each candidate before it becomes
-a real finding. The mode writes `FEATURE-CHECK.md` and does not edit code; confirmed findings can be routed into a
-normal fix/improve run.
+Use `/kimiflow --verify-feature <feature-or-path>` (or the `review` alias) when a feature already exists and you
+want to know whether it is really wired correctly. It runs the normal Phase-7 code-review ensemble read-only over
+the named path or the current diff — the same lenses and verify-before-promote mechanic as a build run's review.
+Findings land in the run's `findings/`/`CODE-REVIEW.md`; the mode does not edit code, and confirmed findings can
+seed a normal fix/improve run.
 
 ## Project structure
 
@@ -556,12 +555,11 @@ $kimiflow --project-map standard
 
 ## Eingebaute Features prüfen
 
-Nutze `/kimiflow --verify-feature <feature-or-path>`, wenn ein Feature schon gebaut ist und du wissen willst, ob es
-wirklich richtig verdrahtet ist. Kimiflow prüft es aus mehreren Perspektiven: sichtbares Verhalten, Frontend-/Backend-
-oder Command-/API-Verdrahtung, Contracts/Types/Config, State-/Datenfluss, Tests sowie Doku/Security, wenn relevant.
-Kleine read-only Prüflinsen dürfen Kandidaten sammeln; der Orchestrator muss jeden Kandidaten gezielt verifizieren,
-bevor daraus ein echtes Finding wird. Der Modus schreibt `FEATURE-CHECK.md` und editiert keinen Code; bestätigte
-Findings können danach in einen normalen Fix-/Improve-Run gehen.
+Nutze `/kimiflow --verify-feature <feature-or-path>` (oder den `review`-Alias), wenn ein Feature schon gebaut ist und
+du wissen willst, ob es wirklich richtig verdrahtet ist. Der Modus fährt read-only das normale
+Phase-7-Code-Review-Ensemble über den benannten Pfad bzw. den aktuellen Diff — gleiche Lenses und
+Verify-vor-Promote-Mechanik wie beim Review eines Build-Runs. Findings landen in `findings/`/`CODE-REVIEW.md`; der
+Modus editiert keinen Code, und bestätigte Findings können danach in einen normalen Fix-/Improve-Run gehen.
 
 ## Projektstruktur
 

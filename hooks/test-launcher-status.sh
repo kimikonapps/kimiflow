@@ -214,21 +214,6 @@ assert_jq "$out" '.improvements.open == 3' "no_marker_arg_unchanged"
 
 assert_jq "$out" '.improvements.open == 3' "guard_empty_marker_counts_all"
 
-mkdir -p "$REPO/.kimiflow/feature-check-demo/findings"
-cat > "$REPO/.kimiflow/feature-check-demo/FEATURE-CHECK.md" <<'EOF'
-# Feature Check
-
-Verified finding exists.
-EOF
-cat > "$REPO/.kimiflow/feature-check-demo/findings/r1-feature-check.md" <<'EOF'
-FINDING HIGH src/a.txt:1 :: feature is not wired on the real path
-FINDING MEDIUM src/a.txt:1 :: docs could be clearer
-EOF
-out="$(run_status)"
-assert_jq "$out" '.feature_checks.runs == 1 and .feature_checks.verified_findings_open == 1 and (.maintenance.reasons | index("feature_check_findings") | not) and .maintenance.bring_current_recommended == false' "feature_check_findings_surface_without_maintenance_noise"
-assert_jq "$out" '.launcher.primary_action.id == "review_feature_findings" and (.launcher.drilldowns | index("feature_checks"))' "launcher_recommends_feature_check_drilldown"
-rm -rf "$REPO/.kimiflow/feature-check-demo"
-
 cat > "$REPO/.kimiflow/project/MEMORY.md" <<'EOF'
 # Memory
 
