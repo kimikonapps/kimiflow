@@ -1,0 +1,12 @@
+@@exit@@
+0
+@@stdout@@
+NEW-FILE	hooks	hooks/new.sh
+REFRESHED	hooks	files=2	commit=9077cfe
+@@stderr@@
+@@files@@
+.kimiflow/project/FINDINGS.md	mode=644	hash=sha256:a2ed99a0a376d3147db54333f62ba30603ac43d8cf558ff240d9a724251cbf82
+.kimiflow/project/INDEX.json	mode=600	hash=sha256:c27d91f24fcd60852040562c12a36af21534d2b598ee913797537004a5ac26b4
+README.md	mode=644	hash=sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03
+hooks/a.sh	mode=644	hash=sha256:ab08508fdf5ca4da5c4995987bc41c56c048aaa5eeb046417ae4049b7d40286e
+hooks/new.sh	mode=644	hash=sha256:7aa7a5359173d05b63cfd682e3c38487f3cb4f7f1d60659fe59fab1505977d4c

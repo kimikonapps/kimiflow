@@ -1,0 +1,12 @@
+@@exit@@
+0
+@@stdout@@
+{"status":"item_updated","written":true,"items_path":".kimiflow/demo/ITEMS.jsonl","id":"item_001","item_status":"rejected","item_counts":{"total":1,"pending":0,"built":0,"accepted":0,"rejected":1,"dropped":0,"open":1}}
+@@stderr@@
+@@files@@
+.kimiflow/demo/ITEMS.jsonl	mode=600	hash=sha256:691b76571c7a9211153957185948c7901f20cf9df1c03a862cc7ccdcc0e7920e
+.kimiflow/demo/STATE.md	mode=644	hash=sha256:42e3adbce0428a0c90a275721713087437c84cca7e87a645f3d846f04e384d3d
+.kimiflow/project/FINDINGS.md	mode=644	hash=sha256:a2ed99a0a376d3147db54333f62ba30603ac43d8cf558ff240d9a724251cbf82
+.kimiflow/session/ACTIVE_RUN.json	mode=644	hash=sha256:5cec8cb6a8a9b60209801e144ad56dc2fa831038510e7052fc126c7071bba494
+README.md	mode=644	hash=sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03
+hooks/a.sh	mode=644	hash=sha256:ab08508fdf5ca4da5c4995987bc41c56c048aaa5eeb046417ae4049b7d40286e

@@ -1,0 +1,11 @@
+@@exit@@
+0
+@@stdout@@
+{"status":"parked","written":true,"run":".kimiflow/demo","outcome":{"schema_version":1,"outcome":"parked","reason":"waiting","completed_at":"TIMESTAMP","learning_review":{"status":"not_promoted","reason":"session_not_finished"}}}
+@@stderr@@
+@@files@@
+.kimiflow/demo/SESSION-OUTCOME.json	mode=644	hash=sha256:7a44047e67f29ef494f0a8318fc8ee7a481b8cb6875ed0ceeff600ce69c74ee4
+.kimiflow/demo/STATE.md	mode=600	hash=sha256:9e0bfc03e0d038aa60343014311b47a3051cdaf1aab13562485e769770342ed5
+.kimiflow/project/FINDINGS.md	mode=644	hash=sha256:a2ed99a0a376d3147db54333f62ba30603ac43d8cf558ff240d9a724251cbf82
+README.md	mode=644	hash=sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03
+hooks/a.sh	mode=644	hash=sha256:ab08508fdf5ca4da5c4995987bc41c56c048aaa5eeb046417ae4049b7d40286e

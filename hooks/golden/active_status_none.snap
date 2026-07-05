@@ -1,0 +1,9 @@
+@@exit@@
+0
+@@stdout@@
+{"schema_version":1,"present":false,"status":"none","active_file":".kimiflow/session/ACTIVE_RUN.json","run":null,"item_counts":{"total":0,"pending":0,"built":0,"accepted":0,"rejected":0,"dropped":0,"open":0},"stale_risk":"none","stale":{"risk":"none","changed_paths":[],"relevant_changed_paths":[],"reason":"no_active_session"},"awaiting_user":false,"terminal":true}
+@@stderr@@
+@@files@@
+.kimiflow/project/FINDINGS.md	mode=644	hash=sha256:a2ed99a0a376d3147db54333f62ba30603ac43d8cf558ff240d9a724251cbf82
+README.md	mode=644	hash=sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03
+hooks/a.sh	mode=644	hash=sha256:ab08508fdf5ca4da5c4995987bc41c56c048aaa5eeb046417ae4049b7d40286e

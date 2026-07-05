@@ -1,0 +1,10 @@
+@@exit@@
+0
+@@stdout@@
+PROJECT_MAP_COVERAGE	covered	affected=1	mapped=1	unmapped=0	affected_stale=0	affected_unknown=0	phase2_depth=compressed	reason=affected-paths-covered-current	index=REPO/.kimiflow/project/INDEX.json
+@@stderr@@
+@@files@@
+.kimiflow/project/FINDINGS.md	mode=644	hash=sha256:a2ed99a0a376d3147db54333f62ba30603ac43d8cf558ff240d9a724251cbf82
+.kimiflow/project/INDEX.json	mode=644	hash=sha256:251d7c428ae0a08247a668d328bc73b8fe02d8a2ab4a89df9ced903a7a51d50e
+README.md	mode=644	hash=sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03
+hooks/a.sh	mode=644	hash=sha256:ab08508fdf5ca4da5c4995987bc41c56c048aaa5eeb046417ae4049b7d40286e

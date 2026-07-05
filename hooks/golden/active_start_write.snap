@@ -1,0 +1,10 @@
+@@exit@@
+0
+@@stdout@@
+{"schema_version":1,"present":true,"status":"active","active_file":".kimiflow/session/ACTIVE_RUN.json","run":".kimiflow/demo","state_path":".kimiflow/demo/STATE.md","items_path":".kimiflow/demo/ITEMS.jsonl","started_at":"TIMESTAMP","started_head":"COMMIT","last_checked_head":"COMMIT","host":"unknown","mode":"feature","scope":"small","affected_files":[],"item_counts":{"total":0,"pending":0,"built":0,"accepted":0,"rejected":0,"dropped":0,"open":0},"stale_risk":"unknown","stale":{"risk":"unknown","changed_paths":[".kimiflow/project/FINDINGS.md",".kimiflow/session/ACTIVE_RUN.json"],"relevant_changed_paths":[],"reason":"affected_paths_unknown"},"awaiting_user":false,"terminal":false,"next_action":"revalidate_then_refresh_baseline"}
+@@stderr@@
+@@files@@
+.kimiflow/project/FINDINGS.md	mode=644	hash=sha256:a2ed99a0a376d3147db54333f62ba30603ac43d8cf558ff240d9a724251cbf82
+.kimiflow/session/ACTIVE_RUN.json	mode=600	hash=sha256:b0bc7c4d587fc457cdb113e00c6aa1f8f4997372f52201cf70efda0102bcea3b
+README.md	mode=644	hash=sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03
+hooks/a.sh	mode=644	hash=sha256:ab08508fdf5ca4da5c4995987bc41c56c048aaa5eeb046417ae4049b7d40286e

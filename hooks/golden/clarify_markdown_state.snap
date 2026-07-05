@@ -1,0 +1,14 @@
+@@exit@@
+0
+@@stdout@@
+CLARIFY_GATE	OPEN	blockers=0	reason=clean	detail=
+@@stderr@@
+@@files@@
+.kimiflow/demo/ACCEPTANCE.md	mode=644	hash=sha256:d81f7fb52b8fb4f47069d9a6d51d4ca5d5a2a71d2913b33194bf98bffc33254e
+.kimiflow/demo/INTENT.md	mode=644	hash=sha256:66c8129857dffca90823f4e7a56c2b1cfaff32bb5aa35cfa5b5ad196042a52a7
+.kimiflow/demo/PLAN.md	mode=644	hash=sha256:c11ac338ef3ce03672ffbf0e658370a4575ad4ef4a71349e10b7984b91314d32
+.kimiflow/demo/RESEARCH.md	mode=644	hash=sha256:c85881897a5ea701ceeb1e3c57ab51f1e6055e03e01b45a6e378f33acb2832c9
+.kimiflow/demo/STATE.md	mode=644	hash=sha256:83277016c8ca60c31b12a2c9b7ccce7ca31b7a8a91620f99d2a9317b4de95faf
+.kimiflow/project/FINDINGS.md	mode=644	hash=sha256:a2ed99a0a376d3147db54333f62ba30603ac43d8cf558ff240d9a724251cbf82
+README.md	mode=644	hash=sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03
+hooks/a.sh	mode=644	hash=sha256:ab08508fdf5ca4da5c4995987bc41c56c048aaa5eeb046417ae4049b7d40286e

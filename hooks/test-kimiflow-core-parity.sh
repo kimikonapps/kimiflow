@@ -1,23 +1,48 @@
 #!/usr/bin/env bash
-# kimiflow — parity harness for the R1 kimiflow_core ports.
-# It compares pre-R1 Bash helpers against the working tree, normalizing only known
-# nondeterminism. Divergences must be documented in the R1 spec §12.
+# kimiflow — golden-snapshot harness for the kimiflow_core ports.
+#
+# WHAT THIS LOCKS
+#   For each curated case it runs one kimiflow_core CLI (active-run,
+#   project-map-status, launcher-status, clarify-gate, plan-blocker-gate)
+#   against a fixture and freezes the result — exit code, normalized stdout,
+#   normalized stderr, and post-run file-state (mode + normalized content hash
+#   of every file) — into a checked-in golden under hooks/golden/<case>.snap.
+#   A run recomputes each snapshot and fails on any drift from its golden.
+#   The goldens ARE the expected current behavior; this is a behavior lock,
+#   not a port-fidelity check.
+#
+#   History: this harness used to materialize the frozen pre-R1 Bash baseline
+#   (git archive 72282e6) and diff working-tree-vs-baseline, stripping an
+#   ever-growing list of fields removed from the ports (background,
+#   agentic_readiness, feature_checks, improvements, awaiting_user, ...). The
+#   port-fidelity guarantee retired once the Python ports went live; the
+#   growing strip-list was the signal to switch to golden snapshots. No git
+#   archive, network, or old-side execution is needed anymore.
+#
+# REGENERATING GOLDENS (only after an INTENTIONAL behavior change)
+#   UPDATE_GOLDEN=1 bash hooks/test-kimiflow-core-parity.sh
+#   then REVIEW `git diff hooks/golden/` before committing. A golden change you
+#   did not intend is a regression you are about to bless — never regenerate
+#   just to "make it green" without reading exactly which fields moved and why.
+#
+# DETERMINISM
+#   Only known nondeterminism is normalized (see normalize()): tmp paths, ISO
+#   timestamps, 40-hex commit SHAs, and the plugin version. The fixture repo
+#   commit is pinned (fixed identity + author/committer date) so its short SHA
+#   is byte-reproducible across machines. Content hashes are taken over the
+#   normalized bytes, so goldens are portable (macOS dev ↔ Linux CI).
 set -u
+# Pin collation/byte semantics: the @@files@@ block is `find | sort`-ordered and
+# goldens are byte-compared, so an unpinned locale (macOS de_AT.UTF-8 vs. CI's
+# LC_ALL=C) would flip the sort order and fail every case.
+export LC_ALL=C
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BASE_SHA="${KIMIFLOW_CORE_PARITY_BASE_SHA:-72282e6}"
+GOLDEN_DIR="$ROOT/hooks/golden"
+UPDATE="${UPDATE_GOLDEN:-0}"
 WORK="$(mktemp -d)"
 WORK_REAL="$(cd "$WORK" 2>/dev/null && pwd -P || printf '%s' "$WORK")"
 trap 'rm -rf "$WORK"' EXIT
-
-OLD_HOOKS="$WORK/old-hooks"
-OLD_ROOT="$WORK/old-root"
-mkdir -p "$OLD_ROOT"
-if ! git -C "$ROOT" archive "$BASE_SHA" | tar -x -C "$OLD_ROOT"; then
-  echo "cannot materialize $BASE_SHA" >&2
-  exit 1
-fi
-OLD_HOOKS="$OLD_ROOT/hooks"
 
 REPO="$WORK/repo"
 HOME_DIR="$WORK/home"
@@ -39,7 +64,11 @@ cat > "$REPO/.kimiflow/project/FINDINGS.md" <<'EOF'
 ## Erledigt / ueberholt
 EOF
 git -C "$REPO" add README.md hooks/a.sh
-git -C "$REPO" commit -q -m init
+# Pin identity + dates so the commit SHA (and its short form, which surfaces in
+# INDEX.json / project-map output) is byte-reproducible across runs and machines.
+GIT_AUTHOR_DATE='2026-07-02 00:00:00 +0000' \
+GIT_COMMITTER_DATE='2026-07-02 00:00:00 +0000' \
+  git -C "$REPO" commit -q -m init
 
 hash_file() {
   if command -v shasum >/dev/null 2>&1; then
@@ -158,40 +187,20 @@ FAILS=0
 ok() { printf 'ok   %s\n' "$1"; }
 bad() { printf 'BAD  %s\n' "$1"; FAILS=$((FAILS + 1)); }
 
-expected_divergence() {
-  local label="$1" old_code="$2" new_code="$3"
-  case "$label" in
-    active_mark_built_write|active_mark_accepted_write|active_mark_rejected_write|active_drop_item_write|active_park_write|active_fail_write|active_abort_write)
-      [ "$old_code" = "$new_code" ] || return 1
-      cmp -s "$WORK/o.out.norm" "$WORK/n.out.norm" || return 1
-      cmp -s "$WORK/o.err.norm" "$WORK/n.err.norm" || return 1
-      sed -E 's/\tmode=[0-9]+//' "$WORK/o.files.norm" > "$WORK/o.files.nomode"
-      sed -E 's/\tmode=[0-9]+//' "$WORK/n.files.norm" > "$WORK/n.files.nomode"
-      cmp -s "$WORK/o.files.nomode" "$WORK/n.files.nomode" || return 1
-      return 0
-      ;;
-  esac
-  return 1
-}
-
-# Post-R1 schema addition: active-session status output gained "awaiting_user"
-# (await-user engine gate, hooks/kimiflow_core/active_run.py). Pre-R1 bash never
-# emitted the field, so parity strips it (compact and pretty JSON) and keeps
-# comparing the shared fields; its semantics are covered by test-active-run.sh
-# and the kimiflow_core unit tests.
+# Normalizes the only known nondeterminism so goldens are byte-stable and
+# portable. Keep this list tight: every entry is a documented volatile field,
+# NOT a place to hide removed-field drift (that is exactly the trap the old
+# baseline strip-list fell into).
 normalize() {
   sed -E \
-    -e "s#$OLD_ROOT#ROOT#g" \
     -e "s#$ROOT#ROOT#g" \
     -e "s#$REPO#REPO#g" \
     -e "s#$WORK_REAL#WORK#g" \
     -e "s#$WORK#WORK#g" \
-    -e 's#WORK/cases/[A-Za-z0-9_.:-]+-(old|new)#REPO#g' \
+    -e 's#WORK/cases/[A-Za-z0-9_.:-]+#REPO#g' \
     -e 's/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z/TIMESTAMP/g' \
     -e 's/[0-9a-f]{40}/COMMIT/g' \
-    -e 's/"version": ?"[0-9]+\.[0-9]+\.[0-9]+"/"version": "VERSION"/g' \
-    -e 's/"awaiting_user":(true|false),//g' \
-    -e '/^[[:space:]]*"awaiting_user": (true|false),?$/d'
+    -e 's/"version": ?"[0-9]+\.[0-9]+\.[0-9]+"/"version": "VERSION"/g'
 }
 
 normalized_file_hash() {
@@ -215,190 +224,123 @@ file_state() {
 }
 
 run_one() {
-  local label="$1" script="$2" argstr="$3" old_script new_script diverged case_old case_new arg old_args new_args
-  old_script="$OLD_HOOKS/$script"
+  local label="$1" script="$2" argstr="$3" new_script case_dir arg args new_args new_stdin golden
   new_script="$ROOT/hooks/$script"
   args=()
   [ -n "$argstr" ] && IFS='|' read -r -a args <<< "$argstr"
 
   mkdir -p "$WORK/cases"
-  case_old="$WORK/cases/${label}-old"
-  case_new="$WORK/cases/${label}-new"
-  rm -rf "$case_old" "$case_new"
-  cp -R "$REPO" "$case_old"
-  cp -R "$REPO" "$case_new"
+  case_dir="$WORK/cases/${label}"
+  rm -rf "$case_dir"
+  cp -R "$REPO" "$case_dir"
 
   case "$label" in
     active_start_write)
-      rm -rf "$case_old/.kimiflow/session" "$case_new/.kimiflow/session"
+      rm -rf "$case_dir/.kimiflow/session"
       ;;
     project_map_status_current|project_map_coverage_current|project_map_index_symbols|project_map_refresh_section|project_map_refresh_changed_new)
-      write_project_map_index "$case_old"
-      write_project_map_index "$case_new"
+      write_project_map_index "$case_dir"
       ;;
   esac
   case "$label" in
     project_map_refresh_changed_new)
-      printf 'new\n' > "$case_old/hooks/new.sh"
-      printf 'new\n' > "$case_new/hooks/new.sh"
+      printf 'new\n' > "$case_dir/hooks/new.sh"
       ;;
   esac
   case "$label" in
     launcher_no_kimiflow)
-      rm -rf "$case_old/.kimiflow" "$case_new/.kimiflow"
+      rm -rf "$case_dir/.kimiflow"
       ;;
     launcher_invalid_map_json)
-      mkdir -p "$case_old/.kimiflow/project" "$case_new/.kimiflow/project"
-      printf '{bad json\n' > "$case_old/.kimiflow/project/INDEX.json"
-      printf '{bad json\n' > "$case_new/.kimiflow/project/INDEX.json"
+      mkdir -p "$case_dir/.kimiflow/project"
+      printf '{bad json\n' > "$case_dir/.kimiflow/project/INDEX.json"
       ;;
     launcher_scalar_map_json)
-      mkdir -p "$case_old/.kimiflow/project" "$case_new/.kimiflow/project"
-      printf 'null\n' > "$case_old/.kimiflow/project/INDEX.json"
-      printf 'null\n' > "$case_new/.kimiflow/project/INDEX.json"
+      mkdir -p "$case_dir/.kimiflow/project"
+      printf 'null\n' > "$case_dir/.kimiflow/project/INDEX.json"
       ;;
     launcher_stale_plugin_cache)
-      mkdir -p "$case_old/.codex-plugin" "$case_new/.codex-plugin" "$case_old/fake-cache/.codex-plugin" "$case_new/fake-cache/.codex-plugin"
-      printf '{"version":"9.9.9"}\n' > "$case_old/.codex-plugin/plugin.json"
-      printf '{"version":"9.9.9"}\n' > "$case_new/.codex-plugin/plugin.json"
-      printf '{"version":"0.0.1"}\n' > "$case_old/fake-cache/.codex-plugin/plugin.json"
-      printf '{"version":"0.0.1"}\n' > "$case_new/fake-cache/.codex-plugin/plugin.json"
+      mkdir -p "$case_dir/.codex-plugin" "$case_dir/fake-cache/.codex-plugin"
+      printf '{"version":"9.9.9"}\n' > "$case_dir/.codex-plugin/plugin.json"
+      printf '{"version":"0.0.1"}\n' > "$case_dir/fake-cache/.codex-plugin/plugin.json"
       ;;
     active_append_preview|active_finish_preview|active_park_write|active_fail_write|active_abort_write|active_prompt_payload|active_stop_gate|active_refresh_baseline_write)
-      write_active_fixture "$case_old"
-      write_active_fixture "$case_new"
+      write_active_fixture "$case_dir"
       ;;
     active_mark_built_write|active_mark_accepted_write|active_mark_rejected_write|active_drop_item_write)
-      write_active_fixture "$case_old"
-      write_active_fixture "$case_new"
-      write_active_item "$case_old" "pending"
-      write_active_item "$case_new" "pending"
+      write_active_fixture "$case_dir"
+      write_active_item "$case_dir" "pending"
       ;;
     clarify_markdown_state|plan_blocker_markdown_state)
-      write_gate_fixture "$case_old"
-      write_gate_fixture "$case_new"
+      write_gate_fixture "$case_dir"
       ;;
   esac
 
-  old_args=()
   new_args=()
   for arg in ${args[@]+"${args[@]}"}; do
     if [ "$arg" = "__REPO__" ]; then
-      old_args+=("$case_old")
-      new_args+=("$case_new")
+      new_args+=("$case_dir")
     elif [ "$arg" = "__RUN__" ]; then
-      old_args+=("$case_old/.kimiflow/demo")
-      new_args+=("$case_new/.kimiflow/demo")
+      new_args+=("$case_dir/.kimiflow/demo")
     else
-      old_args+=("$arg")
       new_args+=("$arg")
     fi
   done
 
-  old_env=(HOME="$HOME_DIR" KIMIFLOW_OBSIDIAN_URL= KIMIFLOW_OBSIDIAN_API_KEY=)
   new_env=(HOME="$HOME_DIR" KIMIFLOW_OBSIDIAN_URL= KIMIFLOW_OBSIDIAN_API_KEY=)
   case "$label" in
     active_*)
-      mkdir -p "$case_old/fake-plugin" "$case_new/fake-plugin"
-      old_env+=(KIMIFLOW_PLUGIN_ROOT="$case_old/fake-plugin")
-      new_env+=(KIMIFLOW_PLUGIN_ROOT="$case_new/fake-plugin")
+      mkdir -p "$case_dir/fake-plugin"
+      new_env+=(KIMIFLOW_PLUGIN_ROOT="$case_dir/fake-plugin")
       ;;
     launcher_stale_plugin_cache)
-      old_env+=(KIMIFLOW_PLUGIN_ROOT="$case_old/fake-cache")
-      new_env+=(KIMIFLOW_PLUGIN_ROOT="$case_new/fake-cache")
+      new_env+=(KIMIFLOW_PLUGIN_ROOT="$case_dir/fake-cache")
       ;;
   esac
 
-  old_stdin="/dev/null"
   new_stdin="/dev/null"
   case "$label" in
     active_prompt_payload|active_stop_gate)
-      old_stdin="$WORK/old.stdin"
       new_stdin="$WORK/new.stdin"
       if [ "$label" = "active_stop_gate" ]; then
-        printf '{"cwd":"%s"}' "$case_old" > "$old_stdin"
-        printf '{"cwd":"%s"}' "$case_new" > "$new_stdin"
+        printf '{"cwd":"%s"}' "$case_dir" > "$new_stdin"
       else
-        printf '{"cwd":"%s","prompt":"must not persist"}' "$case_old" > "$old_stdin"
-        printf '{"cwd":"%s","prompt":"must not persist"}' "$case_new" > "$new_stdin"
+        printf '{"cwd":"%s","prompt":"must not persist"}' "$case_dir" > "$new_stdin"
       fi
       ;;
   esac
 
-  (cd "$case_old" && env "${old_env[@]}" bash "$old_script" ${old_args[@]+"${old_args[@]}"} < "$old_stdin") > "$WORK/o.out" 2> "$WORK/o.err"; o_code=$?
-  (cd "$case_new" && env "${new_env[@]}" bash "$new_script" ${new_args[@]+"${new_args[@]}"} < "$new_stdin") > "$WORK/n.out" 2> "$WORK/n.err"; n_code=$?
+  (cd "$case_dir" && env "${new_env[@]}" bash "$new_script" ${new_args[@]+"${new_args[@]}"} < "$new_stdin") > "$WORK/n.out" 2> "$WORK/n.err"; n_code=$?
 
-  # Removed subsystems: pre-R1 launcher-status emitted `.background`,
-  # `.agentic_readiness` (plus their `launcher.status.counts.background_*` mirror),
-  # `.feature_checks` (plus its `launcher.status.counts.feature_check_findings_open`
-  # mirror), and `.improvements` (plus its `launcher.status.counts.improvements_open`
-  # mirror); all were deleted with the Background Handles / Agentic Readiness layers,
-  # the existing-feature-check simplification, and the Workqueue close-back removal.
-  # Strip them from the launcher snapshot on both sides so parity keeps comparing the
-  # shared fields against the frozen baseline.
-  case "$label" in
-    launcher_*)
-      # Guard: a reintroduced removed field in the NEW launcher must surface as a
-      # real divergence — strip the new side only when it is clean; the frozen
-      # baseline side is always stripped.
-      strip_targets="$WORK/o.out"
-      if jq -e 'has("background") or has("agentic_readiness") or has("feature_checks") or has("improvements")
-                or ((.launcher.status.counts // {}) | has("background_collectable") or has("background_stale") or has("feature_check_findings_open") or has("improvements_open"))' \
-                "$WORK/n.out" >/dev/null 2>&1; then
-        : # leave n.out unstripped -> diff against the stripped baseline flags the reintroduction
-      else
-        strip_targets="$strip_targets $WORK/n.out"
-      fi
-      for f in $strip_targets; do
-        if jq -e . "$f" >/dev/null 2>&1; then
-          jq 'del(.background, .agentic_readiness, .feature_checks, .improvements)
-              | if (.launcher.status.counts | type) == "object"
-                then .launcher.status.counts |= del(.background_collectable, .background_stale, .feature_check_findings_open, .improvements_open)
-                else . end' "$f" > "$f.stripped" && mv "$f.stripped" "$f"
-        fi
-      done
-      ;;
-  esac
+  # Freeze/compare the full observable result of this case.
+  {
+    printf '@@exit@@\n%s\n' "$n_code"
+    printf '@@stdout@@\n'; normalize < "$WORK/n.out"
+    printf '@@stderr@@\n'; normalize < "$WORK/n.err"
+    printf '@@files@@\n'; file_state "$case_dir"
+  } > "$WORK/snapshot"
 
-  normalize < "$WORK/o.out" > "$WORK/o.out.norm"
-  normalize < "$WORK/o.err" > "$WORK/o.err.norm"
-  normalize < "$WORK/n.out" > "$WORK/n.out.norm"
-  normalize < "$WORK/n.err" > "$WORK/n.err.norm"
-  file_state "$case_old" > "$WORK/o.files.norm"
-  file_state "$case_new" > "$WORK/n.files.norm"
+  golden="$GOLDEN_DIR/${label}.snap"
+  if [ "$UPDATE" = "1" ]; then
+    mkdir -p "$GOLDEN_DIR"
+    cp "$WORK/snapshot" "$golden"
+    ok "$label (golden written)"
+    return 0
+  fi
 
-  diverged=""
-  [ "$o_code" != "$n_code" ] && diverged="${diverged}exit($o_code!=$n_code) "
-  cmp -s "$WORK/o.out.norm" "$WORK/n.out.norm" || diverged="${diverged}stdout "
-  cmp -s "$WORK/o.err.norm" "$WORK/n.err.norm" || diverged="${diverged}stderr "
-  cmp -s "$WORK/o.files.norm" "$WORK/n.files.norm" || diverged="${diverged}file-state "
+  if [ ! -f "$golden" ]; then
+    bad "$label — missing golden: hooks/golden/${label}.snap (run UPDATE_GOLDEN=1 to create)"
+    return 1
+  fi
 
-  if [ -z "$diverged" ]; then
+  if cmp -s "$golden" "$WORK/snapshot"; then
     ok "$label"
     return 0
   fi
 
-  if expected_divergence "$label" "$o_code" "$n_code"; then
-    ok "$label (§12 divergence)"
-    return 0
-  fi
-
-  bad "$label — diverged: $diverged"
-  if [ "$o_code" != "$n_code" ]; then
-    printf '  exit codes: old=%s new=%s\n' "$o_code" "$n_code"
-  fi
-  if ! cmp -s "$WORK/o.out.norm" "$WORK/n.out.norm"; then
-    printf '  [stdout diff]\n'
-    diff -u "$WORK/o.out.norm" "$WORK/n.out.norm" | sed 's/^/  /' || true
-  fi
-  if ! cmp -s "$WORK/o.err.norm" "$WORK/n.err.norm"; then
-    printf '  [stderr diff]\n'
-    diff -u "$WORK/o.err.norm" "$WORK/n.err.norm" | sed 's/^/  /' || true
-  fi
-  if ! cmp -s "$WORK/o.files.norm" "$WORK/n.files.norm"; then
-    printf '  [file-state diff]\n'
-    diff -u "$WORK/o.files.norm" "$WORK/n.files.norm" | sed 's/^/  /' || true
-  fi
+  bad "$label — snapshot diverged from golden"
+  diff -u "$golden" "$WORK/snapshot" | sed 's/^/  /' || true
+  return 1
 }
 
 CASES=(
@@ -445,7 +387,39 @@ for entry in "${CASES[@]}"; do
   run_one "$label" "$script" "$argstr"
 done
 
+# Golden-dir <-> CASES coupling: a removed case must not leave its .snap behind
+# (silent coverage shrink), and the .snap count must match the case count exactly.
+# UPDATE mode prunes orphans; verify mode fails on any mismatch.
+golden_guard() {
+  local expected="$WORK/expected.snaps" actual="$WORK/actual.snaps" orphans missing entry f
+  for entry in "${CASES[@]}"; do printf '%s.snap\n' "${entry%%::*}"; done | sort > "$expected"
+  (cd "$GOLDEN_DIR" 2>/dev/null && find . -maxdepth 1 -name '*.snap' -exec basename {} \; || true) | sort > "$actual"
+  orphans="$(comm -13 "$expected" "$actual")"
+  missing="$(comm -23 "$expected" "$actual")"
+  if [ "$UPDATE" = "1" ]; then
+    if [ -n "$orphans" ]; then
+      while IFS= read -r f; do
+        rm -f "$GOLDEN_DIR/$f"
+        printf 'pruned orphan golden: hooks/golden/%s\n' "$f"
+      done <<< "$orphans"
+    fi
+    return 0
+  fi
+  if [ -n "$orphans" ] || [ -n "$missing" ]; then
+    bad "golden_guard — snap files do not match CASES (expected ${#CASES[@]})"
+    [ -z "$orphans" ] || printf '  orphan (no case): %s\n' $orphans
+    [ -z "$missing" ] || printf '  missing (case has no golden): %s\n' $missing
+    return 1
+  fi
+  ok "golden_guard (${#CASES[@]} cases == $(wc -l < "$actual" | tr -d ' ') goldens)"
+}
+golden_guard
+
 echo "----"
+if [ "$UPDATE" = "1" ]; then
+  echo "GOLDENS WRITTEN (${#CASES[@]} cases) — review \`git diff hooks/golden/\` before committing"
+  exit 0
+fi
 if [ "$FAILS" -eq 0 ]; then
   echo "ALL GREEN"
   exit 0
