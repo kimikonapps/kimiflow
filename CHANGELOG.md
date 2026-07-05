@@ -4,7 +4,14 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-Hardening from real-world incidents: the Codex cross-family transport is pinned instead of trusting host defaults, mechanical gate markers are spelled out verbatim for subagents, and the active-session Stop gate learns to yield while the orchestrator is legitimately waiting for a user answer.
+_No unreleased changes._
+
+## 0.1.59
+
+The slim-down release: Opus-pinned leaf seats under Fable sessions, four zero-usage subsystems removed (Explore mode, Background Handles, Agentic Readiness, workqueue close-back), memory recall and the Vault Pulse skipped on small runs, the project map reduced to the quick tier, and the core test harness converted to golden snapshots — plus hardening from real-world incidents: the Codex cross-family transport is pinned instead of trusting host defaults, mechanical gate markers are spelled out verbatim for subagents, and the active-session Stop gate learns to yield while the orchestrator is legitimately waiting for a user answer.
+
+### Fixed
+- **Golden-snapshot harness made hermetic against host state** (`hooks/test-kimiflow-core-parity.sh`, `hooks/golden/launcher_*.snap`): the seven launcher goldens had frozen developer-host provider state and all failed on CI — an empty `KIMIFLOW_OBSIDIAN_URL` falls back to the default loopback probe URLs (a live local Obsidian REST API answered), and the plain `env` overlay let host-set provider knobs (`KIMIFLOW_OBSIDIAN_MCP_AVAILABLE`) leak `authenticated:true` into the snapshots. Cases now run under `env -i` (only `PATH` and the `LC_ALL=C` pin pass through) with the probe URL pinned to a dead loopback address, and `normalize()` masks the now-derived `cutoff_date` (today minus the stale-after window — it would have rotted the `launcher_full` golden daily). Regenerated goldens changed only in the provider/vault/auth fields and the date mask.
 
 ### Added
 - **`awaiting_user` state in the Active Session Contract** (`hooks/kimiflow_core/active_run.py`, `hooks/test-active-run.sh`, `hooks/kimiflow_core/tests/test_active_run.py`): new `await-user --run <dir> [--reason <text>] --write` subcommand marks the run as waiting for a user answer at an engine gate (micro-grill, pre-build approval); the Stop gate passes while the flag is set, and the next `prompt-context` call clears it automatically — no more park/restart cycles just to ask the user a question. `status` reports the flag; absent flag = `false` (backward compatible).
