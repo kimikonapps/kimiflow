@@ -162,7 +162,7 @@ kimiflow fix     # bug flow with Red/Green evidence
 ```
 
 For `small` and `quick`, kimiflow still runs a short **micro-grill** first: 2–3 cheap questions, or a compact list of recommended assumptions to confirm in the current run. Loose prior discussion is context, not consent. Only truly exact `trivial` changes can skip this.
-`small`/`quick` also check the Vault when one is connected: one bounded **Vault Pulse** before web research, or a graceful skip note when no direct Vault search is available.
+`small`/`quick` skip memory recall and the **Vault Pulse** (both run at `scope=large` only); the Current-State Pulse and the Phase-7 learning loop still run at every scope.
 
 In Codex, use the same arguments with `$kimiflow`:
 
@@ -330,7 +330,7 @@ Scope-gate (`trivial`/`small`/`large`) → **clarify** (plain-language grill / p
 
 State is persisted to `.kimiflow/<slug>/` in the target project (resumable). `small`/`quick` runs stay lean, but they do not skip Phase 1: kimiflow asks or confirms enough to avoid building the wrong thing.
 `small`/`quick` also run a tiny Current-State Pulse: local-only work records "no external freshness check needed"; changing APIs/tooling/hosts gets one current primary-source check before planning.
-`small`/`quick` also run a tiny Vault Pulse: if Obsidian/Vault direct search is ready, kimiflow looks up the current intent once; if not, it records provider health and continues without blocking.
+`small`/`quick` skip memory recall and the Vault Pulse — both run at `scope=large` only (recall payoff is thin on small tasks); the Phase-7 learning loop still runs at every scope.
 
 > **Cost:** a `large` run fans out several subagents (dual planners, reviewers, implementer, independent verifier, and the offered best-of-2) — expect noticeably higher token use. One review lens per gate routes to a cross-family CLI by default when one is available — on a Claude Code host an ordered chain (Codex → Gemini via `agy` → same-family), configurable via `.kimiflow/cross-family` (`off`, or an order like `auto gemini`). The scope-gate keeps `trivial` lean, while non-trivial Phase 7 uses a bounded review ensemble over a compact diff packet to avoid repeated full re-reviews.
 
@@ -538,7 +538,7 @@ kimiflow fix     # Bugflow mit Red/Green-Evidenz
 ```
 
 Bei `small` und `quick` macht kimiflow trotzdem einen kurzen **Micro-Grill**: 2–3 günstige Fragen oder eine kompakte Bestätigung empfohlener Annahmen im aktuellen Run. Lose Vorbesprechung ist Kontext, keine Zustimmung. Nur wirklich exakte `trivial`-Änderungen dürfen das überspringen.
-`small`/`quick` schaut außerdem in den Vault, wenn einer verbunden ist: ein begrenzter **Vault Pulse** vor der Web-Recherche oder ein sauberer Skip-Hinweis, wenn keine direkte Vault-Suche verfügbar ist.
+`small`/`quick` überspringt Memory-Recall und den **Vault Pulse** (beides läuft nur bei `scope=large`); Current-State-Pulse und der Phase-7-Learning-Loop laufen weiterhin bei jedem Scope.
 
 In Codex nutzt du dieselben Argumente mit `$kimiflow`:
 
@@ -705,7 +705,7 @@ Scope-Gate (`trivial`/`small`/`large`) → **Klärung** (Grill in einfacher Spra
 
 State wird nach `.kimiflow/<slug>/` im Zielprojekt persistiert (resume-fähig). `small`/`quick` bleibt schlank, überspringt aber Phase 1 nicht: kimiflow fragt oder bestätigt genug, damit es nicht am eigentlichen Wunsch vorbeibaut.
 `small`/`quick` macht außerdem einen winzigen Current-State-Pulse: lokale Arbeit dokumentiert "keine externe Aktualitätsprüfung nötig"; geänderte APIs/Tooling/Hosts bekommen vor dem Plan eine aktuelle Primärquelle.
-`small`/`quick` macht außerdem einen winzigen Vault Pulse: ist Obsidian/Vault-Direktsuche bereit, schaut kimiflow einmal zum aktuellen Intent nach; wenn nicht, wird Provider-Health notiert und ohne Blocker weitergearbeitet.
+`small`/`quick` überspringt Memory-Recall und den Vault Pulse — beides läuft nur bei `scope=large` (der Recall-Payoff ist bei kleinen Tasks dünn); der Phase-7-Learning-Loop läuft weiterhin bei jedem Scope.
 
 > **Kosten:** ein `large`-Run fächert mehrere Subagents auf (Dual-Planner, Reviewer, Implementer, unabhängiger Verifier, optionales Best-of-2) — entsprechend höherer Token-Verbrauch. Eine Review-Lens pro Gate läuft standardmäßig über eine Cross-Family-CLI, wenn eine verfügbar ist — auf einem Claude-Code-Host als geordnete Kette (Codex → Gemini via `agy` → same-family), konfigurierbar über `.kimiflow/cross-family` (`off`, oder eine Reihenfolge wie `auto gemini`). Das Scope-Gate hält `small` schlank und `trivial` maximal leicht; `small`/`quick` behalten aber den kurzen Micro-Grill.
 

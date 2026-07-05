@@ -20,7 +20,7 @@ You are the **orchestrator**. Run the phases as a state machine, keep only essen
   - **`grill`** — Phase 1 only: clarify/spec in plain language, write `INTENT.md`/`PROBLEM.md`, ask "Does this match?", then STOP. No plan and no code.
   - **`plan`** — prepare only: clarify + understand/diagnose + `PLAN.md`/`ACCEPTANCE.md` + plan-gate, then STOP with a resumable backlog run. No code.
   - **`build`** — implement an approved/prepared Kimiflow plan. If no current approved plan/backlog run is available, ask whether to run `full`, `plan`, or `quick`; do not silently invent a plan.
-  - **`quick`** — lean run for small, low-risk work: mandatory micro-grill, normal verification, review light (= ONE code-review lens, `bug-regression`, cross-family when available, plus the advisory scans). Never use when the user asked for `full`, `grill`, or `plan`.
+  - **`quick`** — lean run for small, low-risk work: mandatory micro-grill, **skips Phase-2 recall and the Vault Pulse** (`scope=large` only; the Current-State Pulse still runs), normal verification, review light (= ONE code-review lens, `bug-regression`, cross-family when available, plus the advisory scans). Never use when the user asked for `full`, `grill`, or `plan`.
   - **`review`** — alias for `--verify-feature` / current-change review: read-only Phase-7 code-review ensemble over the named path or current diff. No code edits.
   - **`audit`** — alias for `--audit <path>`: read-only cleanup/refactoring scan first; no edits until the user chooses a slice.
   - **`fix`** — alias for `--fix`: bug flow with problem clarification, reproduction/Red evidence, root-cause proof, current fix research, Green evidence, and regression.
@@ -64,7 +64,7 @@ Phase detail is loaded only when entering that phase. For post-R2 runs, `hooks/a
 |---|---|---|
 | 0 Setup, Routing & Scope-Gate | `phases/phase-0-setup.md` | `launcher-status.sh --pretty`; `working-tree-gate.sh`; `active-run.sh`; phase state; scope and verbosity gates. |
 | 1 Clarify | `phases/phase-1-clarify.md` | `clarify-gate.sh`; mandatory micro-grill evidence; `Does this match?` / problem/scope gates. |
-| 2 Understand / diagnose | `phases/phase-2-understand.md` | `memory-router.sh status`; `MR recall --query-file`; Vault Pulse; Current-State Pulse / Gate; `current-state-gate.sh`; `suggest-affected-sections.sh`. |
+| 2 Understand / diagnose | `phases/phase-2-understand.md` | `memory-router.sh status`, `MR recall --query-file`, Vault Pulse (all `scope=large` only — small/quick skip recall); Current-State Pulse / Gate; `current-state-gate.sh`; `suggest-affected-sections.sh`. |
 | 3 Plan | `phases/phase-3-plan.md` | acceptance criteria, Red evidence for fix mode, cause proof, audit existence-first rules. |
 | 4 Plan-gate / approval | `phases/phase-4-review-approval.md` | `plan-blocker-gate.sh`; reviewer lenses; `resolve-review-gate.sh`; pre-build approval stop; build-gate STOP/backlog rules. |
 | 5 Implement / fix | `phases/phase-5-build.md` | TDD, named Red-test commit exception, caller-grep before deletion, failure escalation. |

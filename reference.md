@@ -456,7 +456,7 @@ For bug fixes this branch replaces the intent/research logic. **Core rule: prove
 **Diagnosis (Phase 2) — the three mandatory steps:**
 - **Reproduce:** ideally a **failing test** (Red). Not reproducible = a finding → clarify with the user.
 - **Verify the root cause:** find AND prove the cause (`file:line` + why that spot produces the symptom). Hypothesis → minimal proof. **Not** the first guess.
-- **Fix research (proactive, BEFORE the fix):** how is this *currently solved correctly*? Vault → `WebSearch`/context7/`WebFetch` → official docs/issues. The model may be outdated → check the obvious guess against the current state; discard stale/naive approaches. A **fresh** Vault hit that already answers it → skip the web step; if you re-search, change the **search vector** — don't repeat a prior query.
+- **Fix research (proactive, BEFORE the fix):** how is this *currently solved correctly*? Vault (`scope=large` only — `small`/`quick` go straight to the web) → `WebSearch`/context7/`WebFetch` → official docs/issues. The model may be outdated → check the obvious guess against the current state; discard stale/naive approaches. A **fresh** Vault hit that already answers it → skip the web step; if you re-search, change the **search vector** — don't repeat a prior query.
 
 **DIAGNOSIS.md:**
 ```
@@ -1060,7 +1060,8 @@ through `consolidate --write`.
 Before researching, recall locally first via `memory-router.sh recall`, then search whatever **optional memory
 providers** are connected — recall beats re-research. Each provider is independent and **graceful**: present →
 use, absent → note in STATE.md + continue (the skill runs identically either way; no provider is ever required).
-`small`/`quick` does **not** skip provider recall; it runs a tiny **Vault Pulse** when a Vault is detectable.
+Recall and the Vault Pulse are **`scope=large` only**; `small`/`quick` runs skip both (recall payoff is thin on
+small tasks) and go straight to codebase + web. The learning loop (Phase 7 `review-run`) still runs at every scope.
 
 - **Vault** (notes MCP, e.g. Obsidian) — curated research notes. Searched here; **also saved back** at
   Phase 2's end (see "Vault conventions" below).
@@ -1075,14 +1076,13 @@ different vector. **Detection is per-run, by tool availability** (don't hard-pin
 later-added provider is used automatically on the **next run**, once its MCP is loaded in the session
 (restart / `/reload-plugins` after install). None present → codebase + web, unchanged.
 
-**Small/quick Vault Pulse:** run `memory-router.sh provider health` before web/current-source research. If
-`provider.health.direct_search_ready` is true, do one focused Vault search from the current intent/problem terms,
-read at most 3 clearly relevant hits, and summarize only the useful result into `RECALL.md`. If the Vault is
-`connected_local_only`, run `memory-router.sh provider prefetch --query "<key terms>" --write` and treat
+**Vault Pulse (`scope=large` only):** run `memory-router.sh provider health` before web/current-source research.
+If `provider.health.direct_search_ready` is true, do one focused Vault search from the current intent/problem
+terms, read at most 3 clearly relevant hits, and summarize only the useful result into `RECALL.md`. If the Vault
+is `connected_local_only`, run `memory-router.sh provider prefetch --query "<key terms>" --write` and treat
 `.kimiflow/project/VAULT-PREFETCH.md` as a local handoff. If the Vault is unavailable, unauthenticated, or has no
-direct search tool, write one compact `vault_pulse: skipped (<health>)` line to `STATE.md`/`RECALL.md` and continue.
-The pulse is mandatory for non-trivial `small`/`quick` runs, but it must stay bounded; do not browse the Vault
-like a second codebase.
+direct search tool, write one compact `vault_pulse: skipped (<health>)` line to `STATE.md`/`RECALL.md` and
+continue. Keep it bounded; do not browse the Vault like a second codebase.
 
 ---
 
