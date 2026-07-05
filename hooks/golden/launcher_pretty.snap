@@ -48,9 +48,9 @@
       "reasons": []
     },
     "provider_sync": {
-      "status": "provider_detected_unconfigured",
+      "status": "provider_unavailable",
       "pending_count": 0,
-      "direct_write_ready": true
+      "direct_write_ready": false
     },
     "next_actions": []
   },
@@ -189,11 +189,11 @@
         "projects_tracked": 0
       },
       "vault": {
-        "health": "detected_unconfigured",
-        "auth_status": "authenticated",
-        "authenticated": true,
+        "health": "not_detected",
+        "auth_status": "not_configured",
+        "authenticated": false,
         "sync_pending_count": 0,
-        "direct_write_ready": true
+        "direct_write_ready": false
       },
       "counts": {
         "findings_open": 1,

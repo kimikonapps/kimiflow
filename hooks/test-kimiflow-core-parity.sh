@@ -27,7 +27,8 @@
 #
 # DETERMINISM
 #   Only known nondeterminism is normalized (see normalize()): tmp paths, ISO
-#   timestamps, 40-hex commit SHAs, and the plugin version. The fixture repo
+#   timestamps, the now-derived cutoff_date (today - stale-after window, would
+#   rot the golden daily), 40-hex commit SHAs, and the plugin version. The fixture repo
 #   commit is pinned (fixed identity + author/committer date) so its short SHA
 #   is byte-reproducible across machines. Content hashes are taken over the
 #   normalized bytes, so goldens are portable (macOS dev ↔ Linux CI).
@@ -199,6 +200,7 @@ normalize() {
     -e "s#$WORK#WORK#g" \
     -e 's#WORK/cases/[A-Za-z0-9_.:-]+#REPO#g' \
     -e 's/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z/TIMESTAMP/g' \
+    -e 's/"cutoff_date": ?"[0-9]{4}-[0-9]{2}-[0-9]{2}"/"cutoff_date":"DATE"/g' \
     -e 's/[0-9a-f]{40}/COMMIT/g' \
     -e 's/"version": ?"[0-9]+\.[0-9]+\.[0-9]+"/"version": "VERSION"/g'
 }
@@ -287,7 +289,13 @@ run_one() {
     fi
   done
 
-  new_env=(HOME="$HOME_DIR" KIMIFLOW_OBSIDIAN_URL= KIMIFLOW_OBSIDIAN_API_KEY=)
+  # KIMIFLOW_OBSIDIAN_URL must be a dead URL, not empty: an empty value falls back to the
+  # default loopback probe URLs (provider.py _detection_urls), so a live local Obsidian
+  # REST API would leak host state into the goldens (provider_detected_unconfigured vs
+  # provider_unavailable — the observed macOS-vs-CI divergence). The case invocation runs
+  # under `env -i` (see below) so host-set provider/metrics knobs (KIMIFLOW_OBSIDIAN_MCP_AVAILABLE,
+  # KIMIFLOW_VAULT_*, OBSIDIAN_API_KEY, KIMIFLOW_HOME, ...) can never leak in either.
+  new_env=(HOME="$HOME_DIR" KIMIFLOW_OBSIDIAN_URL="http://127.0.0.1:9")
   case "$label" in
     active_*)
       mkdir -p "$case_dir/fake-plugin"
@@ -310,7 +318,10 @@ run_one() {
       ;;
   esac
 
-  (cd "$case_dir" && env "${new_env[@]}" bash "$new_script" ${new_args[@]+"${new_args[@]}"} < "$new_stdin") > "$WORK/n.out" 2> "$WORK/n.err"; n_code=$?
+  # Hermetic: env -i drops the inherited environment so goldens are host-independent
+  # by construction; PATH and the LC_ALL=C pin (env -i strips the export above) are the
+  # only host passthroughs.
+  (cd "$case_dir" && env -i PATH="$PATH" LC_ALL=C "${new_env[@]}" bash "$new_script" ${new_args[@]+"${new_args[@]}"} < "$new_stdin") > "$WORK/n.out" 2> "$WORK/n.err"; n_code=$?
 
   # Freeze/compare the full observable result of this case.
   {
