@@ -321,7 +321,12 @@ class ReviewParityCase(unittest.TestCase):
         self.assertEqual(_norm(bo), _norm(po), "stdout")
         self.assertEqual(_norm(be), _norm(pe), "stderr")
         for key in bash_arts:
-            self.assertEqual(_norm(bash_arts[key] or ""), _norm(py_arts[key] or ""), "artifact %s" % key)
+            py_val = py_arts[key] or ""
+            if key == "__global__" and py_val:
+                # spec section 12: `scope` is an intentional port-era addition to the
+                # global row — strip it so the remaining bytes stay Bash-grounded.
+                py_val = re.sub(r'"scope":"[a-z]+",', "", py_val)
+            self.assertEqual(_norm(bash_arts[key] or ""), _norm(py_val), "artifact %s" % key)
 
     def test_skip_write_parity(self):
         self._compare_write(self._pop_one_candidate, ["--skip", "trivial run", "--write"])

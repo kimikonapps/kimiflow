@@ -128,6 +128,36 @@ class EconomicsHelperCase(unittest.TestCase):
         self._write("AUDIT.md", "x")
         self.assertEqual(economics.run_type_from_state(self.run), "audit")
 
+    # ---- run_scope_from_state ----
+    def test_run_scope_variants(self):
+        cases = {
+            "scope: small": "small",
+            "**Scope:** large": "large",
+            "- scope: trivial": "trivial",
+            "Scope: spelunking": "unknown",
+        }
+        for line, expected in cases.items():
+            with open(os.path.join(self.run, "STATE.md"), "w", encoding="utf-8") as fh:
+                fh.write("# Run\n" + line + "\n")
+            self.assertEqual(economics.run_scope_from_state(self.run), expected, line)
+
+    def test_run_scope_missing_state(self):
+        self.assertEqual(economics.run_scope_from_state(self.run), "unknown")
+
+    def test_global_row_carries_scope(self):
+        khome = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, khome, ignore_errors=True)
+        with open(os.path.join(self.run, "STATE.md"), "w", encoding="utf-8") as fh:
+            fh.write("# Run\nMode: feature\nScope: large\n")
+        env = {"KIMIFLOW_HOME": khome, "PATH": os.environ.get("PATH", "")}
+        with mock.patch.dict(os.environ, env, clear=True):
+            out = economics.write_global_economics_row(self.root, self.run, {})
+        self.assertTrue(out.get("recorded"), out)
+        ledger = os.path.join(khome, "metrics", "token-economics.jsonl")
+        with open(ledger, "r", encoding="utf-8") as fh:
+            row = json.loads(fh.readline())
+        self.assertEqual(row.get("scope"), "large")
+
     # ---- project_size_bucket (boundaries via mocked git) ----
     def test_size_bucket_boundaries(self):
         for n, expected in ((0, "small"), (199, "small"), (200, "medium"),
@@ -288,7 +318,10 @@ class EconomicsParityCase(unittest.TestCase):
 
         self.assertEqual(_normalize(bash_out), _normalize(py_out), "stdout")
         self.assertEqual(_normalize(bash_proj or ""), _normalize(py_proj or ""), "project ledger")
-        self.assertEqual(_normalize(bash_glob or ""), _normalize(py_glob or ""), "global ledger")
+        # spec section 12: `scope` is an intentional port-era addition to the global row —
+        # strip it so every remaining byte stays grounded against the pinned Bash.
+        py_glob_cmp = re.sub(r'"scope":"[a-z]+",', "", py_glob) if py_glob else py_glob
+        self.assertEqual(_normalize(bash_glob or ""), _normalize(py_glob_cmp or ""), "global ledger")
         if assert_mode:
             self.assertEqual(bash_mode, py_mode, "project ledger mode")
             self.assertEqual(py_mode, 0o600, "project ledger 0600")

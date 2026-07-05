@@ -192,6 +192,29 @@ def run_type_from_state(run_dir):
     return "unknown"
 
 
+def run_scope_from_state(run_dir):
+    # Port-era addition (no Bash counterpart): parse the first `Scope:` line of STATE.md
+    # with the same line normalization as run_type_from_state and map it onto the
+    # kimiflow scope tiers, so the global ledger can answer the recall-value-per-scope
+    # question. Absent/unrecognized -> "unknown".
+    scope = ""
+    state = run_dir + "/STATE.md"
+    if os.path.isfile(state):
+        for raw in _read_artifact(state).split("\n"):
+            line = raw.replace("\r", "").replace("**", "")
+            line = re.sub(r"^[ \t\r\f\v]*-[ \t\r\f\v]*", "", line, count=1)
+            if line.lower().startswith("scope:"):
+                scope = re.sub(r"^[Ss]cope:[ \t\r\f\v]*", "", line, count=1).lower()
+                break
+    if "trivial" in scope:
+        return "trivial"
+    if "small" in scope:
+        return "small"
+    if "large" in scope:
+        return "large"
+    return "unknown"
+
+
 def run_economics_row_json(root, run_dir):
     # Bash run_economics_row_json (2949-3022).
     project = root + "/.kimiflow/project"
@@ -333,6 +356,9 @@ def write_global_economics_row(root, run_dir, local_row):
         "recorded_day": clock.date_now(),
         "host": host,
         "run_type": run_type_from_state(run_dir),
+        # scope is a port-era addition absent from the pinned Bash row (intentional
+        # divergence, spec section 12) — the parity harness strips it before comparing.
+        "scope": run_scope_from_state(run_dir),
         "project_size_bucket": project_size_bucket(root),
         "project_id": project_hash,
         "run_id": run_hash,

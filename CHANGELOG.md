@@ -4,6 +4,9 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+### Added
+- **`scope` in the global economics telemetry** (`hooks/memory_router/economics.py`, spec §12): the anonymous row in `~/.kimiflow/metrics/token-economics.jsonl` now records the run's scope tier (`trivial|small|large|unknown`, parsed from STATE.md like `run_type`) — the existing 40 rows were scope-blind, which made the open "does recall pay off at `large`?" question unanswerable from the ledger. Additive enum inside the existing privacy allowlist; the memory-router parity harnesses strip the documented divergence before their byte comparisons.
+
 ### Changed
 - **Pre-code simplicity ladder shipped in the spec** (`docs/render/kimiflow/canonical/SKILL.md` → `SKILL.md`, `reference.md`): the always-loaded Simplicity-first rule now names the decision ladder for new code — does this need to exist at all? → stdlib before hand-rolled → native platform features before a new dependency → one line before fifty. Ships with every install on both hosts (the Codex skill reads the canonical `SKILL.md`/`reference.md`), so the anti-over-engineering reflex no longer depends on a user's personal `CLAUDE.md`.
 
