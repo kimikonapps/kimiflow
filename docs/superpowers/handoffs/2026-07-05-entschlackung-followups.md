@@ -1,0 +1,46 @@
+# Handoff 2026-07-05 — Nach der Entschlackung: kimiflow als Projekt-Treiber weiter verbessern
+
+## Stand
+- Entschlackung vollständig umgesetzt: **15 atomare Commits** auf `main` (`2e4a081..ad11876`), **ungepusht**. Netto −3.144 Zeilen; reference.md 1557→1207; 10 Hook-Skripte + 1 Stop-Hook entfernt; Feature-Check auf read-only P7-Ensemble eingedampft; Quick-Path überspringt Recall/Vault-Pulse bei small; Map nur noch quick-Tier. Gates: 30 Suiten grün, beide Smokes grün, release-consistency grün.
+- Plan + Evidenz + Abweichungen: `.kimiflow/plans/2026-07-04-entschlackung.md` (lokal/ignored, mit Status-Block). Telemetrie: `~/.kimiflow/metrics/token-economics.jsonl` (host-weit, nur Memory-Ökonomie, directional). Nutzungs-Evidenz: Run-Artefakte unter `.kimiflow/*/`.
+- Review-Prozess der Entschlackung: Opus-Review je Posten, Codex-Cross-Family-Pass je Welle; ~20 Findings, 0 BLOCKER, alle eingearbeitet oder begründet abgelehnt.
+
+## Arbeitsmodell (VERBINDLICH für alle Folge-Sessions)
+- **Orchestrator = Session-Modell** (z. B. Fable): denkt, plant, schreibt Pläne/Handoffs, triagiert Reviews, committet.
+- **ALLE Subagenten (Build, Research, Audit, Review, Verify): NIEMALS Fable.** Claude-Host → `model: opus`; Cross-Family-Review → Codex (Chain Codex→Gemini/agy→same-family).
+- Quellen: `~/.claude/CLAUDE.md` Regel 11 (global) + kimiflow reference.md „Model routing (per-role)" (Spec seit `2e4a081`).
+- Je Punkt: atomare Commits mit benannten Pfaden, keine AI-Attributions, Tests+Smokes+release-consistency vor Commit, Opus-Review vor Commit, Codex mindestens je Meilenstein.
+
+## Punkte
+
+### A — Project-Map von kimiflow selbst refreshen [READY]
+**Problem:** `.kimiflow/project/`-Map (Inhalte Stand 28.06.) beschreibt Subsysteme, die es nicht mehr gibt (Background-Handles, Agentic-Readiness, Workqueue, Explore, FEATURE-CHECK-Maschinerie).
+**Auftrag** (Opus, lokal, KEIN Commit — `.kimiflow/` ist git-ignored): `hooks/project-map-status.sh status` → betroffene Sektionen via `refresh --changed` / `refresh --section` aktualisieren; entfernte Subsysteme aus den Map-Texten tilgen. Das ist zugleich der **erste Realtest des neuen Pflegepfads** — festhalten, ob er praktikabel ist.
+**Verify:** `project-map-status.sh status` ohne `stale`/`potentially_stale`; `grep -ri "background-run\|agentic\|workqueue\|explore mode" .kimiflow/project/` leer (bzw. nur legitime Historie in MEMORY/LEARNINGS).
+
+### B — Parity-Harness auf Golden-Tests gegen HEAD umstellen [READY, Design nötig]
+**Problem:** `hooks/test-kimiflow-core-parity.sh` vergleicht gegen die eingefrorene pre-R1-Baseline `72282e6` und strippt inzwischen **vier** entfernte Feldgruppen (background, agentic_readiness, feature_checks, improvements) — die Strip-Liste wächst mit jedem Umbau. Die Port-Fidelity-Garantie hat ihren Zweck erfüllt (Python-Ports seit Tagen live, 43 Unit-Tests grün).
+**Auftrag** (Opus): Testtyp umstellen — die Cases behalten, aber Erwartungen als **Golden-Snapshots des aktuellen Verhaltens** einfrieren; Baseline-Materialisierung (`git archive 72282e6`) + Strip-Block entfernen. **ACHTUNG:** Die Baseline einfach auf HEAD zeigen wäre tautologisch (die alten Bash-Implementierungen existieren dort nicht mehr — heutige Shell-Skripte sind exec-Wrapper auf die Python-Ports). Es ist eine Umstellung des Testtyps, kein Re-Pointing. Falls sich das nicht sauber umsetzen lässt → Vorschlag statt Umsetzung.
+**Verify:** Suite grün mit denselben Case-Namen; kein Strip-Block mehr; Negativtest belegt, dass ein manipuliertes Feld rot wird (nicht vakuum-grün).
+
+### C — Codex-Seat-Deadline in der Transport-Spec [VERIFY FIRST]
+**Evidenz 05.07.:** Zwei Codex-Läufe über das Companion-Plugin stallten (Ergebnis lag fertig in `~/.codex/sessions/**.jsonl`, Broker lieferte nicht aus; ein Lauf starb über Nacht). Kimiflows eigener Transport (direktes `codex exec -s read-only … </dev/null`, Chain Codex→Gemini→same-family) ist davon getrennt — aber unklar, ob die Spec eine **Seat-Deadline** kennt.
+**Auftrag** (Opus, read-only zuerst): reference.md „Cross-family transport" + „Model routing (per-role)" prüfen: Gibt es ein definiertes Timeout-/Stall-Verhalten je Seat („keine Antwort nach N Minuten → nächstes Kettenglied, `cross_family: degraded` in STATE.md")? Falls nein → knappe Spec-Ergänzung (1–3 Zeilen, advisory, KEIN neues Gate) vorschlagen, Opus-Review, Commit.
+**Verify:** Spec nennt konkretes Deadline-Verhalten; release-consistency + Smokes grün.
+
+### D — Push + Release 0.1.59 [AWAITING USER-OK]
+15+ Commits ungepusht. Nach User-OK: erst A–C-Commits fertigstellen, dann `git push`, dann `/release` (bumpt Manifeste + COMPATIBILITY, voller Test-/Smoke-Lauf, Tag `kimiflow--v0.1.59`, GitHub-Release). Nicht ohne explizites OK pushen.
+
+### E — Globales Setup entschlacken: GSD/Superpowers [USER DECISION]
+`~/.claude` lädt GSD (~70 Skills) + Superpowers + kimiflow parallel → jede Session zahlt Kontext für alle Skill-Beschreibungen, plus Routing-Ambiguität zwischen drei Prozess-Frameworks. Optionen: **(1)** GSD+Superpowers deinstallieren, kimiflow = einzige Prozess-Spur (Empfehlung) · **(2)** auf Nischen beschneiden (`gsd-surface`-Profile) · **(3)** belassen. Umsetzung ist ein separater Auftrag im `~/.claude`-Kontext, nicht in diesem Repo.
+
+### F — Dogfooding / Feature-Freeze [USER DECISION — größter Hebel]
+2–3 Wochen kimiflow ausschließlich an echten Fremdprojekten benutzen; am kimiflow-Repo nur Bugfixes. Messen (Telemetrie läuft, seit dem Opus-Routing günstiger): Runs je Projekt, Recall-Nutzen bei `large`, Quick-Path-Reibung, Gate-Fehlalarme, Zeit bis Commit. Danach datenbasiert nachschärfen statt spekulativ bauen. Die Kernfrage bleibt: *Macht kimiflow das Bauen fremder Projekte schneller?*
+
+### G — Klein-Backlog
+- `.kimiflow/fable-leaf-routing/`: STATE als überholt/abgeschlossen markieren — die Entscheidung ist via `2e4a081` umgesetzt; dessen „Option A" wurde teilweise überstimmt (Planner blieb Session-Modell).
+- Optional: 1 Eval-Szenario Leaf-Routing (Fable-Session → Implementer `model: opus`; Nicht-Fable-Session → No-Op). Nur angehen, wenn Evals ohnehin angefasst werden.
+- Bekannt + bewusst offen: `docs/superpowers/plans/2026-07-02-token-restructuring-invariants.md:60` nennt noch „vault pulse mandatory small/quick" — historisches Archiv, NICHT editieren (Codex-Finding begründet abgelehnt).
+
+## Reihenfolge-Empfehlung
+A (sofort, klein) → C (klein) → B (mittel) → D (nach User-OK) → E/F (User-Entscheidungen, außerhalb dieses Repos).
