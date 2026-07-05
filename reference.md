@@ -580,7 +580,8 @@ authoritative cache for Slice 1.
 **What `quick` writes:** `quick` is the single bootstrap tier — a fast orientation pass that reads
 manifests, top-level structure, entry points, central modules, core flows, conventions, tests, and
 critical dependencies, then writes the artifacts below. `skip` writes no project-map files this run. The
-map is kept current afterwards by `project-map-status.sh refresh --changed` after commits, not by
+map is kept current afterwards by `project-map-status.sh refresh --changed` after commits (plus a
+targeted `refresh --section` when Phase 2 hits a stale section), not by
 re-running a deeper tier.
 
 **Artifacts (Slice 1):**
