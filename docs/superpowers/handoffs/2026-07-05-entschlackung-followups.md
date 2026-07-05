@@ -44,3 +44,9 @@
 
 ## Reihenfolge-Empfehlung
 A (sofort, klein) → C (klein) → B (mittel) → D (nach User-OK) → E/F (User-Entscheidungen, außerhalb dieses Repos).
+
+## Ergebnis-Nachtrag (2026-07-05, gleiche Session)
+- **A ERLEDIGT** (lokal, kein Commit): Map wieder `current` (0 stale), alle 9 Sektionen; entfernte Subsysteme aus CODEBASE/ARCHITECTURE/FLOWS/TESTING/FACTS/INDEX getilgt. **Pflegepfad-Realtest:** funktioniert (Self-Heal nach Commit bestätigt), vier Befunde: (1) Map-Dokument-Edits sind für `refresh --changed` unsichtbar (git-ignored) → als Spec-Satz dokumentiert (`4574862`); (2) überlappende nackte `hooks/`-Prefixes in mehreren Sektionen erzeugen False-Positive-Kaskaden, Adoption geht nur an die längste-Prefix-Sektion → **Backlog** (Helper-Verbesserung, erst nach mehr Dogfooding-Evidenz); (3) `refresh --changed` adoptiert auch untracked/dirty Dateien → **Backlog** (Idee: committed-only-Modus); (4) Map ist 0.1.46→0.1.58 gesprungen — kimiflow_core-Port/Cross-Family/Routing nur punktuell erfasst; ein volles `--project-map quick`-Re-Bootstrap wäre der saubere Weg (optional, lokal).
+- **B ERLEDIGT** (`8a9b62e`): Golden-Snapshot-Harness, 33 Goldens eingecheckt, `LC_ALL=C`-Pin (Opus-Review fing den CI-Kollations-BLOCKER), Orphan-Guard, UPDATE_GOLDEN=1-Regeneration dokumentiert. Baseline `72282e6` + Strip-Liste vollständig entfernt.
+- **C ERLEDIGT, keine Änderung nötig:** Spec deckt Seat-Deadlines bereits ab (reference.md :312–313 — ~5 min Review-/Diagnose-/Verify-Seats, ~30 min Best-of-2-Implementer, timeout = Failure → next tier + `cross_family: fallback (<reason>)`). Die Stalls vom 05.07. betrafen das Codex-COMPANION-Plugin (Orchestrator-Werkzeug), nicht kimiflows `codex exec`-Transport.
+- **D/E/F unverändert offen** (User). G-Backlog + die zwei Pflegepfad-Befunde oben sind die nächsten evidenzbasierten Kandidaten.
