@@ -338,7 +338,18 @@ run_one() {
   # shared fields against the frozen baseline.
   case "$label" in
     launcher_*)
-      for f in "$WORK/o.out" "$WORK/n.out"; do
+      # Guard: a reintroduced removed field in the NEW launcher must surface as a
+      # real divergence — strip the new side only when it is clean; the frozen
+      # baseline side is always stripped.
+      strip_targets="$WORK/o.out"
+      if jq -e 'has("background") or has("agentic_readiness") or has("feature_checks") or has("improvements")
+                or ((.launcher.status.counts // {}) | has("background_collectable") or has("background_stale") or has("feature_check_findings_open") or has("improvements_open"))' \
+                "$WORK/n.out" >/dev/null 2>&1; then
+        : # leave n.out unstripped -> diff against the stripped baseline flags the reintroduction
+      else
+        strip_targets="$strip_targets $WORK/n.out"
+      fi
+      for f in $strip_targets; do
         if jq -e . "$f" >/dev/null 2>&1; then
           jq 'del(.background, .agentic_readiness, .feature_checks, .improvements)
               | if (.launcher.status.counts | type) == "object"
