@@ -441,8 +441,6 @@ def drilldowns(snapshot):
     out = []
     if snapshot["findings"]["open"] > 0:
         out.append("findings")
-    if snapshot["improvements"]["open"] > 0:
-        out.append("improvements")
     if snapshot["runs"]["backlog"] > 0:
         out.append("backlog_runs")
     if snapshot["runs"]["active"] > 0:
@@ -476,8 +474,6 @@ def primary_action(snapshot):
         return {"id": "curate_memory", "label_key": "curate_memory", "priority": "recommended", "blocking": False, "reason_key": "memory_over_budget"}
     if snapshot["findings"]["open"] > 0:
         return {"id": "review_findings", "label_key": "review_findings", "priority": "medium", "blocking": False, "reason_key": "findings_open"}
-    if snapshot["improvements"]["open"] > 0:
-        return {"id": "review_improvements", "label_key": "review_improvements", "priority": "medium", "blocking": False, "reason_key": "improvements_open"}
     if snapshot["runs"]["backlog"] > 0:
         return {"id": "resume_backlog", "label_key": "resume_backlog", "priority": "medium", "blocking": False, "reason_key": "backlog_runs_open"}
     if snapshot["memory_summary"]["provider_sync"]["pending_count"] > 0 and snapshot["memory_summary"]["provider_sync"]["direct_write_ready"]:
@@ -553,10 +549,8 @@ def build_snapshot(root, script_dir):
             map_status = "unknown"
 
     findings_path = ".kimiflow/project/FINDINGS.md"
-    improvements_path = ".kimiflow/project/IMPROVEMENTS.md"
     marker = "kimiflow:queue-done"
     findings_open = count_section_items(os.path.join(root, findings_path), r"^##\s+(Offen|Open)(\s.*)?$", marker)
-    improvements_open = count_section_items(os.path.join(root, improvements_path), r"^##\s+(Priorisierte Slices|Prioritized Slices)(\s.*)?$", marker)
 
     runs_items = []
     active = backlog = done = other = 0
@@ -686,7 +680,6 @@ def build_snapshot(root, script_dir):
         "efficiency": memory.get("global_efficiency", default_efficiency()),
         "active_session": active_session,
         "findings": {"open": findings_open, "path": findings_path},
-        "improvements": {"open": improvements_open, "path": improvements_path},
         "runs": {
             "active": active,
             "backlog": backlog,
@@ -712,7 +705,7 @@ def build_snapshot(root, script_dir):
             "memory": {"present": memory_sum["present"], "tokens_estimate": memory_sum["tokens_estimate"], "budget": memory_sum["budget"], "over_budget": memory_sum["over_budget"], "current_learnings": memory_sum["learnings"]["current"], "curation_recommended": memory_sum["curation"]["recommended"]},
             "efficiency": {"present": snapshot["efficiency"].get("present") is True, "estimated_savings_percent": snapshot["efficiency"].get("estimated_savings_percent"), "confidence": snapshot["efficiency"].get("confidence"), "runs_tracked": snapshot["efficiency"].get("runs_tracked", 0), "projects_tracked": snapshot["efficiency"].get("projects_tracked", 0)},
             "vault": {"health": memory.get("provider", {}).get("health", {}).get("status", "not_detected"), "auth_status": memory.get("provider", {}).get("auth", {}).get("status", "not_configured"), "authenticated": memory.get("provider", {}).get("auth", {}).get("authenticated") is True, "sync_pending_count": memory_sum["provider_sync"]["pending_count"], "direct_write_ready": memory_sum["provider_sync"]["direct_write_ready"]},
-            "counts": {"findings_open": findings_open, "improvements_open": improvements_open, "active_runs": active, "backlog_runs": backlog},
+            "counts": {"findings_open": findings_open, "active_runs": active, "backlog_runs": backlog},
         },
         "maintenance": {"visible_count": len(visible), "visible_reasons": visible, "hidden_internal_count": len(hidden), "hidden_internal_reasons": hidden},
         "drilldowns": drilldowns(snapshot),

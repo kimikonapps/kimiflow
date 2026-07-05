@@ -104,19 +104,6 @@ if [ -x "$ROOT/hooks/suggest-affected-sections.sh" ] && bash -n "$ROOT/hooks/sug
 if [ -x "$ROOT/hooks/test-suggest-affected-sections.sh" ] && bash -n "$ROOT/hooks/test-suggest-affected-sections.sh" 2>/dev/null; then ok "suggest-affected test ok"; else bad "suggest-affected test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/map-staleness-nudge.sh" ] && bash -n "$ROOT/hooks/map-staleness-nudge.sh" 2>/dev/null; then ok "map staleness nudge helper ok"; else bad "map staleness nudge helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-map-staleness-nudge.sh" ] && bash -n "$ROOT/hooks/test-map-staleness-nudge.sh" 2>/dev/null; then ok "map staleness nudge test ok"; else bad "map staleness nudge test missing/not-exec/bad"; fi
-if [ -x "$ROOT/hooks/improvements-status.sh" ] && bash -n "$ROOT/hooks/improvements-status.sh" 2>/dev/null; then ok "workqueue closeback helper ok"; else bad "workqueue closeback helper missing/not-exec/bad"; fi
-if [ -x "$ROOT/hooks/test-improvements-status.sh" ] && bash -n "$ROOT/hooks/test-improvements-status.sh" 2>/dev/null; then ok "workqueue closeback test ok"; else bad "workqueue closeback test missing/not-exec/bad"; fi
-if [ -x "$ROOT/hooks/improvements-staleness-nudge.sh" ] && bash -n "$ROOT/hooks/improvements-staleness-nudge.sh" 2>/dev/null; then ok "workqueue closeback nudge ok"; else bad "workqueue closeback nudge missing/not-exec/bad"; fi
-if [ -x "$ROOT/hooks/test-improvements-staleness-nudge.sh" ] && bash -n "$ROOT/hooks/test-improvements-staleness-nudge.sh" 2>/dev/null; then ok "workqueue closeback nudge test ok"; else bad "workqueue closeback nudge test missing/not-exec/bad"; fi
-# Stop nudge must be registered in BOTH manifests in each manifest's own form (rich vs minimal).
-# The root expansion is QUOTED in the manifests (audit fix: spaced install paths must not word-split).
-grep -qF 'KIMIFLOW_HOST=codex \"${KIMIFLOW_PLUGIN_ROOT:-.}\"/hooks/improvements-staleness-nudge.sh' "$ROOT/hooks.json" \
-  && ok "closeback nudge registered (rich form, hooks.json)" || bad "closeback nudge missing/wrong form in hooks.json"
-grep -qF '\"${KIMIFLOW_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\"/hooks/improvements-staleness-nudge.sh' "$ROOT/hooks/hooks.json" \
-  && ok "closeback nudge registered (minimal form, hooks/hooks.json)" || bad "closeback nudge missing/wrong form in hooks/hooks.json"
-grep -q 'improvements-status.sh' "$ROOT/reference.md" && ok "reference documents workqueue closeback helper" || bad "missing workqueue closeback helper in reference.md"
-grep -q 'improvements-status.sh' "$ROOT/SKILL.md" && ok "canonical skill documents workqueue closeback step" || bad "missing workqueue closeback step in SKILL.md"
-grep -q 'improvements-status.sh' "$ROOT/skills/kimiflow/SKILL.md" && ok "codex skill documents workqueue closeback step" || bad "missing workqueue closeback step in skills/kimiflow/SKILL.md"
 if [ -x "$ROOT/hooks/current-state-gate.sh" ] && bash -n "$ROOT/hooks/current-state-gate.sh" 2>/dev/null; then ok "current-state gate helper ok"; else bad "current-state gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-current-state-gate.sh" ] && bash -n "$ROOT/hooks/test-current-state-gate.sh" 2>/dev/null; then ok "current-state gate test ok"; else bad "current-state gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/working-tree-gate.sh" ] && bash -n "$ROOT/hooks/working-tree-gate.sh" 2>/dev/null; then ok "working-tree gate helper ok"; else bad "working-tree gate helper missing/not-exec/bad"; fi

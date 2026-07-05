@@ -33,7 +33,7 @@ jq -e '.name == "kimiflow" and (.plugins[] | select(.name == "kimiflow" and .sou
   && ok "codex marketplace entry" || bad "codex marketplace entry"
 jq -e '[.. | strings] | join(" ") | test("full/grill/plan/build/quick/review/audit/fix"; "i")' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
   && ok "codex marketplace describes natural mode aliases" || bad "codex marketplace missing natural mode aliases"
-jq -e '[.hooks[]?[]?.hooks[]? | select(.type == "command")] | length == 7 and all(.[]; (.name // "" | length > 0) and (.description // "" | length > 0) and (.statusMessage // "" | length > 0))' "$ROOT/hooks.json" >/dev/null 2>&1 \
+jq -e '[.hooks[]?[]?.hooks[]? | select(.type == "command")] | length == 6 and all(.[]; (.name // "" | length > 0) and (.description // "" | length > 0) and (.statusMessage // "" | length > 0))' "$ROOT/hooks.json" >/dev/null 2>&1 \
   && ok "codex plugin hooks are labelled" || bad "codex plugin hook labels missing"
 
 echo "== capability display sync (Codex) =="
@@ -62,9 +62,6 @@ grep -q -- '--project-map <quick|standard|deep|skip>' "$SKILL" && ok "Codex wrap
 grep -q -- '--verify-feature <feature-or-path>' "$ROOT/SKILL.md" && ok "canonical verify-feature argument present" || bad "canonical verify-feature argument missing"
 grep -q -- '--verify-feature <feature-or-path>' "$SKILL" && ok "Codex wrapper maps verify-feature invocation" || bad "Codex wrapper missing verify-feature invocation mapping"
 grep -q 'launcher-status.sh' "$SKILL" && ok "Codex wrapper maps launcher status helper" || bad "Codex wrapper missing launcher status helper"
-grep -q 'improvements-status.sh' "$SKILL" && ok "Codex wrapper maps workqueue closeback helper" || bad "Codex wrapper missing workqueue closeback helper"
-if [ -x "$ROOT/hooks/improvements-status.sh" ] && bash -n "$ROOT/hooks/improvements-status.sh" 2>/dev/null; then ok "workqueue closeback helper ok"; else bad "workqueue closeback helper missing/not-exec/bad"; fi
-if [ -x "$ROOT/hooks/improvements-staleness-nudge.sh" ] && bash -n "$ROOT/hooks/improvements-staleness-nudge.sh" 2>/dev/null; then ok "workqueue closeback nudge ok"; else bad "workqueue closeback nudge missing/not-exec/bad"; fi
 grep -q 'Launcher / menu' "$ROOT/SKILL.md" && ok "canonical Launcher mode present" || bad "canonical Launcher mode missing"
 grep -q 'Launcher mode' "$ROOT/reference.md" && ok "canonical Launcher mode documented" || bad "canonical Launcher mode docs missing"
 grep -q 'Natural mode aliases' "$ROOT/SKILL.md" && ok "canonical natural mode aliases present" || bad "canonical natural mode aliases missing"

@@ -57,13 +57,6 @@
             "type": "command",
             "command": "KIMIFLOW_HOST=codex \"${KIMIFLOW_PLUGIN_ROOT:-.}\"/hooks/map-staleness-nudge.sh",
             "statusMessage": "Checking Kimiflow project map staleness"
-          },
-          {
-            "name": "Kimiflow workqueue closeback nudge",
-            "description": "Surfaces a non-blocking nudge when a Kimiflow run completed while the local workqueue still has open slices, rate-limited to once per day.",
-            "type": "command",
-            "command": "KIMIFLOW_HOST=codex \"${KIMIFLOW_PLUGIN_ROOT:-.}\"/hooks/improvements-staleness-nudge.sh",
-            "statusMessage": "Checking Kimiflow workqueue closeback"
           }
         ]
       }

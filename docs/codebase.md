@@ -42,7 +42,7 @@ Verbesserungs-Backlogs liegen lokal unter `.kimiflow/project/` und werden nicht 
 ## Lokale Artefakte
 
 Kimiflow legt Arbeitszustand und Projektkarten unter `.kimiflow/` ab. Dieses Verzeichnis ist absichtlich in
-`.gitignore`, weil es lokale Analyse, Findings, Workqueues und projektspezifische Memory enthaelt. Wenn
+`.gitignore`, weil es lokale Analyse, Findings und projektspezifische Memory enthaelt. Wenn
 Informationen ins Repo gehoeren, werden sie kuratiert in `docs/` oder README/CHANGELOG/COMPATIBILITY
 uebernommen.
 

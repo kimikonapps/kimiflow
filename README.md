@@ -213,7 +213,7 @@ successful `finish`; parked, failed, or aborted runs do not promote unverified m
 If you invoke kimiflow without a concrete task (`/kimiflow` or `$kimiflow`), it opens a context-aware
 launcher. The launcher first runs `hooks/launcher-status.sh` and summarizes the current project state:
 one recommended next action, installed/cache version status, active session status,
-project-map depth/status, memory/recall status, open findings, improvement slices, repo docs,
+project-map depth/status, memory/recall status, open findings, repo docs,
 dirty working tree, and active or backlog runs. Technical hygiene that does not need your decision stays in
 drilldowns instead of becoming front-page work. It then routes your choice into the normal Kimiflow modes.
 It also surfaces the short mode aliases (`full`, `grill`, `plan`, `build`, `quick`, `review`, `audit`, `fix`) so

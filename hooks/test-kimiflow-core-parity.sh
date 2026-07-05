@@ -29,19 +29,6 @@ git -C "$REPO" config user.name "Kimiflow Test"
 printf 'hello\n' > "$REPO/README.md"
 printf 'echo hi\n' > "$REPO/hooks/a.sh"
 mkdir -p "$REPO/.kimiflow/project"
-cat > "$REPO/.kimiflow/project/IMPROVEMENTS.md" <<'EOF'
-# Improvements
-## Priorisierte Slices
-
-### 1. Release-Doku-Konsistenz automatischer machen
-- Idee: foo
-
-### 2. Hook-Doku synchronisieren
-- Idee: bar
-
-## Nicht-Ziele
-- nix
-EOF
 cat > "$REPO/.kimiflow/project/FINDINGS.md" <<'EOF'
 # Findings
 ## Offen
@@ -287,16 +274,6 @@ run_one() {
       write_active_item "$case_old" "pending"
       write_active_item "$case_new" "pending"
       ;;
-    improvements_reopen_write)
-      for f in "$case_old/.kimiflow/project/IMPROVEMENTS.md" "$case_new/.kimiflow/project/IMPROVEMENTS.md"; do
-        awk '{
-          print
-          if ($0 == "### 1. Release-Doku-Konsistenz automatischer machen") {
-            print "<!-- kimiflow:queue-done id=release-doku-konsistenz-automatischer-machen commit=abc123 date=2026-07-02 -->"
-          }
-        }' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-      done
-      ;;
     clarify_markdown_state|plan_blocker_markdown_state)
       write_gate_fixture "$case_old"
       write_gate_fixture "$case_new"
@@ -353,17 +330,19 @@ run_one() {
 
   # Removed subsystems: pre-R1 launcher-status emitted `.background`,
   # `.agentic_readiness` (plus their `launcher.status.counts.background_*` mirror),
-  # and `.feature_checks` (plus its `launcher.status.counts.feature_check_findings_open`
-  # mirror); all were deleted with the Background Handles / Agentic Readiness layers and
-  # the existing-feature-check simplification. Strip them from the launcher snapshot on
-  # both sides so parity keeps comparing the shared fields against the frozen baseline.
+  # `.feature_checks` (plus its `launcher.status.counts.feature_check_findings_open`
+  # mirror), and `.improvements` (plus its `launcher.status.counts.improvements_open`
+  # mirror); all were deleted with the Background Handles / Agentic Readiness layers,
+  # the existing-feature-check simplification, and the Workqueue close-back removal.
+  # Strip them from the launcher snapshot on both sides so parity keeps comparing the
+  # shared fields against the frozen baseline.
   case "$label" in
     launcher_*)
       for f in "$WORK/o.out" "$WORK/n.out"; do
         if jq -e . "$f" >/dev/null 2>&1; then
-          jq 'del(.background, .agentic_readiness, .feature_checks)
+          jq 'del(.background, .agentic_readiness, .feature_checks, .improvements)
               | if (.launcher.status.counts | type) == "object"
-                then .launcher.status.counts |= del(.background_collectable, .background_stale, .feature_check_findings_open)
+                then .launcher.status.counts |= del(.background_collectable, .background_stale, .feature_check_findings_open, .improvements_open)
                 else . end' "$f" > "$f.stripped" && mv "$f.stripped" "$f"
         fi
       done
@@ -427,13 +406,6 @@ CASES=(
   "active_abort_write::active-run.sh::abort|--root|__REPO__|--reason|aborted|--write"
   "active_prompt_payload::active-run.sh::prompt-context"
   "active_stop_gate::active-run.sh::stop-gate"
-  "improvements_list_open::improvements-status.sh::list|--root|__REPO__"
-  "improvements_json_open::improvements-status.sh::list|--root|__REPO__|--json"
-  "improvements_list_findings::improvements-status.sh::list|--root|__REPO__|--queue|findings"
-  "improvements_unknown_queue::improvements-status.sh::list|--root|__REPO__|--queue|bogus"
-  "improvements_dry_run::improvements-status.sh::mark-done|release|--root|__REPO__|--commit|abc123"
-  "improvements_mark_write::improvements-status.sh::mark-done|release|--root|__REPO__|--commit|abc123|--write"
-  "improvements_reopen_write::improvements-status.sh::reopen|release|--root|__REPO__|--write"
   "project_map_status_missing::project-map-status.sh::status"
   "project_map_coverage_missing::project-map-status.sh::coverage|--affected|hooks/a.sh"
   "project_map_status_current::project-map-status.sh::status"

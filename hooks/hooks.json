@@ -39,10 +39,6 @@
           {
             "type": "command",
             "command": "\"${KIMIFLOW_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\"/hooks/map-staleness-nudge.sh"
-          },
-          {
-            "type": "command",
-            "command": "\"${KIMIFLOW_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\"/hooks/improvements-staleness-nudge.sh"
           }
         ]
       }

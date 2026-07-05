@@ -136,16 +136,8 @@ cat > "$REPO/.kimiflow/project/FINDINGS.md" <<'EOF'
 
 ### F-000
 EOF
-cat > "$REPO/.kimiflow/project/IMPROVEMENTS.md" <<'EOF'
-# Improvements
-
-## Priorisierte Slices
-
-### 1. First
-### 2. Second
-EOF
 out="$(run_status)"
-assert_jq "$out" '.findings.open == 2 and .improvements.open == 2' "findings_and_improvements_counted_de"
+assert_jq "$out" '.findings.open == 2' "findings_counted_de"
 
 cat > "$REPO/.kimiflow/project/FINDINGS.md" <<'EOF'
 # Findings
@@ -159,15 +151,8 @@ cat > "$REPO/.kimiflow/project/FINDINGS.md" <<'EOF'
 
 ### F-000
 EOF
-cat > "$REPO/.kimiflow/project/IMPROVEMENTS.md" <<'EOF'
-# Improvements
-
-## Prioritized Slices
-
-### 1. First
-EOF
 out="$(run_status)"
-assert_jq "$out" '.findings.open == 2 and .improvements.open == 1' "findings_and_improvements_counted_en"
+assert_jq "$out" '.findings.open == 2' "findings_counted_en"
 
 # AC-2: a "### " block carrying the queue-done marker is NOT counted as open.
 # AC-3: the unmarked siblings stay counted (the count change is solely the marker, not section logic).
@@ -184,35 +169,8 @@ cat > "$REPO/.kimiflow/project/FINDINGS.md" <<'EOF'
 
 ## Erledigt
 EOF
-cat > "$REPO/.kimiflow/project/IMPROVEMENTS.md" <<'EOF'
-# Improvements
-
-## Priorisierte Slices
-
-### 1. Marked
-<!-- kimiflow:queue-done id=marked commit=abc date=2026-06-28 -->
-- x
-### 2. Open
-- y
-### 3. Also open
-- z
-EOF
 out="$(run_status)"
-assert_jq "$out" '.findings.open == 1 and .improvements.open == 2' "marked_not_counted"
-# AC-3 explicit: without any marker present the open count is the full set (backward-compat).
-cat > "$REPO/.kimiflow/project/IMPROVEMENTS.md" <<'EOF'
-# Improvements
-
-## Priorisierte Slices
-
-### 1. Open
-### 2. Open
-### 3. Open
-EOF
-out="$(run_status)"
-assert_jq "$out" '.improvements.open == 3' "no_marker_arg_unchanged"
-
-assert_jq "$out" '.improvements.open == 3' "guard_empty_marker_counts_all"
+assert_jq "$out" '.findings.open == 1' "marked_not_counted"
 
 cat > "$REPO/.kimiflow/project/MEMORY.md" <<'EOF'
 # Memory
