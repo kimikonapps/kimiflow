@@ -30,7 +30,7 @@ Kimiflow Start
 
 Empfohlen: Projektkarte anlegen
 Installation: 0.1.54 · Cache aktuell
-Projektkarte: standard · aktuell
+Projektkarte: quick · aktuell
 Memory: 820/900 Tokens · aktuell
 Effizienz: geschätzt 18% Token Savings · 12 Runs · Konfidenz niedrig
 Offene Findings: 4
@@ -80,7 +80,7 @@ use the current conversation topic only when it is unambiguous; otherwise ask on
   evidence.
 
 If `.kimiflow/project/INDEX.json` is missing, bias the first menu toward Project Map Bootstrap:
-`standard (recommended)` / `quick` / `deep` / `skip`. If a map exists, use it first: read `INDEX.json`,
+`quick` / `skip`. If a map exists, use it first: read `INDEX.json`,
 then only relevant `FACTS.jsonl` lines and markdown sections. New code exploration is for stale/unknown/gap
 areas only.
 
@@ -571,19 +571,17 @@ and human project-intelligence cache. Vault notes and repo docs are later publis
 authoritative cache for Slice 1.
 
 **Trigger:**
-- `--project-map quick|standard|deep` → run the bootstrap/update at that depth and STOP after reporting paths.
+- `--project-map quick` → run the bootstrap/update and STOP after reporting paths.
 - `--project-map skip` → record `project_map: skipped` in the active `STATE.md` and continue.
-- Normal non-trivial run + missing `.kimiflow/project/INDEX.json` → offer once, with `standard`
-  recommended. Decline/headless/no answer/skip → continue normally.
+- Normal non-trivial run + missing `.kimiflow/project/INDEX.json` → offer once (`quick` / `skip`).
+  Decline/headless/no answer/skip → continue normally.
 - `trivial` runs do not offer the bootstrap unless the user explicitly passes `--project-map`.
 
-**Depths (token budget by design):**
-| depth | purpose | reads |
-|---|---|---|
-| `quick` | fast orientation before immediate coding | manifests, top-level structure, entry points, tests, critical deps |
-| `standard` | default/recommended project understanding | quick + central modules, architecture model, core flows, conventions, test strategy, open questions |
-| `deep` | onboarding, major feature, audit/refactor prep | standard + module notes, critical flows, scalability/maintainability/security concerns |
-| `skip` | no map this run | no project-map files written |
+**What `quick` writes:** `quick` is the single bootstrap tier — a fast orientation pass that reads
+manifests, top-level structure, entry points, central modules, core flows, conventions, tests, and
+critical dependencies, then writes the artifacts below. `skip` writes no project-map files this run. The
+map is kept current afterwards by `project-map-status.sh refresh --changed` after commits, not by
+re-running a deeper tier.
 
 **Artifacts (Slice 1):**
 ```
@@ -603,7 +601,7 @@ authoritative cache for Slice 1.
 {
   "schema_version": 1,
   "language": "de",
-  "scan_depth": "standard",
+  "scan_depth": "quick",
   "baseline_commit": "cba4942",
   "created_at": "2026-06-25T00:00:00Z",
   "sections": {},

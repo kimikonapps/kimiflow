@@ -145,7 +145,7 @@ What is **not** mechanical (model-judged, by design): the scope classification, 
 /kimiflow --verify-feature <feature-or-path>  # review an already-built feature; no code edits
 /kimiflow <…> --prepare      # prepare only (through plan-gate), implement later
 /kimiflow --resume <slug>    # continue a prepared/interrupted run in a fresh session
-/kimiflow --project-map standard  # recommended, skippable project map bootstrap
+/kimiflow --project-map quick  # recommended, skippable project map bootstrap
 ```
 
 Natural shortcuts:
@@ -174,7 +174,7 @@ $kimiflow grill
 $kimiflow --fix <bug>
 $kimiflow --verify-feature <feature-or-path>
 $kimiflow --resume <slug>
-$kimiflow --project-map standard
+$kimiflow --project-map quick
 ```
 
 ## Existing feature check
@@ -226,11 +226,10 @@ plan commit, or if the plan basis is unknown. In that case kimiflow offers plan 
 
 On non-trivial runs, if `.kimiflow/project/INDEX.json` is missing, kimiflow can offer a recommended but skippable **Project Map Bootstrap**. It creates a local project-intelligence cache under `.kimiflow/project/`: `INDEX.json`, `FACTS.jsonl`, and compact markdown notes for codebase, architecture, conventions, tests, flows, and open questions. Future runs read this first so they can understand what already exists before planning a bug fix or feature.
 
-Depths:
+Modes:
 
-- `quick` — stack, structure, entry points, tests, critical dependencies.
-- `standard` — recommended: quick + architecture model, central modules, flows, conventions.
-- `deep` — standard + more module notes and scalability/maintainability/security concerns.
+- `quick` — the single bootstrap tier: stack, structure, entry points, central modules, flows,
+  conventions, and tests, written into the local map.
 - `skip` — continue without creating the map.
 
 The map is local and optional. Missing, skipped, or incomplete maps never block the normal kimiflow loop.
@@ -521,7 +520,7 @@ Jedes ✋/✅ sowie der Diagnose- und Commit-Stopp ist ein echtes Gate, kein Pro
 /kimiflow --verify-feature <feature-or-path>  # eingebautes Feature prüfen; keine Code-Edits
 /kimiflow <…> --prepare      # nur vorbereiten (bis Plan-Gate), später umsetzen
 /kimiflow --resume <slug>    # vorbereiteten/abgebrochenen Lauf in neuer Session fortsetzen
-/kimiflow --project-map standard  # empfohlene, überspringbare Projektkarte anlegen
+/kimiflow --project-map quick  # empfohlene, überspringbare Projektkarte anlegen
 ```
 
 Natürliche Kurzmodi:
@@ -550,7 +549,7 @@ $kimiflow grill
 $kimiflow --fix <bug>
 $kimiflow --verify-feature <feature-or-path>
 $kimiflow --resume <slug>
-$kimiflow --project-map standard
+$kimiflow --project-map quick
 ```
 
 ## Eingebaute Features prüfen
@@ -604,11 +603,10 @@ Plan-Revalidierung an.
 
 Bei nicht-trivialen Läufen kann kimiflow eine empfohlene, aber überspringbare **Projektkarte** anbieten, wenn `.kimiflow/project/INDEX.json` fehlt. Sie legt lokale Projektintelligenz unter `.kimiflow/project/` an: `INDEX.json`, `FACTS.jsonl` und kompakte Markdown-Notizen zu Codebase, Architektur, Konventionen, Tests, Flows und offenen Fragen. Spätere Läufe lesen das zuerst, damit Bugfixes und Features nicht jedes Mal blind starten.
 
-Tiefen:
+Modi:
 
-- `quick` — Stack, Struktur, Entry Points, Tests, wichtige Dependencies.
-- `standard` — empfohlen: quick + Architekturmodell, zentrale Module, Flows, Konventionen.
-- `deep` — standard + mehr Modulnotizen und Skalierbarkeits-/Wartbarkeits-/Security-Concerns.
+- `quick` — der einzige Bootstrap-Tier: Stack, Struktur, Entry Points, zentrale Module, Flows,
+  Konventionen und Tests werden in die lokale Map geschrieben.
 - `skip` — ohne Projektkarte weiterlaufen.
 
 Die Projektkarte ist lokal und optional. Fehlende, übersprungene oder unvollständige Maps blockieren den normalen kimiflow-Loop nie.

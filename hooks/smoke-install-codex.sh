@@ -58,7 +58,7 @@ printf '%s\n' "$fm" | grep -qi 'explicitly asks' && ok "opt-in guard present" ||
 [ -f "$ROOT/skills/kimiflow/agents/openai.yaml" ] && ok "Codex skill metadata exists" || bad "missing agents/openai.yaml"
 grep -q 'KIMIFLOW_PLUGIN_ROOT/hooks/resolve-review-gate.sh' "$SKILL" && ok "skill uses absolute plugin-root helper paths" || bad "skill does not use plugin-root helper paths"
 if grep -q '\.\./\.\./hooks/' "$SKILL"; then bad "skill still documents cwd-sensitive ../../hooks paths"; else ok "skill avoids cwd-sensitive ../../hooks paths"; fi
-grep -q -- '--project-map <quick|standard|deep|skip>' "$SKILL" && ok "Codex wrapper maps project-map invocation" || bad "Codex wrapper missing project-map invocation mapping"
+grep -q -- '--project-map <quick|skip>' "$SKILL" && ok "Codex wrapper maps project-map invocation" || bad "Codex wrapper missing project-map invocation mapping"
 grep -q -- '--verify-feature <feature-or-path>' "$ROOT/SKILL.md" && ok "canonical verify-feature argument present" || bad "canonical verify-feature argument missing"
 grep -q -- '--verify-feature <feature-or-path>' "$SKILL" && ok "Codex wrapper maps verify-feature invocation" || bad "Codex wrapper missing verify-feature invocation mapping"
 grep -q 'launcher-status.sh' "$SKILL" && ok "Codex wrapper maps launcher status helper" || bad "Codex wrapper missing launcher status helper"

@@ -57,7 +57,7 @@ printf '%s\n' "$fm" | grep -qE '^name:[[:space:]]*kimiflow'                 && o
 printf '%s\n' "$fm" | grep -qE '^description:'                              && ok "description present"                  || bad "description missing"
 printf '%s\n' "$fm" | grep -qE '^argument-hint:'                            && ok "argument-hint present"                || bad "argument-hint missing"
 printf '%s\n' "$fm" | grep -q -- '--launcher|--menu'                         && ok "launcher argument hint present"       || bad "launcher argument hint missing"
-printf '%s\n' "$fm" | grep -q -- '--project-map <quick|standard|deep|skip>'   && ok "project-map argument hint present"     || bad "project-map argument hint missing"
+printf '%s\n' "$fm" | grep -q -- '--project-map <quick|skip>'   && ok "project-map argument hint present"     || bad "project-map argument hint missing"
 printf '%s\n' "$fm" | grep -q -- '--verify-feature <feature-or-path>'          && ok "verify-feature argument hint present"  || bad "verify-feature argument hint missing"
 # Model-invocation is ENABLED (opt-in, on-request — the "invoke only when asked" policy lives in the
 # description, not a hard flag). It must NOT be `true`, or the model can't launch kimiflow on request.
@@ -94,7 +94,7 @@ if [ -x "$ROOT/hooks/test-launcher-status.sh" ] && bash -n "$ROOT/hooks/test-lau
 if [ -x "$ROOT/hooks/active-run.sh" ] && bash -n "$ROOT/hooks/active-run.sh" 2>/dev/null; then ok "active session helper ok"; else bad "active session helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-active-run.sh" ] && bash -n "$ROOT/hooks/test-active-run.sh" 2>/dev/null; then ok "active session test ok"; else bad "active session test missing/not-exec/bad"; fi
 grep -q 'Project Map Bootstrap' "$ROOT/SKILL.md" && ok "canonical skill documents Project Map Bootstrap" || bad "missing Project Map Bootstrap in SKILL.md"
-grep -q -- '--project-map quick|standard|deep' "$ROOT/reference.md" && ok "reference documents project-map depths" || bad "missing project-map depths in reference.md"
+grep -q -- '--project-map quick' "$ROOT/reference.md" && ok "reference documents project-map quick tier" || bad "missing project-map quick tier in reference.md"
 for term in INDEX.json FACTS.jsonl CODEBASE.md ARCHITECTURE.md CONVENTIONS.md TESTING.md FLOWS.md OPEN-QUESTIONS.md; do
   grep -q "$term" "$ROOT/reference.md" && ok "project map artifact documented: $term" || bad "project map artifact missing: $term"
 done

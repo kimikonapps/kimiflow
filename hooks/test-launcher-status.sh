@@ -57,7 +57,7 @@ write_index() {
     '{
       schema_version: 1,
       language: "de",
-      scan_depth: "standard",
+      scan_depth: "quick",
       baseline_commit: $base,
       created_at: "2026-06-25T00:00:00Z",
       sections: {
@@ -103,7 +103,7 @@ reset_repo
 BASE="$(cd "$REPO" && git rev-parse --short HEAD)"
 write_index "$BASE" "$(hash_file "$REPO/src/a.txt")"
 out="$(run_status)"
-assert_jq "$out" '.project_map.present == true and .project_map.depth == "standard" and .project_map.status == "current"' "current_map_reports_current"
+assert_jq "$out" '.project_map.present == true and .project_map.depth == "quick" and .project_map.status == "current"' "current_map_reports_current"
 assert_jq "$out" '.repo.dirty == false' "ignored_kimiflow_does_not_dirty_repo"
 assert_jq "$out" '.maintenance.bring_current_recommended == false and .maintenance.commits_since_project_map_baseline == 0' "clean_current_repo_no_maintenance_recommended"
 assert_jq "$out" '.launcher.primary_action.id == "start_kimiflow" and .launcher.maintenance.visible_count == 0 and .launcher.status.installation.cache_status == "source_checkout"' "launcher_ready_state_is_quiet"

@@ -54,7 +54,7 @@ pot="${pot:-0}"
 n=$((stale + pot))
 
 if [ "$n" -ge 1 ]; then
-  msg="Kimiflow: Projekt-Map $n Sektion(en) veraltet — \`/kimiflow --project-map standard\` oder bring-current."
+  msg="Kimiflow: Projekt-Map $n Sektion(en) veraltet — \`/kimiflow --project-map quick\` oder bring-current."
   ctx="Project map: $n section(s) need refresh."
   jq -nc --arg m "$msg" --arg c "$ctx" \
     '{systemMessage: $m, hookSpecificOutput: {hookEventName: "Stop", additionalContext: $c}}'

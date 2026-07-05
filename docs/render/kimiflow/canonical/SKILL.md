@@ -2,7 +2,7 @@
 name: kimiflow
 description: "Gated feature & bug-fix loop: clarify → research/diagnose (memory-first) → plan → plan-gate → implement → verify → red/green fix gate → code-review ensemble → commit (stops first). Modes: launcher/menu · full|grill|plan|build|quick|review|audit|fix · --prepare · --resume · --fix · --audit · --verify-feature · --project-map. OPT-IN: invoke ONLY when the user explicitly asks for kimiflow or its loop (e.g. \"with kimiflow\", \"run kimiflow\", \"kimiflow full\", \"build this through the gates\", or the /kimiflow command). Do NOT auto-trigger on ordinary feature/bug/refactor requests — the user opts in. Also slash-invocable via /kimiflow."
 disable-model-invocation: false
-argument-hint: [full|grill|plan|build|quick|review|audit|fix] [<feature-or-bug>] [--launcher|--menu] [--fix] [--audit <path>] [--verify-feature <feature-or-path>] [--prepare] [--project-map <quick|standard|deep|skip>] [--quiet|--verbose] [--set-verbosity <level>] [--settings]  ·  --resume <slug>
+argument-hint: [full|grill|plan|build|quick|review|audit|fix] [<feature-or-bug>] [--launcher|--menu] [--fix] [--audit <path>] [--verify-feature <feature-or-path>] [--prepare] [--project-map <quick|skip>] [--quiet|--verbose] [--set-verbosity <level>] [--settings]  ·  --resume <slug>
 ---
 
 # kimiflow — Feature & Fix Loop
@@ -29,7 +29,7 @@ You are the **orchestrator**. Run the phases as a state machine, keep only essen
 - **Feature or fix:** kimiflow detects whether you are building or fixing a bug, and routes accordingly. Force with **`/kimiflow --fix <bug>`**.
 - **Audit / cleanup mode:** kimiflow detects cleanup intent ("remove dead code", "over-engineering audit", "entschlacken", "clean up") and runs an **existence-first cleanup lens** over a **required target path**. Force with **`/kimiflow --audit <path>`**. Staged: it finds tagged slices, shows them for approval (the Phase-4 summary gate), then executes them one slice = one commit with a per-slice verify gate. → reference.md "Audit mode".
 - **Existing feature check:** **`/kimiflow --verify-feature <feature-or-path>`** runs the normal Phase-7 code-review ensemble read-only over the named path or current diff — same lenses and CANDIDATE→verify→promote mechanic — with findings in `findings/`/`CODE-REVIEW.md`. It does not edit code; confirmed findings can seed a fix/improve run. → reference.md "Existing feature check".
-- **Project Map Bootstrap (recommended, skippable):** **`/kimiflow --project-map <quick|standard|deep|skip>`** controls the local `.kimiflow/project/` map. `.kimiflow/project/` is never auto-committed; publish-safe repo docs omit concrete vulnerabilities, exploit paths, secrets, and private/local paths. Declining/`skip` never blocks.
+- **Project Map Bootstrap (recommended, skippable):** **`/kimiflow --project-map <quick|skip>`** controls the local `.kimiflow/project/` map. `.kimiflow/project/` is never auto-committed; publish-safe repo docs omit concrete vulnerabilities, exploit paths, secrets, and private/local paths. Declining/`skip` never blocks.
 - **Display verbosity (visible output only — engine identical at every level):** `--quiet`/`--verbose` set the level for one run (never persisted); `--set-verbosity <level>` and `--settings` write config and exit. → Phase 0 step 7 + reference.md "Display verbosity".
 - **Pre-build summary gate:** end of Phase 4, before building: structured summary waits for your OK — *approve* → build · *change* → revise · *defer → backlog*.
 
