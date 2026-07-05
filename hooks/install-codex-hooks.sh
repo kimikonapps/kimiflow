@@ -77,6 +77,16 @@ write_wrapper() {
   printf 'installed %s\n' "$wrapper"
 }
 
+# Stable-wrapper scope: only the four ENFORCEMENT hooks are wrapped here —
+# commit-secret-gate, state-gate, test-gate (blocking gates) plus active-run
+# (active-session contract; the one wrapper serves both its prompt-context and
+# stop-gate sub-commands). Together they cover 5 of the 6 plugin-hook commands
+# in hooks.json. The 6th, map-staleness-nudge.sh, is intentionally NOT wrapped:
+# it is a non-blocking, advisory Stop nudge that emits only a systemMessage (no
+# permission/decision), so it has no enforcement effect on the stable Codex hook
+# surface. On Codex its staleness-surfacing role is model-driven via
+# project-map-status.sh (see docs/render/kimiflow/overlays/codex.md); the full
+# 6-hook set is carried only by the experimental plugin_hooks path (hooks.json).
 if [ "$CHECK_ONLY" -eq 1 ]; then
   check_wrapper kimiflow-commit-secret-gate.sh commit-secret-gate.sh
   check_wrapper kimiflow-state-gate.sh state-gate.sh

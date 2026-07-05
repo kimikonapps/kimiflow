@@ -706,7 +706,10 @@ it runs `project-map-status.sh status` once per UTC day (rate-limited via `.kimi
 written in-dir-atomically with `umask 077`). When `stale + potentially_stale ≥ 1` it emits a USER-visible
 `{"systemMessage":"Kimiflow: Projekt-Map <N> Sektion(en) veraltet — …","hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"Project map: <N> section(s) need refresh."}}`
 with `<N> = stale + potentially_stale`. It honors the `stop_hook_active` loop-break, never blocks, exits 0
-on every path, and stays silent (exit 0) when there is no map or no jq.
+on every path, and stays silent (exit 0) when there is no map or no jq. On Codex it is **plugin_hooks-only**:
+the stable `install-codex-hooks.sh` wrapper set covers only the enforcement gates, so this advisory nudge is
+not installed as a host Stop hook there — its staleness-surfacing role is instead model-driven via
+`project-map-status.sh`.
 
 Impact rules:
 - Exact section file deleted or hash-mismatched → `stale`.

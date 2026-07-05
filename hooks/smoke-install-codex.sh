@@ -183,6 +183,25 @@ for f in kimiflow-commit-secret-gate.sh kimiflow-state-gate.sh kimiflow-test-gat
   if [ -x "$wp" ] && bash -n "$wp" 2>/dev/null && grep -q "KIMIFLOW_PLUGIN_ROOT=" "$wp"; then ok "wrapper ok: $f"; else bad "wrapper missing/bad: $f"; fi
 done
 
+# Stable-wrapper coverage is EXPLICIT, not incidental: the 6 hooks.json plugin-hook commands reduce to 5
+# distinct scripts; the 4 stable wrappers cover the enforcement gates. The one script left unwrapped MUST be
+# exactly map-staleness-nudge.sh (a non-blocking advisory nudge, deliberately plugin_hooks-only). Any other
+# gap = drift (e.g. a new enforcement hook added to hooks.json but never wrapped).
+wrapped_scripts="commit-secret-gate.sh state-gate.sh test-gate.sh active-run.sh"
+uncovered=""
+while IFS= read -r s; do
+  [ -n "$s" ] || continue
+  case " $wrapped_scripts " in
+    *" $s "*) ;;
+    *) uncovered="${uncovered:+$uncovered }$s" ;;
+  esac
+done < <(jq -r '.hooks[]?[]?.hooks[]?.command' "$ROOT/hooks.json" 2>/dev/null | grep -oE 'hooks/[^ "]*\.sh' | sed 's#hooks/##' | sort -u)
+if [ "$uncovered" = "map-staleness-nudge.sh" ]; then
+  ok "stable installer covers all enforcement gates; only plugin_hooks-only map-staleness-nudge is unwrapped"
+else
+  bad "stable-wrapper coverage drift: unwrapped plugin hooks = '$uncovered' (expected exactly 'map-staleness-nudge.sh')"
+fi
+
 echo "== codex gate fires (synthetic payloads) =="
 COMMIT_HOOK="$tmp_home/codex/hooks/kimiflow-commit-secret-gate.sh"
 STATE_HOOK="$tmp_home/codex/hooks/kimiflow-state-gate.sh"
