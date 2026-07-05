@@ -582,7 +582,9 @@ manifests, top-level structure, entry points, central modules, core flows, conve
 critical dependencies, then writes the artifacts below. `skip` writes no project-map files this run. The
 map is kept current afterwards by `project-map-status.sh refresh --changed` after commits (plus a
 targeted `refresh --section` when Phase 2 hits a stale section), not by
-re-running a deeper tier.
+re-running a deeper tier. `refresh --changed` reads `git diff` — edits to the map documents themselves
+(git-ignored `.kimiflow/project/`) are invisible to it; after editing map content, re-stamp with
+`refresh --section <name>`.
 
 **Artifacts (Slice 1):**
 ```
