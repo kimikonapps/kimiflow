@@ -4,6 +4,12 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.1.60
+
+The post-Fable release: under a strongest-tier non-Fable Anthropic session (e.g. Opus 4.8) the four quality seats take `effort: xhigh` and a `small` run carrying a genuine design decision runs the two-planner dual-plan — breadth-plus-effort recovering the depth a single Fable pass gave, at half the token price; the Fable-family conditionals are labelled inert off Fable. Plus the pre-code simplicity ladder now ships in the always-loaded spec, and the global economics telemetry records each run's scope tier.
+
 ### Added
 - **`scope` in the global economics telemetry** (`hooks/memory_router/economics.py`, spec §12): the anonymous row in `~/.kimiflow/metrics/token-economics.jsonl` now records the run's scope tier (`trivial|small|large|unknown`, parsed from STATE.md like `run_type`) — the existing 40 rows were scope-blind, which made the open "does recall pay off at `large`?" question unanswerable from the ledger. Additive enum inside the existing privacy allowlist; the memory-router parity harnesses strip the documented divergence before their byte comparisons.
 
