@@ -9,7 +9,7 @@
 
 # kimiflow — Feature & Fix Loop (Claude Code + Codex skill/plugin)
 
-A **user-invoked** `/kimiflow` (Claude Code) / `$kimiflow` (Codex) skill+plugin that runs a disciplined **8-phase loop** for building features and fixing bugs — clarify → understand/diagnose → plan → plan-gate → implement → verify → code-review ensemble → commit. Its gates are **mechanical, not advisory**: reviewers write structured findings to files, tested **fail-closed** scripts count the open blockers, fix runs keep red/green evidence, and a "done" self-report can't talk its way past them.
+A **user-invoked** `/kimiflow` (Claude Code) / `$kimiflow` (Codex) skill+plugin that runs a disciplined **8-phase loop** for building features and fixing bugs — clarify → understand/diagnose → plan → plan-gate → implement → verify → code-review ensemble → commit. Its gates are **mechanical, not advisory**: reviewers write structured findings to files, tested **fail-closed** scripts count the open blockers, fix runs keep red/green evidence, and a "done" self-report can't talk its way past them. Not every change needs the full loop: **`kimiflow quick`** is a lean pass for small, low-risk work — and kimiflow never auto-triggers, it runs only when you invoke it.
 
 <!-- capabilities:start -->
 **What kimiflow does:** a disciplined **feature & bug-fix loop** with mechanical gates · **project intelligence** (codebase/architecture map + memory) · **repo docs** generation · local **findings** you can act on.
@@ -19,7 +19,7 @@ A **user-invoked** `/kimiflow` (Claude Code) / `$kimiflow` (Codex) skill+plugin 
 
 ## Why this exists
 
-Claude Code and Codex both cover a lot with native planning, subagents and hooks — so why a skill? Because a prose instruction file *asks*; kimiflow *enforces*. The plan-gate and code-review gates are **tested, fail-closed resolver scripts** (`hooks/resolve-review-gate.sh`) that count open blockers mechanically — a verbose model can't argue past them. Phase 7 also uses a **review ensemble**: focused bug/regression, failure/security, and integration/contract lenses produce candidate findings, then the orchestrator verifies them before anything counts as a blocker. The secret-commit and test gates are real **PreToolUse/Stop hooks**, not reminders. And it travels: install once, identical gates in every repo, no per-project prompt drift. (kimiflow still reads project convention files such as `AGENTS.md` / `CLAUDE.md` as hints — it just never relies on them for a gate.)
+Claude Code and Codex both cover a lot with native planning, subagents and hooks — so why a skill? Because a prose instruction file *asks*; kimiflow *enforces*. The plan-gate and code-review gates are **tested, fail-closed resolver scripts** (`hooks/resolve-review-gate.sh`) that count open blockers mechanically — a verbose model can't argue past them. Phase 7 also uses a **review ensemble**: focused bug/regression, failure/security, and integration/contract lenses produce candidate findings, then the orchestrator verifies them before anything counts as a blocker. The secret-commit and test gates are real **PreToolUse/Stop hooks**, not reminders (the secret gate matches secret-looking **paths**, not file contents — a hygiene backstop; pair it with a content scanner like gitleaks for in-source secrets, see [Hooks](#hooks-bundled)). And it travels: install once, identical gates in every repo, no per-project prompt drift. (kimiflow still reads project convention files such as `AGENTS.md` / `CLAUDE.md` as hints — it just never relies on them for a gate.)
 
 ## Install
 
@@ -393,13 +393,13 @@ search/write stays disabled until a tool provider is actually present.
 
 # kimiflow — Feature- & Fix-Loop (Deutsch)
 
-Ein **user-invoked** `/kimiflow`- (Claude Code) / `$kimiflow`-Skill+Plugin (Codex), das einen disziplinierten **8-Phasen-Loop** fürs Bauen von Features und Fixen von Bugs fährt — Klärung → Verstehen/Diagnose → Plan → Plan-Gate → Umsetzung → Verifikation → Code-Review → Commit. Seine Gates sind **mechanisch, nicht beratend**: Reviewer schreiben strukturierte Findings in Dateien, getestete **fail-closed** Scripts zählen die offenen Blocker, und ein „fertig" lässt sich nicht daran vorbeireden.
+Ein **user-invoked** `/kimiflow`- (Claude Code) / `$kimiflow`-Skill+Plugin (Codex), das einen disziplinierten **8-Phasen-Loop** fürs Bauen von Features und Fixen von Bugs fährt — Klärung → Verstehen/Diagnose → Plan → Plan-Gate → Umsetzung → Verifikation → Code-Review → Commit. Seine Gates sind **mechanisch, nicht beratend**: Reviewer schreiben strukturierte Findings in Dateien, getestete **fail-closed** Scripts zählen die offenen Blocker, und ein „fertig" lässt sich nicht daran vorbeireden. Nicht jede Änderung braucht den vollen Loop: **`kimiflow quick`** ist ein schlanker Durchlauf für kleine, risikoarme Arbeit — und kimiflow triggert nie automatisch, es läuft nur, wenn du es aufrufst.
 
 > `SKILL.md` / `reference.md` sind auf Englisch geschrieben. **kimiflow antwortet in deiner Sprache** — schreibst du Deutsch, grillt/antwortet es auf Deutsch.
 
 ## Warum es das gibt
 
-Claude Code und Codex decken mit nativer Planung, Subagents und Hooks schon viel ab — warum also ein Skill? Weil eine prosaische Instruktionsdatei *bittet*; kimiflow *erzwingt*. Plan-Gate und Code-Review-Gate sind **getestete, fail-closed Resolver-Scripts** (`hooks/resolve-review-gate.sh`), die offene Blocker mechanisch zählen — ein geschwätziges Modell argumentiert sich da nicht vorbei. Secret-Commit- und Test-Gate sind echte **PreToolUse/Stop-Hooks**, keine Erinnerungen. Und es reist mit: einmal installiert, identische Gates in jedem Repo, kein Per-Projekt-Prompt-Drift. (kimiflow liest Projektkonventionen wie `AGENTS.md` / `CLAUDE.md` als Hinweise — verlässt sich für ein Gate nur nie darauf.)
+Claude Code und Codex decken mit nativer Planung, Subagents und Hooks schon viel ab — warum also ein Skill? Weil eine prosaische Instruktionsdatei *bittet*; kimiflow *erzwingt*. Plan-Gate und Code-Review-Gate sind **getestete, fail-closed Resolver-Scripts** (`hooks/resolve-review-gate.sh`), die offene Blocker mechanisch zählen — ein geschwätziges Modell argumentiert sich da nicht vorbei. Secret-Commit- und Test-Gate sind echte **PreToolUse/Stop-Hooks**, keine Erinnerungen (der Secret-Gate matcht secret-verdächtige **Pfade**, keine Datei-Inhalte — ein Hygiene-Backstop; für Secrets im Quelltext einen Content-Scanner wie gitleaks dazunehmen, siehe [Hooks](#hooks-mitgeliefert)). Und es reist mit: einmal installiert, identische Gates in jedem Repo, kein Per-Projekt-Prompt-Drift. (kimiflow liest Projektkonventionen wie `AGENTS.md` / `CLAUDE.md` als Hinweise — verlässt sich für ein Gate nur nie darauf.)
 
 ## Installation
 
