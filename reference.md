@@ -13,7 +13,7 @@ requests.
 
 **Mechanical snapshot:** before showing options, run `hooks/launcher-status.sh --pretty` from the installed
 Kimiflow root (Codex: with `KIMIFLOW_HOST=codex`). The script is read-only and returns JSON for:
-repo status, dirty working tree, installed/cache version status, project-map depth/status, memory summary,
+repo status, dirty working tree, installed/cache version status, project-map status, memory summary,
 curation needs,
 open findings, repo-doc presence, active-session status, and
 active/backlog/done run counts. The default output is the compact first screen — `runs.items`
@@ -30,7 +30,7 @@ Kimiflow Start
 
 Empfohlen: Projektkarte anlegen
 Installation: 0.1.54 · Cache aktuell
-Projektkarte: quick · aktuell
+Projektkarte: aktuell
 Memory: 820/900 Tokens · aktuell
 Effizienz: geschätzt 18% Token Savings · 12 Runs · Konfidenz niedrig
 Offene Findings: 4
@@ -59,8 +59,11 @@ Was willst du tun?
 ```
 
 Only show one clear recommendation from `.launcher.primary_action` above the menu. Render `label_key` and
-`reason_key` in the user's language. Do not show local plugin cache paths unless the user opens an installation
-drilldown or there is a stale-cache action; the path is user-local and may differ on every machine.
+`reason_key` in the user's language. In the first-screen status groups, render the project map by status
+(`aktuell`, `teilweise veraltet`, `fehlt`, `ungueltig`) and do not show the raw `scan_depth`/`depth`; `quick`
+is an internal bootstrap tier, not a user-facing map level. Do not show local plugin cache paths unless the
+user opens an installation drilldown or there is a stale-cache action; the path is user-local and may differ on
+every machine.
 
 **Natural mode aliases:** users may type short mode words instead of remembering flags. Treat `/kimiflow full`,
 `$kimiflow full`, `@kimiflow full`, or plain "kimiflow full" as the same alias family. If the target is omitted,
@@ -254,16 +257,24 @@ that state, prompt-context mentions revalidation, and finish is blocked until re
 
 Tunes **how much the orchestrator prints** — nothing else.
 
-**Engine invariant (the whole point):** gates, on-disk artifacts (INTENT/PLAN/findings/…), evidence gathered, subagents spawned, thresholds and acceptance standards are **identical at every level**. Verbosity changes only the *visible chat output*; quality and rigor are constant. No gate/threshold/cost/scope instruction may ever be made conditional on verbosity.
+**Engine invariant (the whole point):** gates, on-disk artifacts (INTENT/PLAN/findings/…), evidence gathered, subagents spawned, thresholds and acceptance standards are **identical at every level and on every host**. Verbosity changes only the *visible chat output*; quality and rigor are constant in Claude Code and Codex. No gate/threshold/cost/scope instruction may ever be made conditional on verbosity.
 
 **Levels (visible output only):**
 | level | what the orchestrator prints |
 |---|---|
-| `quiet` | minimum: terse phase-marker lines; artifacts = **path only** (no 3-line summary); evidence = pass/fail + path; gate verdict still one line. Everything still happens — almost nothing is narrated. |
+| `quiet` | minimum: at most one short line per phase, artifacts = **path only**, evidence = pass/fail + command/path, gate verdict = one line, final answer = a few decisive sentences. No progress narration, no artifact summaries, no recap bullets, no "I will/I found/next I" explanations. Everything still happens — almost nothing is narrated. |
 | `balanced` *(default)* | the Terse-output HARD RULE as written in SKILL.md: one-line phase announcement, ≤3-line artifact summary + path, one-line gate verdict, decisive evidence line(s). |
 | `verbose` | fuller narration: multi-clause phase context, richer artifact summaries, more evidence lines, reasoning shown. |
 
 **Bounded at every level:** invariant **(b)** of the HARD RULE — *never paste a full artifact or log dump into chat* — holds at **all** levels, `verbose` included. Verbose only lengthens summaries / adds narration; it never dumps a whole file or full logs. (This keeps the anti-bloat goal intact.)
+
+**Quiet contract:** when the resolved level is `quiet`, the chat is a control surface, not a work log. Use files for substance. Quiet must never reduce code reading, research, tests, reviewers, subagents, gates, or artifact detail. During a full session, the normal shape is:
+- one terse phase/gate line when a phase closes or blocks;
+- one blocking question or approval stop when needed;
+- one verification line per command only when it decides pass/fail;
+- a final response of roughly 2-5 sentences with changed paths and verification status.
+
+Do not narrate tool use, subagent activity, discovered context, state updates, memory/recall contents, reviewer reasoning, or "what I will do next" in chat at `quiet`; persist those details to the run artifacts instead.
 
 **Precedence:** `flag > project > global > balanced`.
 

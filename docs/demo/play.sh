@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # kimiflow demo — SCRIPTED ILLUSTRATION of the current core workflow, NOT a
-# captured model run. It shows the 0.1.31 front door: launcher, project map,
+# captured model run. It shows the current front door: launcher, project map,
 # memory recall, gated build/fix flow, commit stop, and learning loop. Rendered
 # to a GIF by kimiflow-demo.tape. For a REAL run, see docs/demo/README.md.
 set -euo pipefail
@@ -17,7 +17,7 @@ e(){ printf '%b\n' "$1"; sleep "${2:-0.5}"; }
 e "${B}\$ /kimiflow${Z}   ${D}or \$kimiflow in Codex${Z}" 0.9
 e "" 0.2
 e "${C}Launcher reads the project before asking you to choose${Z}" 0.6
-e "  Project Map ······· ${G}quick · current${Z}" 0.4
+e "  Project Map ······· ${G}current${Z}" 0.4
 e "  Memory Router ····· ${G}under budget · relevant learnings ready${Z}" 0.4
 e "  Runs / Findings ··· ${G}open work surfaced · curation clean${Z}" 0.4
 e "  Menu ·············  map codebase · fix bug · build feature · docs · improve" 0.8

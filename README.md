@@ -145,7 +145,7 @@ What is **not** mechanical (model-judged, by design): the scope classification, 
 /kimiflow --verify-feature <feature-or-path>  # review an already-built feature; no code edits
 /kimiflow <…> --prepare      # prepare only (through plan-gate), implement later
 /kimiflow --resume <slug>    # continue a prepared/interrupted run in a fresh session
-/kimiflow --project-map quick  # recommended, skippable project map bootstrap
+/kimiflow --project-map quick  # bootstrap the local project map; launcher shows status only
 ```
 
 Natural shortcuts:
@@ -213,11 +213,11 @@ successful `finish`; parked, failed, or aborted runs do not promote unverified m
 If you invoke kimiflow without a concrete task (`/kimiflow` or `$kimiflow`), it opens a context-aware
 launcher. The launcher first runs `hooks/launcher-status.sh` and summarizes the current project state:
 one recommended next action, installed/cache version status, active session status,
-project-map depth/status, memory/recall status, open findings, repo docs,
+project-map status, memory/recall status, open findings, repo docs,
 dirty working tree, and active or backlog runs. Technical hygiene that does not need your decision stays in
 drilldowns instead of becoming front-page work. It then routes your choice into the normal Kimiflow modes.
 It also surfaces the short mode aliases (`full`, `grill`, `plan`, `build`, `quick`, `review`, `audit`, `fix`) so
-users can choose the desired depth without memorizing flags.
+users can choose the desired workflow mode without memorizing flags.
 
 Backlog/resume is guarded: a parked plan is not implemented blindly if affected files changed since its
 plan commit, or if the plan basis is unknown. In that case kimiflow offers plan revalidation before Phase 5.
@@ -226,19 +226,19 @@ plan commit, or if the plan basis is unknown. In that case kimiflow offers plan 
 
 On non-trivial runs, if `.kimiflow/project/INDEX.json` is missing, kimiflow can offer a recommended but skippable **Project Map Bootstrap**. It creates a local project-intelligence cache under `.kimiflow/project/`: `INDEX.json`, `FACTS.jsonl`, and compact markdown notes for codebase, architecture, conventions, tests, flows, and open questions. Future runs read this first so they can understand what already exists before planning a bug fix or feature.
 
-Modes:
+Bootstrap choices:
 
-- `quick` — the single bootstrap tier: stack, structure, entry points, central modules, flows,
+- `quick` — the CLI bootstrap option: stack, structure, entry points, central modules, flows,
   conventions, and tests, written into the local map.
 - `skip` — continue without creating the map.
 
-The map is local and optional. Missing, skipped, or incomplete maps never block the normal kimiflow loop.
+The launcher reports the resulting map by status, for example `Project map: current`. `quick` is command vocabulary for the bootstrap step, not a user-facing map level. The map is local and optional. Missing, skipped, or incomplete maps never block the normal kimiflow loop.
 
 If a map already exists, kimiflow checks it per section with `hooks/project-map-status.sh`. Sections can
 be `current`, `stale`, `potentially_stale`, or `unknown`; stale affected sections trigger a recommended
 but skippable delta refresh. Refresh updates only the selected section hashes/commit metadata, so future
 runs reuse the map without paying for a full rescan. Once likely affected paths are known,
-`project-map-status.sh coverage --affected <path>...` recommends Phase-2 depth: `compressed` for mapped/current
+`project-map-status.sh coverage --affected <path>...` recommends the Phase-2 detail level: `compressed` for mapped/current
 code, `targeted` for mapped but stale/unknown sections, and `full` for unmapped or missing/invalid maps.
 
 Standalone map runs can also choose a focus: codebase, architecture, docs, or opt-in improvement ideas.
@@ -520,7 +520,7 @@ Jedes ✋/✅ sowie der Diagnose- und Commit-Stopp ist ein echtes Gate, kein Pro
 /kimiflow --verify-feature <feature-or-path>  # eingebautes Feature prüfen; keine Code-Edits
 /kimiflow <…> --prepare      # nur vorbereiten (bis Plan-Gate), später umsetzen
 /kimiflow --resume <slug>    # vorbereiteten/abgebrochenen Lauf in neuer Session fortsetzen
-/kimiflow --project-map quick  # empfohlene, überspringbare Projektkarte anlegen
+/kimiflow --project-map quick  # lokale Projektkarte anlegen; Launcher zeigt nur Status
 ```
 
 Natürliche Kurzmodi:
@@ -589,11 +589,11 @@ ungeprueften positiven Learnings.
 Wenn du kimiflow ohne konkreten Auftrag startest (`/kimiflow` oder `$kimiflow`), öffnet es einen
 kontextbewussten Launcher. Der Launcher ruft zuerst `hooks/launcher-status.sh` auf und fasst den
 Projektzustand zusammen: eine empfohlene nächste Aktion, installierte/cache Version, aktive Session,
-Projektkarten-Tiefe/-Status, Memory-/Recall-Status, offene Findings,
+Projektkartenstatus, Memory-/Recall-Status, offene Findings,
 Verbesserungs-Slices, Repo-Doku, dirty Working Tree und aktive oder geparkte Runs. Technische Hygiene, die keine
 Entscheidung braucht, bleibt im Drilldown statt als Aufgabe vorne aufzutauchen. Deine Auswahl wird danach in den
 normalen Kimiflow-Modus geroutet. Er zeigt auch die Kurzmodi (`full`, `grill`, `plan`, `build`, `quick`, `review`,
-`audit`, `fix`), damit du die gewünschte Tiefe ohne Flag-Wissen auswählen kannst.
+`audit`, `fix`), damit du den gewünschten Workflow-Modus ohne Flag-Wissen auswählen kannst.
 
 Resume ist abgesichert: Ein geparkter Plan wird nicht blind umgesetzt, wenn betroffene Dateien seit dem
 Plan-Commit geändert wurden oder die Plan-Basis unbekannt ist. Dann bietet kimiflow vor Phase 5 eine
@@ -603,20 +603,20 @@ Plan-Revalidierung an.
 
 Bei nicht-trivialen Läufen kann kimiflow eine empfohlene, aber überspringbare **Projektkarte** anbieten, wenn `.kimiflow/project/INDEX.json` fehlt. Sie legt lokale Projektintelligenz unter `.kimiflow/project/` an: `INDEX.json`, `FACTS.jsonl` und kompakte Markdown-Notizen zu Codebase, Architektur, Konventionen, Tests, Flows und offenen Fragen. Spätere Läufe lesen das zuerst, damit Bugfixes und Features nicht jedes Mal blind starten.
 
-Modi:
+Bootstrap-Auswahl:
 
-- `quick` — der einzige Bootstrap-Tier: Stack, Struktur, Entry Points, zentrale Module, Flows,
+- `quick` — die CLI-Bootstrap-Option: Stack, Struktur, Entry Points, zentrale Module, Flows,
   Konventionen und Tests werden in die lokale Map geschrieben.
 - `skip` — ohne Projektkarte weiterlaufen.
 
-Die Projektkarte ist lokal und optional. Fehlende, übersprungene oder unvollständige Maps blockieren den normalen kimiflow-Loop nie.
+Der Launcher meldet die fertige Projektkarte per Status, zum Beispiel `Projektkarte: aktuell`. `quick` ist nur Befehlsvokabular fuer den Bootstrap-Schritt, keine sichtbare Map-Stufe. Die Projektkarte ist lokal und optional. Fehlende, übersprungene oder unvollständige Maps blockieren den normalen kimiflow-Loop nie.
 
 Wenn eine Projektkarte existiert, prüft kimiflow sie pro Bereich mit `hooks/project-map-status.sh`.
 Bereiche können `current`, `stale`, `potentially_stale` oder `unknown` sein; stale betroffene Bereiche
 lösen einen empfohlenen, aber überspringbaren Delta-Refresh aus. Der Refresh aktualisiert nur Hashes und
 Commit-Metadaten der ausgewählten Bereiche, damit spätere Läufe die Map ohne Vollscan wiederverwenden.
 Sobald wahrscheinlich betroffene Pfade bekannt sind, empfiehlt `project-map-status.sh coverage --affected <pfad>...`
-die Phase-2-Tiefe: `compressed` für gemappte/aktuelle Bereiche, `targeted` für gemappte aber stale/unklare
+den Phase-2-Detailgrad: `compressed` für gemappte/aktuelle Bereiche, `targeted` für gemappte aber stale/unklare
 Bereiche und `full` für unmapped oder fehlende/ungültige Maps.
 
 Standalone-Map-Läufe können außerdem einen Fokus wählen: Codebase, Architektur, Doku oder opt-in
