@@ -2,7 +2,7 @@
 
 ## 🟠 Phase 5 — Implement / fix
 
-**Default: 1 implementation subagent, sequential.** Full tools, fresh context, inputs `PLAN.md` + `ACCEPTANCE.md` + `INTENT.md`/`PROBLEM.md` (+ `DIAGNOSIS.md`).
+**Default: 1 `balanced` implementation subagent, sequential.** Full tools, fresh context, inputs `PLAN.md` + `ACCEPTANCE.md` + `INTENT.md`/`PROBLEM.md` (+ `DIAGNOSIS.md`). Promote the seat to `top` for risky, tightly coupled, architecture-shaping, or repeatedly failing work. `cheap` is never the normal implementer; it may only perform a deterministic, bounded support task with an explicit oracle.
 
 - **TDD where sensible:** failing test first (Red) → commit tests before the implementation → green → refactor. The Red test commit is the **one defined exception** to the commit-gate rule: test files only, explicitly named paths, announced in one line — production code never rides along (→ reference.md "Commit hygiene"). In fix mode the reproduction is the Red test and `BUG-REPRO.md` records Red command/status before code changes, then Green command/status plus regression evidence after the fix. Address the cause, not the symptom.
 - **Surgical:** every changed line traces to plan/intent/diagnosis. Leave foreign code alone, clean your own orphans. Every deletion carries a caller-grep proving zero callers (→ reference.md "Code mandate"); no proof → don't delete.

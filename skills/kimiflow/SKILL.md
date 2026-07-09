@@ -56,10 +56,11 @@ Apply the canonical Kimiflow workflow from `$KIMIFLOW_PLUGIN_ROOT/SKILL.md` with
 - When invoking Kimiflow helper scripts from Codex, set `KIMIFLOW_HOST=codex`.
 - `TaskCreate` / `TaskUpdate` means use Codex's task plan/status updates.
 - Claude Code subagent names map to Codex subagents as follows:
-  - `Explore` or read-only codebase exploration: use a Codex `explorer` subagent when subagents are available.
-  - implementation or fix worker: use a Codex `worker` subagent when useful.
-  - planning, review, verification, or general work: use a Codex `default` subagent unless a more specific configured agent exists.
-- Kimiflow's cross-family seats (→ canonical `reference.md` "Model routing (per-role)") use the `claude` CLI on the Codex host: attempt condition `command -v claude`, invocation `claude -p "<prompt>"` (the final message is stdout), same explicit timeouts and sticky same-family fallback rules as on Claude Code.
+  - bounded file/symbol/map/log lookup: use a Codex `explorer` with `model: gpt-5.6-luna` and `reasoning_effort: low|medium`; the `top` model still performs Phase-2 synthesis.
+  - normal implementation or fix worker: use a Codex `worker` with `model: gpt-5.6-terra` and `reasoning_effort: medium|high`; promote to Sol for a named high-risk trigger.
+  - planning, review, independent semantic verification, risky diagnosis, or general quality work: use a Codex `default` with `model: gpt-5.6-sol` and `reasoning_effort: high|xhigh` unless a `cross_family_top` seat applies.
+- Codex capability mapping is `top=gpt-5.6-sol`, `balanced=gpt-5.6-terra`, `cheap=gpt-5.6-luna`. The active Kimiflow session must be Sol; if Codex exposes a Terra/Luna session, stop before Phase 0 and ask the user to switch rather than using a Sol subagent as a surrogate orchestrator. Never use `ultra` inside Kimiflow because it adds nested automatic delegation under Kimiflow's own orchestrator.
+- Kimiflow's cross-family seats (→ canonical `reference.md` "Model routing (per-role)") use the `claude` CLI on the Codex host: attempt condition `command -v claude`, invocation `claude -p --model fable --effort high "<prompt>"` (the final message is stdout). This pins the current strongest Claude tier; unavailable/refused/limited calls use the normal sticky same-family fallback. Never inherit an unverified default/cheap tier.
 - `WebSearch` / `WebFetch` means Codex web/search or another available current-source tool. For current external technical facts, prefer primary sources.
 - `CLAUDE.md` is a Claude project convention file. In Codex, read `AGENTS.md` first, and also read `CLAUDE.md` if it exists because Kimiflow historically treats it as a conventions hint.
 

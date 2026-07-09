@@ -51,7 +51,7 @@ You are the **orchestrator**. Run the phases as a state machine, keep only essen
 - **Anti-hallucination.** Only claims you can back. "Not verifiable" is valid. Severity never higher than provable by a code reference.
 - **Evidence-before-assertion.** Never claim "done/green/root cause found" without showing the actual command + output / the `file:line`.
 - **Agent budget.** Fan out to ~5–10 subagents when useful. Beyond ~10 → stop and ask the user first. Default stays lean (1 implementer, 1–2 reviewers); knobs spend within this budget; record any fan-out in STATE.md. Fold into an existing brief unless independence/blindness matters. The budget applies per fan-out decision, not cumulatively per run. Same-seat substitutions are not new spawns; an external CLI exec call counts as one subagent-equivalent.
-- **Model routing.** The session model orchestrates and plans; value-tier leaf worker seats may build/synthesize when supported; cheap seats only handle low-risk bounded gather/summarize/map/log work; review, independent verification, and risky diagnosis stay strong or cross-family, not cheap. Details/fallback → reference.md "Model routing (per-role)".
+- **Model routing.** The strongest available `top` model always owns orchestration, planning, and quality verdicts. A `balanced` value-tier model may implement normal bounded work; `cheap` models may only gather/map/log or perform deterministic support work. Review, independent verification, and risky diagnosis stay `top` or `cross_family_top`. Never let `balanced`/`cheap` orchestrate or plan. Details/fallback → reference.md "Model routing (per-role)".
 - **Persist phase progress (NOT optional, NOT terse-trimmable).** Phase 0 creates `.kimiflow/<slug>/STATE.md`; after every phase set `Phase N: open|in-progress|done`. Chat state is not enough: `state-gate` blocks the review-gate call when `STATE.md` is missing.
 - **Active Session Contract (not optional once Kimiflow starts).** Non-trivial runs start `hooks/active-run.sh start --run .kimiflow/<slug> --write`; follow-ups stay in that run until explicit exit/abort/park/fail/switch. Close mechanically with `finish|park|fail|abort --write`.
 - **Stop criteria always active:** success-stop (gate/verification met), failure-stop (escalate — see phase 5), budget-stop (cap reached → stop + ask). Never loop forever.
@@ -63,7 +63,7 @@ Phase detail is loaded only when entering that phase. For post-R2 runs, `hooks/a
 
 | Phase | File | Always-loaded boundary cues |
 |---|---|---|
-| 0 Setup, Routing & Scope-Gate | `phases/phase-0-setup.md` | `launcher-status.sh --pretty`; `working-tree-gate.sh`; `active-run.sh`; phase state; scope and verbosity gates. |
+| 0 Setup, Routing & Scope-Gate | `phases/phase-0-setup.md` | top-model preflight; `launcher-status.sh --pretty`; `working-tree-gate.sh`; `active-run.sh`; phase state; scope and verbosity gates. |
 | 1 Clarify | `phases/phase-1-clarify.md` | `clarify-gate.sh`; mandatory micro-grill evidence; `Does this match?` / problem/scope gates. |
 | 2 Understand / diagnose | `phases/phase-2-understand.md` | `memory-router.sh status`, `MR recall --query-file`, Vault Pulse (all `scope=large` only — small/quick skip recall); Current-State Pulse / Gate; `current-state-gate.sh`; `suggest-affected-sections.sh`. |
 | 3 Plan | `phases/phase-3-plan.md` | acceptance criteria, Red evidence for fix mode, cause proof, audit existence-first rules. |
