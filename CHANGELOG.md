@@ -6,6 +6,18 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.1.61
+
+The portable top-model routing release: the strongest available model now always orchestrates and plans, Codex maps Sol/Terra/Luna to top/balanced/cheap roles, normal implementation moves to the value tier, and review, semantic verification, and risky diagnosis stay top-tier or strong cross-family. Launcher wording and quiet output are also clearer without changing the engine.
+
+### Added
+- **Top-model Phase-0 preflight and behavioral eval** (`phases/phase-0-setup.md`, `evals/scenarios/13-top-model-orchestrator.md`): a Codex run exposed as Terra/Luna stops before Phase 0 and asks for Sol; a stronger subagent cannot act as a surrogate orchestrator for a cheaper main session.
+
+### Changed
+- **Portable per-role routing contract** (`reference.md`, phase files, canonical/Codex skills): semantic tiers are now `top`, `balanced`, `cheap`, and `cross_family_top`. Current Codex mapping is Sol/Terra/Luna; Terra is the normal bounded implementer, Luna is deterministic support only, and Sol owns orchestration, planning, Phase-2 synthesis, review verdicts, independent semantic verification, and risky diagnosis. Claude keeps its strongest session tier for control and quality while Opus remains a value-tier implementation leaf under Fable sessions.
+- **Cross-family quality seats pinned explicitly** (`reference.md`, Codex overlay): Claude-host calls pin `gpt-5.6-sol` with high reasoning and read-only sandboxing; Codex-host calls pin Fable with high effort. Codex `ultra` is excluded inside Kimiflow to avoid nested automatic delegation.
+- **Launcher and quiet-output language clarified** (`launcher_status.py`, launcher goldens/demo, README, canonical phase docs): the launcher reports project-map status instead of exposing the internal `quick` bootstrap tier, and `quiet` is explicitly a low-narration control surface with the same gates, artifacts, tests, reviewers, and acceptance standards on Claude Code and Codex.
+
 ## 0.1.60
 
 The post-Fable release: under a strongest-tier non-Fable Anthropic session (e.g. Opus 4.8) the four quality seats take `effort: xhigh` and a `small` run carrying a genuine design decision runs the two-planner dual-plan — breadth-plus-effort recovering the depth a single Fable pass gave, at half the token price; the Fable-family conditionals are labelled inert off Fable. Plus the pre-code simplicity ladder now ships in the always-loaded spec, and the global economics telemetry records each run's scope tier.
