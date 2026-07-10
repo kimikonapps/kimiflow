@@ -4,6 +4,12 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.1.62
+
+The parallel-session safety release: active Kimiflow and red-test Stop gates now apply only to the Codex or Claude session that owns the run. Other sessions in the same project can keep answers visible, inspect the codebase, and create plans; disjoint writes are coordinated through a deterministic path-conflict check, while overlapping or unknown paths stay blocked.
+
 ### Added
 - **Cross-host parallel-session conflict check** (`hooks/active-run.sh conflict-check`): Codex and Claude sessions can compare intended write paths with another active Kimiflow run and receive `allow_disjoint`, `block_overlap`, or `block_unknown` without using a model call.
 
