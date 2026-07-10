@@ -6,6 +6,18 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.1.63
+
+The review-clarity release: Phase 7 now pins one Git comparison basis for every reviewer, discovers cited specification and project-standard sources explicitly, and keeps Spec/Correctness, Failure/Security, and Standards/Integration reasoning separate without adding default reviewer calls.
+
+### Added
+- **Fixed review basis and source discovery** (`phases/phase-7-review-commit.md`, `reference.md`): every review records one validated base/target SHA, exact committed and working-tree diff commands, reviewed commits, and ordered spec/standards sources before spawning. Empty diffs spend no reviewer tokens; missing specs are reported instead of inferred from the implementation.
+- **Standards review with an advisory smell baseline** (`reference.md`): documented repository standards now participate in review, while classic code smells remain heuristic and non-gating unless tied to a documented rule or demonstrable correctness/integration impact.
+
+### Changed
+- **Axis-preserving, token-neutral review routing** (`SKILL.md`, canonical/Codex render sources, Phase 7, behavioral evals): `spec-correctness` replaces the broad bug-regression lens, `standards-integration` combines project standards with contract/wiring review, and exact cross-axis duplicates are linked in `CODE-REVIEW.md` but promoted only once. Quick still uses one reviewer, small uses two by default, and large/high-risk uses three.
+- **Review contract smoke coverage** (`hooks/smoke-install.sh`, `hooks/smoke-install-codex.sh`): both host smokes now assert the fixed basis, separated report axes, and advisory smell contract.
+
 ## 0.1.62
 
 The parallel-session safety release: active Kimiflow and red-test Stop gates now apply only to the Codex or Claude session that owns the run. Other sessions in the same project can keep answers visible, inspect the codebase, and create plans; disjoint writes are coordinated through a deterministic path-conflict check, while overlapping or unknown paths stay blocked.
