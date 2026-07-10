@@ -179,7 +179,7 @@ out="$(run_active drop-item --id item_002 --reason "out of scope for this run" -
 assert_jq "$out" '.item_status == "dropped" and .item_counts.open == 0' "drop_item_clears_rejected_item"
 
 input='{"cwd":"'"$REPO"'","session_id":"owner-session","prompt":"secret prompt text should not be stored"}'
-out="$(printf '%s' "$input" | "$SCRIPT" prompt-context)"
+out="$(printf '%s' "$input" | KIMIFLOW_HOST=codex "$SCRIPT" prompt-context)"
 assert_jq "$out" '.hookSpecificOutput.hookEventName == "UserPromptSubmit" and (.hookSpecificOutput.additionalContext | contains("Kimiflow active session is open"))' "prompt_context_injects_active_session"
 if grep -R "secret prompt text should not be stored" "$REPO/.kimiflow" >/dev/null 2>&1; then
   fail "prompt_context_does_not_store_prompt_text"
