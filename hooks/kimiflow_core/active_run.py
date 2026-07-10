@@ -4,6 +4,7 @@ import fnmatch
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -20,6 +21,7 @@ USAGE = """#!/usr/bin/env bash
 # Orchestrator commands:
 #   active-run.sh status [--root <path>] [--pretty]
 #   active-run.sh start --run <path> [--root <path>] [--mode <mode>] [--scope <scope>] [--host <host>] [--write] [--pretty]
+#   active-run.sh conflict-check [--root <path>] [--path <path>]... [--pretty]
 #   active-run.sh append-item --title <text> [--kind <kind>] [--root <path>] [--write] [--pretty]
 #   active-run.sh mark-built|mark-accepted --id <id> [--root <path>] [--write] [--pretty]
 #   active-run.sh mark-rejected|drop-item --id <id> --reason <text> [--root <path>] [--write] [--pretty]
@@ -32,6 +34,8 @@ USAGE = """#!/usr/bin/env bash
 #   active-run.sh park|fail|abort [--root <path>] --reason <text> [--write] [--pretty]
 #
 # Hook commands:
+#   active-run.sh session-bootstrap
+#   active-run.sh owner-check
 #   active-run.sh prompt-context
 #   active-run.sh stop-gate
 #
@@ -301,6 +305,45 @@ def load_active(root):
     return {"present": True, "status": "invalid", "path": ".kimiflow/session/ACTIVE_RUN.json"}
 
 
+def normalized_host(value):
+    return value if value in ("codex", "claude") else ""
+
+
+def shell_session_identity():
+    session_id = os.environ.get("KIMIFLOW_SESSION_ID", "") or os.environ.get("CODEX_THREAD_ID", "")
+    host = normalized_host(os.environ.get("KIMIFLOW_SESSION_HOST", "") or os.environ.get("KIMIFLOW_HOST", ""))
+    if not host and os.environ.get("CODEX_THREAD_ID"):
+        host = "codex"
+    if not (host and session_id):
+        return None
+    return {"host": host, "session_id": session_id}
+
+
+def hook_session_identity(data):
+    if not isinstance(data, dict) or not data.get("session_id"):
+        return None
+    host = normalized_host(os.environ.get("KIMIFLOW_HOST", ""))
+    if not host and (os.environ.get("CODEX_THREAD_ID") or os.environ.get("PLUGIN_ROOT")):
+        host = "codex"
+    if not host:
+        host = "claude"
+    return {"host": host, "session_id": str(data["session_id"])}
+
+
+def valid_owner(value):
+    if not isinstance(value, dict):
+        return None
+    host = normalized_host(value.get("host", ""))
+    session_id = value.get("session_id", "")
+    if not (host and isinstance(session_id, str) and session_id):
+        return None
+    return {"host": host, "session_id": session_id}
+
+
+def same_session(left, right):
+    return bool(left and right and left.get("host") == right.get("host") and left.get("session_id") == right.get("session_id"))
+
+
 def status_json(root):
     active = load_active(root)
     if not (active.get("present") is True and active.get("status") != "invalid"):
@@ -356,6 +399,9 @@ def status_json(root):
     }
     if phase_required:
         result["phase_reads_required"] = True
+    owner = valid_owner(active.get("owner"))
+    if owner:
+        result["owner"] = owner
     return result
 
 
@@ -363,6 +409,24 @@ def write_active(root, value):
     path = active_file(root)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     atomic_write(path, json_pretty(value) + "\n", mode=0o600, refuse_symlink=True)
+
+
+def bind_owner_for_write(root, write):
+    if not write:
+        return
+    identity = shell_session_identity()
+    if not identity:
+        return
+    active = load_active(root)
+    owner = valid_owner(active.get("owner"))
+    if owner and not same_session(owner, identity):
+        die("active Kimiflow session is owned by another %s session" % owner["host"], 1)
+    if not owner and active.get("present") is True and active.get("status") != "invalid":
+        updated = dict(active)
+        updated.pop("present", None)
+        updated["owner"] = identity
+        updated["updated_at"] = iso_now()
+        write_active(root, updated)
 
 
 def rewrite_items(path, rows):
@@ -484,6 +548,10 @@ def cmd_start(args):
     existing = status_json(root)
     if existing.get("present") is True and existing.get("terminal") is False and existing.get("run") != run_rel:
         die("another active Kimiflow session exists: %s" % existing.get("run"), 1)
+    identity = shell_session_identity()
+    existing_owner = valid_owner(existing.get("owner"))
+    if existing_owner and identity and not same_session(existing_owner, identity):
+        die("active Kimiflow session is owned by another %s session" % existing_owner["host"], 1)
     phase_required = phase_reads.manifest_exists(root)
     status = {
         "schema_version": 1,
@@ -498,6 +566,8 @@ def cmd_start(args):
         "last_checked_head": git_head(root),
         "affected_files_at_start": run_affected_paths(run_dir),
     }
+    if identity:
+        status["owner"] = identity
     if phase_required:
         status["phase_reads_required"] = True
     if write:
@@ -514,6 +584,7 @@ def cmd_append_item(args):
     if not opts["--title"]:
         die("append-item requires --title", 2)
     root = resolve_root(opts["--root"], strict=opts["--write"])
+    bind_owner_for_write(root, opts["--write"])
     status = require_active(root)
     run_dir = resolve_run_dir(root, status["run"])
     file_path = items_path(run_dir)
@@ -541,6 +612,7 @@ def cmd_update_item(command, args):
     if new_status in ("rejected", "dropped") and not opts["--reason"]:
         die("%s requires --reason" % command, 2)
     root = resolve_root(opts["--root"], strict=opts["--write"])
+    bind_owner_for_write(root, opts["--write"])
     status = require_active(root)
     run_dir = resolve_run_dir(root, status["run"])
     file_path = items_path(run_dir)
@@ -568,6 +640,7 @@ def cmd_refresh_baseline(args):
     opts = parse_options(args, "refresh-baseline", {"--root": "", "--write": False, "--pretty": False})
     need_jq()
     root = resolve_root(opts["--root"], strict=opts["--write"])
+    bind_owner_for_write(root, opts["--write"])
     status = require_active(root)
     active = load_active(root)
     run_dir = resolve_run_dir(root, status["run"])
@@ -586,6 +659,7 @@ def cmd_await_user(args):
     if not opts["--run"]:
         die("await-user requires --run", 2)
     root = resolve_root(opts["--root"], strict=opts["--write"])
+    bind_owner_for_write(root, opts["--write"])
     status = require_active(root)
     run_rel = rel_path(root, resolve_run_dir(root, opts["--run"]))
     if run_rel != status["run"]:
@@ -750,6 +824,7 @@ def cmd_finish(args):
     opts = parse_options(args, "finish", {"--root": "", "--write": False, "--skip-learning": "", "--pretty": False})
     need_jq()
     root = resolve_root(opts["--root"], strict=opts["--write"])
+    bind_owner_for_write(root, opts["--write"])
     status = require_active(root)
     run_rel = status["run"]
     run_dir = resolve_run_dir(root, run_rel)
@@ -814,6 +889,7 @@ def cmd_terminal(command, args):
     if not opts["--reason"]:
         die("%s requires --reason" % command, 2)
     root = resolve_root(opts["--root"], strict=opts["--write"])
+    bind_owner_for_write(root, opts["--write"])
     status = require_active(root)
     run_rel = status["run"]
     run_dir = resolve_run_dir(root, run_rel)
@@ -834,22 +910,188 @@ def cmd_terminal(command, args):
     json_print({"status": outcome, "written": opts["--write"] is True, "run": run_rel, "outcome": outcome_json}, opts["--pretty"])
 
 
-def hook_root(input_text):
-    cwd = ""
+def normalize_conflict_path(root, value):
+    value = value.strip()
+    if not value:
+        return ""
+    if os.path.isabs(value):
+        value = rel_path(root, value)
+        if os.path.isabs(value):
+            die("conflict-check path must be inside the repository: %s" % value, 2)
+    normalized = os.path.normpath(value).replace(os.sep, "/")
+    if normalized == ".." or normalized.startswith("../"):
+        die("conflict-check path must not traverse outside the repository: %s" % value, 2)
+    return normalized
+
+
+def glob_static_prefix(pattern):
+    match = re.search(r"[*?\[]", pattern)
+    if not match:
+        return pattern
+    return pattern[: match.start()].rstrip("/")
+
+
+def paths_overlap(left, right):
+    if left == "." or right == ".":
+        return True
+    if left == right or left.startswith(right + "/") or right.startswith(left + "/"):
+        return True
+    for pattern, path in ((left, right), (right, left)):
+        if any(char in pattern for char in "*?["):
+            if fnmatch.fnmatch(path, pattern):
+                return True
+            prefix = glob_static_prefix(pattern)
+            if prefix and (prefix == path or prefix.startswith(path + "/") or path.startswith(prefix + "/")):
+                return True
+    return False
+
+
+def parse_conflict_options(args):
+    opts = {"--root": "", "--pretty": False, "--path": []}
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("--help", "-h"):
+            usage()
+            raise SystemExit(0)
+        if arg == "--pretty":
+            opts[arg] = True
+            i += 1
+        elif arg in ("--root", "--path"):
+            value = args[i + 1] if i + 1 < len(args) else ""
+            if not value:
+                die("conflict-check: %s needs a value" % arg, 2)
+            if arg == "--path":
+                opts[arg].append(value)
+            else:
+                opts[arg] = value
+            i += 2
+        else:
+            die("conflict-check: unknown argument: %s" % arg, 2)
+    return opts
+
+
+def cmd_conflict_check(args):
+    opts = parse_conflict_options(args)
+    need_jq()
+    root = resolve_root(opts["--root"], strict=False)
+    intended = [normalize_conflict_path(root, value) for value in opts["--path"]]
+    intended = [value for value in intended if value]
+    status = status_json(root)
+    base = {
+        "schema_version": 1,
+        "run": status.get("run"),
+        "intended_paths": intended,
+        "active_paths": status.get("affected_files", []),
+        "overlaps": [],
+    }
+    if not (status.get("present") is True and status.get("terminal") is False):
+        base.update({"decision": "allow_disjoint", "reason": "no_active_run"})
+        json_print(base, opts["--pretty"])
+        return
+    owner = valid_owner(status.get("owner"))
+    caller = shell_session_identity()
+    if owner and same_session(owner, caller):
+        base.update({"decision": "allow_disjoint", "reason": "caller_owns_active_run"})
+        json_print(base, opts["--pretty"])
+        return
+    active_paths = [normalize_conflict_path(root, value) for value in status.get("affected_files", [])]
+    active_paths = [value for value in active_paths if value]
+    base["active_paths"] = active_paths
+    if not owner:
+        base.update({"decision": "block_unknown", "reason": "active_owner_unknown"})
+        json_print(base, opts["--pretty"])
+        return
+    if not intended:
+        base.update({"decision": "block_unknown", "reason": "intended_paths_unknown"})
+        json_print(base, opts["--pretty"])
+        return
+    if not active_paths:
+        base.update({"decision": "block_unknown", "reason": "active_paths_unknown"})
+        json_print(base, opts["--pretty"])
+        return
+    overlaps = []
+    for intended_path in intended:
+        for active_path in active_paths:
+            if paths_overlap(intended_path, active_path):
+                overlaps.append({"intended": intended_path, "active": active_path})
+    base["overlaps"] = overlaps
+    if overlaps:
+        base.update({"decision": "block_overlap", "reason": "path_overlap"})
+    else:
+        base.update({"decision": "allow_disjoint", "reason": "no_overlap"})
+    json_print(base, opts["--pretty"])
+
+
+def parse_hook_input(input_text):
     try:
         data = json.loads(input_text) if input_text.strip() else {}
-        if isinstance(data, dict):
-            cwd = data.get("cwd") or (data.get("tool_input") or {}).get("cwd") or data.get("working_directory") or ""
     except json.JSONDecodeError:
-        cwd = ""
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def hook_root(input_text, data=None):
+    data = parse_hook_input(input_text) if data is None else data
+    tool_input = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
+    cwd = data.get("cwd") or tool_input.get("cwd") or data.get("working_directory") or ""
     return resolve_root(cwd or os.getcwd(), strict=False)
+
+
+def hook_owner_relation(status, data):
+    owner = valid_owner(status.get("owner"))
+    caller = hook_session_identity(data)
+    if not owner or not caller:
+        return "unknown"
+    return "owner" if same_session(owner, caller) else "other"
+
+
+def cmd_session_bootstrap():
+    data = parse_hook_input(sys.stdin.read())
+    session_id = data.get("session_id")
+    env_file = os.environ.get("CLAUDE_ENV_FILE", "")
+    if not (isinstance(session_id, str) and session_id and env_file):
+        return 0
+    try:
+        with open(env_file, "a", encoding="utf-8") as handle:
+            handle.write("export KIMIFLOW_SESSION_ID=%s\n" % shlex.quote(session_id))
+            handle.write("export KIMIFLOW_SESSION_HOST=claude\n")
+    except OSError:
+        return 0
+    return 0
+
+
+def cmd_owner_check():
+    input_text = sys.stdin.read()
+    data = parse_hook_input(input_text)
+    root = hook_root(input_text, data)
+    status = status_json(root)
+    if not (status.get("present") is True and status.get("terminal") is False):
+        relation = "none"
+    else:
+        relation = hook_owner_relation(status, data)
+    json_print({"schema_version": 1, "relation": relation, "run": status.get("run")})
+    return 0
 
 
 def cmd_prompt_context():
     input_text = sys.stdin.read()
-    root = hook_root(input_text)
+    data = parse_hook_input(input_text)
+    root = hook_root(input_text, data)
     status = status_json(root)
     if not (status.get("present") is True and status.get("terminal") is False):
+        return 0
+    relation = hook_owner_relation(status, data)
+    if relation != "owner":
+        affected = status.get("affected_files", [])
+        affected_summary = ", ".join(affected[:8]) if affected else "unknown"
+        subject = "Another session owns" if relation == "other" else "Session ownership is unknown for"
+        context = (
+            "%s active Kimiflow run %s (affected paths: %s). This prompt is not part of that run; read, answer, analyze, and plan normally. "
+            "Before editing this checkout, run hooks/active-run.sh conflict-check --path <path> for every intended path. Edit only when it returns allow_disjoint; on block_overlap or block_unknown, wait, narrow scope, or use a separate git worktree."
+            % (subject, status["run"], affected_summary)
+        )
+        sys.stdout.write(json_pretty({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": context}}) + "\n")
         return 0
     active = load_active(root)
     if active.get("awaiting_user") is True:
@@ -875,18 +1117,17 @@ def cmd_prompt_context():
 
 def cmd_stop_gate():
     input_text = sys.stdin.read()
-    try:
-        data = json.loads(input_text) if input_text.strip() else {}
-    except json.JSONDecodeError:
-        data = {}
+    data = parse_hook_input(input_text)
     active = False
     if isinstance(data, dict):
         active = data.get("stop_hook_active") is True or (isinstance(data.get("hook_input"), dict) and data["hook_input"].get("stop_hook_active") is True)
     if active:
         return 0
-    root = hook_root(input_text)
+    root = hook_root(input_text, data)
     status = status_json(root)
     if not (status.get("present") is True and status.get("terminal") is False):
+        return 0
+    if hook_owner_relation(status, data) != "owner":
         return 0
     if status.get("awaiting_user") is True:
         # The orchestrator is legitimately waiting on a user answer at an engine gate
@@ -913,6 +1154,8 @@ def main(argv=None):
             cmd_status(args)
         elif command == "start":
             cmd_start(args)
+        elif command == "conflict-check":
+            cmd_conflict_check(args)
         elif command == "append-item":
             cmd_append_item(args)
         elif command in ("mark-built", "mark-accepted", "mark-rejected", "drop-item"):
@@ -933,6 +1176,10 @@ def main(argv=None):
                 return rc
         elif command in ("park", "fail", "abort"):
             cmd_terminal(command, args)
+        elif command == "session-bootstrap":
+            return cmd_session_bootstrap()
+        elif command == "owner-check":
+            return cmd_owner_check()
         elif command == "prompt-context":
             return cmd_prompt_context()
         elif command == "stop-gate":

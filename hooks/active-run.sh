@@ -2,7 +2,7 @@
 # kimiflow — active session contract helper and hooks.
 # Python (stdlib >= 3.9) port: implementation lives in hooks/kimiflow_core/.
 case "${1:-}" in
-  prompt-context|stop-gate)
+  session-bootstrap|owner-check|prompt-context|stop-gate)
     command -v jq >/dev/null 2>&1 || exit 0
     command -v python3 >/dev/null 2>&1 || exit 0
     ;;

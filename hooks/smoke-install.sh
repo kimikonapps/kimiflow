@@ -165,6 +165,8 @@ for term in 'Raw map vs. publishable docs' 'Repo-doc publish safety' 'never auto
 done
 
 echo "== hooks wiring (referenced scripts exist, executable, valid) =="
+jq -e '.hooks.SessionStart[0].hooks | any(.command | contains("active-run.sh session-bootstrap"))' "$ROOT/hooks/hooks.json" >/dev/null 2>&1 \
+  && ok "Claude SessionStart persists Kimiflow session identity" || bad "Claude SessionStart identity bootstrap missing"
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
   rel="$(printf '%s\n' "$cmd" | grep -oE 'hooks/[^ "]*\.sh' | head -1)"
@@ -211,7 +213,7 @@ cat <<'MANUAL'
   [ ] kimiflow launches when you ASK for it ("with kimiflow" / "run kimiflow") but does NOT fire unprompted on an unrelated request (opt-in policy is description-guided, not a hard flag; cf. CC #22345)
   [ ] in a repo with .kimiflow/, attempting `git add .` is blocked by the commit-secret-gate hook
   [ ] the Stop test-gate engages when .kimiflow/test-gate is present and tests are red
-  [ ] while an active Kimiflow session exists, follow-up prompts stay in Kimiflow and Stop asks you to finish/park/fail/abort instead of silently ending
+  [ ] while an active Kimiflow session exists, its owner stays gated while a second project session can read, answer, and plan without any Stop continuation
 MANUAL
 
 echo "----"

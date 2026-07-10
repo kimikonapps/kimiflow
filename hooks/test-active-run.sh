@@ -128,7 +128,7 @@ EOF
 }
 
 run_active() {
-  KIMIFLOW_PLUGIN_ROOT="$PLUGIN" KIMIFLOW_MEMORY_ROUTER="$FAKE_ROUTER" KIMIFLOW_FAKE_ROUTER_LOG="$ROUTER_LOG" "$SCRIPT" "$@" --root "$REPO"
+  KIMIFLOW_HOST=codex CODEX_THREAD_ID=owner-session KIMIFLOW_PLUGIN_ROOT="$PLUGIN" KIMIFLOW_MEMORY_ROUTER="$FAKE_ROUTER" KIMIFLOW_FAKE_ROUTER_LOG="$ROUTER_LOG" "$SCRIPT" "$@" --root "$REPO"
 }
 
 reset_repo
@@ -150,7 +150,7 @@ if [ "$rc" = "2" ]; then pass "invalid_root_write_fails_closed"; else fail "inva
 assert_contains "$err" "cannot resolve root" "invalid_root_write_reports_resolution_error"
 
 out="$(run_active start --run .kimiflow/demo --write)"
-assert_jq "$out" '.present == true and .run == ".kimiflow/demo" and .stale_risk == "current" and .item_counts.open == 0' "start_creates_active_session"
+assert_jq "$out" '.present == true and .run == ".kimiflow/demo" and .stale_risk == "current" and .item_counts.open == 0 and .owner.host == "codex" and .owner.session_id == "owner-session"' "start_creates_owned_active_session"
 [ -f "$REPO/.kimiflow/session/ACTIVE_RUN.json" ] && pass "start_writes_active_file" || fail "start_writes_active_file"
 assert_jq "$out" 'has("phase_reads_required") | not' "start_without_manifest_no_phase_reads"
 if grep -q '^Phase reads required:' "$REPO/.kimiflow/demo/STATE.md"; then
@@ -178,7 +178,7 @@ fi
 out="$(run_active drop-item --id item_002 --reason "out of scope for this run" --write)"
 assert_jq "$out" '.item_status == "dropped" and .item_counts.open == 0' "drop_item_clears_rejected_item"
 
-input='{"cwd":"'"$REPO"'","prompt":"secret prompt text should not be stored"}'
+input='{"cwd":"'"$REPO"'","session_id":"owner-session","prompt":"secret prompt text should not be stored"}'
 out="$(printf '%s' "$input" | "$SCRIPT" prompt-context)"
 assert_jq "$out" '.hookSpecificOutput.hookEventName == "UserPromptSubmit" and (.hookSpecificOutput.additionalContext | contains("Kimiflow active session is open"))' "prompt_context_injects_active_session"
 if grep -R "secret prompt text should not be stored" "$REPO/.kimiflow" >/dev/null 2>&1; then
@@ -187,29 +187,50 @@ else
   pass "prompt_context_does_not_store_prompt_text"
 fi
 
-out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" stop-gate)"
+out="$(printf '{"cwd":"%s","session_id":"owner-session"}' "$REPO" | KIMIFLOW_HOST=codex "$SCRIPT" stop-gate)"
 assert_jq "$out" '.decision == "block" and (.reason | contains("active-session gate"))' "stop_gate_blocks_open_active_session"
-out="$(printf '{"cwd":"%s","stop_hook_active":true}' "$REPO" | "$SCRIPT" stop-gate)"
+out="$(printf '{"cwd":"%s","session_id":"owner-session","stop_hook_active":true}' "$REPO" | KIMIFLOW_HOST=codex "$SCRIPT" stop-gate)"
 assert_empty "$out" "stop_gate_loop_break_allows_continuation"
+
+out="$(printf '{"cwd":"%s","session_id":"other-session"}' "$REPO" | KIMIFLOW_HOST=codex "$SCRIPT" prompt-context)"
+assert_jq "$out" '(.hookSpecificOutput.additionalContext | contains("This prompt is not part of that run")) and (.hookSpecificOutput.additionalContext | contains("conflict-check"))' "other_session_gets_nonblocking_conflict_context"
+out="$(printf '{"cwd":"%s","session_id":"other-session"}' "$REPO" | KIMIFLOW_HOST=codex "$SCRIPT" stop-gate)"
+assert_empty "$out" "other_session_stop_never_blocks"
+out="$(KIMIFLOW_HOST=codex CODEX_THREAD_ID=other-session "$SCRIPT" conflict-check --root "$REPO" --path src/b.txt)"
+assert_jq "$out" '.decision == "allow_disjoint" and .reason == "no_overlap"' "conflict_check_allows_disjoint_path"
+out="$(KIMIFLOW_HOST=codex CODEX_THREAD_ID=other-session "$SCRIPT" conflict-check --root "$REPO" --path src/a.txt)"
+assert_jq "$out" '.decision == "block_overlap" and .overlaps[0].active == "src/a.txt"' "conflict_check_blocks_exact_overlap"
+out="$(KIMIFLOW_HOST=codex CODEX_THREAD_ID=other-session "$SCRIPT" conflict-check --root "$REPO" --path src)"
+assert_jq "$out" '.decision == "block_overlap"' "conflict_check_blocks_parent_overlap"
+
+tmp_active="$REPO/.kimiflow/session/ACTIVE_RUN.tmp"
+jq 'del(.owner)' "$REPO/.kimiflow/session/ACTIVE_RUN.json" > "$tmp_active" && mv "$tmp_active" "$REPO/.kimiflow/session/ACTIVE_RUN.json"
+out="$(printf '{"cwd":"%s","session_id":"other-session"}' "$REPO" | KIMIFLOW_HOST=codex "$SCRIPT" stop-gate)"
+assert_empty "$out" "legacy_ownerless_session_stop_fails_open"
+out="$(KIMIFLOW_HOST=codex CODEX_THREAD_ID=other-session "$SCRIPT" conflict-check --root "$REPO" --path src/b.txt)"
+assert_jq "$out" '.decision == "block_unknown" and .reason == "active_owner_unknown"' "legacy_ownerless_session_write_fails_closed"
+run_active refresh-baseline --write >/dev/null
+out="$(run_active status)"
+assert_jq "$out" '.owner.host == "codex" and .owner.session_id == "owner-session"' "owner_mutation_backfills_legacy_session"
 
 out="$(run_active await-user --run .kimiflow/demo --reason "engine gate: waiting for user answer" --write)"
 assert_jq "$out" '.status == "awaiting_user" and .written == true and .run == ".kimiflow/demo"' "await_user_sets_flag"
 out="$(run_active status)"
 assert_jq "$out" '.awaiting_user == true' "status_reports_awaiting_user"
-out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" stop-gate)"
+out="$(printf '{"cwd":"%s","session_id":"owner-session"}' "$REPO" | KIMIFLOW_HOST=codex "$SCRIPT" stop-gate)"
 assert_empty "$out" "stop_gate_passes_while_awaiting_user"
-out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" prompt-context)"
+out="$(printf '{"cwd":"%s","session_id":"owner-session"}' "$REPO" | KIMIFLOW_HOST=codex "$SCRIPT" prompt-context)"
 assert_jq "$out" '.hookSpecificOutput.hookEventName == "UserPromptSubmit"' "prompt_context_injects_while_awaiting_user"
 out="$(run_active status)"
 assert_jq "$out" '.awaiting_user == false' "prompt_context_clears_awaiting_user"
-out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" stop-gate)"
+out="$(printf '{"cwd":"%s","session_id":"owner-session"}' "$REPO" | KIMIFLOW_HOST=codex "$SCRIPT" stop-gate)"
 assert_jq "$out" '.decision == "block"' "stop_gate_blocks_after_awaiting_user_cleared"
 
 printf 'two\n' > "$REPO/src/a.txt"
 ( cd "$REPO" && git add src/a.txt && git commit -q -m change-a )
 out="$(run_active status)"
 assert_jq "$out" '.stale_risk == "needs_revalidation" and (.stale.relevant_changed_paths | index("src/a.txt"))' "status_reports_stale_relevant_change"
-out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" prompt-context)"
+out="$(printf '{"cwd":"%s","session_id":"owner-session"}' "$REPO" | KIMIFLOW_HOST=codex "$SCRIPT" prompt-context)"
 assert_jq "$out" '(.hookSpecificOutput.additionalContext | contains("revalidate"))' "prompt_context_mentions_revalidation"
 if run_active finish --write >/dev/null 2>&1; then
   fail "finish_refuses_stale_session"
@@ -271,7 +292,7 @@ printf 'two\n' > "$REPO/src/a.txt"
 ( cd "$REPO" && git add src/a.txt && git commit -q -m change-a )
 out="$(run_active status)"
 assert_jq "$out" '.affected_files == [] and .stale_risk == "unknown" and .stale.reason == "affected_paths_unknown" and (.stale.changed_paths | index("src/a.txt"))' "missing_affected_files_is_unknown_after_changes"
-out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" prompt-context)"
+out="$(printf '{"cwd":"%s","session_id":"owner-session"}' "$REPO" | KIMIFLOW_HOST=codex "$SCRIPT" prompt-context)"
 assert_jq "$out" '(.hookSpecificOutput.additionalContext | contains("revalidate"))' "prompt_context_mentions_revalidation_when_unknown"
 if run_active finish --write >/dev/null 2>&1; then
   fail "finish_refuses_unknown_staleness"
@@ -283,7 +304,7 @@ reset_repo
 mkdir -p "$REPO/.kimiflow/project"
 printf '{"existing":true}\n' > "$REPO/.kimiflow/project/EXISTING.json"
 run_active start --run .kimiflow/demo --write >/dev/null
-if KIMIFLOW_MEMORY_ROUTER="$FAKE_ROUTER" KIMIFLOW_FAKE_ROUTER_LOG="$ROUTER_LOG" KIMIFLOW_FAKE_REVIEW_WRITES=1 KIMIFLOW_FAKE_VERIFY_FAIL=1 "$SCRIPT" finish --root "$REPO" --write >/dev/null 2>&1; then
+if KIMIFLOW_HOST=codex CODEX_THREAD_ID=owner-session KIMIFLOW_MEMORY_ROUTER="$FAKE_ROUTER" KIMIFLOW_FAKE_ROUTER_LOG="$ROUTER_LOG" KIMIFLOW_FAKE_REVIEW_WRITES=1 KIMIFLOW_FAKE_VERIFY_FAIL=1 "$SCRIPT" finish --root "$REPO" --write >/dev/null 2>&1; then
   fail "finish_fails_when_learning_verify_fails"
 else
   pass "finish_fails_when_learning_verify_fails"
@@ -300,7 +321,7 @@ fi
 
 reset_repo
 run_active start --run .kimiflow/demo --write >/dev/null
-err="$(KIMIFLOW_PLUGIN_ROOT="$PLUGIN" KIMIFLOW_MEMORY_ROUTER="$FAKE_ROUTER" KIMIFLOW_FAKE_ROUTER_LOG="$ROUTER_LOG" KIMIFLOW_FAKE_REVIEW_FAIL=1 "$SCRIPT" finish --root "$REPO" --write 2>&1 >/dev/null)"; rc=$?
+err="$(KIMIFLOW_HOST=codex CODEX_THREAD_ID=owner-session KIMIFLOW_PLUGIN_ROOT="$PLUGIN" KIMIFLOW_MEMORY_ROUTER="$FAKE_ROUTER" KIMIFLOW_FAKE_ROUTER_LOG="$ROUTER_LOG" KIMIFLOW_FAKE_REVIEW_FAIL=1 "$SCRIPT" finish --root "$REPO" --write 2>&1 >/dev/null)"; rc=$?
 if [ "$rc" = "17" ]; then
   pass "finish_returns_review_failure_code"
 else
@@ -383,6 +404,16 @@ out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" prompt-context)"
 assert_empty "$out" "prompt_context_noops_without_active_session"
 out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" stop-gate)"
 assert_empty "$out" "stop_gate_noops_without_active_session"
+
+CLAUDE_ENV_FILE_TEST="$WORK/claude-env"
+printf '{"session_id":"claude-session","hook_event_name":"SessionStart"}' \
+  | CLAUDE_ENV_FILE="$CLAUDE_ENV_FILE_TEST" "$SCRIPT" session-bootstrap
+if grep -q '^export KIMIFLOW_SESSION_ID=claude-session$' "$CLAUDE_ENV_FILE_TEST" \
+  && grep -q '^export KIMIFLOW_SESSION_HOST=claude$' "$CLAUDE_ENV_FILE_TEST"; then
+  pass "session_bootstrap_persists_claude_identity"
+else
+  fail "session_bootstrap_persists_claude_identity"
+fi
 
 # --- No-jq degradation: the HOOK entrypoints must never block prompts/stops ---------
 # prompt-context (UserPromptSubmit) and stop-gate (Stop) run in EVERY repo once the

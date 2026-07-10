@@ -6,6 +6,12 @@
 # from a cloned repo would be a drive-by. Installing kimiflow never gates unrelated work.
 set -u
 
+# The red-test Stop gate belongs to the same session as an active Kimiflow run.
+# Other or owner-unknown sessions must always be able to finish a read-only turn.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
+ACTIVE_RUN="${KIMIFLOW_PLUGIN_ROOT:+$KIMIFLOW_PLUGIN_ROOT/hooks}"
+ACTIVE_RUN="${ACTIVE_RUN:-$SCRIPT_DIR}/active-run.sh"
+
 input="$(cat 2>/dev/null || true)"
 
 # Break the loop if this stop is itself a hook continuation (never re-block forever).
@@ -38,6 +44,19 @@ cmd="$(head -n 1 "$marker" 2>/dev/null || true)"
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
    && git ls-files --error-unmatch "$marker" >/dev/null 2>&1; then
   printf 'kimiflow test-gate: refusing to run a git-tracked .kimiflow/test-gate (drive-by risk) — keep it local/untracked to enable.\n' >&2
+   exit 0
+fi
+
+if command -v jq >/dev/null 2>&1; then
+  relation="$(printf '%s' "$input" | "$ACTIVE_RUN" owner-check 2>/dev/null | jq -r '.relation // "unknown"' 2>/dev/null || true)"
+  case "$relation" in
+    other|unknown) exit 0 ;;
+    owner|none) ;;
+    *) exit 0 ;;
+  esac
+elif [ -f ".kimiflow/session/ACTIVE_RUN.json" ]; then
+  # Without jq the hook cannot compare session identities safely. Preserve
+  # no-jq gating only when no active run exists; active runs fail open for Stop.
   exit 0
 fi
 

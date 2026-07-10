@@ -38,6 +38,16 @@ track_marker() { git -C "$REPO" add .kimiflow/test-gate >/dev/null 2>&1; git -C 
 payload() { jq -nc --argjson s "${1:-false}" --arg d "$REPO" '{stop_hook_active:$s, cwd:$d}'; }
 run_jq()   { payload "$1" | "$HOOK" 2>"$ERR"; }                                # jq present → hook cds via cwd
 run_nojq() { payload "$1" | ( cd "$REPO" && PATH="$NOJQ" "$REALBASH" "$HOOK" ) 2>"$ERR"; }
+run_jq_session() {
+  jq -nc --arg d "$REPO" --arg sid "$1" '{stop_hook_active:false, cwd:$d, session_id:$sid}' \
+    | KIMIFLOW_HOST=codex "$HOOK" 2>"$ERR"
+}
+set_active_owner() {
+  mkdir -p "$REPO/.kimiflow/demo" "$REPO/.kimiflow/session"
+  printf 'Status: active\nAffected files: src/a.txt\n' > "$REPO/.kimiflow/demo/STATE.md"
+  printf '{"schema_version":1,"status":"active","run":".kimiflow/demo","host":"codex","owner":{"host":"codex","session_id":"owner-session"},"started_head":"NOT VERIFIED","last_checked_head":"NOT VERIFIED"}\n' \
+    > "$REPO/.kimiflow/session/ACTIVE_RUN.json"
+}
 
 # Block JSON is pretty-printed by the jq path ("decision": "block") and compact by
 # the no-jq path ("decision":"block") — match both, whitespace-tolerant.
@@ -85,6 +95,14 @@ reset_repo; set_marker "touch \"$REPO/SENTINEL.flag\"; exit 1"
 out="$(run_nojq true)"
 assert_noblock "$out" "nojq_continuation_breaks"
 assert_nofile  "$REPO/SENTINEL.flag" "nojq_continuation_no_eval"
+
+# B7 — an active run's red-test gate applies only to its owner session.
+reset_repo; set_active_owner; set_marker "touch \"$REPO/SENTINEL.flag\"; exit 1"
+out="$(run_jq_session other-session)"
+assert_noblock "$out" "other_session_ignores_active_test_gate"
+assert_nofile  "$REPO/SENTINEL.flag" "other_session_test_gate_does_not_eval"
+out="$(run_jq_session owner-session)"
+assert_block "$out" "owner_session_keeps_active_test_gate"
 
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi

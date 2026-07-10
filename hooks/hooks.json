@@ -1,5 +1,16 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${KIMIFLOW_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\"/hooks/active-run.sh session-bootstrap"
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [

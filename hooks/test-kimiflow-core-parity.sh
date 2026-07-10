@@ -268,6 +268,11 @@ run_one() {
       ;;
     active_append_preview|active_finish_preview|active_park_write|active_fail_write|active_abort_write|active_prompt_payload|active_stop_gate|active_refresh_baseline_write)
       write_active_fixture "$case_dir"
+      if [ "$label" = "active_prompt_payload" ] || [ "$label" = "active_stop_gate" ]; then
+        tmp_active="$case_dir/.kimiflow/session/ACTIVE_RUN.tmp"
+        jq '.owner = {host:"codex", session_id:"owner-session"}' "$case_dir/.kimiflow/session/ACTIVE_RUN.json" > "$tmp_active"
+        mv "$tmp_active" "$case_dir/.kimiflow/session/ACTIVE_RUN.json"
+      fi
       ;;
     active_mark_built_write|active_mark_accepted_write|active_mark_rejected_write|active_drop_item_write)
       write_active_fixture "$case_dir"
@@ -300,6 +305,9 @@ run_one() {
     active_*)
       mkdir -p "$case_dir/fake-plugin"
       new_env+=(KIMIFLOW_PLUGIN_ROOT="$case_dir/fake-plugin")
+      if [ "$label" = "active_prompt_payload" ] || [ "$label" = "active_stop_gate" ]; then
+        new_env+=(KIMIFLOW_HOST=codex CODEX_THREAD_ID=owner-session)
+      fi
       ;;
     launcher_stale_plugin_cache)
       new_env+=(KIMIFLOW_PLUGIN_ROOT="$case_dir/fake-cache")
@@ -311,9 +319,9 @@ run_one() {
     active_prompt_payload|active_stop_gate)
       new_stdin="$WORK/new.stdin"
       if [ "$label" = "active_stop_gate" ]; then
-        printf '{"cwd":"%s"}' "$case_dir" > "$new_stdin"
+        printf '{"cwd":"%s","session_id":"owner-session"}' "$case_dir" > "$new_stdin"
       else
-        printf '{"cwd":"%s","prompt":"must not persist"}' "$case_dir" > "$new_stdin"
+        printf '{"cwd":"%s","session_id":"owner-session","prompt":"must not persist"}' "$case_dir" > "$new_stdin"
       fi
       ;;
   esac

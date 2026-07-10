@@ -203,6 +203,7 @@ Commands:
 ```bash
 hooks/active-run.sh status --pretty
 hooks/active-run.sh start --run .kimiflow/<slug> --mode feature --scope small --write
+hooks/active-run.sh conflict-check --path src/one.ts --path src/two.ts --pretty
 hooks/active-run.sh phase-read --run .kimiflow/<slug> --phase 0 --file phases/phase-0-setup.md --write
 hooks/active-run.sh phase-read-status --run .kimiflow/<slug> --json
 hooks/active-run.sh phase-read-gate --run .kimiflow/<slug> --through-phase 4
@@ -223,13 +224,23 @@ the phase file named in `phases/PHASES.json` on entry to each phase and records 
 the next boundary that checks it: clarify checks through Phase 1, plan-blocker through Phase 4, and `finish` through
 Phase 7. Legacy runs without the marker stay open on the phase-read gate.
 
-**Prompt behavior:** the `UserPromptSubmit` hook calls `active-run.sh prompt-context`. When an active session
-exists, it injects a small reminder into the next model turn: keep the follow-up request inside Kimiflow unless
-the user explicitly exits/parks/fails/aborts/switches. It does not store the raw prompt text.
+**Prompt behavior:** the `UserPromptSubmit` hook calls `active-run.sh prompt-context`. In the owner session it
+injects a small reminder to keep the follow-up inside Kimiflow unless the user explicitly exits/parks/fails/
+aborts/switches. Other Codex or Claude sessions are not adopted into the run: they may read, answer, analyze,
+and plan normally, and receive only a compact advisory to run `conflict-check` before shared-checkout edits.
+The hook does not store the raw prompt text.
 
-**Stop behavior:** the `Stop` hook calls `active-run.sh stop-gate`. It blocks completion while an active
-session is non-terminal, unless the stop is already a hook continuation. The model must continue the Kimiflow
-loop or close it mechanically with `finish`, `park`, `fail`, or `abort`.
+**Stop behavior:** the `Stop` hook calls `active-run.sh stop-gate`. It blocks completion only when the hook's
+host/session identity owns the non-terminal active run, unless the stop is already a hook continuation. Other
+sessions and legacy ownerless runs always pass Stop so an answer can never be replaced by another run's gate.
+The owner model must continue the Kimiflow loop or close it mechanically with `finish`, `park`, `fail`, or
+`abort`. While an active run exists, the separate red-test Stop gate uses the same owner relation and also
+no-ops for other or owner-unknown sessions.
+
+**Parallel writes:** `conflict-check` compares each intended path with the active run's declared affected paths.
+It returns `allow_disjoint`, `block_overlap`, or `block_unknown`; parent/child path overlaps count as conflicts.
+Only `allow_disjoint` permits edits in the shared checkout. On either block result, wait, narrow the scope, or
+use a separate Git worktree. Never stage, commit, revert, or clean another session's files.
 
 **Item lifecycle:** sequential changes accumulate as items:
 

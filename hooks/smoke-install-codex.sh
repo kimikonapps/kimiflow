@@ -212,8 +212,11 @@ deny_commit() { jq -nc --arg c "$1" --arg d "$2" '{tool_input:{args:{command:$c}
 deny_state()  { jq -nc --arg c "$1" --arg d "$2" '{tool_input:{args:{command:$c}}, cwd:$d, hook_event_name:"PreToolUse"}' | bash "$STATE_HOOK" 2>/dev/null | grep -q '"permissionDecision":"deny"'; }
 block_stop()  { jq -nc --arg d "$1" '{cwd:$d, hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | bash "$TEST_HOOK" 2>/dev/null | grep -qE '"decision"[[:space:]]*:[[:space:]]*"block"'; }
 allow_stop_active() { out="$(jq -nc --arg d "$1" '{cwd:$d, hook_input:{stop_hook_active:true}, hook_event_name:"Stop"}' | bash "$TEST_HOOK" 2>/dev/null)"; [ -z "$out" ]; }
-active_prompt_context() { jq -nc --arg d "$1" '{cwd:$d, prompt:"follow-up text", hook_event_name:"UserPromptSubmit"}' | bash "$ACTIVE_HOOK" prompt-context 2>/dev/null | grep -q 'additionalContext'; }
-active_stop_blocks() { jq -nc --arg d "$1" '{cwd:$d, hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | bash "$ACTIVE_HOOK" stop-gate 2>/dev/null | grep -qE '"decision"[[:space:]]*:[[:space:]]*"block"'; }
+test_gate_owner_blocks() { jq -nc --arg d "$1" '{cwd:$d, session_id:"owner-session", hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | bash "$TEST_HOOK" 2>/dev/null | grep -qE '"decision"[[:space:]]*:[[:space:]]*"block"'; }
+test_gate_other_passes() { out="$(jq -nc --arg d "$1" '{cwd:$d, session_id:"other-session", hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | bash "$TEST_HOOK" 2>/dev/null)"; [ -z "$out" ]; }
+active_prompt_context() { jq -nc --arg d "$1" '{cwd:$d, session_id:"owner-session", prompt:"follow-up text", hook_event_name:"UserPromptSubmit"}' | bash "$ACTIVE_HOOK" prompt-context 2>/dev/null | grep -q 'additionalContext'; }
+active_stop_blocks() { jq -nc --arg d "$1" '{cwd:$d, session_id:"owner-session", hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | bash "$ACTIVE_HOOK" stop-gate 2>/dev/null | grep -qE '"decision"[[:space:]]*:[[:space:]]*"block"'; }
+active_other_stop_passes() { out="$(jq -nc --arg d "$1" '{cwd:$d, session_id:"other-session", hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | bash "$ACTIVE_HOOK" stop-gate 2>/dev/null)"; [ -z "$out" ]; }
 
 tmp1="$(mktemp -d)"; ( cd "$tmp1" && git init -q && mkdir .kimiflow )
 tmp2="$(mktemp -d)"; ( cd "$tmp2" && git init -q )
@@ -231,10 +234,13 @@ Affected files: README.md
 Phase 0: done
 Phase 5: in-progress
 EOF
-bash "$ACTIVE_HOOK" start --root "$tmp1" --run .kimiflow/demo --write >/dev/null
-bash "$ACTIVE_HOOK" append-item --root "$tmp1" --title "synthetic active-session item" --write >/dev/null
+CODEX_THREAD_ID=owner-session bash "$ACTIVE_HOOK" start --root "$tmp1" --run .kimiflow/demo --write >/dev/null
+CODEX_THREAD_ID=owner-session bash "$ACTIVE_HOOK" append-item --root "$tmp1" --title "synthetic active-session item" --write >/dev/null
 if active_prompt_context "$tmp1"; then ok "active session hook injects Codex prompt context"; else bad "active session hook did not inject Codex prompt context"; fi
 if active_stop_blocks "$tmp1"; then ok "active session Stop hook blocks unfinished session"; else bad "active session Stop hook did not block unfinished session"; fi
+if active_other_stop_passes "$tmp1"; then ok "active session Stop hook ignores unrelated Codex session"; else bad "active session Stop hook blocked unrelated Codex session"; fi
+if test_gate_owner_blocks "$tmp1"; then ok "active test gate still blocks owner Codex session"; else bad "active test gate did not block owner Codex session"; fi
+if test_gate_other_passes "$tmp1"; then ok "active test gate ignores unrelated Codex session"; else bad "active test gate blocked unrelated Codex session"; fi
 
 tmp3="$(mktemp -d)"
 ( cd "$tmp3" && git init -q )
@@ -266,7 +272,7 @@ cat <<'MANUAL'
   [ ] Confirm Kimiflow launches only when explicitly requested.
   [ ] In a repo with .kimiflow/, attempting `git add .` is blocked by the installed stable Codex hook.
   [ ] With .kimiflow/test-gate containing a failing command, Codex Stop is blocked.
-  [ ] With an active Kimiflow session, a follow-up prompt keeps Kimiflow active and Stop asks for finish/park/fail/abort.
+  [ ] With an active Kimiflow session, its owner stays gated while a second project task can read, answer, and plan without any Stop continuation.
 MANUAL
 
 echo "----"

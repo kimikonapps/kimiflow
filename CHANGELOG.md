@@ -4,7 +4,11 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Added
+- **Cross-host parallel-session conflict check** (`hooks/active-run.sh conflict-check`): Codex and Claude sessions can compare intended write paths with another active Kimiflow run and receive `allow_disjoint`, `block_overlap`, or `block_unknown` without using a model call.
+
+### Fixed
+- **Active-session hooks are scoped to their owner session** (`hooks/kimiflow_core/active_run.py`, hook manifests, canonical/host docs): an active Kimiflow run now records its Codex/Claude session identity. Unrelated sessions may always read, ask questions, analyze, and create plans; their `Stop` hooks never continue another session's run or replace a completed assistant response. Unknown legacy ownership fails open for conversation output and closed for parallel writes.
 
 ## 0.1.61
 

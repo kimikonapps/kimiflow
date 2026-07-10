@@ -94,7 +94,11 @@ class TestAwaitUser(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.root)
         plugin = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, plugin)
-        patcher = mock.patch.dict(os.environ, {"KIMIFLOW_PLUGIN_ROOT": plugin})
+        patcher = mock.patch.dict(os.environ, {
+            "KIMIFLOW_PLUGIN_ROOT": plugin,
+            "KIMIFLOW_HOST": "codex",
+            "CODEX_THREAD_ID": "owner-session",
+        })
         patcher.start()
         self.addCleanup(patcher.stop)
         run_dir = os.path.join(self.root, ".kimiflow", "demo")
@@ -105,7 +109,7 @@ class TestAwaitUser(unittest.TestCase):
         self.assertEqual(rc, 0)
 
     def hook_payload(self):
-        return json.dumps({"cwd": self.root})
+        return json.dumps({"cwd": self.root, "session_id": "owner-session"})
 
     def read_active(self):
         with open(os.path.join(self.root, ".kimiflow", "session", "ACTIVE_RUN.json"), "r", encoding="utf-8") as handle:
@@ -142,6 +146,34 @@ class TestAwaitUser(unittest.TestCase):
         rc, out = run_main(["stop-gate"], stdin_text=self.hook_payload())
         self.assertEqual(rc, 0)
         self.assertEqual(out, "")
+
+    def test_other_session_stop_is_never_blocked(self):
+        payload = json.dumps({"cwd": self.root, "session_id": "other-session"})
+        rc, out = run_main(["stop-gate"], stdin_text=payload)
+        self.assertEqual(rc, 0)
+        self.assertEqual(out, "")
+
+    def test_other_session_prompt_is_advisory(self):
+        payload = json.dumps({"cwd": self.root, "session_id": "other-session"})
+        rc, out = run_main(["prompt-context"], stdin_text=payload)
+        self.assertEqual(rc, 0)
+        context = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("not part of that run", context)
+        self.assertIn("conflict-check", context)
+
+    def test_conflict_check_distinguishes_paths(self):
+        with mock.patch.dict(os.environ, {"CODEX_THREAD_ID": "other-session"}):
+            rc, out = run_main(["conflict-check", "--root", self.root, "--path", "src/b.txt"])
+            self.assertEqual(rc, 0)
+            self.assertEqual(json.loads(out)["decision"], "allow_disjoint")
+            rc, out = run_main(["conflict-check", "--root", self.root, "--path", "src/a.txt"])
+            self.assertEqual(rc, 0)
+            self.assertEqual(json.loads(out)["decision"], "block_overlap")
+
+    def test_path_overlap_includes_ancestors_and_descendants(self):
+        self.assertTrue(active_run.paths_overlap("src", "src/a.txt"))
+        self.assertTrue(active_run.paths_overlap("src/a.txt", "src/a.txt/generated"))
+        self.assertFalse(active_run.paths_overlap("src/a.txt", "tests/a.txt"))
 
     def test_prompt_context_clears_flag(self):
         self.await_user()
