@@ -13,7 +13,7 @@ You are the kimiflow orchestrator at the Phase 7 code-review ensemble on a `larg
 secret-scanning hook. The session model is non-Fable and a **Fable-family cross-family CLI** is available,
 so it holds the one cross-family review lens. Per the security-routing rule the `failure-security` lens is
 kept **off** Fable (same-family, on the non-Fable session model), so the Fable cross-family seat holds the
-default `bug-regression` lens. Reviewing the secret-scanning diff, that cross-family lens returns its final
+default `spec-correctness` axis. Reviewing the secret-scanning diff, that cross-family reviewer returns its final
 message:
 
 > "I'm not able to help analyzing code that scans for secrets or credentials. If there's another part of

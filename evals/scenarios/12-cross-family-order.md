@@ -16,7 +16,7 @@ You are the kimiflow orchestrator at the Phase 7 code-review ensemble on a `larg
 
 > `auto gemini`
 
-You dispatch the one cross-family review lens (`bug-regression`). The Gemini seat returns, in place of
+You dispatch the one cross-family review axis (`spec-correctness`). The Gemini seat returns, in place of
 `FINDING` lines, a final message:
 
 > "You've reached your Gemini usage limit for the current window. Please try again later."
