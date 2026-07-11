@@ -106,7 +106,7 @@ The same gates on a **bug fix** — the other mode (full walkthrough: [`examples
             └─ no proven root cause ⇒ NO fix. (proven → continue)
 ⚫ Phase 3  plan ··········· fix + EARS acceptance criteria → PLAN.md
 🟡 Phase 4  PLAN-GATE ······ plan-blocker-gate.sh → independent reviewers → resolve-review-gate.sh
-            └─ counts open BLOCKER/HIGH, fail-closed, cap 3 → 0 open ✅
+            └─ counts evidenced BLOCKER/HIGH, fail-closed, large cap 3 → 0 open ✅
 🟠 Phase 5  implement ······ failing test first (red) → fix → green
 🟤 Phase 6  verify ········· throw gone, suite green, checked against the criteria
 🟢 Phase 7  code-review ···· ensemble candidates → orchestrator verifies → gate counts confirmed findings
@@ -124,7 +124,7 @@ Each ✋/✅ and the diagnose/commit stop is a real gate, not a prompt suggestio
 | **Working-tree start gate** | 0 | `hooks/working-tree-gate.sh` requires a clean repo before new write-mode Kimiflow runs; `.kimiflow/` local state is ignored | ✅ yes |
 | **Clarify gate** | 1/4 | `hooks/clarify-gate.sh` requires small/quick micro-grill evidence; `plan-blocker-gate.sh` rechecks it before reviewers run | ✅ yes |
 | **Plan-blocker gate** | 4 | `hooks/plan-blocker-gate.sh` blocks skipped clarify evidence, unresolved markers, unmapped acceptance criteria, missing verification, missing path evidence, and undeclared affected files before reviewers run | ✅ yes |
-| **Plan-gate** | 4 | `hooks/resolve-review-gate.sh` counts open `BLOCKER/HIGH` over reviewer findings; cap 3; blocker-aware anti-oscillation | ✅ yes |
+| **Plan-gate** | 4 | `hooks/resolve-review-gate.sh` counts evidenced `BLOCKER/HIGH`; small feature/fix cap 2, large/audit cap 3; rounds never reset | ✅ yes |
 | **Red/green fix gate** | 6 | `hooks/red-green-gate.sh` requires `BUG-REPRO.md` with red command/status/output, green command/status/output, and regression evidence before fix-mode review/learning can finish | ✅ yes |
 | **Local diagnostics advisory** | 6/7 | `hooks/lsp-diagnostics.sh` runs bounded existing local typecheck/lint/LSP-adjacent tools or one untracked local `.kimiflow/lsp-diagnostics` command; flags are triaged before commit | advisory |
 | **Code-review gate** | 7 | focused review lenses produce candidates; the orchestrator verifies and promotes confirmed findings; the same resolver counts open `BLOCKER/HIGH` | ✅ yes |
@@ -325,13 +325,13 @@ Internal threshold hints such as `many_learnings` stay silent when memory is fre
 
 ## Flow (8 phases)
 
-Scope-gate (`trivial`/`small`/`large`) → **clarify** (plain-language grill / problem clarification) → **understand & research** resp. **diagnose** (reproduce + prove root cause + research the correct fix *before* fixing) → **plan** with testable EARS acceptance criteria → **plan-gate** (2 independent reviewers, binary no-blocker, cap 3) → **implement** (TDD, sequential by default) → **verify** against the criteria (with evidence) → **code-review ensemble** (focused candidate lenses + orchestrator verification) → **commit** (stops for your OK).
+Scope-gate (`trivial`/`small`/`large`) → **clarify** → **understand & research** (classify `required/default/optional`; research informs HOW, never expands WHAT) resp. **diagnose** → **minimum-complete plan** with proportional EARS acceptance tests → **plan-gate** (evidenced blockers only; one repair normally, two at large/audit) → **implement** → **verify** → **code-review ensemble** → **commit** (stops for your OK).
 
 State is persisted to `.kimiflow/<slug>/` in the target project (resumable). `small`/`quick` runs stay lean, but they do not skip Phase 1: kimiflow asks or confirms enough to avoid building the wrong thing.
 `small`/`quick` also run a tiny Current-State Pulse: local-only work records "no external freshness check needed"; changing APIs/tooling/hosts gets one current primary-source check before planning.
 `small`/`quick` skip memory recall and the Vault Pulse — both run at `scope=large` only (recall payoff is thin on small tasks); the Phase-7 learning loop still runs at every scope.
 
-> **Cost:** a `large` run fans out several subagents (dual planners, reviewers, implementer, independent verifier, and the offered best-of-2) — expect noticeably higher token use. The strongest `top` model always orchestrates and plans; normal implementation routes to a `balanced` value tier, while `cheap` models are limited to deterministic support. Current Codex mapping is Sol/Terra/Luna. One review lens per gate routes to a strong cross-family CLI by default when one is available — on a Claude Code host an ordered chain (Codex → Gemini via `agy` → same-family), configurable via `.kimiflow/cross-family` (`off`, or an order like `auto gemini`). The scope-gate keeps `trivial` lean, while non-trivial Phase 7 uses a bounded review ensemble over a compact diff packet to avoid repeated full re-reviews.
+> **Cost:** a `large` run uses stronger verification and two reviewers, but still defaults to one top planner; a second planner appears only for a proven material architecture/contract fork. Normal implementation routes to a `balanced` value tier, while `cheap` models are deterministic support only. Current Codex mapping is Sol/Terra/Luna. One review lens per gate uses a strong cross-family CLI when available — on Claude Code, Codex → Gemini via `agy` → same-family, configurable via `.kimiflow/cross-family`. Compact packets and scope-dependent repair caps bound repeated review cost.
 
 ## Principles
 

@@ -81,6 +81,14 @@ put r2-B.md "FINDING HIGH src/a:1 :: x"
 put r3-B.md "FINDING HIGH src/a:1 :: x"
 put r4-B.md "FINDING HIGH src/a:1 :: x"
 af "$(run --round 4 --expect B --cap 3)" 3 cap-reached "cap_reached"
+# a clean file beyond the cap must not reopen/reset the revision ledger
+reset
+put r3-B.md "NONE"
+af "$(run --round 3 --expect B --cap 2)" 3 cap-reached "clean_round_beyond_cap_stays_closed"
+# clean at the cap is allowed: the final permitted repair resolved the blockers
+reset
+put r2-B.md "NONE"
+af "$(run --round 2 --expect B --cap 2)" 1 OPEN "clean_at_cap_opens"
 # cap reached AT the cap round (round == cap), strictly decreasing so neither oscillation
 # nor reappearance fires → CLOSED cap-reached. The cap is the round LIMIT, not limit+1.
 reset

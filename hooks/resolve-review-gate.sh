@@ -32,6 +32,10 @@ case "$cap"   in ''|*[!0-9]*) emit CLOSED - malformed "bad --cap" ;; esac
 # Normalize base-10 so a zero-padded round (e.g. 08) can't trip octal arithmetic later.
 round=$((10#$round)); cap=$((10#$cap))
 
+# The round ledger is global for the caller's expected lens set. A caller cannot bypass the
+# revision budget by submitting a clean file after the cap; stop before reading/counting it.
+[ "$round" -gt "$cap" ] && emit CLOSED - cap-reached "round ${round} > cap ${cap}"
+
 # List existing findings files for the --expect lens set at a given round (newline-delimited).
 # Phase 4 (lenses A/B) and Phase 7 (code-verified) share the findings dir with overlapping
 # round numbers; every cross-round check MUST be scoped to --expect, never a bare r<N>-*.md glob.

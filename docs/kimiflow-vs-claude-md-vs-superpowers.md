@@ -47,8 +47,9 @@ KimiFlow's bet is that for a *small* set of checkpoints, you want the referee to
   paths and bulk `git add -A`/`.` — before the commit runs. A reminder in prose can be forgotten; a
   hook cannot.
 - **Don't proceed past an open `BLOCKER`/`HIGH`.** Reviewers write findings to files; a tested,
-  fail-closed script (`resolve-review-gate.sh`) counts the open ones and returns a verdict (cap 3,
-  blocker-aware anti-oscillation). A verbose model can't argue past a number it didn't compute.
+  fail-closed script (`resolve-review-gate.sh`) counts the open ones and returns a verdict (small
+  feature/fix cap 2; large/audit cap 3; blocker-aware anti-oscillation; no clean round beyond cap).
+  A verbose model can't argue past a number it didn't compute.
 - **Don't finish on red tests.** An opt-in `Stop` hook (`test-gate`) blocks completion while the
   project's tests fail.
 - **Don't commit without a human OK.** The commit-gate *stops* and shows the diff; "done" is never

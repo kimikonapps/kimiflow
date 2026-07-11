@@ -4,7 +4,13 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Changed
+- **Minimum-complete planning and research scope classification** (`SKILL.md`, Phase 2–4, `reference.md`): current research is classified as `required`, `default`, or `optional`; only verified required constraints may add scope. Plans stay flat, every task/file/abstraction/test maps to an acceptance criterion, reversible HOW decisions use conservative defaults, and reviewers must subtract unsupported complexity before proposing additions.
+- **Dual planning now requires a proven material fork** (`phases/phase-3-plan.md`, routing docs): `large` no longer spends two full planners merely because it is large. One top planner is the default at every scope; a second appears only for genuinely different viable architectures or an irreversible public API/data/migration contract, and both remain bound to the same minimum-complete scope.
+- **Proportional review loops** (Phase 4/7, behavioral eval scenario 14): normal features and quick/small code review get one repair round; large/audit/release-critical work gets at most two. MEDIUM/LOW never forces plan revision, and plan BLOCKER/HIGH requires evidence tied to intent, current compatibility, project standards, or concrete security/data impact.
+
+### Fixed
+- **Revision cap cannot be bypassed by a later clean round** (`hooks/resolve-review-gate.sh`, tests): `round > cap` now closes mechanically before reading findings, while a clean result at the cap still opens. Round numbering remains global across Phase-3 re-entry instead of resetting and recreating the babysitting loop.
 
 ## 0.1.63
 
