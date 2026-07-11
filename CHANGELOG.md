@@ -4,6 +4,12 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.1.64
+
+The minimum-complete planning release: research can correct implementation choices without silently growing product scope, dual planning requires a real architectural fork, and review loops stop after a small scope-based repair budget.
+
 ### Changed
 - **Minimum-complete planning and research scope classification** (`SKILL.md`, Phase 2–4, `reference.md`): current research is classified as `required`, `default`, or `optional`; only verified required constraints may add scope. Plans stay flat, every task/file/abstraction/test maps to an acceptance criterion, reversible HOW decisions use conservative defaults, and reviewers must subtract unsupported complexity before proposing additions.
 - **Dual planning now requires a proven material fork** (`phases/phase-3-plan.md`, routing docs): `large` no longer spends two full planners merely because it is large. One top planner is the default at every scope; a second appears only for genuinely different viable architectures or an irreversible public API/data/migration contract, and both remain bound to the same minimum-complete scope.
