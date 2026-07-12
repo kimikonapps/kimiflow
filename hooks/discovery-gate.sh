@@ -27,11 +27,45 @@ done
 [ -d "$run_dir" ] || emit CLOSED 1 malformed "run_dir_missing"
 
 state="$run_dir/STATE.md"
+flow_schema="$(kimiflow_state_value "$state" "Flow schema" | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
+mode="$(kimiflow_state_value "$state" "Mode" | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
+scope="$(kimiflow_state_value "$state" "Scope" | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
 required="$(kimiflow_state_value "$state" "Discovery required" | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
+
+case "$flow_schema" in
+  "") ;;
+  *[!0-9]*) emit CLOSED 1 malformed "flow_schema_invalid" ;;
+esac
+
+new_flow=0
+if [ -n "$flow_schema" ] && [ "$flow_schema" -ge 2 ]; then
+  new_flow=1
+fi
+if [ "$new_flow" -eq 1 ]; then
+  case "$mode" in feature|fix|audit|feature-check|review) ;; *) emit CLOSED 1 malformed "flow_mode_invalid" ;; esac
+  case "$scope" in trivial|small|large) ;; *) emit CLOSED 1 malformed "flow_scope_invalid" ;; esac
+fi
+nontrivial_feature=0
+if [ "$mode" = "feature" ] && [ "$scope" != "trivial" ]; then
+  nontrivial_feature=1
+fi
+
 case "$required" in
-  yes|true|1|required) ;;
-  no|false|0|not_required) emit OPEN 0 not-required "explicitly_not_required" ;;
-  "") emit OPEN 0 legacy "discovery_requirement_absent" ;;
+  yes|true|1|required)
+    if [ "$new_flow" -eq 1 ] && [ "$nontrivial_feature" -eq 0 ]; then
+      emit CLOSED 1 malformed "discovery_requirement_mode_mismatch"
+    fi
+    ;;
+  no|false|0|not_required)
+    [ "$nontrivial_feature" -eq 0 ] || emit CLOSED 1 malformed "discovery_requirement_mode_mismatch"
+    emit OPEN 0 not-required "explicitly_not_required"
+    ;;
+  "")
+    if [ "$new_flow" -eq 1 ]; then
+      emit CLOSED 1 malformed "discovery_requirement_missing"
+    fi
+    emit OPEN 0 legacy "discovery_requirement_absent"
+    ;;
   *) emit CLOSED 1 malformed "discovery_requirement_invalid" ;;
 esac
 

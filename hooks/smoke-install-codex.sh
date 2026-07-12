@@ -162,6 +162,8 @@ grep -q 'Standards smell baseline' "$ROOT/reference.md" && ok "canonical advisor
 grep -q 'Scope classification' "$ROOT/reference.md" && ok "canonical research scope classified" || bad "canonical research scope classification missing"
 grep -q 'depth=none|pulse|focused' "$ROOT/reference.md" && ok "canonical adaptive Discovery documented" || bad "canonical adaptive Discovery missing"
 grep -q 'Build Preview / Risk Gate' "$ROOT/reference.md" && ok "canonical conditional Build Preview documented" || bad "canonical Build Preview risk policy missing"
+grep -q 'Flow schema: 2' "$ROOT/phases/phase-0-setup.md" && ok "new runs declare flow schema 2" || bad "phase 0 missing flow schema 2"
+grep -q -- '--state .kimiflow/<slug>/STATE.md' "$ROOT/phases/phase-4-review-approval.md" && ok "Build risk reads durable STATE" || bad "Phase 4 does not bind Build risk to STATE"
 grep -q 'research-driven product expansion is forbidden' "$ROOT/reference.md" && ok "canonical research scope creep blocked" || bad "canonical research scope-creep guard missing"
 grep -q 'any `round > cap`' "$ROOT/reference.md" && ok "canonical global revision cap documented" || bad "canonical global plan revision cap missing"
 grep -q 'Minimum-complete' "$ROOT/SKILL.md" && ok "canonical minimum-complete rule loaded" || bad "canonical minimum-complete rule missing"

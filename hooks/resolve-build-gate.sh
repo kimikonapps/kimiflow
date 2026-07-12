@@ -8,8 +8,12 @@
 # Usage:
 #   resolve-build-gate.sh [get] -> echo risk|always|off
 #   resolve-build-gate.sh set <risk|always|off|on>
-#   resolve-build-gate.sh decide --risk <none|required> --interactive <yes|no> [--alias full]
+#   resolve-build-gate.sh decide --state <STATE.md> --interactive <yes|no> [--risk <none|required>] [--alias full]
+# Legacy callers may omit --state and provide --risk directly.
 set -u
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=hooks/kimiflow-lib.sh
+. "$SCRIPT_DIR/kimiflow-lib.sh"
 
 VALID="risk always off on"
 is_valid() { case " $VALID " in *" ${1:-} "*) return 0 ;; *) return 1 ;; esac; }
@@ -66,15 +70,36 @@ if [ "$mode" = "decide" ]; then
   risk=""
   interactive=""
   alias_value=""
+  state_file=""
+  state_requested=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --risk) shift; risk="${1:-}" ;;
       --interactive) shift; interactive="${1:-}" ;;
       --alias) shift; alias_value="${1:-}" ;;
+      --state) state_requested=1; shift; state_file="${1:-}" ;;
       *) printf 'resolve-build-gate: decide: unknown argument "%s"\n' "$1" >&2; exit 2 ;;
     esac
     shift
   done
+
+  if [ "$state_requested" -eq 1 ]; then
+    if [ -z "$state_file" ] || [ ! -f "$state_file" ]; then
+      printf 'BUILD_GATE\tPARK\tpolicy=%s\trisk=%s\treason=state-missing\n' "$policy" "${risk:-missing}"
+      exit 0
+    fi
+    state_risk="$(kimiflow_state_value "$state_file" "Build risk" | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
+    case "$state_risk" in
+      none|required) ;;
+      "") printf 'BUILD_GATE\tPARK\tpolicy=%s\trisk=missing\treason=state-risk-missing\n' "$policy"; exit 0 ;;
+      *) printf 'BUILD_GATE\tPARK\tpolicy=%s\trisk=%s\treason=state-risk-invalid\n' "$policy" "$state_risk"; exit 0 ;;
+    esac
+    if [ -n "$risk" ] && [ "$risk" != "$state_risk" ]; then
+      printf 'BUILD_GATE\tPARK\tpolicy=%s\trisk=%s\treason=risk-state-mismatch\n' "$policy" "$risk"
+      exit 0
+    fi
+    risk="$state_risk"
+  fi
 
   case "$risk" in
     none|required) ;;

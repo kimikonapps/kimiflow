@@ -14,6 +14,7 @@ pass() { printf 'PASS: %s\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1"; FAILS=$((FAILS + 1)); }
 reset() { rm -rf "$PROJ"; mkdir -p "$PROJ"; }
 set_project() { mkdir -p "$PROJ/.kimiflow"; printf '%s\n' "$1" > "$PROJ/.kimiflow/build-gate"; }
+set_state() { mkdir -p "$PROJ/.kimiflow/run"; printf 'Build risk: %s\n' "$1" > "$PROJ/.kimiflow/run/STATE.md"; }
 run() { ( cd "$PROJ" && "$SCRIPT" "$@" ); }
 assert_eq() { if [ "$1" = "$2" ]; then pass "$3"; else fail "$3 (got '$1' want '$2')"; fi; }
 field() { printf '%s' "$1" | cut -f"$2"; }
@@ -70,6 +71,21 @@ reset; set_project off
 assert_eq "$(field "$(run decide --risk required --interactive yes)" 2)" "CONTINUE" "test_off_continues"
 reset
 assert_eq "$(field "$(run decide --risk unknown --interactive yes)" 2)" "PARK" "test_malformed_risk_parks"
+
+# New runs bind the decision to durable STATE; mismatches and missing state fail closed.
+reset; set_state none
+assert_eq "$(field "$(run decide --state .kimiflow/run/STATE.md --interactive yes)" 2)" "CONTINUE" "test_state_none_continues"
+reset; set_state required
+assert_eq "$(field "$(run decide --state .kimiflow/run/STATE.md --interactive yes)" 2)" "STOP" "test_state_required_stops"
+set_state "required paid-service"
+assert_eq "$(field "$(run decide --state .kimiflow/run/STATE.md --interactive yes)" 2)" "STOP" "test_state_risk_allows_inline_reason"
+assert_eq "$(field "$(run decide --state .kimiflow/run/STATE.md --risk none --interactive yes)" 2)" "PARK" "test_state_argument_mismatch_parks"
+reset
+assert_eq "$(field "$(run decide --state .kimiflow/run/STATE.md --interactive yes)" 2)" "PARK" "test_missing_state_parks"
+mkdir -p "$PROJ/.kimiflow/run"; printf 'Status: active\n' > "$PROJ/.kimiflow/run/STATE.md"
+assert_eq "$(field "$(run decide --state .kimiflow/run/STATE.md --interactive yes)" 2)" "PARK" "test_missing_state_risk_parks"
+set_state invalid
+assert_eq "$(field "$(run decide --state .kimiflow/run/STATE.md --interactive yes)" 2)" "PARK" "test_invalid_state_risk_parks"
 
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi

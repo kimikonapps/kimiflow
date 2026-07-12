@@ -12,6 +12,10 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 - **Intent completeness replaces question quotas** (`hooks/clarify-gate.sh`): small/quick runs confirm behavior, scope, and the user-visible outcome without requiring two or three questions. Existing valid count-based markers remain compatible for prepared runs.
 - **Top-owned Decision Triage and bounded research routing** (`reference.md`, Claude/Codex skills): technical gaps return to research, safe reversible HOW uses project-fit defaults, only irreducible product/policy decisions reach the user, and focused research normally uses one evidence worker with at most two independent lanes.
 
+### Fixed
+- **Discovery cannot be disabled by malformed new-run state** (`hooks/discovery-gate.sh`): schema-2 feature runs fail closed when the requirement is missing or contradicts mode/scope, while pre-schema runs remain resumable.
+- **Build risk is bound to durable state** (`hooks/resolve-build-gate.sh`): Phase 4 reads `Build risk` from `STATE.md`; missing, invalid, or contradictory risk input parks instead of silently continuing.
+
 ## 0.1.64
 
 The minimum-complete planning release: research can correct implementation choices without silently growing product scope, dual planning requires a real architectural fork, and review loops stop after a small scope-based repair budget.

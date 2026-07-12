@@ -123,7 +123,7 @@ Each ✋/✅ and the diagnose/commit stop is a real gate, not a prompt suggestio
 |------|-------|-----------|--------------|
 | **Working-tree start gate** | 0 | `hooks/working-tree-gate.sh` requires a clean repo before new write-mode Kimiflow runs; `.kimiflow/` local state is ignored | ✅ yes |
 | **Clarify gate** | 1/4 | `hooks/clarify-gate.sh` requires confirmed behavior, scope, and outcome for small/quick; no question quota | ✅ yes |
-| **Discovery gate** | 2/4 | `hooks/discovery-gate.sh` blocks unresolved research/user decisions, unconfirmed scope change, incomplete lanes, and unsourced external claims | ✅ yes |
+| **Discovery gate** | 2/4 | `hooks/discovery-gate.sh` binds new schema-2 feature runs to Discovery evidence while preserving pre-schema resumes | ✅ yes |
 | **Plan-blocker gate** | 4 | composes Clarify + Discovery, then checks AC mapping, verification, path evidence, and affected files before reviewers | ✅ yes |
 | **Plan-gate** | 4 | `hooks/resolve-review-gate.sh` counts evidenced `BLOCKER/HIGH`; small feature/fix cap 2, large/audit cap 3; rounds never reset | ✅ yes |
 | **Red/green fix gate** | 6 | `hooks/red-green-gate.sh` requires `BUG-REPRO.md` with red command/status/output, green command/status/output, and regression evidence before fix-mode review/learning can finish | ✅ yes |
@@ -502,7 +502,7 @@ Jedes ✋/✅ sowie der Diagnose- und Commit-Stopp ist ein echtes Gate, kein Pro
 | Gate | Phase | Mechanismus | Fail-closed? |
 |------|-------|-------------|--------------|
 | **Clarify-Gate** | 1/4 | verlangt bestätigtes Verhalten, Scope und Ergebnis für small/quick; keine Fragenquote | ✅ ja |
-| **Discovery-Gate** | 2/4 | blockt offene Research-/Nutzerentscheidungen, unbestätigten Scope, unvollständige Lanes und unbelegte externe Claims | ✅ ja |
+| **Discovery-Gate** | 2/4 | bindet neue Schema-2-Feature-Runs an Discovery-Evidence und erhält Pre-Schema-Resumes | ✅ ja |
 | **Planblocker-Gate** | 4 | kombiniert Clarify + Discovery und prüft danach AC-Mapping, Verifikation, Pfade und betroffene Dateien | ✅ ja |
 | **Plan-Gate** | 4 | zählt belegte `BLOCKER/HIGH`; small Feature/Fix Cap 2, large/audit Cap 3; Runden werden nie zurückgesetzt | ✅ ja |
 | **Code-Review-Gate** | 7 | fokussierte Review-Linsen liefern Kandidaten; der Orchestrator verifiziert und promotet bestätigte Findings; derselbe Resolver zählt offene `BLOCKER/HIGH` | ✅ ja |

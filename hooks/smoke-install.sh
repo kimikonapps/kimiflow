@@ -145,6 +145,8 @@ grep -q 'active-run.sh' "$ROOT/reference.md" && ok "reference documents active s
 grep -q 'Active Session Contract' "$ROOT/SKILL.md" && ok "canonical skill documents Active Session Contract" || bad "missing Active Session Contract in SKILL.md"
 grep -q 'Current-State Pulse / Gate' "$ROOT/SKILL.md" && ok "canonical skill documents Current-State Pulse / Gate" || bad "missing Current-State Pulse / Gate in SKILL.md"
 grep -q 'discovery-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents Discovery Gate" || bad "missing Discovery Gate in SKILL.md"
+grep -q 'Flow schema: 2' "$ROOT/phases/phase-0-setup.md" && ok "new runs declare flow schema 2" || bad "phase 0 missing flow schema 2"
+grep -q -- '--state .kimiflow/<slug>/STATE.md' "$ROOT/phases/phase-4-review-approval.md" && ok "Build risk reads durable STATE" || bad "Phase 4 does not bind Build risk to STATE"
 grep -q 'working-tree-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents working-tree gate" || bad "missing working-tree gate in SKILL.md"
 grep -q 'clarify-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents clarify gate" || bad "missing clarify gate in SKILL.md"
 grep -q 'red-green-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents red-green gate" || bad "missing red-green gate in SKILL.md"

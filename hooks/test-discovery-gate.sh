@@ -28,6 +28,7 @@ reset_run() {
 Status: active
 Mode: feature
 Scope: small
+Flow schema: 2
 Discovery required: yes
 EOF
   cat > "$RUN/RESEARCH.md" <<'EOF'
@@ -93,7 +94,7 @@ do
 done
 
 reset_run
-sed -i.bak '/Discovery required:/d' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+sed -i.bak -e '/Flow schema:/d' -e '/Discovery required:/d' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
 rm "$RUN/RESEARCH.md"
 out="$(run_gate)"
 assert_field "$out" 2 OPEN "legacy_run_without_marker_opens"
@@ -103,7 +104,57 @@ reset_run
 sed -i.bak 's/Discovery required: yes/Discovery required: no/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
 rm "$RUN/RESEARCH.md"
 out="$(run_gate)"
-assert_field "$out" 2 OPEN "explicit_not_required_opens"
+assert_field "$out" 2 CLOSED "feature_cannot_disable_discovery"
+assert_contains "$out" "discovery_requirement_mode_mismatch" "feature_disable_detail"
+
+reset_run
+sed -i.bak '/Discovery required:/d' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+rm "$RUN/RESEARCH.md"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "new_feature_missing_requirement_closes"
+assert_contains "$out" "discovery_requirement_missing" "new_feature_missing_requirement_detail"
+
+reset_run
+sed -i.bak -e 's/Mode: feature/Mode: fix/' -e 's/Discovery required: yes/Discovery required: no/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+rm "$RUN/RESEARCH.md"
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "fix_explicit_not_required_opens"
+
+reset_run
+sed -i.bak -e 's/Scope: small/Scope: trivial/' -e 's/Discovery required: yes/Discovery required: no/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+rm "$RUN/RESEARCH.md"
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "trivial_feature_not_required_opens"
+
+reset_run
+sed -i.bak -e 's/Mode: feature/Mode: fix/' -e '/Discovery required:/d' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "new_fix_missing_requirement_closes"
+assert_contains "$out" "discovery_requirement_missing" "new_fix_missing_requirement_detail"
+
+reset_run
+sed -i.bak 's/Mode: feature/Mode: fix/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "new_fix_cannot_require_feature_discovery"
+assert_contains "$out" "discovery_requirement_mode_mismatch" "new_fix_requirement_detail"
+
+reset_run
+sed -i.bak 's/Flow schema: 2/Flow schema: invalid/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "invalid_flow_schema_closes"
+assert_contains "$out" "flow_schema_invalid" "invalid_flow_schema_detail"
+
+reset_run
+sed -i.bak -e 's/Mode: feature/Mode: featre/' -e 's/Discovery required: yes/Discovery required: no/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "new_flow_invalid_mode_closes"
+assert_contains "$out" "flow_mode_invalid" "new_flow_invalid_mode_detail"
+
+reset_run
+sed -i.bak 's/Scope: small/Scope: unknown/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "new_flow_invalid_scope_closes"
+assert_contains "$out" "flow_scope_invalid" "new_flow_invalid_scope_detail"
 
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi
