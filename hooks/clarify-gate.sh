@@ -114,7 +114,7 @@ write_fix_approval() {
   tmp="$(mktemp "$run_dir/.DIAGNOSIS.md.XXXXXX")" || return 1
   awk '!/<!--[[:space:]]*kimiflow:fix-approval[^>]*-->/ { print }' "$diagnosis" > "$tmp" || { rm -f "$tmp"; return 1; }
   printf '<!-- kimiflow:fix-approval cause=confirmed fix=confirmed scope=confirmed risk=confirmed source=current-run basis=%s -->\n' "$basis" >> "$tmp"
-  mode="$(stat -f '%Lp' "$diagnosis" 2>/dev/null || stat -c '%a' "$diagnosis" 2>/dev/null || true)"
+  mode="$(stat -c '%a' "$diagnosis" 2>/dev/null || stat -f '%Lp' "$diagnosis" 2>/dev/null || true)"
   [ -z "$mode" ] || chmod "$mode" "$tmp" || { rm -f "$tmp"; return 1; }
   mv "$tmp" "$diagnosis"
 }

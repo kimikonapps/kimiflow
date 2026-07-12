@@ -43,6 +43,7 @@ EOF
 run_gate() { KIMIFLOW_PLUGIN_ROOT="$WORK" "$SCRIPT" "$RUN"; }
 run_post_diagnosis_gate() { KIMIFLOW_PLUGIN_ROOT="$WORK" "$SCRIPT" "$RUN" --post-diagnosis; }
 record_fix_approval() { KIMIFLOW_PLUGIN_ROOT="$WORK" "$SCRIPT" "$RUN" --record-fix-approval; }
+record_fix_approval_with_gnu_stat() { PATH="$WORK/bin:$PATH" KIMIFLOW_PLUGIN_ROOT="$WORK" "$SCRIPT" "$RUN" --record-fix-approval; }
 
 write_phase_fixture() {
   mkdir -p "$WORK/phases"
@@ -214,7 +215,17 @@ out="$(run_post_diagnosis_gate)"
 assert_field "$out" 2 CLOSED "fix_preview_missing_approval_closes"
 assert_contains "$out" "fix_approval_missing" "fix_preview_missing_approval_detail"
 
-out="$(record_fix_approval)"
+mkdir -p "$WORK/bin"
+cat > "$WORK/bin/stat" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+  -c) printf '644\n' ;;
+  -f) printf 'GNU stat accepted -f as filesystem output, not a mode\n' ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/bin/stat"
+out="$(record_fix_approval_with_gnu_stat)"
 assert_field "$out" 2 OPEN "record_fix_approval_opens"
 assert_contains "$(cat "$RUN/DIAGNOSIS.md")" "basis=" "record_fix_approval_persists_basis"
 out="$(run_post_diagnosis_gate)"
