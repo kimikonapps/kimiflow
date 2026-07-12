@@ -5,7 +5,7 @@ subagent contracts. If a host moves one of these primitives, parts of kimiflow c
 (a hook that stops firing looks identical to a hook that passed). This file lists every primitive
 kimiflow concretely uses, what breaks if it changes, and a smoke checklist to run at each version bump.
 
-**Last verified against:** Claude Code **2.1.202** · Codex CLI **0.142.5** · kimiflow **0.1.65** · 2026-07-12.
+**Last verified against:** Claude Code **2.1.202** · Codex CLI **0.142.5** · kimiflow **0.1.66** · 2026-07-12.
 
 > **0.x expectation.** These primitives are NOT a stable public contract. Treat breakage as *expected*
 > across Claude Code or Codex minor versions until a version is explicitly pinned — keep the README's

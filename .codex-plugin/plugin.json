@@ -1,6 +1,6 @@
 {
   "name": "kimiflow",
-  "version": "0.1.65",
+  "version": "0.1.66",
   "description": "Calm context-aware Kimiflow launcher and active-session feature/fix loop for Codex with natural mode aliases, clean-worktree, red/green, plan-blocker, code-review, memory, Obsidian, and Vault gates.",
   "author": {
     "name": "kimikon",
@@ -25,8 +25,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "kimiflow",
-    "shortDescription": "Feature & bug-fix loop with adaptive discovery, Build Preview risk control, project intelligence, repo docs, and findings",
-    "longDescription": "Kimiflow opens with a calm context-aware launcher showing one recommended action and compact project/memory/run health. It routes into full/grill/plan/build/quick/review/audit/fix modes, project mapping, memory/recall, Obsidian/Vault setup, local findings, backlog resume, feature work, fixes, improvement analysis, repo docs, or existing-feature review. Feature runs confirm behavior, scope, and outcome without a question quota, inspect project knowledge first, then choose adaptive Discovery depth (none, pulse, or focused). The top model owns the brief, source evaluation, synthesis, decisions, plan, and Build Preview; bounded workers collect evidence only when useful. Full requires explicit Build Preview approval, while normal reversible work continues after its preview and material scope/privacy/cost/breaking/data/API/migration risk waits for consent. Grill, plan, review, and audit do not edit code. Active-session ownership supports safe parallel-session path checks and stale-state revalidation. Fixes preserve red/green evidence, project intelligence maps architecture/conventions/tests/flows, and a focused code-review ensemble plus mechanical Clarify, Discovery, plan, test, secret, and commit gates preserve quality without making the user review internal plans.",
+    "shortDescription": "Feature & bug-fix loop with adaptive discovery, Build/Fix Preview control, project intelligence, repo docs, and findings",
+    "longDescription": "Kimiflow opens with a calm context-aware launcher showing one recommended action and compact project/memory/run health. It routes into full/grill/plan/build/quick/review/audit/fix modes, project mapping, memory/recall, Obsidian/Vault setup, local findings, backlog resume, feature work, fixes, improvement analysis, repo docs, or existing-feature review. Feature runs confirm behavior, scope, and outcome without a question quota, inspect project knowledge first, then choose adaptive Discovery depth (none, pulse, or focused). The top model owns the brief, source evaluation, synthesis, decisions, plan, and mode-specific Preview; bounded workers collect evidence only when useful. Features use a conditional Build Preview, while fixes use one basis-bound post-diagnosis Fix Preview; full waits once. Grill, plan, review, and audit do not edit code. Active-session ownership supports safe parallel-session path checks and stale-state revalidation. Fixes preserve red/green evidence, project intelligence maps architecture/conventions/tests/flows, and a focused code-review ensemble plus mechanical Clarify, Discovery, plan, test, secret, and commit gates preserve quality without making the user review internal plans.",
     "developerName": "kimikon",
     "category": "Developer Tools",
     "capabilities": [
