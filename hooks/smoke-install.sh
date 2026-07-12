@@ -73,10 +73,10 @@ grep -q 'Natural mode aliases' "$ROOT/reference.md" && ok "reference documents n
 for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'kimiflow review' 'kimiflow audit' 'kimiflow fix' 'kimiflow quick'; do
   grep -q "$term" "$ROOT/README.md" && ok "README documents mode alias: $term" || bad "README missing mode alias: $term"
 done
-grep -q 'pre-build approval stop' "$ROOT/SKILL.md" && ok "full mode includes pre-build approval stop" || bad "full mode missing pre-build approval stop"
-grep -q 'mandatory micro-grill' "$ROOT/SKILL.md" && ok "canonical skill requires micro-grill for small/quick" || bad "canonical skill missing small/quick micro-grill"
-grep -q 'Mandatory micro-grill for small/quick' "$ROOT/reference.md" && ok "reference documents small/quick micro-grill" || bad "reference missing small/quick micro-grill"
-grep -q 'Micro-Grill' "$ROOT/README.md" && ok "README documents small/quick micro-grill" || bad "README missing small/quick micro-grill"
+grep -q 'Build Preview approval' "$ROOT/SKILL.md" && ok "full mode includes Build Preview approval" || bad "full mode missing Build Preview approval"
+grep -q 'question minimum' "$ROOT/SKILL.md" && ok "canonical skill removes intent question quota" || bad "canonical skill missing no-question-minimum rule"
+grep -q 'Intent evidence for small/quick' "$ROOT/reference.md" && ok "reference documents intent evidence" || bad "reference missing intent evidence"
+grep -q 'no minimum question count' "$ROOT/README.md" && ok "README documents no question quota" || bad "README missing no-question-minimum rule"
 grep -q 'Vault Pulse' "$ROOT/SKILL.md" && ok "canonical skill requires scope=large Vault Pulse semantics" || bad "canonical skill missing Vault Pulse"
 grep -Eq 'Vault Pulse.*scope=large|scope=large.*Vault Pulse' "$ROOT/reference.md" && ok "reference documents scope=large Vault Pulse semantics" || bad "reference missing scope=large Vault Pulse semantics"
 grep -q 'Vault Pulse' "$ROOT/README.md" && ok "README documents scope=large Vault Pulse semantics" || bad "README missing Vault Pulse"
@@ -107,6 +107,8 @@ if [ -x "$ROOT/hooks/map-staleness-nudge.sh" ] && bash -n "$ROOT/hooks/map-stale
 if [ -x "$ROOT/hooks/test-map-staleness-nudge.sh" ] && bash -n "$ROOT/hooks/test-map-staleness-nudge.sh" 2>/dev/null; then ok "map staleness nudge test ok"; else bad "map staleness nudge test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/current-state-gate.sh" ] && bash -n "$ROOT/hooks/current-state-gate.sh" 2>/dev/null; then ok "current-state gate helper ok"; else bad "current-state gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-current-state-gate.sh" ] && bash -n "$ROOT/hooks/test-current-state-gate.sh" 2>/dev/null; then ok "current-state gate test ok"; else bad "current-state gate test missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/discovery-gate.sh" ] && bash -n "$ROOT/hooks/discovery-gate.sh" 2>/dev/null; then ok "discovery gate helper ok"; else bad "discovery gate helper missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/test-discovery-gate.sh" ] && bash -n "$ROOT/hooks/test-discovery-gate.sh" 2>/dev/null; then ok "discovery gate test ok"; else bad "discovery gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/working-tree-gate.sh" ] && bash -n "$ROOT/hooks/working-tree-gate.sh" 2>/dev/null; then ok "working-tree gate helper ok"; else bad "working-tree gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-working-tree-gate.sh" ] && bash -n "$ROOT/hooks/test-working-tree-gate.sh" 2>/dev/null; then ok "working-tree gate test ok"; else bad "working-tree gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/clarify-gate.sh" ] && bash -n "$ROOT/hooks/clarify-gate.sh" 2>/dev/null; then ok "clarify gate helper ok"; else bad "clarify gate helper missing/not-exec/bad"; fi
@@ -131,6 +133,7 @@ grep -q 'index-symbols' "$ROOT/reference.md" && ok "reference documents symbol i
 grep -q -- 'refresh --changed' "$ROOT/SKILL.md" && ok "canonical skill documents Phase-7 auto-refresh" || bad "missing Phase-7 auto-refresh in SKILL.md"
 grep -q 'suggest-affected-sections.sh' "$ROOT/SKILL.md" && ok "canonical skill documents Phase-2 section lookup" || bad "missing Phase-2 section lookup in SKILL.md"
 grep -q 'current-state-gate.sh' "$ROOT/reference.md" && ok "reference documents current-state gate helper" || bad "missing current-state gate helper in reference.md"
+grep -q 'discovery-gate.sh' "$ROOT/reference.md" && ok "reference documents discovery gate helper" || bad "missing discovery gate helper in reference.md"
 grep -q 'working-tree-gate.sh' "$ROOT/reference.md" && ok "reference documents working-tree gate helper" || bad "missing working-tree gate helper in reference.md"
 grep -q 'clarify-gate.sh' "$ROOT/reference.md" && ok "reference documents clarify gate helper" || bad "missing clarify gate helper in reference.md"
 grep -q 'plan-blocker-gate.sh' "$ROOT/reference.md" && ok "reference documents plan-blocker gate helper" || bad "missing plan-blocker gate helper in reference.md"
@@ -141,6 +144,7 @@ grep -q 'memory-router.sh' "$ROOT/reference.md" && ok "reference documents memor
 grep -q 'active-run.sh' "$ROOT/reference.md" && ok "reference documents active session helper" || bad "missing active session helper in reference.md"
 grep -q 'Active Session Contract' "$ROOT/SKILL.md" && ok "canonical skill documents Active Session Contract" || bad "missing Active Session Contract in SKILL.md"
 grep -q 'Current-State Pulse / Gate' "$ROOT/SKILL.md" && ok "canonical skill documents Current-State Pulse / Gate" || bad "missing Current-State Pulse / Gate in SKILL.md"
+grep -q 'discovery-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents Discovery Gate" || bad "missing Discovery Gate in SKILL.md"
 grep -q 'working-tree-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents working-tree gate" || bad "missing working-tree gate in SKILL.md"
 grep -q 'clarify-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents clarify gate" || bad "missing clarify gate in SKILL.md"
 grep -q 'red-green-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents red-green gate" || bad "missing red-green gate in SKILL.md"
@@ -156,6 +160,8 @@ grep -q 'review_base_sha' "$ROOT/reference.md" && ok "reference pins one review 
 grep -q 'Spec / Correctness' "$ROOT/reference.md" && ok "reference preserves review axes" || bad "missing axis-preserving review report"
 grep -q 'Standards smell baseline' "$ROOT/reference.md" && ok "reference documents advisory smell baseline" || bad "missing standards smell baseline"
 grep -q 'Scope classification' "$ROOT/reference.md" && ok "reference classifies research scope" || bad "missing research scope classification"
+grep -q 'depth=none|pulse|focused' "$ROOT/reference.md" && ok "reference documents adaptive Discovery" || bad "missing adaptive Discovery contract"
+grep -q 'Build Preview / Risk Gate' "$ROOT/reference.md" && ok "reference documents conditional Build Preview" || bad "missing Build Preview risk policy"
 grep -q 'research-driven product expansion is forbidden' "$ROOT/reference.md" && ok "reference blocks research scope creep" || bad "missing research scope-creep guard"
 grep -q 'any `round > cap`' "$ROOT/reference.md" && ok "reference documents global revision cap" || bad "missing global plan revision cap"
 grep -q 'Minimum-complete' "$ROOT/SKILL.md" && ok "canonical skill keeps minimum-complete planning loaded" || bad "missing minimum-complete core rule"

@@ -69,7 +69,7 @@ loop still runs.
 
 Run on every Claude Code or Codex upgrade (and at each kimiflow release):
 
-1. **CI hard gates** — `bash -n hooks/*.sh` + the eight unit-test scripts green; `jq -e .` on all
+1. **CI hard gates** — `bash -n hooks/*.sh` + all `hooks/test-*.sh` unit-test scripts green; `jq -e .` on all
    Claude JSON manifests, Codex JSON manifests, `bash hooks/smoke-install.sh`, and
    `bash hooks/smoke-install-codex.sh` (structural install checks: manifests, skill frontmatter,
    stable hook wrapper install into a temp `CODEX_HOME`, optional plugin hook wiring, and synthetic

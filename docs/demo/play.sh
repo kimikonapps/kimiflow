@@ -29,7 +29,7 @@ e "🟣 understand ·· ${D}memory recall first → FACTS/LEARNINGS → only the
 e "               ${D}fast-moving APIs? primary sources required before spec/plan${Z}" 0.6
 e "⚫ plan ········ ${D}minimal tasks + EARS acceptance criteria → PLAN.md / ACCEPTANCE.md${Z}" 0.7
 e "🟡 plan-gate ··· ${D}reviewer findings → resolve-review-gate.sh →${Z} ${G}0 BLOCKER/HIGH${Z}" 0.8
-e "               ${Y}pre-build summary stops for your approval${Z}" 0.6
+e "               ${Y}Build Preview stops only for material risk/full${Z}" 0.6
 e "🟠 implement ··· ${D}TDD where useful · surgical diff · no unrelated refactors${Z}" 0.6
 e "🟤 verify ······ ${D}each acceptance check + regression evidence${Z}" 0.6
 e "🟢 review ······ ${D}code-review gate + test-weakening + secret advisory scan${Z}" 0.7

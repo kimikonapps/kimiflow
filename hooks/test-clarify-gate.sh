@@ -35,8 +35,8 @@ Phase 1: done
 EOF
   cat > "$RUN/INTENT.md" <<'EOF'
 # Intent
-<!-- kimiflow:clarify-evidence mode=questions count=2 confirmed=yes source=current-run -->
-Build a small feature after two user answers.
+<!-- kimiflow:clarify-evidence behavior=confirmed scope=confirmed outcome=confirmed source=current-run -->
+Build a small feature after confirming behavior, scope, and outcome.
 EOF
 }
 
@@ -60,8 +60,8 @@ record_phase() {
 
 reset_run
 out="$(run_gate)"
-assert_field "$out" 2 OPEN "small_questions_marker_opens"
-assert_contains "$out" "reason=clean" "small_questions_marker_reason"
+assert_field "$out" 2 OPEN "complete_intent_marker_opens"
+assert_contains "$out" "reason=clean" "complete_intent_marker_reason"
 
 reset_run
 cat > "$RUN/INTENT.md" <<'EOF'
@@ -70,32 +70,31 @@ Build a small feature without documented clarification.
 EOF
 out="$(run_gate)"
 assert_field "$out" 2 CLOSED "small_missing_marker_closes"
-assert_contains "$out" "micro_grill_evidence_missing" "small_missing_marker_detail"
+assert_contains "$out" "intent_evidence_missing" "small_missing_marker_detail"
 
 reset_run
 cat > "$RUN/INTENT.md" <<'EOF'
 # Intent
-<!-- kimiflow:clarify-evidence mode=questions count=1 confirmed=yes source=current-run -->
-Only one question was asked.
+<!-- kimiflow:clarify-evidence behavior=confirmed scope=confirmed outcome=confirmed source=current-run -->
+One compact confirmation covered every required intent dimension.
 EOF
 out="$(run_gate)"
-assert_field "$out" 2 CLOSED "one_question_closes"
-assert_contains "$out" "micro_grill_too_short" "one_question_detail"
+assert_field "$out" 2 OPEN "no_minimum_question_count"
 
 reset_run
 cat > "$RUN/INTENT.md" <<'EOF'
 # Intent
-<!-- kimiflow:clarify-evidence mode=questions count=2 confirmed=no source=current-run -->
-Questions were asked but not confirmed.
+<!-- kimiflow:clarify-evidence behavior=confirmed scope=confirmed outcome=pending source=current-run -->
+The user-visible outcome was not confirmed.
 EOF
 out="$(run_gate)"
-assert_field "$out" 2 CLOSED "unconfirmed_questions_closes"
-assert_contains "$out" "micro_grill_not_confirmed" "unconfirmed_questions_detail"
+assert_field "$out" 2 CLOSED "incomplete_intent_closes"
+assert_contains "$out" "intent_outcome_unconfirmed" "incomplete_intent_detail"
 
 reset_run
 cat > "$RUN/INTENT.md" <<'EOF'
 # Intent
-<!-- kimiflow:clarify-evidence mode=questions count=2 confirmed=yes source=prior-chat -->
+<!-- kimiflow:clarify-evidence behavior=confirmed scope=confirmed outcome=confirmed source=prior-chat -->
 Loose prior discussion was mistaken for current-run clarification.
 EOF
 out="$(run_gate)"
@@ -105,7 +104,7 @@ assert_contains "$out" "micro_grill_not_current_run" "prior_chat_source_detail"
 reset_run
 cat > "$RUN/INTENT.md" <<'EOF'
 # Intent
-<!-- kimiflow:clarify-evidence mode=assumptions count=3 confirmed=yes source=current-run -->
+<!-- kimiflow:clarify-evidence behavior=confirmed scope=confirmed outcome=confirmed source=current-run -->
 The prompt already covered behavior, scope, and acceptance signal; user confirmed.
 EOF
 out="$(run_gate)"
@@ -114,12 +113,21 @@ assert_field "$out" 2 OPEN "confirmed_assumptions_open"
 reset_run
 cat > "$RUN/INTENT.md" <<'EOF'
 # Intent
-<!-- kimiflow:clarify-evidence mode=assumptions count=2 confirmed=yes source=current-run -->
-Not enough assumptions were confirmed.
+<!-- kimiflow:clarify-evidence behavior=confirmed scope=pending outcome=confirmed source=current-run -->
+The scope boundary was not confirmed.
 EOF
 out="$(run_gate)"
 assert_field "$out" 2 CLOSED "incomplete_assumptions_close"
-assert_contains "$out" "micro_grill_assumptions_incomplete" "incomplete_assumptions_detail"
+assert_contains "$out" "intent_scope_unconfirmed" "incomplete_assumptions_detail"
+
+reset_run
+cat > "$RUN/INTENT.md" <<'EOF'
+# Intent
+<!-- kimiflow:clarify-evidence mode=questions count=2 confirmed=yes source=current-run -->
+Legacy evidence remains valid for an existing prepared run.
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "legacy_marker_stays_compatible"
 
 reset_run
 cat > "$RUN/STATE.md" <<'EOF'

@@ -4,7 +4,13 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Added
+- **Evidence-guided feature Discovery** (`phases/phase-2-understand.md`, `hooks/discovery-gate.sh`): feature runs now choose `none`, `pulse`, or `focused` research depth from concrete decision gaps, default to no research worker, keep external content read-only/untrusted, and mechanically block planning while research, source, scope, or user-decision state remains open.
+- **Plain-language Build Preview with conditional Risk Gate** (`hooks/resolve-build-gate.sh`, Phase 4): the user sees what will and will not be built instead of reviewing `PLAN.md`. The project policy is now `risk|always|off` with `risk` as the default; legacy `on` maps to `always`, headless risky work parks, and normal reversible work continues after its preview.
+
+### Changed
+- **Intent completeness replaces question quotas** (`hooks/clarify-gate.sh`): small/quick runs confirm behavior, scope, and the user-visible outcome without requiring two or three questions. Existing valid count-based markers remain compatible for prepared runs.
+- **Top-owned Decision Triage and bounded research routing** (`reference.md`, Claude/Codex skills): technical gaps return to research, safe reversible HOW uses project-fit defaults, only irreducible product/policy decisions reach the user, and focused research normally uses one evidence worker with at most two independent lanes.
 
 ## 0.1.64
 

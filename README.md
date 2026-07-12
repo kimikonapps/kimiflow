@@ -122,8 +122,9 @@ Each ✋/✅ and the diagnose/commit stop is a real gate, not a prompt suggestio
 | Gate | Phase | Mechanism | Fail-closed? |
 |------|-------|-----------|--------------|
 | **Working-tree start gate** | 0 | `hooks/working-tree-gate.sh` requires a clean repo before new write-mode Kimiflow runs; `.kimiflow/` local state is ignored | ✅ yes |
-| **Clarify gate** | 1/4 | `hooks/clarify-gate.sh` requires small/quick micro-grill evidence; `plan-blocker-gate.sh` rechecks it before reviewers run | ✅ yes |
-| **Plan-blocker gate** | 4 | `hooks/plan-blocker-gate.sh` blocks skipped clarify evidence, unresolved markers, unmapped acceptance criteria, missing verification, missing path evidence, and undeclared affected files before reviewers run | ✅ yes |
+| **Clarify gate** | 1/4 | `hooks/clarify-gate.sh` requires confirmed behavior, scope, and outcome for small/quick; no question quota | ✅ yes |
+| **Discovery gate** | 2/4 | `hooks/discovery-gate.sh` blocks unresolved research/user decisions, unconfirmed scope change, incomplete lanes, and unsourced external claims | ✅ yes |
+| **Plan-blocker gate** | 4 | composes Clarify + Discovery, then checks AC mapping, verification, path evidence, and affected files before reviewers | ✅ yes |
 | **Plan-gate** | 4 | `hooks/resolve-review-gate.sh` counts evidenced `BLOCKER/HIGH`; small feature/fix cap 2, large/audit cap 3; rounds never reset | ✅ yes |
 | **Red/green fix gate** | 6 | `hooks/red-green-gate.sh` requires `BUG-REPRO.md` with red command/status/output, green command/status/output, and regression evidence before fix-mode review/learning can finish | ✅ yes |
 | **Local diagnostics advisory** | 6/7 | `hooks/lsp-diagnostics.sh` runs bounded existing local typecheck/lint/LSP-adjacent tools or one untracked local `.kimiflow/lsp-diagnostics` command; flags are triaged before commit | advisory |
@@ -151,17 +152,17 @@ What is **not** mechanical (model-judged, by design): the scope classification, 
 Natural shortcuts:
 
 ```text
-kimiflow full    # strict: grill/spec + research + plan-gate, then stop before build approval
+kimiflow full    # strict: confirmed intent + adaptive discovery + plan-gate + Build Preview approval
 kimiflow grill   # clarify/spec only; no code
 kimiflow plan    # prepare plan + acceptance criteria; no code
 kimiflow build   # build an approved/prepared plan
-kimiflow quick   # lean small change, still asks/confirms a few intent questions
+kimiflow quick   # lean small change; confirms complete intent, normally no research worker
 kimiflow review  # read-only feature/current-change review
 kimiflow audit   # read-only cleanup/refactoring scan first
 kimiflow fix     # bug flow with Red/Green evidence
 ```
 
-For `small` and `quick`, kimiflow still runs a short **micro-grill** first: 2–3 cheap questions, or a compact list of recommended assumptions to confirm in the current run. Loose prior discussion is context, not consent. Only truly exact `trivial` changes can skip this.
+For `small` and `quick`, kimiflow confirms behavior, scope, and the user-visible outcome. There is no minimum question count: a complete request needs only one compact intent confirmation; technical gaps go to Discovery, not back to the user. Only exact `trivial` work may skip this.
 `small`/`quick` skip memory recall and the **Vault Pulse** (both run at `scope=large` only); the Current-State Pulse and the Phase-7 learning loop still run at every scope.
 
 In Codex, use the same arguments with `$kimiflow`:
@@ -310,9 +311,9 @@ Internal threshold hints such as `many_learnings` stay silent when memory is fre
 ```
 /kimiflow Add a dark-mode toggle in settings
 ```
-1. kimiflow asks 2–3 plain questions (e.g. "Apply immediately or after restart?") → `INTENT.md`, asks **"Does this match?"**
-2. understands the affected code (settings, theme) with `file:line` evidence, researches gaps → `RESEARCH.md`
-3. plan + acceptance criteria → plan-gate → build → verify → code-review ensemble
+1. kimiflow confirms behavior, scope, and outcome → `INTENT.md`
+2. understands the code, assesses Discovery depth, and researches only plan-changing gaps → `RESEARCH.md`
+3. internal plan + gate → plain-language Build Preview → build (or risk approval) → verify → review
 4. shows the diff and **waits for your OK before committing**
 
 **Bug fix:**
@@ -325,13 +326,13 @@ Internal threshold hints such as `many_learnings` stay silent when memory is fre
 
 ## Flow (8 phases)
 
-Scope-gate (`trivial`/`small`/`large`) → **clarify** → **understand & research** (classify `required/default/optional`; research informs HOW, never expands WHAT) resp. **diagnose** → **minimum-complete plan** with proportional EARS acceptance tests → **plan-gate** (evidenced blockers only; one repair normally, two at large/audit) → **implement** → **verify** → **code-review ensemble** → **commit** (stops for your OK).
+Scope-gate → **confirm intent** → **project-first adaptive Discovery** (`none|pulse|focused`, no worker by default; research informs HOW, never expands WHAT) resp. **diagnose** → **minimum-complete internal plan** → **plan-gate** → **Build Preview / conditional Risk Gate** → **implement** → **verify** → **code review** → **commit** (stops for your OK).
 
 State is persisted to `.kimiflow/<slug>/` in the target project (resumable). `small`/`quick` runs stay lean, but they do not skip Phase 1: kimiflow asks or confirms enough to avoid building the wrong thing.
 `small`/`quick` also run a tiny Current-State Pulse: local-only work records "no external freshness check needed"; changing APIs/tooling/hosts gets one current primary-source check before planning.
 `small`/`quick` skip memory recall and the Vault Pulse — both run at `scope=large` only (recall payoff is thin on small tasks); the Phase-7 learning loop still runs at every scope.
 
-> **Cost:** a `large` run uses stronger verification and two reviewers, but still defaults to one top planner; a second planner appears only for a proven material architecture/contract fork. Normal implementation routes to a `balanced` value tier, while `cheap` models are deterministic support only. Current Codex mapping is Sol/Terra/Luna. One review lens per gate uses a strong cross-family CLI when available — on Claude Code, Codex → Gemini via `agy` → same-family, configurable via `.kimiflow/cross-family`. Compact packets and scope-dependent repair caps bound repeated review cost.
+> **Cost:** Discovery `none|pulse` uses no research worker by default; `focused` normally uses one bounded evidence worker and at most two independent lanes. A top model owns assessment, synthesis, decisions, planning, and review. Large still defaults to one planner; a second appears only for a material architecture/contract fork. Current Codex mapping is Sol/Terra/Luna.
 
 ## Principles
 
@@ -349,7 +350,8 @@ kimiflow ships safety hooks under `hooks/`, **active only in kimiflow repos** (a
 
 - **`commit-secret-gate`** — **filename/path hygiene, not secret-in-source detection**: blocks a `git commit` that would stage a secret-looking **path** (`.env`/`.envrc` incl. `prod.env`-style suffixes, `*.pem/.key/.p12/.pfx/.asc`, private SSH keys `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519` (not `.pub`), `.npmrc`, `secret`/`credential`/`access_token`/`auth_token` paths) and any bulk `git add -A`/`.`. It matches **paths, never file contents** — a key pasted into source passes — so pair it with a content scanner for in-source secrets. kimiflow's advisory `secret-content-scan.sh` does this: **`gitleaks protect --staged`** is the clean staged-content path; **trufflehog** is a best-effort fallback (no native staged mode — it scans commits since `HEAD`). It also covers the working-tree paths a `git commit -a`/`--all` would auto-stage, but it is **a backstop, not complete secret protection**: an explicit pathspec commit (`git commit <path>`), a command-position-evasion prefix (`env X=y`/`sudo`/`/usr/bin/git`/`command git`), a quoted `-C` path with a space, and an escaped quote in the message are **known, documented gaps** (regex isn't a shell parser — see [reference.md](reference.md) "Commit hygiene"). A global **`git -C <path>`** to another repo **is** honored (the gate scopes to the target, not the cwd). Real coverage = `.gitignore` discipline + a content scanner + not tracking secrets.
 - **`state-gate`** — blocks review-gate resolver calls when a non-trivial kimiflow run has no durable `STATE.md`; this protects resume and gate state from living only in chat.
-- **`clarify-gate`** — blocks `small`/`quick` runs that try to skip the micro-grill; `INTENT.md`/`PROBLEM.md` must show either 2+ answered questions or confirmed recommended assumptions from the current run.
+- **`clarify-gate`** — requires current-run confirmation of behavior, scope, and outcome for `small`/`quick`, never a minimum question count.
+- **`discovery-gate`** — checks Phase-2 completeness and source shape before planning; it does not pretend to prove that research was exhaustive or objectively optimal.
 - **`test-gate`** (opt-in) — blocks finishing while the project's tests are red; enable per project via a **local, untracked** `.kimiflow/test-gate` file (auto-enabled for `large`-scope runs). A git-tracked (committed) marker is refused — its first line is `eval`'d, so committed markers can't run as a drive-by.
 
 ## Vault memory layer (optional, but recommended)
@@ -499,9 +501,10 @@ Jedes ✋/✅ sowie der Diagnose- und Commit-Stopp ist ein echtes Gate, kein Pro
 
 | Gate | Phase | Mechanismus | Fail-closed? |
 |------|-------|-------------|--------------|
-| **Clarify-Gate** | 1/4 | `hooks/clarify-gate.sh` verlangt Micro-Grill-Evidence für small/quick; `plan-blocker-gate.sh` prüft das vor den Reviewern erneut | ✅ ja |
-| **Planblocker-Gate** | 4 | `hooks/plan-blocker-gate.sh` blockt übersprungene Clarify-Evidence, ungelöste Marker, nicht gemappte Akzeptanzkriterien, fehlende Verifikation, fehlende Pfad-Evidence und nicht deklarierte betroffene Dateien vor den Reviewern | ✅ ja |
-| **Plan-Gate** | 4 | `hooks/resolve-review-gate.sh` zählt offene `BLOCKER/HIGH` über die Reviewer-Findings; Cap 3; blocker-aware Anti-Oszillation | ✅ ja |
+| **Clarify-Gate** | 1/4 | verlangt bestätigtes Verhalten, Scope und Ergebnis für small/quick; keine Fragenquote | ✅ ja |
+| **Discovery-Gate** | 2/4 | blockt offene Research-/Nutzerentscheidungen, unbestätigten Scope, unvollständige Lanes und unbelegte externe Claims | ✅ ja |
+| **Planblocker-Gate** | 4 | kombiniert Clarify + Discovery und prüft danach AC-Mapping, Verifikation, Pfade und betroffene Dateien | ✅ ja |
+| **Plan-Gate** | 4 | zählt belegte `BLOCKER/HIGH`; small Feature/Fix Cap 2, large/audit Cap 3; Runden werden nie zurückgesetzt | ✅ ja |
 | **Code-Review-Gate** | 7 | fokussierte Review-Linsen liefern Kandidaten; der Orchestrator verifiziert und promotet bestätigte Findings; derselbe Resolver zählt offene `BLOCKER/HIGH` | ✅ ja |
 | **Commit-Gate** | 7 | STOP + Advisory-Triage; wartet auf dein explizites OK vor jedem Commit | ✅ ja |
 | **Secret-Commit-Hook** | jeder Commit | `PreToolUse`-Hook — blockt secret-verdächtige **Pfade** + Bulk-`git add -A`/`.` | ✅ ja |
@@ -526,7 +529,7 @@ Jedes ✋/✅ sowie der Diagnose- und Commit-Stopp ist ein echtes Gate, kein Pro
 Natürliche Kurzmodi:
 
 ```text
-kimiflow full    # streng: Grill/Spec + Recherche + Plan-Gate, dann Stopp vor Build-Freigabe
+kimiflow full    # streng: bestätigte Absicht + adaptive Discovery + Plan-Gate + Build-Preview-Freigabe
 kimiflow grill   # nur klären/specen; kein Code
 kimiflow plan    # Plan + Akzeptanzkriterien vorbereiten; kein Code
 kimiflow build   # freigegebenen/vorbereiteten Plan bauen
@@ -536,7 +539,7 @@ kimiflow audit   # read-only Cleanup-/Refactoring-Scan zuerst
 kimiflow fix     # Bugflow mit Red/Green-Evidenz
 ```
 
-Bei `small` und `quick` macht kimiflow trotzdem einen kurzen **Micro-Grill**: 2–3 günstige Fragen oder eine kompakte Bestätigung empfohlener Annahmen im aktuellen Run. Lose Vorbesprechung ist Kontext, keine Zustimmung. Nur wirklich exakte `trivial`-Änderungen dürfen das überspringen.
+Bei `small` und `quick` bestätigt kimiflow Verhalten, Scope und sichtbares Ergebnis. Es gibt keine Mindestzahl an Fragen: Ein vollständiger Auftrag braucht nur eine kompakte Intent-Bestätigung; technische Lücken gehen in die Discovery, nicht zurück an dich.
 `small`/`quick` überspringt Memory-Recall und den **Vault Pulse** (beides läuft nur bei `scope=large`); Current-State-Pulse und der Phase-7-Learning-Loop laufen weiterhin bei jedem Scope.
 
 In Codex nutzt du dieselben Argumente mit `$kimiflow`:
@@ -684,9 +687,9 @@ Schwellen wie `many_learnings` bleiben still, wenn Memory frisch und unter Budge
 ```
 /kimiflow Dunkelmodus-Schalter in den Einstellungen
 ```
-1. kimiflow stellt 2–3 einfache Fragen (z. B. „Sofort wirksam oder erst nach Neustart?") → `INTENT.md`, fragt **„Passt das so?"**
-2. versteht den betroffenen Code (Settings, Theme) mit `file:line`-Beleg, recherchiert Lücken → `RESEARCH.md`
-3. Plan + Akzeptanzkriterien → Plan-Gate → baut → verifiziert → Code-Review
+1. kimiflow bestätigt Verhalten, Scope und Ergebnis → `INTENT.md`
+2. versteht den Code, bestimmt die Discovery-Tiefe und recherchiert nur planverändernde Lücken → `RESEARCH.md`
+3. interner Plan + Gate → verständliche Build Preview → Build beziehungsweise Risiko-Freigabe → Verifikation → Review
 4. zeigt den Diff und **wartet auf dein OK vor dem Commit**
 
 **Bug-Fix:**
@@ -699,13 +702,13 @@ Schwellen wie `many_learnings` bleiben still, wenn Memory frisch und unter Budge
 
 ## Ablauf (8 Phasen)
 
-Scope-Gate (`trivial`/`small`/`large`) → **Klärung** (Grill in einfacher Sprache / Problem-Klärung) → **Verstehen & Recherche** bzw. **Diagnose** (reproduzieren + Root-Cause belegen + korrekten Fix recherchieren *vor* dem Fix) → **Plan** mit testbaren EARS-Akzeptanzkriterien → **Plan-Gate** (2 unabhängige Reviewer, binär kein-Blocker, Cap 3) → **Umsetzung** (TDD, default sequenziell) → **Verifikation** gegen die Kriterien (mit Evidenz) → **Code-Review** → **Commit** (stoppt für dein OK).
+Scope-Gate → **Intent bestätigen** → **projektbasierte adaptive Discovery** (`none|pulse|focused`, standardmäßig kein Worker) beziehungsweise **Diagnose** → **minimum-complete interner Plan** → **Plan-Gate** (small Cap 2, large/audit Cap 3) → **Build Preview / bedingtes Risk Gate** → **Umsetzung** → **Verifikation** → **Code-Review** → **Commit**.
 
 State wird nach `.kimiflow/<slug>/` im Zielprojekt persistiert (resume-fähig). `small`/`quick` bleibt schlank, überspringt aber Phase 1 nicht: kimiflow fragt oder bestätigt genug, damit es nicht am eigentlichen Wunsch vorbeibaut.
 `small`/`quick` macht außerdem einen winzigen Current-State-Pulse: lokale Arbeit dokumentiert "keine externe Aktualitätsprüfung nötig"; geänderte APIs/Tooling/Hosts bekommen vor dem Plan eine aktuelle Primärquelle.
 `small`/`quick` überspringt Memory-Recall und den Vault Pulse — beides läuft nur bei `scope=large` (der Recall-Payoff ist bei kleinen Tasks dünn); der Phase-7-Learning-Loop läuft weiterhin bei jedem Scope.
 
-> **Kosten:** ein `large`-Run fächert mehrere Subagents auf (Dual-Planner, Reviewer, Implementer, unabhängiger Verifier, optionales Best-of-2) — entsprechend höherer Token-Verbrauch. Eine Review-Lens pro Gate läuft standardmäßig über eine Cross-Family-CLI, wenn eine verfügbar ist — auf einem Claude-Code-Host als geordnete Kette (Codex → Gemini via `agy` → same-family), konfigurierbar über `.kimiflow/cross-family` (`off`, oder eine Reihenfolge wie `auto gemini`). Das Scope-Gate hält `small` schlank und `trivial` maximal leicht; `small`/`quick` behalten aber den kurzen Micro-Grill.
+> **Kosten:** Discovery `none|pulse` startet standardmäßig keinen Research-Worker; `focused` nutzt normalerweise einen begrenzten Evidence-Worker und höchstens zwei unabhängige Lanes. Das Top-Modell behält Assessment, Synthese, Entscheidungen, Planung und Review. Auch `large` nutzt standardmäßig nur einen Planner.
 
 ## Prinzipien
 
@@ -723,7 +726,8 @@ kimiflow bringt Sicherheits-Hooks unter `hooks/` mit, **nur in kimiflow-Repos ak
 
 - **`commit-secret-gate`** — **Dateiname/Pfad-Hygiene, keine Secret-im-Quelltext-Erkennung**: blockt einen `git commit`, der einen secret-verdächtigen **Pfad** stagen würde (`.env`/`.envrc` inkl. `prod.env`-artiger Suffixe, `*.pem/.key/.p12/.pfx/.asc`, private SSH-Keys `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519` (nicht `.pub`), `.npmrc`, `secret`/`credential`/`access_token`/`auth_token`-Pfade), sowie jedes Bulk-`git add -A`/`.`. Er matcht **Pfade, nie Datei-Inhalte** — ein in den Quelltext gepasteter Key passiert — also ergänze ihn mit einem Content-Scanner für Secrets im Code. kimiflows Advisory `secret-content-scan.sh` macht genau das: **`gitleaks protect --staged`** ist der saubere Staged-Content-Pfad; **trufflehog** ist ein Best-effort-Fallback (kein nativer Staged-Mode — scannt Commits seit `HEAD`).
 - **`state-gate`** — blockt Review-Gate-Resolver-Aufrufe, wenn einem nicht-trivialen kimiflow-Lauf die dauerhafte `STATE.md` fehlt; dadurch lebt Resume-/Gate-State nicht nur im Chat.
-- **`clarify-gate`** — blockt `small`/`quick`-Läufe, die den Micro-Grill überspringen wollen; `INTENT.md`/`PROBLEM.md` muss entweder 2+ beantwortete Fragen oder bestätigte empfohlene Annahmen aus dem aktuellen Run belegen.
+- **`clarify-gate`** — verlangt bestätigtes Verhalten, Scope und Ergebnis im aktuellen Run, aber keine Mindestzahl an Fragen.
+- **`discovery-gate`** — prüft Phase-2-Vollständigkeit und Quellenform vor der Planung, ohne semantische Allwissenheit vorzutäuschen.
 - **`test-gate`** (opt-in) — blockt das Beenden, solange die Projekt-Tests rot sind; pro Projekt via **lokaler, untracked** `.kimiflow/test-gate`-Datei aktivieren (für `large`-Läufe automatisch). Ein git-getrackter (committeter) Marker wird abgelehnt — seine erste Zeile wird `eval`'t, committete Marker können so nicht als Drive-by laufen.
 
 ## Vault-Memory-Schicht (optional, aber empfohlen)

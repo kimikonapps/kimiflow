@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# kimiflow — clarify gate. Mechanical Phase-1 guard for small/quick runs.
+# kimiflow — clarify gate. Mechanical Phase-1 intent guard for small/quick runs.
 #
 # Usage:
 #   clarify-gate.sh <run-dir> [--pretty]
@@ -7,9 +7,10 @@
 # Output:
 #   CLARIFY_GATE<TAB>OPEN|CLOSED<TAB>blockers=<n><TAB>reason=<code><TAB>detail=<codes>
 #
-# For small/quick runs, Phase 1 must leave durable evidence that the agent asked
-# 2+ targeted questions OR confirmed a compact set of recommended assumptions
-# in the current Kimiflow run. Loose prior conversation is context, not consent.
+# For small/quick runs, Phase 1 must leave durable evidence that behavior, scope,
+# and the user-visible outcome were confirmed in the current Kimiflow run. The
+# number of questions is deliberately irrelevant. Loose prior chat is context,
+# not consent. Legacy count-based markers remain readable for prepared runs.
 # R2 invariant target: hooks/clarify-gate.sh
 set -u
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -107,37 +108,29 @@ marker="$(grep -Eio '<!--[[:space:]]*kimiflow:clarify-evidence[^>]*-->|kimiflow:
 marker="$(printf '%s\n' "$marker" | sed 's/<!--[[:space:]]*//; s/[[:space:]]*-->//')"
 
 if [ -z "$marker" ]; then
-  add_blocker "micro_grill_evidence_missing"
+  add_blocker "intent_evidence_missing"
 else
-  evidence_mode="$(printf '%s\n' "$marker" | sed -n 's/.*mode=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
-  evidence_count="$(printf '%s\n' "$marker" | sed -n 's/.*count=\([0-9][0-9]*\).*/\1/p')"
   evidence_confirmed="$(printf '%s\n' "$marker" | sed -n 's/.*confirmed=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
   evidence_source="$(printf '%s\n' "$marker" | sed -n 's/.*source=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
-
-  [ -n "$evidence_mode" ] || evidence_mode="questions"
-  [ -n "$evidence_count" ] || evidence_count=0
+  evidence_behavior="$(printf '%s\n' "$marker" | sed -n 's/.*behavior=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
+  evidence_scope="$(printf '%s\n' "$marker" | sed -n 's/.*scope=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
+  evidence_outcome="$(printf '%s\n' "$marker" | sed -n 's/.*outcome=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
 
   case "$evidence_source" in
     current-run|current_run) ;;
     *) add_blocker "micro_grill_not_current_run" ;;
   esac
 
-  case "$evidence_confirmed" in
-    yes|y|true|ok|confirmed) ;;
-    *) add_blocker "micro_grill_not_confirmed" ;;
-  esac
-
-  case "$evidence_mode" in
-    questions)
-      [ "$evidence_count" -ge 2 ] || add_blocker "micro_grill_too_short"
-      ;;
-    assumptions)
-      [ "$evidence_count" -ge 3 ] || add_blocker "micro_grill_assumptions_incomplete"
-      ;;
-    *)
-      add_blocker "micro_grill_mode_invalid"
-      ;;
-  esac
+  if [ -n "$evidence_behavior$evidence_scope$evidence_outcome" ]; then
+    [ "$evidence_behavior" = "confirmed" ] || add_blocker "intent_behavior_unconfirmed"
+    [ "$evidence_scope" = "confirmed" ] || add_blocker "intent_scope_unconfirmed"
+    [ "$evidence_outcome" = "confirmed" ] || add_blocker "intent_outcome_unconfirmed"
+  else
+    case "$evidence_confirmed" in
+      yes|y|true|ok|confirmed) ;;
+      *) add_blocker "intent_not_confirmed" ;;
+    esac
+  fi
 fi
 
 if [ "$blockers" -eq 0 ]; then

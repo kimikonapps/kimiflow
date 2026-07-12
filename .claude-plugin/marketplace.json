@@ -5,12 +5,12 @@
     "name": "kimikon"
   },
   "metadata": {
-    "description": "kimiflow — a disciplined active-session feature & bug-fix loop for Claude Code with natural full/grill/plan/build/quick/review/audit/fix modes, mandatory small/quick micro-grill, clean-worktree, red/green, plan-blocker gates, code-review ensembles, project-intelligence, memory, Obsidian, and Vault gates."
+    "description": "kimiflow — a feature & bug-fix loop with full/grill/plan/build/quick/review/audit/fix modes, adaptive discovery, Build Preview risk control, code-review ensembles, project intelligence, repo docs, local findings, memory, Obsidian, and Vault support."
   },
   "plugins": [
     {
       "name": "kimiflow",
-      "description": "Active-session feature & bug-fix loop for Claude Code with natural full/grill/plan/build/quick/review/audit/fix modes, mandatory small/quick micro-grill, clean-worktree, red/green, plan-blocker gates, code-review ensembles, project intelligence (codebase/architecture map), repo docs generation, local findings, memory, Obsidian, and Vault gates. Replies in your language.",
+      "description": "Active-session feature & bug-fix loop for Claude Code with full/grill/plan/build/quick/review/audit/fix modes, intent confirmation, adaptive discovery, Build Preview risk control, code-review ensembles, project intelligence, repo docs, local findings, memory, Obsidian, and Vault support. Replies in your language.",
       "version": "0.1.64",
       "author": {
         "name": "kimikon"

@@ -172,6 +172,31 @@ else
   add_blocker "clarify_gate_missing"
 fi
 
+# Discovery is a separate semantic boundary from Current State: Current State proves
+# freshness, while this gate proves that Phase 2 declared enough evidence to plan.
+# Legacy/pre-discovery runs have no requirement marker and remain resumable.
+discovery_gate="$SCRIPT_DIR/discovery-gate.sh"
+discovery_required="$(kimiflow_state_value "$state" "Discovery required" | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
+if [ -x "$discovery_gate" ]; then
+  discovery_out="$("$discovery_gate" "$run_dir" 2>/dev/null)"
+  discovery_rc=$?
+  discovery_status="$(printf '%s\n' "$discovery_out" | cut -f2)"
+  discovery_detail="$(printf '%s\n' "$discovery_out" | cut -f5 | sed 's/^detail=//')"
+  case "$discovery_status" in
+    OPEN) ;;
+    CLOSED) add_blocker "discovery_gate_closed:${discovery_detail:-unknown}" ;;
+    *)
+      if [ "$discovery_rc" -ne 0 ]; then
+        add_blocker "discovery_gate_error"
+      else
+        add_blocker "discovery_gate_malformed"
+      fi
+      ;;
+  esac
+elif printf '%s\n' "$discovery_required" | grep -Eq '^(yes|true|1|required)$'; then
+  add_blocker "discovery_gate_missing"
+fi
+
 phase_detail="$(phase_read_blocker)"
 [ -z "$phase_detail" ] || add_blocker "$phase_detail"
 

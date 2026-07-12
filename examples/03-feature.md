@@ -7,7 +7,7 @@
 The two fix examples ([01](01-small-fix.md), [02](02-risky-bugfix.md)) show bug mode. This is the
 **feature** path, where Phase 2 isn't *diagnose* but *understand & research*, the artifacts are
 `INTENT.md` / `RESEARCH.md` (not `PROBLEM.md` / `DIAGNOSIS.md`), there is **no diagnose-gate**, and a
-`large` run adds **considered alternatives** and the **pre-build summary gate**. Same plan-gate and
+this run's Discovery proves a material architecture fork and `full` adds **Build Preview approval**. Same plan-gate and
 commit-gate machinery as the fixes.
 
 ---
@@ -21,13 +21,13 @@ commit-gate machinery as the fixes.
 - Routing: no symptom, an additive capability → **feature mode**.
 - Scope-gate: a settings control **+** a theme/persistence layer **+** app-bootstrap (avoid a flash on
   load) → several files, real design choices → **`large`**.
-  Announced: *"Scope: large — 2 reviewers, plan-gate loop, considered-alternatives, pre-build summary
-  gate, verify with regression + cold-start, test-gate auto-armed."*
+  Announced: *"Scope: large — adaptive Discovery, 2 reviewers, plan-gate loop, Build Preview approval,
+  verify with regression + cold-start, test-gate auto-armed."*
 - State dir: `.kimiflow/dark-mode-toggle/`.
 
 ### 🔵 Phase 1 — Clarify (intent)
 
-Three plain-language questions:
+Three product ambiguities happen to remain, so kimiflow asks three plain-language questions (not a quota):
 
 1. *Apply immediately, or after a restart?* → **immediately**, live.
 2. *Persist across sessions, and follow the OS theme on first visit?* → **yes**, persist the choice;
@@ -53,7 +53,8 @@ sync). ✋ **"Does this match?"** → confirmed.
   the robust pattern is a `data-theme="dark"` attribute on `<html>` + CSS variables, the choice in
   `localStorage`, initialised from `prefers-color-scheme`, and an **inline pre-hydration script** to
   set the attribute *before first paint* so a stored dark theme doesn't flash light (FOUC).
-- **(large) Considered alternatives** (recorded in `RESEARCH.md`):
+- **Discovery:** `depth=focused`; one bounded evidence lane. It proves a material first-paint/runtime fork,
+  so considered alternatives are warranted (not because scope is `large`):
   - **A — class toggle** (`.dark` on `body`): simple, but every selector needs a `.dark &` variant.
   - **B — `data-theme` attribute + existing CSS vars**: smallest diff (tokens already exist), no
     re-render, FOUC solved by the inline script. **← chosen.**
@@ -101,21 +102,18 @@ and folded into task 1 (wrap `localStorage` in try/catch) — but it **did not c
 `BLOCKER`/`HIGH` gate. (Compare [`02`](02-risky-bugfix.md), where a round-1 `HIGH` closed the gate and
 forced a second round.)
 
-**Step 7 — Pre-build summary gate** (default on, interactive). Prints the *bounded* summary — not a
-full-artifact dump:
+**Step 7 — Build Preview / Risk Gate.** The `full` alias requires explicit approval. It prints WHAT, not
+the internal technical plan:
 
 ```
-Problem/Goal …… add a live light/dark toggle; persist; follow OS on first visit; no FOUC
-Decisions …….… data-theme attribute + existing CSS vars (alt A/C rejected — see RESEARCH.md)
-Plan ……………… useTheme hook · apply effect · pre-hydration script · SettingsPage switch
-Tests/Accept …. AC-1 live → AC-2 persist → AC-3 OS-default → AC-4 no-FOUC  (each → a named test)
-Risks ……….….. localStorage in private mode/SSR (guarded); FOUC (inline script)
-Artifacts ……… .kimiflow/dark-mode-toggle/{INTENT,RESEARCH,PLAN,ACCEPTANCE}.md
+Will build ………… a live light/dark setting that persists, follows the OS initially, and avoids flashing
+Not included ……… general theming, server sync, per-component themes
+Important decision … reuse the existing CSS-token system rather than adding a theme framework
+Risks ………………… private-mode storage degrades safely; first-paint behavior has an automated check
+Effort ………………… large
 ```
 
-✋ **STOP — "Approve to build, change something, or defer to backlog?"** → approve → Phase 5. (Defer →
-parks the finished plan as `Status: backlog`, emits `--resume`. Headless / no answer → does **not** build:
-behaves like `--prepare`, emits `--resume`.)
+✋ **STOP — "Approve to build, change something, or defer?"** → approve → Phase 5. Headless `full` parks.
 
 ### 🟠 Phase 5 — Implement (TDD)
 
@@ -169,7 +167,7 @@ behaves like `--prepare`, emits `--resume`.)
 ---
 
 **What feature mode changed vs the fixes:** no `PROBLEM.md`/`DIAGNOSIS.md` and **no diagnose-gate** —
-instead `INTENT.md` + a real **understand & research** phase (memory → vault → web), the `large`
-**considered-alternatives** record, and the **pre-build summary gate** before any code. The
+instead `INTENT.md` + adaptive **Discovery** (project → focused evidence → synthesis), a proven-fork
+**considered-alternatives** record, and the **Build Preview approval** before code. The
 plan-gate, verify and commit-gate are identical to the fix path. And the round-1 `MEDIUM` that *didn't*
 close the gate shows the gate's binary rule directly: **only `BLOCKER`/`HIGH` count.**

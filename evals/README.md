@@ -86,6 +86,8 @@ location (Judging), and run each eval subagent in an environment without the use
 | 11 | state-persistence | all |
 | 12 | cross-family order & 3-tier chain | 4/7 |
 | 13 | top-model orchestrator floor | 0/all |
+| 14 | plan scope ratchet | 2-4 |
+| 15 | evidence-guided feature discovery | 1-4 |
 
 **Reviewer-calibration** — a second dimension (does the *reviewer* judge cleanly under pressure, not
 just hold a gate?): [`reviewer-calibration.md`](reviewer-calibration.md) +

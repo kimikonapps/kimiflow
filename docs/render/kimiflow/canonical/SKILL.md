@@ -16,22 +16,22 @@ You are the **orchestrator**. Run the phases as a state machine, keep only essen
 - **Launcher / menu:** **`/kimiflow`**, **`/kimiflow --launcher`**, **`/kimiflow --menu`**, or a vague explicit Kimiflow request ("run Kimiflow") opens a context-aware launcher. It first runs `hooks/launcher-status.sh`, uses `.launcher.primary_action` for one recommendation, and shows the compact `.launcher.status` groups; internal hygiene stays in drilldowns. It never writes code directly and never auto-picks a risky action. → reference.md "Launcher mode".
 - **`/kimiflow <feature-or-bug>`** — full run (phases 0–7).
 - **Natural mode aliases:** **`/kimiflow full|grill|plan|build|quick|review|audit|fix [target]`** and plain text such as **`kimiflow full`** are first-class shortcuts. If the target is omitted, use the current conversation topic only when it is unambiguous; otherwise ask one plain-language question. Alias meanings:
-  - **`full`** — strict full loop, scope=`large`: full grill/spec, understanding/research, plan + acceptance criteria, plan-gate, then **STOP at the pre-build approval gate**. Do not implement until the user approves the plan.
+  - **`full`** — strict full loop, scope=`large`: confirmed intent, adaptive discovery, plan + acceptance criteria, plan-gate, then **STOP for Build Preview approval**. The user approves what will be built, not `PLAN.md` internals.
   - **`grill`** — Phase 1 only: clarify/spec in plain language, write `INTENT.md`/`PROBLEM.md`, ask "Does this match?", then STOP. No plan and no code.
   - **`plan`** — prepare only: clarify + understand/diagnose + `PLAN.md`/`ACCEPTANCE.md` + plan-gate, then STOP with a resumable backlog run. No code.
   - **`build`** — implement an approved/prepared Kimiflow plan. If no current approved plan/backlog run is available, ask whether to run `full`, `plan`, or `quick`; do not silently invent a plan.
-  - **`quick`** — lean small/low-risk run: mandatory micro-grill; **skips Phase-2 recall and the Vault Pulse** (`scope=large` only; Current-State Pulse still runs); normal verification; ONE `spec-correctness` review lens plus advisory scans. Never when the user asked for `full`, `grill`, or `plan`.
+  - **`quick`** — lean small/low-risk run: compact intent confirmation with no question minimum; adaptive Discovery defaults to a no-worker pulse; **skips broad Phase-2 recall and Vault Pulse**; normal verification; ONE `spec-correctness` review lens plus advisory scans. Never for explicit `full|grill|plan`.
   - **`review`** — alias for `--verify-feature` / current-change review: read-only Phase-7 code-review ensemble over the named path or current diff. No code edits.
   - **`audit`** — alias for `--audit <path>`: read-only cleanup/refactoring scan first; no edits until the user chooses a slice.
   - **`fix`** — alias for `--fix`: bug flow with problem clarification, reproduction/Red evidence, root-cause proof, current fix research, Green evidence, and regression.
 - **`/kimiflow … --prepare`** — prepare only: phases 0–4, then STOP. Package in `.kimiflow/<slug>/`; implement later, even in a new session.
-- **`/kimiflow --resume <slug>`** — read `.kimiflow/<slug>/STATE.md`, run resume safety, revalidate changed plans before Phase 5; unknown plan basis/affected files → blind implementation is forbidden. Backlog resumes first run the working-tree gate (`OPEN` required — unrelated dirty changes → stop + ask), then re-presents the pre-build summary when the build-gate is `on` ∧ interactive. Without `<slug>` → list runs and ask.
+- **`/kimiflow --resume <slug>`** — read STATE, run resume safety, and revalidate changed plans before Phase 5; unknown basis/paths forbid blind build. Backlog resumes run the working-tree gate, regenerate the Build Preview, then obey `resolve-build-gate.sh decide`. Without `<slug>` → list runs and ask.
 - **Feature or fix:** kimiflow detects whether you are building or fixing a bug, and routes accordingly. Force with **`/kimiflow --fix <bug>`**.
 - **Audit / cleanup mode:** kimiflow detects cleanup intent ("remove dead code", "over-engineering audit", "entschlacken", "clean up") and runs an **existence-first cleanup lens** over a **required target path**. Force with **`/kimiflow --audit <path>`**. Staged: it finds tagged slices, shows them for approval (the Phase-4 summary gate), then executes them one slice = one commit with a per-slice verify gate. → reference.md "Audit mode".
 - **Existing feature check:** **`/kimiflow --verify-feature <feature-or-path>`** runs the normal Phase-7 code-review ensemble read-only over the named path or current diff — same lenses and CANDIDATE→verify→promote mechanic — with findings in `findings/`/`CODE-REVIEW.md`. It does not edit code; confirmed findings can seed a fix/improve run. → reference.md "Existing feature check".
 - **Project Map Bootstrap (recommended, skippable):** **`/kimiflow --project-map <quick|skip>`** controls the local `.kimiflow/project/` map. `.kimiflow/project/` is never auto-committed; publish-safe repo docs omit concrete vulnerabilities, exploit paths, secrets, and private/local paths. Declining/`skip` never blocks.
 - **Display verbosity (visible output only — engine identical at every level and on every host):** `--quiet`/`--verbose` set the level for one run (never persisted); `--set-verbosity <level>` and `--settings` write config and exit. Resolve it before any launcher/menu prose. Claude Code and Codex must keep the same gates, artifacts, subagents, evidence, thresholds, tests, and acceptance standards at every verbosity level. → Phase 0 + reference.md "Display verbosity".
-- **Pre-build summary gate:** end of Phase 4, before building: structured summary waits for your OK — *approve* → build · *change* → revise · *defer → backlog*.
+- **Build Preview / Risk Gate:** after internal plan approval, show what will and will not be built. Normal reversible work continues; scope, privacy/cost, breaking/public/data/migration, hard-to-reverse, or materially drifted work waits for approval. `full` always waits.
 
 ## Core principles (apply in ALL phases)
 
@@ -64,10 +64,10 @@ Phase detail is loaded only when entering that phase. For post-R2 runs, `hooks/a
 | Phase | File | Always-loaded boundary cues |
 |---|---|---|
 | 0 Setup, Routing & Scope-Gate | `phases/phase-0-setup.md` | top-model preflight; `launcher-status.sh --pretty`; `working-tree-gate.sh`; `active-run.sh`; phase state; scope and verbosity gates. |
-| 1 Clarify | `phases/phase-1-clarify.md` | `clarify-gate.sh`; mandatory micro-grill evidence; `Does this match?` / problem/scope gates. |
-| 2 Understand / diagnose | `phases/phase-2-understand.md` | `memory-router.sh status`, `MR recall --query-file`, Vault Pulse (all `scope=large` only — small/quick skip recall); Current-State Pulse / Gate; `current-state-gate.sh`; `suggest-affected-sections.sh`. |
+| 1 Clarify | `phases/phase-1-clarify.md` | `clarify-gate.sh`; confirmed behavior/scope/outcome, no question minimum; problem/scope gates. |
+| 2 Understand / diagnose | `phases/phase-2-understand.md` | adaptive Discovery `none|pulse|focused`; `discovery-gate.sh`; Current-State Pulse / Gate; `suggest-affected-sections.sh`; bounded evidence workers. |
 | 3 Plan | `phases/phase-3-plan.md` | acceptance criteria, Red evidence for fix mode, cause proof, audit existence-first rules. |
-| 4 Plan-gate / approval | `phases/phase-4-review-approval.md` | `plan-blocker-gate.sh`; reviewer lenses; `resolve-review-gate.sh`; pre-build approval stop; build-gate STOP/backlog rules. |
+| 4 Plan-gate / approval | `phases/phase-4-review-approval.md` | plan/review resolvers; plain-language Build Preview; risk-policy CONTINUE/STOP/PARK. |
 | 5 Implement / fix | `phases/phase-5-build.md` | TDD, named Red-test commit exception, caller-grep before deletion, failure escalation. |
 | 6 Verify | `phases/phase-6-verify.md` | goal-backward verification; `red-green-gate.sh`; `lsp-diagnostics.sh`; regression and cold-start checks. |
 | 7 Review / commit | `phases/phase-7-review-commit.md` | code-review ensemble; Memory Router & Learning Loop; `CANDIDATE` verification; named-path staging; advisory scans; `MR review-run`; `refresh --changed`; `Status: done`. |
@@ -76,7 +76,7 @@ Phase detail is loaded only when entering that phase. For post-R2 runs, `hooks/a
 
 These operative rules stay in the driver until a later approved packet proves an earlier mechanical gate for the target phase. Phase files may elaborate, but this section is always loaded.
 
-- **Phase 2 protected rules:** classify research `required|default|optional`; only `required` may add scope. Memory/Vault gaps may skip; resolve plan-blocking unknowns. Fix mode needs Red evidence + proven cause before code. Audit deletions need repo-wide grep + history freshness; Caller-grep is a MINIMUM. Vault-save requires a connected MCP.
+- **Phase 2 protected rules:** top owns Discovery/synthesis/triage. `none|pulse|focused` follows decision need, not size; no worker by default, one focused worker normally, at most two independent lanes. `required|default|optional` protects scope; only `required` may add it. Open technical gaps return to research; only irreducible product/policy choices ask the user. Fix still needs Red + proven cause.
 - **Phase 3 protected rules:** write one flat minimum-complete plan; every task/file/abstraction/test maps to `AC-N`; run subtraction before review. Dual-plan adoption takes isolated elements only, never structural merges. Unresolved blockers do not reach reviewers.
 - **Phase 4 held rule:** only evidenced BLOCKER/HIGH triggers revision; rounds never reset. Small feature/fix cap 2, large/audit cap 3; oscillation/cap means stop + ask, gate CLOSED.
 - **Phase 5 protected rules:** the Red test commit is tests-only and production code never rides along. Deletions require proof; no proof → don't delete. On unclear or likely-guess failures, don't burn a blind second attempt.

@@ -30,6 +30,7 @@ reset_run() {
 Status: active
 Mode: feature
 Scope: small
+Discovery required: yes
 Affected files: src/feature.ts, tests/feature.test.ts
 Phase 0: done
 Phase 1: done
@@ -44,6 +45,7 @@ Build a small feature with observable output.
 EOF
   cat > "$RUN/RESEARCH.md" <<'EOF'
 # Research
+<!-- kimiflow:discovery depth=pulse status=sufficient lanes=complete claims=none technical_gaps=0 user_decisions=0 scope_change=no -->
 Existing implementation lives in src/feature.ts:12 and tests in tests/feature.test.ts:4.
 EOF
   cat > "$RUN/PLAN.md" <<'EOF'
@@ -85,6 +87,12 @@ assert_field "$out" 2 OPEN "clean_plan_opens"
 assert_contains "$out" "reason=clean" "clean_reason"
 
 reset_run
+sed '/kimiflow:discovery/d' "$RUN/RESEARCH.md" > "$RUN/RESEARCH.tmp" && mv "$RUN/RESEARCH.tmp" "$RUN/RESEARCH.md"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "plan_gate_requires_discovery_evidence"
+assert_contains "$out" "discovery_gate_closed:discovery_marker_missing" "plan_gate_requires_discovery_detail"
+
+reset_run
 cat > "$RUN/STATE.md" <<'EOF'
 - **Status:** active
 - **Mode:** feature
@@ -115,7 +123,48 @@ reset_run
 sed '/kimiflow:clarify-evidence/d' "$RUN/INTENT.md" > "$RUN/INTENT.tmp" && mv "$RUN/INTENT.tmp" "$RUN/INTENT.md"
 out="$(run_gate)"
 assert_field "$out" 2 CLOSED "plan_gate_requires_small_micro_grill"
-assert_contains "$out" "clarify_gate_closed:micro_grill_evidence_missing" "plan_gate_requires_small_micro_grill_detail"
+assert_contains "$out" "clarify_gate_closed:intent_evidence_missing" "plan_gate_requires_small_micro_grill_detail"
+
+reset_run
+FAKE_HOOKS="$WORK/fake-hooks-discovery-missing"
+mkdir -p "$FAKE_HOOKS"
+cp "$SCRIPT" "$FAKE_HOOKS/plan-blocker-gate.sh"
+cp "$LIB" "$FAKE_HOOKS/kimiflow-lib.sh"
+cp "$(dirname "$SCRIPT")/clarify-gate.sh" "$FAKE_HOOKS/clarify-gate.sh"
+chmod +x "$FAKE_HOOKS/plan-blocker-gate.sh" "$FAKE_HOOKS/clarify-gate.sh"
+out="$("$FAKE_HOOKS/plan-blocker-gate.sh" "$RUN")"
+assert_field "$out" 2 CLOSED "plan_gate_blocks_missing_discovery_gate"
+assert_contains "$out" "discovery_gate_missing" "plan_gate_blocks_missing_discovery_detail"
+
+reset_run
+FAKE_HOOKS="$WORK/fake-hooks-discovery-malformed"
+mkdir -p "$FAKE_HOOKS"
+cp "$SCRIPT" "$FAKE_HOOKS/plan-blocker-gate.sh"
+cp "$LIB" "$FAKE_HOOKS/kimiflow-lib.sh"
+cp "$(dirname "$SCRIPT")/clarify-gate.sh" "$FAKE_HOOKS/clarify-gate.sh"
+cat > "$FAKE_HOOKS/discovery-gate.sh" <<'EOF'
+#!/usr/bin/env bash
+printf 'not a discovery verdict\n'
+EOF
+chmod +x "$FAKE_HOOKS/plan-blocker-gate.sh" "$FAKE_HOOKS/clarify-gate.sh" "$FAKE_HOOKS/discovery-gate.sh"
+out="$("$FAKE_HOOKS/plan-blocker-gate.sh" "$RUN")"
+assert_field "$out" 2 CLOSED "plan_gate_blocks_malformed_discovery"
+assert_contains "$out" "discovery_gate_malformed" "plan_gate_blocks_malformed_discovery_detail"
+
+reset_run
+FAKE_HOOKS="$WORK/fake-hooks-discovery-error"
+mkdir -p "$FAKE_HOOKS"
+cp "$SCRIPT" "$FAKE_HOOKS/plan-blocker-gate.sh"
+cp "$LIB" "$FAKE_HOOKS/kimiflow-lib.sh"
+cp "$(dirname "$SCRIPT")/clarify-gate.sh" "$FAKE_HOOKS/clarify-gate.sh"
+cat > "$FAKE_HOOKS/discovery-gate.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 2
+EOF
+chmod +x "$FAKE_HOOKS/plan-blocker-gate.sh" "$FAKE_HOOKS/clarify-gate.sh" "$FAKE_HOOKS/discovery-gate.sh"
+out="$("$FAKE_HOOKS/plan-blocker-gate.sh" "$RUN")"
+assert_field "$out" 2 CLOSED "plan_gate_blocks_discovery_crash"
+assert_contains "$out" "discovery_gate_error" "plan_gate_blocks_discovery_crash_detail"
 
 reset_run
 FAKE_HOOKS="$WORK/fake-hooks"

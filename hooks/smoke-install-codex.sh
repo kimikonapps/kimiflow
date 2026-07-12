@@ -73,11 +73,11 @@ done
 for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'kimiflow review' 'kimiflow audit' 'kimiflow fix' 'kimiflow quick'; do
   grep -q "$term" "$ROOT/README.md" && ok "README documents mode alias: $term" || bad "README missing mode alias: $term"
 done
-grep -q 'pre-build approval stop' "$ROOT/SKILL.md" && ok "full mode includes pre-build approval stop" || bad "full mode missing pre-build approval stop"
-grep -q 'mandatory micro-grill' "$ROOT/SKILL.md" && ok "canonical skill requires micro-grill for small/quick" || bad "canonical skill missing small/quick micro-grill"
-grep -q 'mandatory micro-grill' "$SKILL" && ok "Codex wrapper preserves small/quick micro-grill" || bad "Codex wrapper missing small/quick micro-grill"
-grep -q 'Mandatory micro-grill for small/quick' "$ROOT/reference.md" && ok "reference documents small/quick micro-grill" || bad "reference missing small/quick micro-grill"
-grep -q 'Micro-Grill' "$ROOT/README.md" && ok "README documents small/quick micro-grill" || bad "README missing small/quick micro-grill"
+grep -q 'Build Preview approval' "$ROOT/SKILL.md" && ok "full mode includes Build Preview approval" || bad "full mode missing Build Preview approval"
+grep -q 'question minimum' "$ROOT/SKILL.md" && ok "canonical skill removes intent question quota" || bad "canonical skill missing no-question-minimum rule"
+grep -q 'minimum question count' "$SKILL" && ok "Codex wrapper preserves no-question-minimum rule" || bad "Codex wrapper missing no-question-minimum rule"
+grep -q 'Intent evidence for small/quick' "$ROOT/reference.md" && ok "reference documents intent evidence" || bad "reference missing intent evidence"
+grep -q 'no minimum question count' "$ROOT/README.md" && ok "README documents no question quota" || bad "README missing no-question-minimum rule"
 grep -q 'Vault Pulse' "$ROOT/SKILL.md" && ok "canonical skill requires scope=large Vault Pulse semantics" || bad "canonical skill missing Vault Pulse"
 grep -q 'Vault Pulse' "$SKILL" && ok "Codex wrapper preserves scope=large Vault Pulse semantics" || bad "Codex wrapper missing Vault Pulse"
 grep -Eq 'Vault Pulse.*scope=large|scope=large.*Vault Pulse' "$ROOT/reference.md" && ok "reference documents scope=large Vault Pulse semantics" || bad "reference missing scope=large Vault Pulse semantics"
@@ -105,6 +105,8 @@ if [ -x "$ROOT/hooks/map-staleness-nudge.sh" ] && bash -n "$ROOT/hooks/map-stale
 if [ -x "$ROOT/hooks/test-map-staleness-nudge.sh" ] && bash -n "$ROOT/hooks/test-map-staleness-nudge.sh" 2>/dev/null; then ok "map staleness nudge test ok"; else bad "map staleness nudge test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/current-state-gate.sh" ] && bash -n "$ROOT/hooks/current-state-gate.sh" 2>/dev/null; then ok "current-state gate helper ok"; else bad "current-state gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-current-state-gate.sh" ] && bash -n "$ROOT/hooks/test-current-state-gate.sh" 2>/dev/null; then ok "current-state gate test ok"; else bad "current-state gate test missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/discovery-gate.sh" ] && bash -n "$ROOT/hooks/discovery-gate.sh" 2>/dev/null; then ok "discovery gate helper ok"; else bad "discovery gate helper missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/test-discovery-gate.sh" ] && bash -n "$ROOT/hooks/test-discovery-gate.sh" 2>/dev/null; then ok "discovery gate test ok"; else bad "discovery gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/working-tree-gate.sh" ] && bash -n "$ROOT/hooks/working-tree-gate.sh" 2>/dev/null; then ok "working-tree gate helper ok"; else bad "working-tree gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-working-tree-gate.sh" ] && bash -n "$ROOT/hooks/test-working-tree-gate.sh" 2>/dev/null; then ok "working-tree gate test ok"; else bad "working-tree gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/clarify-gate.sh" ] && bash -n "$ROOT/hooks/clarify-gate.sh" 2>/dev/null; then ok "clarify gate helper ok"; else bad "clarify gate helper missing/not-exec/bad"; fi
@@ -130,6 +132,7 @@ grep -q -- 'refresh --changed' "$ROOT/SKILL.md" && ok "canonical skill documents
 grep -q 'suggest-affected-sections.sh' "$SKILL" && ok "Codex wrapper maps suggest-affected helper" || bad "Codex wrapper missing suggest-affected helper"
 grep -q 'map-staleness-nudge.sh' "$SKILL" && ok "Codex wrapper maps map staleness nudge helper" || bad "Codex wrapper missing map staleness nudge helper"
 grep -q 'current-state-gate.sh' "$ROOT/reference.md" && ok "canonical current-state gate helper documented" || bad "canonical current-state gate helper missing"
+grep -q 'discovery-gate.sh' "$ROOT/reference.md" && ok "canonical discovery gate helper documented" || bad "canonical discovery gate helper missing"
 grep -q 'working-tree-gate.sh' "$ROOT/reference.md" && ok "canonical working-tree gate helper documented" || bad "canonical working-tree gate helper missing"
 grep -q 'clarify-gate.sh' "$ROOT/reference.md" && ok "canonical clarify gate helper documented" || bad "canonical clarify gate helper missing"
 grep -q 'plan-blocker-gate.sh' "$ROOT/reference.md" && ok "canonical plan-blocker gate helper documented" || bad "canonical plan-blocker gate helper missing"
@@ -139,6 +142,7 @@ grep -q 'lsp-diagnostics.sh' "$ROOT/reference.md" && ok "canonical local diagnos
 grep -q 'memory-router.sh' "$ROOT/reference.md" && ok "canonical memory router helper documented" || bad "canonical memory router helper missing"
 grep -q 'active-run.sh' "$ROOT/reference.md" && ok "canonical active session helper documented" || bad "canonical active session helper missing"
 grep -q 'current-state-gate.sh' "$SKILL" && ok "Codex wrapper maps current-state gate helper" || bad "Codex wrapper missing current-state gate helper"
+grep -q 'discovery-gate.sh' "$SKILL" && ok "Codex wrapper maps discovery gate helper" || bad "Codex wrapper missing discovery gate helper"
 grep -q 'working-tree-gate.sh' "$SKILL" && ok "Codex wrapper maps working-tree gate helper" || bad "Codex wrapper missing working-tree gate helper"
 grep -q 'clarify-gate.sh' "$SKILL" && ok "Codex wrapper maps clarify gate helper" || bad "Codex wrapper missing clarify gate helper"
 grep -q 'plan-blocker-gate.sh' "$SKILL" && ok "Codex wrapper maps plan-blocker gate helper" || bad "Codex wrapper missing plan-blocker gate helper"
@@ -156,6 +160,8 @@ grep -q 'review_base_sha' "$ROOT/reference.md" && ok "canonical review basis pin
 grep -q 'Spec / Correctness' "$ROOT/reference.md" && ok "canonical review axes preserved" || bad "canonical axis-preserving report missing"
 grep -q 'Standards smell baseline' "$ROOT/reference.md" && ok "canonical advisory smell baseline documented" || bad "canonical standards smell baseline missing"
 grep -q 'Scope classification' "$ROOT/reference.md" && ok "canonical research scope classified" || bad "canonical research scope classification missing"
+grep -q 'depth=none|pulse|focused' "$ROOT/reference.md" && ok "canonical adaptive Discovery documented" || bad "canonical adaptive Discovery missing"
+grep -q 'Build Preview / Risk Gate' "$ROOT/reference.md" && ok "canonical conditional Build Preview documented" || bad "canonical Build Preview risk policy missing"
 grep -q 'research-driven product expansion is forbidden' "$ROOT/reference.md" && ok "canonical research scope creep blocked" || bad "canonical research scope-creep guard missing"
 grep -q 'any `round > cap`' "$ROOT/reference.md" && ok "canonical global revision cap documented" || bad "canonical global plan revision cap missing"
 grep -q 'Minimum-complete' "$ROOT/SKILL.md" && ok "canonical minimum-complete rule loaded" || bad "canonical minimum-complete rule missing"
