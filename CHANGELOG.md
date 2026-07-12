@@ -6,6 +6,13 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.1.67
+
+Linux portability patch for the basis-bound Fix Preview recorder introduced in 0.1.66.
+
+### Fixed
+- **Fix approval recording works on GNU/Linux** (`hooks/clarify-gate.sh`): file-mode preservation now queries GNU `stat -c` before BSD/macOS `stat -f`; a fake-GNU regression test guards the option collision that failed the 0.1.66 GitHub Actions runs.
+
 ## 0.1.66
 
 The streamlined bug-fix gate release: clear reports proceed directly to diagnosis, one basis-bound Fix Preview replaces two earlier confirmation stops, and the final Commit Gate remains unchanged.
