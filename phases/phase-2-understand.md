@@ -24,7 +24,7 @@ The `top` model owns project understanding, Discovery Assessment/Research Brief,
 2. **Reproduce** — actually trigger the bug, ideally a failing test (proof: real + where). Write the Red evidence to `BUG-REPRO.md` before changing production code. Not reproducible = a finding → clarify with the user, don't fix blindly.
 3. **Verify the root cause** (input `PROBLEM.md`) — find AND prove the cause (`file:line` + why that spot produces the symptom). NOT the first guess.
 4. **Fix research (proactive, BEFORE the fix)** — how is this *currently* solved correctly? Recall (vault/claude-mem, `scope=large` only — `small`/`quick` go straight to the web) → `WebSearch`/context7/`WebFetch` → official docs/issues; check the obvious guess against the current state, discard stale/naive approaches. → reference.md "Fix mode".
-5. **Synthesis → `DIAGNOSIS.md`** (→ reference.md "Fix mode"). **Diagnosis gate:** root cause not proven → do NOT fix (keep investigating or stop + ask).
+5. **Synthesis → `DIAGNOSIS.md`** (→ reference.md "Fix mode"): proven cause, bounded fix approach, affected scope/non-goals, and risk. **Diagnosis gate:** root cause not proven → do NOT fix (keep investigating or stop + ask). Do not ask for approval yet; Phase 4 combines these facts with the internally reviewed plan into one Fix Preview.
 
 **Audit → find the fat** (read-only, evidence-based):
 2. **Survey the target** (`Explore` agent, input `AUDIT-INTENT.md`): map what exists and why. For each non-trivial item ask the **existence-first** question — not "can we dedupe" but "should this exist at all".

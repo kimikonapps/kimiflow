@@ -53,8 +53,8 @@ KimiFlow's bet is that for a *small* set of checkpoints, you want the referee to
 - **Don't finish on red tests.** An opt-in `Stop` hook (`test-gate`) blocks completion while the
   project's tests fail.
 - **Don't commit without a human OK.** The commit-gate *stops* and shows the diff; "done" is never
-  "committed" until you say so. Before implementation, a plain-language Build Preview stops only for
-  material product/irreversibility risk by default; routine technical HOW continues after the preview.
+  "committed" until you say so. Before implementation, features/audits use a risk-based Build Preview;
+  fixes use one post-diagnosis Fix Preview and never a duplicate early confirmation.
 
 The pattern is consistent: **when a violation is costly and the model is tempted to rationalise past
 it, replace the judgement call with a mechanism.** That removes the rationalisation path entirely.

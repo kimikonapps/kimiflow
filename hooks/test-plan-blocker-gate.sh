@@ -87,6 +87,15 @@ assert_field "$out" 2 OPEN "clean_plan_opens"
 assert_contains "$out" "reason=clean" "clean_reason"
 
 reset_run
+sed -i.bak -e 's/Mode: feature/Mode: fix/' -e 's/Discovery required: yes/Discovery required: no/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+printf 'Flow schema: 3\n' >> "$RUN/STATE.md"
+mv "$RUN/INTENT.md" "$RUN/PROBLEM.md"
+sed -i.bak '/kimiflow:clarify-evidence/d' "$RUN/PROBLEM.md" && rm "$RUN/PROBLEM.md.bak"
+mv "$RUN/RESEARCH.md" "$RUN/DIAGNOSIS.md"
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "fix_plan_reaches_internal_review_without_early_approval"
+
+reset_run
 sed '/kimiflow:discovery/d' "$RUN/RESEARCH.md" > "$RUN/RESEARCH.tmp" && mv "$RUN/RESEARCH.tmp" "$RUN/RESEARCH.md"
 out="$(run_gate)"
 assert_field "$out" 2 CLOSED "plan_gate_requires_discovery_evidence"

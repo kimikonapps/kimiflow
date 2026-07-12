@@ -5,8 +5,8 @@ phases, the gates and the artifacts **before** installing.
 
 | File | Scope | Mode | What it shows |
 |------|-------|------|---------------|
-| [`01-small-fix.md`](01-small-fix.md) | `small` | fix | the lean path — no plan-gate loop, 1 reviewer, straight to the commit-gate |
-| [`02-risky-bugfix.md`](02-risky-bugfix.md) | `large` | fix | the full loop — diagnose-gate, 2-reviewer plan-gate with a round that finds a real HIGH, anti-oscillation, commit-gate STOP |
+| [`01-small-fix.md`](01-small-fix.md) | `small` | fix | the lean path — direct diagnosis, one Fix Preview, 1 reviewer, commit-gate |
+| [`02-risky-bugfix.md`](02-risky-bugfix.md) | `large` | fix | the full loop — proven cause, one Fix Preview, 2-reviewer plan-gate with a real HIGH, commit-gate |
 | [`03-feature.md`](03-feature.md) | `large` | feature | adaptive Discovery, a proven architecture fork, Build Preview approval, and a non-blocking MEDIUM |
 
 > **These are illustrative walkthroughs, not captured transcripts.** They are faithful

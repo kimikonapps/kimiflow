@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# kimiflow — clarify gate. Mechanical Phase-1 intent guard for small/quick runs.
+# kimiflow — Phase-1 intent guard plus post-diagnosis fix approval guard.
 #
 # Usage:
-#   clarify-gate.sh <run-dir> [--pretty]
+#   clarify-gate.sh <run-dir> [--post-diagnosis] [--pretty]
 #
 # Output:
 #   CLARIFY_GATE<TAB>OPEN|CLOSED<TAB>blockers=<n><TAB>reason=<code><TAB>detail=<codes>
 #
-# For small/quick runs, Phase 1 must leave durable evidence that behavior, scope,
-# and the user-visible outcome were confirmed in the current Kimiflow run. The
-# number of questions is deliberately irrelevant. Loose prior chat is context,
-# not consent. Legacy count-based markers remain readable for prepared runs.
+# Feature/audit small/quick runs confirm behavior, scope, and outcome without a
+# question quota. Fixes proceed from a problem brief, then schema-3 runs use the
+# post-diagnosis mode to verify their single Fix Preview approval.
 # R2 invariant target: hooks/clarify-gate.sh
 set -u
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -23,8 +22,10 @@ emit() {
 }
 
 run_dir=""
+post_diagnosis=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --post-diagnosis) post_diagnosis=1; shift ;;
     --pretty) shift ;;   # accepted, reserved no-op (no pretty-print path implemented)
     -*) shift ;;
     *) [ -z "$run_dir" ] && run_dir="$1"; shift ;;
@@ -79,10 +80,16 @@ add_blocker() {
   if [ -z "$details" ]; then details="$1"; else details="$details,$1"; fi
 }
 
-artifact="$(find_first INTENT.md PROBLEM.md AUDIT-INTENT.md 2>/dev/null || true)"
 scope="$(kimiflow_state_value "$state" scope | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
 alias_value="$(kimiflow_state_value "$state" alias | tr '[:upper:]' '[:lower:]')"
 mode_value="$(kimiflow_state_value "$state" mode | tr '[:upper:]' '[:lower:]')"
+flow_schema="$(kimiflow_state_value "$state" "Flow schema" | awk '{print $1}')"
+case "$mode_value" in
+  feature) artifact="$(find_first INTENT.md 2>/dev/null || true)" ;;
+  fix) artifact="$(find_first PROBLEM.md 2>/dev/null || true)" ;;
+  audit) artifact="$(find_first AUDIT-INTENT.md 2>/dev/null || true)" ;;
+  *) artifact="$(find_first INTENT.md PROBLEM.md AUDIT-INTENT.md 2>/dev/null || true)" ;;
+esac
 
 if [ "$scope" = "trivial" ]; then
   emit_open
@@ -90,6 +97,39 @@ fi
 
 if [ -z "$artifact" ] || [ ! -s "$artifact" ]; then
   emit CLOSED 1 clarify-missing "clarify_artifact_missing"
+fi
+
+# A clear bug report can proceed directly to diagnosis. Schema-3 fix runs move
+# the one pre-build confirmation to a durable Fix Preview after root-cause proof.
+if [ "$mode_value" = "fix" ]; then
+  case "$flow_schema" in *[!0-9]*) emit CLOSED 1 malformed "flow_schema_invalid" ;; esac
+  if [ -n "$flow_schema" ] && [ "$flow_schema" -ge 3 ]; then
+    if [ "$post_diagnosis" -eq 0 ]; then
+      emit_open
+    fi
+    diagnosis="$run_dir/DIAGNOSIS.md"
+    [ -s "$diagnosis" ] || emit CLOSED 1 fix-approval-missing "fix_diagnosis_missing"
+    marker="$(grep -Eio '<!--[[:space:]]*kimiflow:fix-approval[^>]*-->|kimiflow:fix-approval[^[:cntrl:]]*' "$diagnosis" | head -1 || true)"
+    marker="$(printf '%s\n' "$marker" | sed 's/<!--[[:space:]]*//; s/[[:space:]]*-->//')"
+    [ -n "$marker" ] || emit CLOSED 1 fix-approval-missing "fix_approval_missing"
+
+    approval_source="$(printf '%s\n' "$marker" | sed -n 's/.*source=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
+    approval_cause="$(printf '%s\n' "$marker" | sed -n 's/.*cause=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
+    approval_fix="$(printf '%s\n' "$marker" | sed -n 's/.*fix=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
+    approval_scope="$(printf '%s\n' "$marker" | sed -n 's/.*scope=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
+    approval_risk="$(printf '%s\n' "$marker" | sed -n 's/.*risk=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
+
+    case "$approval_source" in current-run|current_run) ;; *) add_blocker "fix_approval_not_current_run" ;; esac
+    [ "$approval_cause" = "confirmed" ] || add_blocker "fix_cause_unconfirmed"
+    [ "$approval_fix" = "confirmed" ] || add_blocker "fix_approach_unconfirmed"
+    [ "$approval_scope" = "confirmed" ] || add_blocker "fix_scope_unconfirmed"
+    [ "$approval_risk" = "confirmed" ] || add_blocker "fix_risk_unconfirmed"
+
+    if [ "$blockers" -eq 0 ]; then
+      emit_open
+    fi
+    emit CLOSED "$blockers" fix-approval-blockers "$details"
+  fi
 fi
 
 needs_micro=0

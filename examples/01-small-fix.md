@@ -21,14 +21,10 @@ the same hard stops as a `large` run, none of the fan-out cost.
   Announced: *"Scope: small — single reviewer, no plan-gate loop, no worktrees."*
 - State dir: `.kimiflow/pagination-off-by-one/`.
 
-### 🔵 Phase 1 — Clarify (problem)
+### 🔵 Phase 1 — Problem brief
 
-Two questions only (small scope keeps the grill short):
-
-1. *Expected: exactly `pageSize` items on a full page?* → yes, 20.
-2. *Repro?* → open `/products` with ≥40 rows, count the first page → 19.
-
-→ `PROBLEM.md` (symptom · repro · expected). ✋ **"Does this match?"** → confirmed.
+The report already supplies the symptom and expected result: page size is 20, but a full page shows 19.
+Kimiflow writes `PROBLEM.md` and inspects the pagination path immediately. No routine confirmation stop.
 
 ### 🟣 Phase 2 — Diagnose
 
@@ -69,6 +65,10 @@ NONE
 Gate: `resolve-review-gate.sh findings --round 1 --expect B` → `clean⇥0⇥clean⇥…` → **0 open ✅**.
 Small scope → no second round, no loop.
 
+**Fix Preview — one pre-build Human Gate:** verified cause = exclusive slice bound; fix = remove the
+`- 1`; scope = paginator + its test; risk = low, no API change. ✋ **"Fix it this way?"** → approved.
+`DIAGNOSIS.md` records `kimiflow:fix-approval`; `clarify-gate.sh --post-diagnosis` → OPEN.
+
 ### 🟠 Phase 5 — Implement (TDD)
 
 - The Phase-2 reproduction is already the red test → keep it.
@@ -105,5 +105,5 @@ Small scope → no second round, no loop.
 
 ---
 
-**Why this is the cheap path:** same diagnose-gate and commit-gate as a large run, but the scope-gate
+**Why this is the cheap path:** same diagnosis, one Fix Preview, and commit-gate as a large run, but the scope-gate
 dropped the second reviewer, the plan-gate loop and any worktrees. Lean work stays lean.

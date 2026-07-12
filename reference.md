@@ -69,18 +69,19 @@ every machine.
 `$kimiflow full`, `@kimiflow full`, or plain "kimiflow full" as the same alias family. If the target is omitted,
 use the current conversation topic only when it is unambiguous; otherwise ask one plain-language question.
 
-- `kimiflow full` — strict full loop: full grill/spec, understanding/research, plan, plan-gate, then STOP before
-  implementation for approval. This is the safe default when the user says they want the thorough Kimiflow flow.
+- `kimiflow full` — strict full loop: feature intent or fix diagnosis, understanding/research, plan, plan-gate,
+  then one mode-specific Preview approval before implementation.
 - `kimiflow grill` — clarify/spec only, no code.
 - `kimiflow plan` — clarify + understand + plan + plan-gate, then park/resume, no code.
 - `kimiflow build` — implement an already-approved/prepared plan; if none exists, ask whether to run `full`,
   `plan`, or `quick`.
-- `kimiflow quick` — intentionally lean small, low-risk feature/fix path. It still confirms complete intent
+- `kimiflow quick` — intentionally lean small, low-risk path. Features confirm complete intent; clear fixes
+  defer their one approval until the post-diagnosis Fix Preview
   unless the request is truly trivial and exact.
 - `kimiflow review` — read-only existing-feature/current-change review, no code.
 - `kimiflow audit` — read-only cleanup/refactoring scan first, no code until a slice is approved.
-- `kimiflow fix` — bug flow with reproduction/Red evidence, root-cause proof, current fix research, and Green
-  evidence.
+- `kimiflow fix` — bug flow with reproduction/Red evidence, root-cause proof, current fix research, one Fix
+  Preview approval, and Green evidence.
 
 If `.kimiflow/project/INDEX.json` is missing, bias the first menu toward Project Map Bootstrap:
 `quick` / `skip`. If a map exists, use it first: read `INDEX.json`,
@@ -135,9 +136,9 @@ hygiene pass, not an implementation mode:
   whether tests/docs cover the delivered behavior. It is review-only; confirmed findings become fix/improve choices,
   not automatic edits.
 - Natural aliases: show `full`, `grill`, `plan`, `build`, `quick`, `review`, `audit`, and `fix` as shortcuts in
-  launcher text. `full` always includes confirmed intent, adaptive Discovery, and Build Preview approval; `grill`, `plan`,
+  launcher text. `full` always includes one mode-specific Preview approval; `grill`, `plan`,
   `review`, and `audit` are no-code until the user explicitly approves a later build/fix. `quick` is lean, not
-  assumption-free: it must confirm behavior, scope, and outcome for small feature/fix work.
+  assumption-free: features confirm behavior/scope/outcome, while fixes prove cause and confirm the bounded remedy.
 - Memory: list `MEMORY.md` budget, learning counts by status, vault availability, and curation reasons (the
   full `memory` object — incl. the `memory.provider.*` fields used below — needs `launcher-status.sh --full`;
   the default snapshot carries `memory_summary` only). Offer
@@ -346,13 +347,14 @@ Kimiflow routes by four capability tiers so the workflow stays portable across C
 
 ## Build Preview / Risk Gate (Phase 4 → Phase 5)
 
-The internal plan remains fully gated, but the user sees a plain-language contract about WHAT will be built rather than reviewing HOW in `PLAN.md`. This is project-local control flow only; it never weakens planning, tests, reviewers, evidence, or the commit stop.
+The internal plan remains fully gated, but the user sees a plain-language contract rather than reviewing HOW in `PLAN.md`. Features/audits use the conditional Build Preview below. Schema-3 fixes use one always-confirmed Fix Preview after diagnosis; it replaces both the old pre-diagnosis confirmation and the generic Build Preview, so a normal fix has one pre-build Human Gate plus the final commit gate.
 
 - **Policy:** `.kimiflow/build-gate` contains `risk|always|off`; missing/invalid → `risk`, legacy `on` → `always`. `resolve-build-gate.sh get|set|decide` is the tested source of truth. `risk` stops only for named material risk; `always` stops every build; `off` shows the preview and continues. `full` always stops regardless of policy.
 - **Risk declaration:** the top model records `Build risk: none|required` plus reason in STATE after Discovery. `required` means scope expansion; unresolved product choice; breaking change; risky migration; public API/durable data contract; paid or privacy-sensitive external service; hard-to-reverse architecture; or material drift from confirmed intent. Routine reversible HOW is `none`.
 - **Preview:** derive from INTENT, Discovery decisions, and ACCEPTANCE, not planner narration: `Will build` · `Not included` · `Important decisions` · `Risks/irreversibility` · `Effort`. Keep it to one screen and omit task lists, classes, and incidental file paths.
-- **Decision:** `resolve-build-gate.sh decide --state .kimiflow/<slug>/STATE.md --interactive <yes|no> [--alias full]` reads the durable risk declaration and emits `CONTINUE|STOP|PARK`; missing/invalid state or a supplied legacy `--risk` that disagrees with STATE parks. Direct `--risk <none|required>` remains a legacy caller fallback only. CONTINUE → preview then Phase 5. STOP → approve/change/defer. PARK/headless → 0–4 done, 5 open, `Status: backlog`, emit resume. `--prepare` always parks before this decision.
-- **Resume:** run working-tree and plan-basis safety first, narrowly revalidate Phase 2/3 if stale, regenerate the preview, and ask only when `decide` returns STOP. Legacy parked plans remain usable; no Discovery marker is retroactively required unless revalidation re-enters Phase 2.
+- **Feature/audit decision:** `resolve-build-gate.sh decide --state .kimiflow/<slug>/STATE.md --interactive <yes|no> [--alias full]` reads the durable risk declaration and emits `CONTINUE|STOP|PARK`; missing/invalid state or a supplied legacy `--risk` that disagrees with STATE parks. Direct `--risk <none|required>` remains a legacy caller fallback only. CONTINUE → preview then Phase 5. STOP → approve/change/defer. PARK/headless → backlog. `--prepare` always parks before this decision.
+- **Fix decision:** after internal plan review, show **Verified cause · Will fix · Not included · Affected scope · Risks/regression**. Approve writes the schema-3 `kimiflow:fix-approval` marker to `DIAGNOSIS.md`; `clarify-gate.sh <run> --post-diagnosis` must return OPEN before Phase 5. Change returns to the owning phase; defer/headless parks. Do not also run the generic Build Preview resolver. Schema <3 preserves its prior resume behavior.
+- **Resume:** run working-tree and plan-basis safety first, narrowly revalidate Phase 2/3 if stale, regenerate the mode-specific preview, and ask only at its required decision. Legacy parked plans remain usable; no Discovery/Fix Preview marker is retroactively required unless revalidation enters the new schema flow.
 
 ---
 
@@ -392,21 +394,22 @@ Goal: shared understanding BEFORE research/plan. kimiflow runs the interview **i
 
 **Autonomy boundary:** do not ask the user to choose reversible implementation details that research/code can settle without changing product scope. Pick the smallest conservative default and record it. Ask only when the choice changes user-visible scope, creates an irreversible public/data contract or migration, materially changes security/privacy, introduces paid infrastructure, or leaves two meaningfully different product outcomes. The user defines WHAT; the top model owns routine HOW.
 
-**Intent evidence for small/quick:** confirm user-visible behavior, in/out-of-scope boundary, and the observable
+**Feature/audit intent evidence for small/quick:** confirm user-visible behavior, in/out-of-scope boundary, and the observable
 outcome before research or planning. There is no minimum question count. If the prompt already answers all three,
 show the inferred intent and ask one compact confirmation. Otherwise ask only the unresolved product question, one
 at a time, with a recommendation. Never ask technical HOW that project evidence, research, or a safe reversible
 default can settle. Exact `trivial` work is exempt. Prior chat sharpens the summary but is not current confirmation.
 
 **Mechanical clarify gate:** `hooks/clarify-gate.sh .kimiflow/<slug>` is the fail-closed Phase-1 check. For
-`small`/`quick`, `INTENT.md`, `PROBLEM.md`, or `AUDIT-INTENT.md` must include one compact marker:
+feature/audit `small|quick`, `INTENT.md` or `AUDIT-INTENT.md` must include one compact marker:
 
 ```md
 <!-- kimiflow:clarify-evidence behavior=confirmed scope=confirmed outcome=confirmed source=current-run -->
 ```
 
 Write the marker only after the user confirms all three dimensions in the current run. The gate ignores question
-count. Old valid count-based markers remain readable for prepared runs. The plan blocker rechecks this evidence.
+count. Old valid count-based markers remain readable for prepared runs. A normal fix instead passes Phase 1 with
+a non-empty `PROBLEM.md`; it asks only for missing information that blocks diagnosis and has no routine Human Gate.
 
 **Bounded:** stop when behavior, scope, and outcome are confirmed. Ask no question merely to reach a quota. Priority: scope > security/privacy > UX; technical gaps go to Phase 2. **Terminal state:** write INTENT.md → gate → research; do not implement.
 
@@ -465,7 +468,7 @@ Goal: kimiflow must **truly understand** the affected code before planning — e
 ## Open unknowns — none when status is sufficient/not_required
 ```
 
-Marker contract: `depth=none|pulse|focused`; `status=sufficient|not_required|incomplete|conflicting|stale|blocked`; `lanes=none|complete`; `claims=none|sourced`; integer open `technical_gaps`/`user_decisions`; `scope_change=no|confirmed`. `discovery-gate.sh` validates this shape and requires `source_url` plus `source_type` for `claims=sourced`. It cannot prove completeness or source interpretation. New STATE files record `Flow schema: 2` and always declare Discovery: non-trivial feature runs use `yes`, while trivial/fix/audit/review use `no`. Schema-2 omissions and mode/scope mismatches close; only pre-schema runs treat an absent requirement as legacy-resumable.
+Marker contract: `depth=none|pulse|focused`; `status=sufficient|not_required|incomplete|conflicting|stale|blocked`; `lanes=none|complete`; `claims=none|sourced`; integer open `technical_gaps`/`user_decisions`; `scope_change=no|confirmed`. `discovery-gate.sh` validates this shape and requires `source_url` plus `source_type` for `claims=sourced`. It cannot prove completeness or source interpretation. New STATE files record `Flow schema: 3` and always declare Discovery: non-trivial feature runs use `yes`, while trivial/fix/audit/review use `no`. Schema-2+ omissions and mode/scope mismatches close; only pre-schema runs treat an absent requirement as legacy-resumable.
 
 The classification is a one-way scope gate: only `required` may enlarge the plan, `default` may choose an implementation without enlarging it, and `optional` stays out of `PLAN.md`/`ACCEPTANCE.md`. A reviewer may challenge a wrong classification with evidence, but cannot promote optional robustness or a hypothetical future requirement merely by preferring it.
 
@@ -482,12 +485,13 @@ For bug fixes this branch replaces the intent/research logic. **Core rule: prove
 **PROBLEM.md (Phase 1, plain language):**
 ```
 # Problem: <bug in plain words>
-<!-- kimiflow:clarify-evidence behavior=confirmed scope=confirmed outcome=confirmed source=current-run -->
 ## Symptom            (error message / crash / wrong behavior)
 ## Expected vs. actual
 ## Reproduction       (steps / inputs / environment; since when? always or intermittent?)
 ## Affected / severity
 ```
+
+When those facts are sufficient to investigate, write the brief and continue without asking "Did I understand the problem?". Ask one targeted question only when a missing fact blocks reproduction or diagnosis; that question is problem input, not a mandatory approval stop.
 
 **Diagnosis (Phase 2) — the three mandatory steps:**
 - **Reproduce:** ideally a **failing test** (Red). Not reproducible = a finding → clarify with the user.
@@ -500,10 +504,19 @@ For bug fixes this branch replaces the intent/research logic. **Core rule: prove
 ## Verified root cause        (file:line + evidence why it produces the symptom)
 ## Correct fix approach (researched)  (with source; contrasted against the naive guess)
 ## Discarded approaches
+## Affected scope / not included
 ## Risks & regression
 ```
 
 **Diagnosis gate:** root cause **not** proven → **do NOT fix.** The fix's acceptance criterion = **"the reproduction no longer fails" + no regression.**
+
+**Fix Preview gate (Phase 4, schema 3):** after the plan gate is internally clean, show one compact preview with the verified cause, exact bounded fix, exclusions, affected scope, and risk/regression. Ask "Soll ich ihn so fixen?" in the user's language. Approval adds:
+
+```md
+<!-- kimiflow:fix-approval cause=confirmed fix=confirmed scope=confirmed risk=confirmed source=current-run -->
+```
+
+Then run `hooks/clarify-gate.sh .kimiflow/<slug> --post-diagnosis`; OPEN is required before production-code changes. This is the fix's only pre-build Human Gate and already covers risky/auth/privacy/migration consequences, so no second generic Build Preview follows. Any later cause, approach, plan, scope, or risk change deletes the marker before re-entry and requires a fresh Preview. The final Commit Gate remains unchanged.
 
 **BUG-REPRO.md (Phase 2 + Phase 6 evidence):**
 ```

@@ -101,19 +101,20 @@ The same gates on a **bug fix** — the other mode (full walkthrough: [`examples
 /kimiflow --fix  token refresh throws after the access token expires
 
 ⚪ Phase 0  scope-gate ····· large (touches auth; reproducible symptom)
-🔵 Phase 1  clarify ········ symptom? repro? expected? → PROBLEM.md  ✋ "Does this match?"
+🔵 Phase 1  problem brief ·· symptom, repro, expected → PROBLEM.md; no routine stop
 🟣 Phase 2  diagnose ······· reproduces the throw, proves the cause at auth/refresh.ts:88
             └─ no proven root cause ⇒ NO fix. (proven → continue)
 ⚫ Phase 3  plan ··········· fix + EARS acceptance criteria → PLAN.md
 🟡 Phase 4  PLAN-GATE ······ plan-blocker-gate.sh → independent reviewers → resolve-review-gate.sh
             └─ counts evidenced BLOCKER/HIGH, fail-closed, large cap 3 → 0 open ✅
+            └─ FIX PREVIEW: cause · fix · scope · risk, ✋ "Fix it this way?"
 🟠 Phase 5  implement ······ failing test first (red) → fix → green
 🟤 Phase 6  verify ········· throw gone, suite green, checked against the criteria
 🟢 Phase 7  code-review ···· ensemble candidates → orchestrator verifies → gate counts confirmed findings
             └─ COMMIT-GATE: shows the diff, ✋ STOPS for your OK — never auto-commits
 ```
 
-Each ✋/✅ and the diagnose/commit stop is a real gate, not a prompt suggestion. The clip above is a scripted illustration — record your own from a **real** run with the steps under [`docs/demo/`](docs/demo/).
+The Fix Preview and Commit Gate are real stops, not prompt suggestions. Diagnosis and plan review remain rigorous but internal. The clip above is a scripted illustration — record your own from a **real** run with the steps under [`docs/demo/`](docs/demo/).
 
 ## What gates are mechanical
 
@@ -122,8 +123,9 @@ Each ✋/✅ and the diagnose/commit stop is a real gate, not a prompt suggestio
 | Gate | Phase | Mechanism | Fail-closed? |
 |------|-------|-----------|--------------|
 | **Working-tree start gate** | 0 | `hooks/working-tree-gate.sh` requires a clean repo before new write-mode Kimiflow runs; `.kimiflow/` local state is ignored | ✅ yes |
-| **Clarify gate** | 1/4 | `hooks/clarify-gate.sh` requires confirmed behavior, scope, and outcome for small/quick; no question quota | ✅ yes |
-| **Discovery gate** | 2/4 | `hooks/discovery-gate.sh` binds new schema-2 feature runs to Discovery evidence while preserving pre-schema resumes | ✅ yes |
+| **Clarify gate** | 1/4 | feature/audit confirms behavior, scope, and outcome; a clear fix proceeds from its problem brief without an early Human Gate | ✅ yes |
+| **Fix Preview gate** | 4 | schema-3 fixes persist cause/fix/scope/risk approval in `DIAGNOSIS.md`; `clarify-gate.sh --post-diagnosis` must open before Phase 5 | ✅ yes |
+| **Discovery gate** | 2/4 | `hooks/discovery-gate.sh` binds versioned feature runs to Discovery evidence while preserving pre-schema resumes | ✅ yes |
 | **Plan-blocker gate** | 4 | composes Clarify + Discovery, then checks AC mapping, verification, path evidence, and affected files before reviewers | ✅ yes |
 | **Plan-gate** | 4 | `hooks/resolve-review-gate.sh` counts evidenced `BLOCKER/HIGH`; small feature/fix cap 2, large/audit cap 3; rounds never reset | ✅ yes |
 | **Red/green fix gate** | 6 | `hooks/red-green-gate.sh` requires `BUG-REPRO.md` with red command/status/output, green command/status/output, and regression evidence before fix-mode review/learning can finish | ✅ yes |
@@ -152,14 +154,14 @@ What is **not** mechanical (model-judged, by design): the scope classification, 
 Natural shortcuts:
 
 ```text
-kimiflow full    # strict: confirmed intent + adaptive discovery + plan-gate + Build Preview approval
+kimiflow full    # strict: full loop + one mode-specific Preview approval
 kimiflow grill   # clarify/spec only; no code
 kimiflow plan    # prepare plan + acceptance criteria; no code
 kimiflow build   # build an approved/prepared plan
-kimiflow quick   # lean small change; confirms complete intent, normally no research worker
+kimiflow quick   # lean small change; features confirm intent, fixes confirm after diagnosis
 kimiflow review  # read-only feature/current-change review
 kimiflow audit   # read-only cleanup/refactoring scan first
-kimiflow fix     # bug flow with Red/Green evidence
+kimiflow fix     # diagnose first, one Fix Preview, then Red/Green verification
 ```
 
 For `small` and `quick`, kimiflow confirms behavior, scope, and the user-visible outcome. There is no minimum question count: a complete request needs only one compact intent confirmation; technical gaps go to Discovery, not back to the user. Only exact `trivial` work may skip this.
@@ -320,15 +322,16 @@ Internal threshold hints such as `many_learnings` stay silent when memory is fre
 ```
 /kimiflow --fix App crashes when opening an empty project
 ```
-1. clarifies the problem (symptom, reproduction) → `PROBLEM.md`
-2. **reproduces the crash**, **proves the cause** (`file:line`), **researches the correct fix** → `DIAGNOSIS.md`. Without a proven cause it does **not** fix.
-3. fixes → verifies the crash is gone + no regression → code-review ensemble → **stops before committing**
+1. records the supplied symptom/expected behavior in `PROBLEM.md` and investigates immediately; it asks only when missing input blocks diagnosis
+2. **reproduces the crash**, **proves the cause** (`file:line`), and **researches the correct fix** → `DIAGNOSIS.md`
+3. shows one **Fix Preview** (cause, fix, scope, risk) and asks whether to proceed
+4. fixes → verifies the crash is gone + no regression → code-review ensemble → **stops before committing**
 
 ## Flow (8 phases)
 
-Scope-gate → **confirm intent** → **project-first adaptive Discovery** (`none|pulse|focused`, no worker by default; research informs HOW, never expands WHAT) resp. **diagnose** → **minimum-complete internal plan** → **plan-gate** → **Build Preview / conditional Risk Gate** → **implement** → **verify** → **code review** → **commit** (stops for your OK).
+Scope-gate → feature: **confirm intent + adaptive Discovery**; fix: **problem brief + proven diagnosis** → **minimum-complete internal plan** → **plan-gate** → feature/audit: conditional **Build Preview**; fix: one **Fix Preview** → **implement** → **verify** → **code review** → **commit**.
 
-State is persisted to `.kimiflow/<slug>/` in the target project (resumable). `small`/`quick` runs stay lean, but they do not skip Phase 1: kimiflow asks or confirms enough to avoid building the wrong thing.
+State is persisted to `.kimiflow/<slug>/` in the target project (resumable). `small`/`quick` stays lean: features confirm intent; clear fixes capture the brief without stopping and confirm the verified fix only once after diagnosis.
 `small`/`quick` also run a tiny Current-State Pulse: local-only work records "no external freshness check needed"; changing APIs/tooling/hosts gets one current primary-source check before planning.
 `small`/`quick` skip memory recall and the Vault Pulse — both run at `scope=large` only (recall payoff is thin on small tasks); the Phase-7 learning loop still runs at every scope.
 
@@ -350,7 +353,7 @@ kimiflow ships safety hooks under `hooks/`, **active only in kimiflow repos** (a
 
 - **`commit-secret-gate`** — **filename/path hygiene, not secret-in-source detection**: blocks a `git commit` that would stage a secret-looking **path** (`.env`/`.envrc` incl. `prod.env`-style suffixes, `*.pem/.key/.p12/.pfx/.asc`, private SSH keys `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519` (not `.pub`), `.npmrc`, `secret`/`credential`/`access_token`/`auth_token` paths) and any bulk `git add -A`/`.`. It matches **paths, never file contents** — a key pasted into source passes — so pair it with a content scanner for in-source secrets. kimiflow's advisory `secret-content-scan.sh` does this: **`gitleaks protect --staged`** is the clean staged-content path; **trufflehog** is a best-effort fallback (no native staged mode — it scans commits since `HEAD`). It also covers the working-tree paths a `git commit -a`/`--all` would auto-stage, but it is **a backstop, not complete secret protection**: an explicit pathspec commit (`git commit <path>`), a command-position-evasion prefix (`env X=y`/`sudo`/`/usr/bin/git`/`command git`), a quoted `-C` path with a space, and an escaped quote in the message are **known, documented gaps** (regex isn't a shell parser — see [reference.md](reference.md) "Commit hygiene"). A global **`git -C <path>`** to another repo **is** honored (the gate scopes to the target, not the cwd). Real coverage = `.gitignore` discipline + a content scanner + not tracking secrets.
 - **`state-gate`** — blocks review-gate resolver calls when a non-trivial kimiflow run has no durable `STATE.md`; this protects resume and gate state from living only in chat.
-- **`clarify-gate`** — requires current-run confirmation of behavior, scope, and outcome for `small`/`quick`, never a minimum question count.
+- **`clarify-gate`** — feature/audit confirms intent without a question quota; fixes skip the early stop and use `--post-diagnosis` to verify their one durable Fix Preview approval.
 - **`discovery-gate`** — checks Phase-2 completeness and source shape before planning; it does not pretend to prove that research was exhaustive or objectively optimal.
 - **`test-gate`** (opt-in) — blocks finishing while the project's tests are red; enable per project via a **local, untracked** `.kimiflow/test-gate` file (auto-enabled for `large`-scope runs). A git-tracked (committed) marker is refused — its first line is `eval`'d, so committed markers can't run as a drive-by.
 
@@ -481,19 +484,20 @@ Dieselben Gates an einem **Bug-Fix** — der andere Modus (vollständiger Walkth
 /kimiflow --fix  Token-Refresh wirft, nachdem das Access-Token abgelaufen ist
 
 ⚪ Phase 0  Scope-Gate ····· large (betrifft Auth; reproduzierbares Symptom)
-🔵 Phase 1  Klärung ········ Symptom? Repro? Erwartet? → PROBLEM.md  ✋ „Passt das so?"
+🔵 Phase 1  Problembrief ···· Symptom, Repro, Erwartung → PROBLEM.md; kein Routine-Stopp
 🟣 Phase 2  Diagnose ······· reproduziert den Throw, belegt die Ursache bei auth/refresh.ts:88
             └─ keine belegte Root-Cause ⇒ KEIN Fix. (belegt → weiter)
 ⚫ Phase 3  Plan ··········· Fix + EARS-Akzeptanzkriterien → PLAN.md
 🟡 Phase 4  PLAN-GATE ······ plan-blocker-gate.sh → unabhängige Reviewer → resolve-review-gate.sh
             └─ zählt offene BLOCKER/HIGH, fail-closed, Cap 3 → 0 offen ✅
+            └─ FIX PREVIEW: Ursache · Fix · Scope · Risiko, ✋ „So fixen?"
 🟠 Phase 5  Umsetzung ······ erst der fehlschlagende Test (rot) → Fix → grün
 🟤 Phase 6  Verifikation ··· Throw weg, Suite grün, gegen die Kriterien geprüft
 🟢 Phase 7  Code-Review ···· Ensemble-Kandidaten → Orchestrator verifiziert → Gate zählt bestätigte Findings
             └─ COMMIT-GATE: zeigt den Diff, ✋ STOPPT für dein OK — committet nie selbst
 ```
 
-Jedes ✋/✅ sowie der Diagnose- und Commit-Stopp ist ein echtes Gate, kein Prompt-Vorschlag. Der Clip oben ist eine gescriptete Illustration — deine eigene aus einem **echten** Lauf nimmst du mit den Schritten unter [`docs/demo/`](docs/demo/) auf.
+Fix Preview und Commit-Gate sind echte Stopps, keine Prompt-Vorschläge. Diagnose und Plan-Review bleiben streng, laufen aber intern. Der Clip oben ist eine gescriptete Illustration — deine eigene aus einem **echten** Lauf nimmst du mit den Schritten unter [`docs/demo/`](docs/demo/) auf.
 
 ## Welche Gates mechanisch sind
 
@@ -501,8 +505,9 @@ Jedes ✋/✅ sowie der Diagnose- und Commit-Stopp ist ein echtes Gate, kein Pro
 
 | Gate | Phase | Mechanismus | Fail-closed? |
 |------|-------|-------------|--------------|
-| **Clarify-Gate** | 1/4 | verlangt bestätigtes Verhalten, Scope und Ergebnis für small/quick; keine Fragenquote | ✅ ja |
-| **Discovery-Gate** | 2/4 | bindet neue Schema-2-Feature-Runs an Discovery-Evidence und erhält Pre-Schema-Resumes | ✅ ja |
+| **Clarify-Gate** | 1/4 | Feature/Audit bestätigt Verhalten, Scope und Ergebnis; ein klarer Fix startet ohne frühen Human Gate aus dem Problembrief | ✅ ja |
+| **Fix-Preview-Gate** | 4 | Schema-3-Fixes speichern Ursache/Fix/Scope/Risiko in `DIAGNOSIS.md`; `clarify-gate.sh --post-diagnosis` muss vor Phase 5 öffnen | ✅ ja |
+| **Discovery-Gate** | 2/4 | bindet versionierte Feature-Runs an Discovery-Evidence und erhält Pre-Schema-Resumes | ✅ ja |
 | **Planblocker-Gate** | 4 | kombiniert Clarify + Discovery und prüft danach AC-Mapping, Verifikation, Pfade und betroffene Dateien | ✅ ja |
 | **Plan-Gate** | 4 | zählt belegte `BLOCKER/HIGH`; small Feature/Fix Cap 2, large/audit Cap 3; Runden werden nie zurückgesetzt | ✅ ja |
 | **Code-Review-Gate** | 7 | fokussierte Review-Linsen liefern Kandidaten; der Orchestrator verifiziert und promotet bestätigte Findings; derselbe Resolver zählt offene `BLOCKER/HIGH` | ✅ ja |
@@ -529,14 +534,14 @@ Jedes ✋/✅ sowie der Diagnose- und Commit-Stopp ist ein echtes Gate, kein Pro
 Natürliche Kurzmodi:
 
 ```text
-kimiflow full    # streng: bestätigte Absicht + adaptive Discovery + Plan-Gate + Build-Preview-Freigabe
+kimiflow full    # streng: voller Flow + eine modusspezifische Preview-Freigabe
 kimiflow grill   # nur klären/specen; kein Code
 kimiflow plan    # Plan + Akzeptanzkriterien vorbereiten; kein Code
 kimiflow build   # freigegebenen/vorbereiteten Plan bauen
-kimiflow quick   # schlanke kleine Änderung, fragt/bestätigt trotzdem kurz die Absicht
+kimiflow quick   # schlank: Features bestätigen Intent, Fixes erst nach der Diagnose
 kimiflow review  # read-only Feature-/Diff-Prüfung
 kimiflow audit   # read-only Cleanup-/Refactoring-Scan zuerst
-kimiflow fix     # Bugflow mit Red/Green-Evidenz
+kimiflow fix     # erst Diagnose, eine Fix Preview, dann Red/Green-Verifikation
 ```
 
 Bei `small` und `quick` bestätigt kimiflow Verhalten, Scope und sichtbares Ergebnis. Es gibt keine Mindestzahl an Fragen: Ein vollständiger Auftrag braucht nur eine kompakte Intent-Bestätigung; technische Lücken gehen in die Discovery, nicht zurück an dich.
@@ -696,15 +701,16 @@ Schwellen wie `many_learnings` bleiben still, wenn Memory frisch und unter Budge
 ```
 /kimiflow --fix App stürzt ab beim Öffnen eines leeren Projekts
 ```
-1. klärt das Problem (Symptom, Reproduktion) → `PROBLEM.md`
-2. **reproduziert den Crash**, **belegt die Ursache** (`file:line`), **recherchiert den korrekten Fix** → `DIAGNOSIS.md`. Ohne belegte Ursache wird **nicht** gefixt.
-3. fixt → verifiziert, dass der Crash weg ist + keine Regression → Code-Review → **Stopp vor dem Commit**
+1. schreibt Symptom und erwartetes Verhalten in `PROBLEM.md` und untersucht sofort; gefragt wird nur, wenn Informationen die Diagnose blockieren
+2. **reproduziert den Crash**, **belegt die Ursache** (`file:line`) und **recherchiert den korrekten Fix** → `DIAGNOSIS.md`
+3. zeigt eine **Fix Preview** mit Ursache, Fix, Scope und Risiko und fragt einmal nach Freigabe
+4. fixt → verifiziert, dass der Crash weg ist + keine Regression → Code-Review → **Stopp vor dem Commit**
 
 ## Ablauf (8 Phasen)
 
-Scope-Gate → **Intent bestätigen** → **projektbasierte adaptive Discovery** (`none|pulse|focused`, standardmäßig kein Worker) beziehungsweise **Diagnose** → **minimum-complete interner Plan** → **Plan-Gate** (small Cap 2, large/audit Cap 3) → **Build Preview / bedingtes Risk Gate** → **Umsetzung** → **Verifikation** → **Code-Review** → **Commit**.
+Scope-Gate → Feature: **Intent + adaptive Discovery**; Fix: **Problembrief + belegte Diagnose** → **minimum-complete interner Plan** → **Plan-Gate** → Feature/Audit: bedingte **Build Preview**; Fix: eine **Fix Preview** → **Umsetzung** → **Verifikation** → **Code-Review** → **Commit**.
 
-State wird nach `.kimiflow/<slug>/` im Zielprojekt persistiert (resume-fähig). `small`/`quick` bleibt schlank, überspringt aber Phase 1 nicht: kimiflow fragt oder bestätigt genug, damit es nicht am eigentlichen Wunsch vorbeibaut.
+State wird nach `.kimiflow/<slug>/` im Zielprojekt persistiert. `small`/`quick` bleibt schlank: Features bestätigen den Intent; klare Fixes erfassen den Problembrief ohne Stopp und bestätigen den belegten Fix einmal nach der Diagnose.
 `small`/`quick` macht außerdem einen winzigen Current-State-Pulse: lokale Arbeit dokumentiert "keine externe Aktualitätsprüfung nötig"; geänderte APIs/Tooling/Hosts bekommen vor dem Plan eine aktuelle Primärquelle.
 `small`/`quick` überspringt Memory-Recall und den Vault Pulse — beides läuft nur bei `scope=large` (der Recall-Payoff ist bei kleinen Tasks dünn); der Phase-7-Learning-Loop läuft weiterhin bei jedem Scope.
 
@@ -726,7 +732,7 @@ kimiflow bringt Sicherheits-Hooks unter `hooks/` mit, **nur in kimiflow-Repos ak
 
 - **`commit-secret-gate`** — **Dateiname/Pfad-Hygiene, keine Secret-im-Quelltext-Erkennung**: blockt einen `git commit`, der einen secret-verdächtigen **Pfad** stagen würde (`.env`/`.envrc` inkl. `prod.env`-artiger Suffixe, `*.pem/.key/.p12/.pfx/.asc`, private SSH-Keys `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519` (nicht `.pub`), `.npmrc`, `secret`/`credential`/`access_token`/`auth_token`-Pfade), sowie jedes Bulk-`git add -A`/`.`. Er matcht **Pfade, nie Datei-Inhalte** — ein in den Quelltext gepasteter Key passiert — also ergänze ihn mit einem Content-Scanner für Secrets im Code. kimiflows Advisory `secret-content-scan.sh` macht genau das: **`gitleaks protect --staged`** ist der saubere Staged-Content-Pfad; **trufflehog** ist ein Best-effort-Fallback (kein nativer Staged-Mode — scannt Commits seit `HEAD`).
 - **`state-gate`** — blockt Review-Gate-Resolver-Aufrufe, wenn einem nicht-trivialen kimiflow-Lauf die dauerhafte `STATE.md` fehlt; dadurch lebt Resume-/Gate-State nicht nur im Chat.
-- **`clarify-gate`** — verlangt bestätigtes Verhalten, Scope und Ergebnis im aktuellen Run, aber keine Mindestzahl an Fragen.
+- **`clarify-gate`** — Feature/Audit bestätigt Intent ohne Fragenquote; Fixes überspringen den frühen Stopp und prüfen ihre eine dauerhafte Fix-Preview-Freigabe mit `--post-diagnosis`.
 - **`discovery-gate`** — prüft Phase-2-Vollständigkeit und Quellenform vor der Planung, ohne semantische Allwissenheit vorzutäuschen.
 - **`test-gate`** (opt-in) — blockt das Beenden, solange die Projekt-Tests rot sind; pro Projekt via **lokaler, untracked** `.kimiflow/test-gate`-Datei aktivieren (für `large`-Läufe automatisch). Ein git-getrackter (committeter) Marker wird abgelehnt — seine erste Zeile wird `eval`'t, committete Marker können so nicht als Drive-by laufen.
 

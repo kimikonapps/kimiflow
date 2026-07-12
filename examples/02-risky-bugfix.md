@@ -22,14 +22,14 @@ written. Full loop, `large` scope.
   test-gate auto-armed."*
 - State dir: `.kimiflow/token-refresh-throws/`.
 
-### 🔵 Phase 1 — Clarify (problem)
+### 🔵 Phase 1 — Problem brief
 
 - *Symptom?* intermittent forced logouts.
 - *Repro?* let the access token expire (TTL 15 min), then make any authed request → a throw, session
   cleared.
 - *Expected?* the refresh token silently mints a new access token; the request succeeds.
 
-→ `PROBLEM.md`. ✋ **"Does this match?"** → confirmed: *"the refresh path should be transparent."*
+→ `PROBLEM.md`. The report is sufficient to investigate, so Kimiflow continues without an early Human Gate.
 
 ### 🟣 Phase 2 — Understand & research / diagnose
 
@@ -105,6 +105,12 @@ Gate: `resolve-review-gate.sh findings --round 2 --expect A,B` → `clean⇥0⇥
 Anti-oscillation check: open HIGH count went 1 → 0 (strictly decreased), nothing reappeared → healthy.
 (Cap is 3; had round 3 still shown an open blocker, the gate would **stop and ask**, never
 auto-proceed.)
+
+**Fix Preview — the single pre-build Human Gate:** verified cause = rotated refresh token produces an
+uncaught empty-body parse; fix = status-aware reauth plus one bounded transient retry; not included =
+auth-provider or session redesign; scope = `refresh.ts` + focused tests; risk = auth-sensitive but bounded
+and regression-covered. ✋ **"Fix it this way?"** → approved. `DIAGNOSIS.md` records
+`kimiflow:fix-approval`; `clarify-gate.sh --post-diagnosis` → OPEN. No second Build Preview follows.
 
 ### 🟠 Phase 5 — Implement (TDD)
 

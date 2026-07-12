@@ -41,6 +41,7 @@ EOF
 }
 
 run_gate() { KIMIFLOW_PLUGIN_ROOT="$WORK" "$SCRIPT" "$RUN"; }
+run_post_diagnosis_gate() { KIMIFLOW_PLUGIN_ROOT="$WORK" "$SCRIPT" "$RUN" --post-diagnosis; }
 
 write_phase_fixture() {
   mkdir -p "$WORK/phases"
@@ -167,6 +168,66 @@ rm "$RUN/INTENT.md"
 out="$(run_gate)"
 assert_field "$out" 2 CLOSED "nontrivial_missing_artifact_closes"
 assert_contains "$out" "clarify_artifact_missing" "nontrivial_missing_artifact_detail"
+
+reset_run
+cat > "$RUN/STATE.md" <<'EOF'
+Flow schema: 3
+Status: active
+Mode: fix
+Scope: small
+Phase 0: done
+Phase 1: done
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "fix_rejects_wrong_mode_intent_artifact"
+assert_contains "$out" "clarify_artifact_missing" "fix_wrong_mode_artifact_detail"
+
+cat > "$RUN/PROBLEM.md" <<'EOF'
+# Problem
+The report already identifies the symptom and expected behavior.
+EOF
+rm "$RUN/INTENT.md"
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "fix_phase1_needs_no_confirmation_stop"
+
+out="$(run_post_diagnosis_gate)"
+assert_field "$out" 2 CLOSED "fix_preview_requires_diagnosis"
+assert_contains "$out" "fix_diagnosis_missing" "fix_preview_missing_diagnosis_detail"
+
+cat > "$RUN/DIAGNOSIS.md" <<'EOF'
+# Diagnosis
+The root cause is proven, but the fix preview has not been approved.
+EOF
+out="$(run_post_diagnosis_gate)"
+assert_field "$out" 2 CLOSED "fix_preview_missing_approval_closes"
+assert_contains "$out" "fix_approval_missing" "fix_preview_missing_approval_detail"
+
+cat > "$RUN/DIAGNOSIS.md" <<'EOF'
+# Diagnosis
+<!-- kimiflow:fix-approval cause=confirmed fix=confirmed scope=confirmed risk=confirmed source=current-run -->
+The user approved the verified cause, bounded fix, affected scope, and risk.
+EOF
+out="$(run_post_diagnosis_gate)"
+assert_field "$out" 2 OPEN "complete_fix_preview_opens"
+
+sed -i.bak 's/risk=confirmed/risk=pending/' "$RUN/DIAGNOSIS.md" && rm "$RUN/DIAGNOSIS.md.bak"
+out="$(run_post_diagnosis_gate)"
+assert_field "$out" 2 CLOSED "incomplete_fix_preview_closes"
+assert_contains "$out" "fix_risk_unconfirmed" "incomplete_fix_preview_detail"
+
+sed -i.bak -e 's/risk=pending/risk=confirmed/' -e 's/source=current-run/source=prior-chat/' "$RUN/DIAGNOSIS.md" && rm "$RUN/DIAGNOSIS.md.bak"
+out="$(run_post_diagnosis_gate)"
+assert_field "$out" 2 CLOSED "stale_fix_preview_approval_closes"
+assert_contains "$out" "fix_approval_not_current_run" "stale_fix_preview_approval_detail"
+
+sed -i.bak 's/Flow schema: 3/Flow schema: 2/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+rm "$RUN/DIAGNOSIS.md"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "schema2_fix_keeps_legacy_phase1_contract"
+assert_contains "$out" "intent_evidence_missing" "schema2_fix_legacy_contract_detail"
+printf '%s\n' '<!-- kimiflow:clarify-evidence mode=questions count=2 confirmed=yes source=current-run -->' >> "$RUN/PROBLEM.md"
+out="$(run_post_diagnosis_gate)"
+assert_field "$out" 2 OPEN "schema2_fix_resume_needs_no_new_approval_marker"
 
 if command -v jq >/dev/null 2>&1; then
   reset_run

@@ -28,7 +28,7 @@ reset_run() {
 Status: active
 Mode: feature
 Scope: small
-Flow schema: 2
+Flow schema: 3
 Discovery required: yes
 EOF
   cat > "$RUN/RESEARCH.md" <<'EOF'
@@ -139,7 +139,7 @@ assert_field "$out" 2 CLOSED "new_fix_cannot_require_feature_discovery"
 assert_contains "$out" "discovery_requirement_mode_mismatch" "new_fix_requirement_detail"
 
 reset_run
-sed -i.bak 's/Flow schema: 2/Flow schema: invalid/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+sed -i.bak 's/Flow schema: 3/Flow schema: invalid/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
 out="$(run_gate)"
 assert_field "$out" 2 CLOSED "invalid_flow_schema_closes"
 assert_contains "$out" "flow_schema_invalid" "invalid_flow_schema_detail"

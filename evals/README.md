@@ -88,6 +88,7 @@ location (Judging), and run each eval subagent in an environment without the use
 | 13 | top-model orchestrator floor | 0/all |
 | 14 | plan scope ratchet | 2-4 |
 | 15 | evidence-guided feature discovery | 1-4 |
+| 16 | bug-fix Human Gate economy | 1-4 |
 
 **Reviewer-calibration** — a second dimension (does the *reviewer* judge cleanly under pressure, not
 just hold a gate?): [`reviewer-calibration.md`](reviewer-calibration.md) +

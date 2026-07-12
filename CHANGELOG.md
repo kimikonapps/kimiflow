@@ -4,7 +4,8 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Changed
+- **Bug fixes use one post-diagnosis Fix Preview** (`hooks/clarify-gate.sh`, Phase 1/4): a clear bug report proceeds directly to reproduction and root-cause proof; after internal plan review, one durable cause/fix/scope/risk approval replaces both the old pre-diagnosis confirmation and the generic Build Preview. The final Commit Gate remains unchanged.
 
 ## 0.1.65
 
