@@ -124,7 +124,7 @@ The Fix Preview and Commit Gate are real stops, not prompt suggestions. Diagnosi
 |------|-------|-----------|--------------|
 | **Working-tree start gate** | 0 | `hooks/working-tree-gate.sh` requires a clean repo before new write-mode Kimiflow runs; `.kimiflow/` local state is ignored | ✅ yes |
 | **Clarify gate** | 1/4 | feature/audit confirms behavior, scope, and outcome; a clear fix proceeds from its problem brief without an early Human Gate | ✅ yes |
-| **Fix Preview gate** | 4 | schema-3 fixes persist cause/fix/scope/risk approval in `DIAGNOSIS.md`; `clarify-gate.sh --post-diagnosis` must open before Phase 5 | ✅ yes |
+| **Fix Preview gate** | 4 | schema-3 fixes record a basis-bound cause/fix/scope/risk approval; `clarify-gate.sh --post-diagnosis` must open before Phase 5 | ✅ yes |
 | **Discovery gate** | 2/4 | `hooks/discovery-gate.sh` binds versioned feature runs to Discovery evidence while preserving pre-schema resumes | ✅ yes |
 | **Plan-blocker gate** | 4 | composes Clarify + Discovery, then checks AC mapping, verification, path evidence, and affected files before reviewers | ✅ yes |
 | **Plan-gate** | 4 | `hooks/resolve-review-gate.sh` counts evidenced `BLOCKER/HIGH`; small feature/fix cap 2, large/audit cap 3; rounds never reset | ✅ yes |
@@ -353,7 +353,7 @@ kimiflow ships safety hooks under `hooks/`, **active only in kimiflow repos** (a
 
 - **`commit-secret-gate`** — **filename/path hygiene, not secret-in-source detection**: blocks a `git commit` that would stage a secret-looking **path** (`.env`/`.envrc` incl. `prod.env`-style suffixes, `*.pem/.key/.p12/.pfx/.asc`, private SSH keys `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519` (not `.pub`), `.npmrc`, `secret`/`credential`/`access_token`/`auth_token` paths) and any bulk `git add -A`/`.`. It matches **paths, never file contents** — a key pasted into source passes — so pair it with a content scanner for in-source secrets. kimiflow's advisory `secret-content-scan.sh` does this: **`gitleaks protect --staged`** is the clean staged-content path; **trufflehog** is a best-effort fallback (no native staged mode — it scans commits since `HEAD`). It also covers the working-tree paths a `git commit -a`/`--all` would auto-stage, but it is **a backstop, not complete secret protection**: an explicit pathspec commit (`git commit <path>`), a command-position-evasion prefix (`env X=y`/`sudo`/`/usr/bin/git`/`command git`), a quoted `-C` path with a space, and an escaped quote in the message are **known, documented gaps** (regex isn't a shell parser — see [reference.md](reference.md) "Commit hygiene"). A global **`git -C <path>`** to another repo **is** honored (the gate scopes to the target, not the cwd). Real coverage = `.gitignore` discipline + a content scanner + not tracking secrets.
 - **`state-gate`** — blocks review-gate resolver calls when a non-trivial kimiflow run has no durable `STATE.md`; this protects resume and gate state from living only in chat.
-- **`clarify-gate`** — feature/audit confirms intent without a question quota; fixes skip the early stop and use `--post-diagnosis` to verify their one durable Fix Preview approval.
+- **`clarify-gate`** — feature/audit confirms intent without a question quota; fixes skip the early stop, record one fingerprinted approval with `--record-fix-approval`, and verify it with `--post-diagnosis`.
 - **`discovery-gate`** — checks Phase-2 completeness and source shape before planning; it does not pretend to prove that research was exhaustive or objectively optimal.
 - **`test-gate`** (opt-in) — blocks finishing while the project's tests are red; enable per project via a **local, untracked** `.kimiflow/test-gate` file (auto-enabled for `large`-scope runs). A git-tracked (committed) marker is refused — its first line is `eval`'d, so committed markers can't run as a drive-by.
 
@@ -506,7 +506,7 @@ Fix Preview und Commit-Gate sind echte Stopps, keine Prompt-Vorschläge. Diagnos
 | Gate | Phase | Mechanismus | Fail-closed? |
 |------|-------|-------------|--------------|
 | **Clarify-Gate** | 1/4 | Feature/Audit bestätigt Verhalten, Scope und Ergebnis; ein klarer Fix startet ohne frühen Human Gate aus dem Problembrief | ✅ ja |
-| **Fix-Preview-Gate** | 4 | Schema-3-Fixes speichern Ursache/Fix/Scope/Risiko in `DIAGNOSIS.md`; `clarify-gate.sh --post-diagnosis` muss vor Phase 5 öffnen | ✅ ja |
+| **Fix-Preview-Gate** | 4 | Schema-3-Fixes speichern eine an den freigegebenen Stand gebundene Ursache/Fix/Scope/Risiko-Freigabe; `clarify-gate.sh --post-diagnosis` muss vor Phase 5 öffnen | ✅ ja |
 | **Discovery-Gate** | 2/4 | bindet versionierte Feature-Runs an Discovery-Evidence und erhält Pre-Schema-Resumes | ✅ ja |
 | **Planblocker-Gate** | 4 | kombiniert Clarify + Discovery und prüft danach AC-Mapping, Verifikation, Pfade und betroffene Dateien | ✅ ja |
 | **Plan-Gate** | 4 | zählt belegte `BLOCKER/HIGH`; small Feature/Fix Cap 2, large/audit Cap 3; Runden werden nie zurückgesetzt | ✅ ja |
@@ -732,7 +732,7 @@ kimiflow bringt Sicherheits-Hooks unter `hooks/` mit, **nur in kimiflow-Repos ak
 
 - **`commit-secret-gate`** — **Dateiname/Pfad-Hygiene, keine Secret-im-Quelltext-Erkennung**: blockt einen `git commit`, der einen secret-verdächtigen **Pfad** stagen würde (`.env`/`.envrc` inkl. `prod.env`-artiger Suffixe, `*.pem/.key/.p12/.pfx/.asc`, private SSH-Keys `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519` (nicht `.pub`), `.npmrc`, `secret`/`credential`/`access_token`/`auth_token`-Pfade), sowie jedes Bulk-`git add -A`/`.`. Er matcht **Pfade, nie Datei-Inhalte** — ein in den Quelltext gepasteter Key passiert — also ergänze ihn mit einem Content-Scanner für Secrets im Code. kimiflows Advisory `secret-content-scan.sh` macht genau das: **`gitleaks protect --staged`** ist der saubere Staged-Content-Pfad; **trufflehog** ist ein Best-effort-Fallback (kein nativer Staged-Mode — scannt Commits seit `HEAD`).
 - **`state-gate`** — blockt Review-Gate-Resolver-Aufrufe, wenn einem nicht-trivialen kimiflow-Lauf die dauerhafte `STATE.md` fehlt; dadurch lebt Resume-/Gate-State nicht nur im Chat.
-- **`clarify-gate`** — Feature/Audit bestätigt Intent ohne Fragenquote; Fixes überspringen den frühen Stopp und prüfen ihre eine dauerhafte Fix-Preview-Freigabe mit `--post-diagnosis`.
+- **`clarify-gate`** — Feature/Audit bestätigt Intent ohne Fragenquote; Fixes überspringen den frühen Stopp, speichern eine fingerprint-gebundene Freigabe mit `--record-fix-approval` und prüfen sie mit `--post-diagnosis`.
 - **`discovery-gate`** — prüft Phase-2-Vollständigkeit und Quellenform vor der Planung, ohne semantische Allwissenheit vorzutäuschen.
 - **`test-gate`** (opt-in) — blockt das Beenden, solange die Projekt-Tests rot sind; pro Projekt via **lokaler, untracked** `.kimiflow/test-gate`-Datei aktivieren (für `large`-Läufe automatisch). Ein git-getrackter (committeter) Marker wird abgelehnt — seine erste Zeile wird `eval`'t, committete Marker können so nicht als Drive-by laufen.
 

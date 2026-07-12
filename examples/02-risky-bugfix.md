@@ -110,7 +110,7 @@ auto-proceed.)
 uncaught empty-body parse; fix = status-aware reauth plus one bounded transient retry; not included =
 auth-provider or session redesign; scope = `refresh.ts` + focused tests; risk = auth-sensitive but bounded
 and regression-covered. ✋ **"Fix it this way?"** → approved. `DIAGNOSIS.md` records
-`kimiflow:fix-approval`; `clarify-gate.sh --post-diagnosis` → OPEN. No second Build Preview follows.
+`clarify-gate.sh --record-fix-approval` writes the basis-bound approval; `--post-diagnosis` → OPEN. No second Build Preview follows.
 
 ### 🟠 Phase 5 — Implement (TDD)
 

@@ -2,7 +2,7 @@
 # kimiflow — Phase-1 intent guard plus post-diagnosis fix approval guard.
 #
 # Usage:
-#   clarify-gate.sh <run-dir> [--post-diagnosis] [--pretty]
+#   clarify-gate.sh <run-dir> [--post-diagnosis|--record-fix-approval] [--pretty]
 #
 # Output:
 #   CLARIFY_GATE<TAB>OPEN|CLOSED<TAB>blockers=<n><TAB>reason=<code><TAB>detail=<codes>
@@ -23,9 +23,11 @@ emit() {
 
 run_dir=""
 post_diagnosis=0
+record_fix_approval=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --post-diagnosis) post_diagnosis=1; shift ;;
+    --record-fix-approval) post_diagnosis=1; record_fix_approval=1; shift ;;
     --pretty) shift ;;   # accepted, reserved no-op (no pretty-print path implemented)
     -*) shift ;;
     *) [ -z "$run_dir" ] && run_dir="$1"; shift ;;
@@ -80,10 +82,52 @@ add_blocker() {
   if [ -z "$details" ]; then details="$1"; else details="$details,$1"; fi
 }
 
+sha256_stream() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+  elif command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 | awk '{print $NF}'
+  else
+    return 1
+  fi
+}
+
+fix_approval_basis() {
+  {
+    printf '%s\n' 'artifact=PROBLEM.md'
+    cat "$run_dir/PROBLEM.md"
+    printf '%s\n' 'artifact=DIAGNOSIS.md'
+    awk '!/<!--[[:space:]]*kimiflow:fix-approval[^>]*-->/ { print }' "$run_dir/DIAGNOSIS.md"
+    printf '%s\n' 'artifact=PLAN.md'
+    cat "$run_dir/PLAN.md"
+    printf '%s\n' 'artifact=ACCEPTANCE.md'
+    cat "$run_dir/ACCEPTANCE.md"
+    printf 'flow_schema=%s\nmode=%s\nscope=%s\naffected_files=%s\nbuild_risk=%s\n' \
+      "$flow_schema" "$mode_value" "$scope" "$affected_files" "$build_risk"
+  } | sha256_stream
+}
+
+write_fix_approval() {
+  local basis="$1" diagnosis="$run_dir/DIAGNOSIS.md" tmp mode
+  tmp="$(mktemp "$run_dir/.DIAGNOSIS.md.XXXXXX")" || return 1
+  awk '!/<!--[[:space:]]*kimiflow:fix-approval[^>]*-->/ { print }' "$diagnosis" > "$tmp" || { rm -f "$tmp"; return 1; }
+  printf '<!-- kimiflow:fix-approval cause=confirmed fix=confirmed scope=confirmed risk=confirmed source=current-run basis=%s -->\n' "$basis" >> "$tmp"
+  mode="$(stat -f '%Lp' "$diagnosis" 2>/dev/null || stat -c '%a' "$diagnosis" 2>/dev/null || true)"
+  [ -z "$mode" ] || chmod "$mode" "$tmp" || { rm -f "$tmp"; return 1; }
+  mv "$tmp" "$diagnosis"
+}
+
 scope="$(kimiflow_state_value "$state" scope | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
 alias_value="$(kimiflow_state_value "$state" alias | tr '[:upper:]' '[:lower:]')"
 mode_value="$(kimiflow_state_value "$state" mode | tr '[:upper:]' '[:lower:]')"
 flow_schema="$(kimiflow_state_value "$state" "Flow schema" | awk '{print $1}')"
+affected_files="$(kimiflow_state_value "$state" "Affected files")"
+build_risk="$(kimiflow_state_value "$state" "Build risk" | tr '[:upper:]' '[:lower:]')"
+if [ "$record_fix_approval" -eq 1 ] && [ "$mode_value" != "fix" ]; then
+  emit CLOSED 1 malformed "fix_approval_mode_invalid"
+fi
 case "$mode_value" in
   feature) artifact="$(find_first INTENT.md 2>/dev/null || true)" ;;
   fix) artifact="$(find_first PROBLEM.md 2>/dev/null || true)" ;;
@@ -103,13 +147,24 @@ fi
 # the one pre-build confirmation to a durable Fix Preview after root-cause proof.
 if [ "$mode_value" = "fix" ]; then
   case "$flow_schema" in *[!0-9]*) emit CLOSED 1 malformed "flow_schema_invalid" ;; esac
+  if [ "$record_fix_approval" -eq 1 ] && { [ -z "$flow_schema" ] || [ "$flow_schema" -lt 3 ]; }; then
+    emit CLOSED 1 malformed "fix_approval_schema_unsupported"
+  fi
   if [ -n "$flow_schema" ] && [ "$flow_schema" -ge 3 ]; then
     if [ "$post_diagnosis" -eq 0 ]; then
       emit_open
     fi
     diagnosis="$run_dir/DIAGNOSIS.md"
     [ -s "$diagnosis" ] || emit CLOSED 1 fix-approval-missing "fix_diagnosis_missing"
-    marker="$(grep -Eio '<!--[[:space:]]*kimiflow:fix-approval[^>]*-->|kimiflow:fix-approval[^[:cntrl:]]*' "$diagnosis" | head -1 || true)"
+    [ -s "$run_dir/PLAN.md" ] || emit CLOSED 1 fix-approval-missing "fix_plan_missing"
+    [ -s "$run_dir/ACCEPTANCE.md" ] || emit CLOSED 1 fix-approval-missing "fix_acceptance_missing"
+    basis="$(fix_approval_basis)" || emit CLOSED 1 malformed "fix_approval_hash_unavailable"
+
+    if [ "$record_fix_approval" -eq 1 ]; then
+      write_fix_approval "$basis" || emit CLOSED 1 malformed "fix_approval_write_failed"
+    fi
+
+    marker="$(grep -Eio '<!--[[:space:]]*kimiflow:fix-approval[^>]*-->' "$diagnosis" | head -1 || true)"
     marker="$(printf '%s\n' "$marker" | sed 's/<!--[[:space:]]*//; s/[[:space:]]*-->//')"
     [ -n "$marker" ] || emit CLOSED 1 fix-approval-missing "fix_approval_missing"
 
@@ -118,12 +173,15 @@ if [ "$mode_value" = "fix" ]; then
     approval_fix="$(printf '%s\n' "$marker" | sed -n 's/.*fix=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
     approval_scope="$(printf '%s\n' "$marker" | sed -n 's/.*scope=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
     approval_risk="$(printf '%s\n' "$marker" | sed -n 's/.*risk=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
+    approval_basis="$(printf '%s\n' "$marker" | sed -n 's/.*basis=\([A-Fa-f0-9][A-Fa-f0-9]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
 
     case "$approval_source" in current-run|current_run) ;; *) add_blocker "fix_approval_not_current_run" ;; esac
     [ "$approval_cause" = "confirmed" ] || add_blocker "fix_cause_unconfirmed"
     [ "$approval_fix" = "confirmed" ] || add_blocker "fix_approach_unconfirmed"
     [ "$approval_scope" = "confirmed" ] || add_blocker "fix_scope_unconfirmed"
     [ "$approval_risk" = "confirmed" ] || add_blocker "fix_risk_unconfirmed"
+    [ -n "$approval_basis" ] || add_blocker "fix_approval_basis_missing"
+    [ -z "$approval_basis" ] || [ "$approval_basis" = "$basis" ] || add_blocker "fix_approval_basis_stale"
 
     if [ "$blockers" -eq 0 ]; then
       emit_open

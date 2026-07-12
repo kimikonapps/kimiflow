@@ -148,6 +148,7 @@ grep -q 'discovery-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents Di
 grep -q 'Flow schema: 3' "$ROOT/phases/phase-0-setup.md" && ok "new runs declare flow schema 3" || bad "phase 0 missing flow schema 3"
 grep -q -- '--state .kimiflow/<slug>/STATE.md' "$ROOT/phases/phase-4-review-approval.md" && ok "Build risk reads durable STATE" || bad "Phase 4 does not bind Build risk to STATE"
 grep -q 'No routine Human Gate here' "$ROOT/phases/phase-1-clarify.md" && ok "fixes skip early confirmation stop" || bad "Phase 1 still requires an early fix confirmation"
+grep -q -- 'clarify-gate.sh .kimiflow/<slug> --record-fix-approval' "$ROOT/phases/phase-4-review-approval.md" && ok "Fix Preview approval is basis-bound" || bad "Phase 4 missing basis-bound fix approval recorder"
 grep -q -- 'clarify-gate.sh .kimiflow/<slug> --post-diagnosis' "$ROOT/phases/phase-4-review-approval.md" && ok "Fix Preview approval is mechanically rechecked" || bad "Phase 4 missing post-diagnosis fix approval gate"
 grep -q 'kimiflow:fix-approval' "$ROOT/reference.md" && ok "reference documents durable Fix Preview approval" || bad "reference missing durable Fix Preview approval"
 grep -q 'working-tree-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents working-tree gate" || bad "missing working-tree gate in SKILL.md"

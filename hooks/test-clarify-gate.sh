@@ -42,6 +42,7 @@ EOF
 
 run_gate() { KIMIFLOW_PLUGIN_ROOT="$WORK" "$SCRIPT" "$RUN"; }
 run_post_diagnosis_gate() { KIMIFLOW_PLUGIN_ROOT="$WORK" "$SCRIPT" "$RUN" --post-diagnosis; }
+record_fix_approval() { KIMIFLOW_PLUGIN_ROOT="$WORK" "$SCRIPT" "$RUN" --record-fix-approval; }
 
 write_phase_fixture() {
   mkdir -p "$WORK/phases"
@@ -63,6 +64,9 @@ reset_run
 out="$(run_gate)"
 assert_field "$out" 2 OPEN "complete_intent_marker_opens"
 assert_contains "$out" "reason=clean" "complete_intent_marker_reason"
+out="$(record_fix_approval)"
+assert_field "$out" 2 CLOSED "feature_cannot_record_fix_approval"
+assert_contains "$out" "fix_approval_mode_invalid" "feature_record_fix_approval_detail"
 
 reset_run
 cat > "$RUN/INTENT.md" <<'EOF'
@@ -198,30 +202,56 @@ cat > "$RUN/DIAGNOSIS.md" <<'EOF'
 # Diagnosis
 The root cause is proven, but the fix preview has not been approved.
 EOF
+cat > "$RUN/PLAN.md" <<'EOF'
+# Plan
+Apply the bounded fix and run the focused regression test.
+EOF
+cat > "$RUN/ACCEPTANCE.md" <<'EOF'
+# Acceptance
+AC-1: The reported behavior is corrected without scope expansion.
+EOF
 out="$(run_post_diagnosis_gate)"
 assert_field "$out" 2 CLOSED "fix_preview_missing_approval_closes"
 assert_contains "$out" "fix_approval_missing" "fix_preview_missing_approval_detail"
 
-cat > "$RUN/DIAGNOSIS.md" <<'EOF'
-# Diagnosis
-<!-- kimiflow:fix-approval cause=confirmed fix=confirmed scope=confirmed risk=confirmed source=current-run -->
-The user approved the verified cause, bounded fix, affected scope, and risk.
-EOF
+out="$(record_fix_approval)"
+assert_field "$out" 2 OPEN "record_fix_approval_opens"
+assert_contains "$(cat "$RUN/DIAGNOSIS.md")" "basis=" "record_fix_approval_persists_basis"
 out="$(run_post_diagnosis_gate)"
 assert_field "$out" 2 OPEN "complete_fix_preview_opens"
 
-sed -i.bak 's/risk=confirmed/risk=pending/' "$RUN/DIAGNOSIS.md" && rm "$RUN/DIAGNOSIS.md.bak"
+printf '%s\n' 'The cause changed after approval.' >> "$RUN/DIAGNOSIS.md"
 out="$(run_post_diagnosis_gate)"
-assert_field "$out" 2 CLOSED "incomplete_fix_preview_closes"
-assert_contains "$out" "fix_risk_unconfirmed" "incomplete_fix_preview_detail"
+assert_field "$out" 2 CLOSED "changed_diagnosis_invalidates_fix_approval"
+assert_contains "$out" "fix_approval_basis_stale" "changed_diagnosis_stale_detail"
 
-sed -i.bak -e 's/risk=pending/risk=confirmed/' -e 's/source=current-run/source=prior-chat/' "$RUN/DIAGNOSIS.md" && rm "$RUN/DIAGNOSIS.md.bak"
+out="$(record_fix_approval)"
+assert_field "$out" 2 OPEN "rerecord_changed_diagnosis_opens"
+printf '%s\n' 'Do unrelated cleanup too.' >> "$RUN/PLAN.md"
 out="$(run_post_diagnosis_gate)"
-assert_field "$out" 2 CLOSED "stale_fix_preview_approval_closes"
-assert_contains "$out" "fix_approval_not_current_run" "stale_fix_preview_approval_detail"
+assert_field "$out" 2 CLOSED "changed_plan_invalidates_fix_approval"
+assert_contains "$out" "fix_approval_basis_stale" "changed_plan_stale_detail"
+
+out="$(record_fix_approval)"
+assert_field "$out" 2 OPEN "rerecord_changed_plan_opens"
+sed -i.bak 's/Scope: small/Scope: large/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+out="$(run_post_diagnosis_gate)"
+assert_field "$out" 2 CLOSED "changed_scope_invalidates_fix_approval"
+assert_contains "$out" "fix_approval_basis_stale" "changed_scope_stale_detail"
+
+sed -i.bak 's/Scope: large/Scope: small/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+out="$(record_fix_approval)"
+assert_field "$out" 2 OPEN "rerecord_current_basis_opens"
+sed -i.bak 's/source=current-run/source=prior-chat/' "$RUN/DIAGNOSIS.md" && rm "$RUN/DIAGNOSIS.md.bak"
+out="$(run_post_diagnosis_gate)"
+assert_field "$out" 2 CLOSED "prior_chat_fix_approval_closes"
+assert_contains "$out" "fix_approval_not_current_run" "prior_chat_fix_approval_detail"
 
 sed -i.bak 's/Flow schema: 3/Flow schema: 2/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
 rm "$RUN/DIAGNOSIS.md"
+out="$(record_fix_approval)"
+assert_field "$out" 2 CLOSED "schema2_cannot_record_new_fix_approval"
+assert_contains "$out" "fix_approval_schema_unsupported" "schema2_record_fix_approval_detail"
 out="$(run_gate)"
 assert_field "$out" 2 CLOSED "schema2_fix_keeps_legacy_phase1_contract"
 assert_contains "$out" "intent_evidence_missing" "schema2_fix_legacy_contract_detail"

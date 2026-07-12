@@ -353,7 +353,7 @@ The internal plan remains fully gated, but the user sees a plain-language contra
 - **Risk declaration:** the top model records `Build risk: none|required` plus reason in STATE after Discovery. `required` means scope expansion; unresolved product choice; breaking change; risky migration; public API/durable data contract; paid or privacy-sensitive external service; hard-to-reverse architecture; or material drift from confirmed intent. Routine reversible HOW is `none`.
 - **Preview:** derive from INTENT, Discovery decisions, and ACCEPTANCE, not planner narration: `Will build` · `Not included` · `Important decisions` · `Risks/irreversibility` · `Effort`. Keep it to one screen and omit task lists, classes, and incidental file paths.
 - **Feature/audit decision:** `resolve-build-gate.sh decide --state .kimiflow/<slug>/STATE.md --interactive <yes|no> [--alias full]` reads the durable risk declaration and emits `CONTINUE|STOP|PARK`; missing/invalid state or a supplied legacy `--risk` that disagrees with STATE parks. Direct `--risk <none|required>` remains a legacy caller fallback only. CONTINUE → preview then Phase 5. STOP → approve/change/defer. PARK/headless → backlog. `--prepare` always parks before this decision.
-- **Fix decision:** after internal plan review, show **Verified cause · Will fix · Not included · Affected scope · Risks/regression**. Approve writes the schema-3 `kimiflow:fix-approval` marker to `DIAGNOSIS.md`; `clarify-gate.sh <run> --post-diagnosis` must return OPEN before Phase 5. Change returns to the owning phase; defer/headless parks. Do not also run the generic Build Preview resolver. Schema <3 preserves its prior resume behavior.
+- **Fix decision:** after internal plan review, show **Verified cause · Will fix · Not included · Affected scope · Risks/regression**. Approve runs `clarify-gate.sh <run> --record-fix-approval`; its basis-bound marker in `DIAGNOSIS.md` must then pass `clarify-gate.sh <run> --post-diagnosis` before Phase 5. Change returns to the owning phase; defer/headless parks. Do not also run the generic Build Preview resolver. Schema <3 preserves its prior resume behavior.
 - **Resume:** run working-tree and plan-basis safety first, narrowly revalidate Phase 2/3 if stale, regenerate the mode-specific preview, and ask only at its required decision. Legacy parked plans remain usable; no Discovery/Fix Preview marker is retroactively required unless revalidation enters the new schema flow.
 
 ---
@@ -512,11 +512,7 @@ When those facts are sufficient to investigate, write the brief and continue wit
 
 **Fix Preview gate (Phase 4, schema 3):** after the plan gate is internally clean, show one compact preview with the verified cause, exact bounded fix, exclusions, affected scope, and risk/regression. Ask "Soll ich ihn so fixen?" in the user's language. Approval adds:
 
-```md
-<!-- kimiflow:fix-approval cause=confirmed fix=confirmed scope=confirmed risk=confirmed source=current-run -->
-```
-
-Then run `hooks/clarify-gate.sh .kimiflow/<slug> --post-diagnosis`; OPEN is required before production-code changes. This is the fix's only pre-build Human Gate and already covers risky/auth/privacy/migration consequences, so no second generic Build Preview follows. Any later cause, approach, plan, scope, or risk change deletes the marker before re-entry and requires a fresh Preview. The final Commit Gate remains unchanged.
+After explicit approval, run `hooks/clarify-gate.sh .kimiflow/<slug> --record-fix-approval`. It writes the `kimiflow:fix-approval` marker with a SHA-256 `basis=` fingerprint over `PROBLEM.md`, marker-free `DIAGNOSIS.md`, `PLAN.md`, `ACCEPTANCE.md`, and the relevant mode/scope/risk state. Then run `hooks/clarify-gate.sh .kimiflow/<slug> --post-diagnosis`; OPEN is required before production-code changes. This is the fix's only pre-build Human Gate and already covers risky/auth/privacy/migration consequences, so no second generic Build Preview follows. Any later cause, approach, plan, scope, or risk change makes the stored basis stale and requires a fresh Preview. The final Commit Gate remains unchanged.
 
 **BUG-REPRO.md (Phase 2 + Phase 6 evidence):**
 ```

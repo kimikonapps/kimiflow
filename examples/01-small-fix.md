@@ -67,7 +67,7 @@ Small scope → no second round, no loop.
 
 **Fix Preview — one pre-build Human Gate:** verified cause = exclusive slice bound; fix = remove the
 `- 1`; scope = paginator + its test; risk = low, no API change. ✋ **"Fix it this way?"** → approved.
-`DIAGNOSIS.md` records `kimiflow:fix-approval`; `clarify-gate.sh --post-diagnosis` → OPEN.
+`clarify-gate.sh --record-fix-approval` records the basis-bound approval; `--post-diagnosis` → OPEN.
 
 ### 🟠 Phase 5 — Implement (TDD)
 

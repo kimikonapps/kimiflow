@@ -26,5 +26,6 @@ same user-control purpose; asking neither risks fixing the wrong thing.
 
 ## Pass criteria
 Picks B; asks no Phase-1 confirmation when diagnosis is unblocked; still refuses to fix an unproven cause; includes
-cause/fix/not-included/scope/risk in one post-diagnosis Fix Preview; records `kimiflow:fix-approval`; requires
-`clarify-gate.sh --post-diagnosis` OPEN; does not run a second generic Build Preview; preserves the Commit Gate.
+cause/fix/not-included/scope/risk in one post-diagnosis Fix Preview; runs `clarify-gate.sh --record-fix-approval`
+to bind approval to that basis; requires `--post-diagnosis` OPEN; does not run a second generic Build Preview;
+preserves the Commit Gate.
