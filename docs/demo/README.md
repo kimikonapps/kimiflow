@@ -1,7 +1,7 @@
 # docs/demo — the kimiflow demo GIF
 
 The README's **30-second demo** links here. The committed clip is a scripted overview of the current
-Kimiflow front door and core loop: launcher → project-map status → memory recall → mode choice →
+Kimiflow front door and core loop: launcher → project state → adaptive discovery → mode choice →
 clarify/understand/plan → mechanical gates → commit stop → learning loop.
 
 Two ways to produce it. **Prefer A** — a real recording is the honest, credible artifact. B is a

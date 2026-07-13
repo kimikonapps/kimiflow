@@ -1,5 +1,5 @@
 # kimiflow-demo.tape — render the SCRIPTED ILLUSTRATION (play.sh) to a GIF.
-# play.sh walks the current core flow: launcher → project map/memory status →
+# play.sh walks the current core flow: launcher → project state → adaptive discovery →
 # gated feature/fix loop → commit-gate → learning loop. This is a reconstruction,
 # NOT a captured model session. For a real run, see docs/demo/README.md.
 #

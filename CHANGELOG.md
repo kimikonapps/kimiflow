@@ -4,7 +4,8 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Changed
+- **README and demo are current and substantially leaner** (`README.md`, `README.de.md`, `docs/demo/`): the default GitHub README is now a concise English entry point with a separate German version, deep operational detail links to the canonical docs, current Codex install/update commands, and the re-rendered demo reflects adaptive Discovery, scope-aware recall, mode-specific Previews, and evidence-only learning promotion.
 
 ## 0.1.67
 
