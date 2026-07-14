@@ -1,6 +1,6 @@
 {
   "name": "kimiflow",
-  "version": "0.1.67",
+  "version": "0.2.0",
   "description": "Calm context-aware Kimiflow launcher and active-session feature/fix loop for Codex with natural mode aliases, clean-worktree, red/green, plan-blocker, code-review, memory, Obsidian, and Vault gates.",
   "author": {
     "name": "kimikon",

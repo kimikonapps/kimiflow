@@ -4,6 +4,12 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.0
+
+The autonomous recovery release: persistent review blockers now make Kimiflow change strategy and continue autonomously instead of asking the user to approve another equivalent run.
+
 ### Changed
 - **Autonomous recovery is mechanically bound to authority and strategy state** (`clarify-gate.sh`, `active-run.sh`, `resolve-review-gate.sh`): schema-3 Fix Preview approval protects problem/acceptance/mode/scope/risk across technical recovery (including trivial/mode bypasses); typed `await-user --kind` rejects Preview/Commit pauses until recovery is clean; and gate-aware epochs require verified `PLAN.md` baselines, chained recomputed hashes, and a complete source-round ledger.
 - **Review caps now change strategy instead of asking for another run** (`resolve-review-gate.sh`, Phase 2/4/5/7, review rubric, behavioral scenario 03): plan/code findings keep immutable global round ledgers while `--epoch-start` scopes anti-oscillation to one strategy epoch; cap/oscillation/reappearance records compact recovery, uses bounded memory/current primary sources and a falsifiable strategy delta, then continues through the existing Stop gate. Only missing authority/external state may await the user; existing one-time Preview and Commit Gates are unchanged.
