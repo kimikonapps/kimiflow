@@ -108,6 +108,11 @@ class TestAwaitUser(unittest.TestCase):
         rc, _ = run_main(["start", "--run", ".kimiflow/demo", "--root", self.root, "--write"])
         self.assertEqual(rc, 0)
 
+    def write_state(self, extra=""):
+        run_dir = os.path.join(self.root, ".kimiflow", "demo")
+        with open(os.path.join(run_dir, "STATE.md"), "w", encoding="utf-8") as handle:
+            handle.write("Status: active\nMode: feature\nScope: small\nAffected files: src/a.txt\n" + extra)
+
     def hook_payload(self):
         return json.dumps({"cwd": self.root, "session_id": "owner-session"})
 
@@ -115,8 +120,11 @@ class TestAwaitUser(unittest.TestCase):
         with open(os.path.join(self.root, ".kimiflow", "session", "ACTIVE_RUN.json"), "r", encoding="utf-8") as handle:
             return json.load(handle)
 
-    def await_user(self, reason="engine gate question"):
-        return run_main(["await-user", "--run", ".kimiflow/demo", "--reason", reason, "--root", self.root, "--write"])
+    def await_user(self, reason="engine gate question", kind=None):
+        args = ["await-user", "--run", ".kimiflow/demo", "--reason", reason, "--root", self.root, "--write"]
+        if kind is not None:
+            args.extend(["--kind", kind])
+        return run_main(args)
 
     def test_await_user_sets_flag_reason_and_timestamp(self):
         rc, out = self.await_user()
@@ -126,6 +134,39 @@ class TestAwaitUser(unittest.TestCase):
         self.assertIs(active.get("awaiting_user"), True)
         self.assertEqual(active.get("awaiting_reason"), "engine gate question")
         self.assertTrue(active.get("awaiting_since"))
+
+    def test_schema3_requires_known_kind(self):
+        self.write_state("Flow schema: 3\n")
+        rc, _ = self.await_user()
+        self.assertEqual(rc, 2)
+        rc, _ = self.await_user(kind="anything")
+        self.assertEqual(rc, 2)
+        self.assertNotIn("awaiting_user", self.read_active())
+
+    def test_schema3_allows_deliberate_gate_outside_recovery(self):
+        self.write_state("Flow schema: 3\nRecovery: clean\n")
+        rc, out = self.await_user(kind="preview")
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["awaiting_kind"], "preview")
+
+    def test_recovery_rejects_preview_and_keeps_stop_gate_blocking(self):
+        self.write_state("Flow schema: 3\nRecovery: active\n")
+        rc, _ = self.await_user(kind="preview")
+        self.assertEqual(rc, 2)
+        rc, out = run_main(["stop-gate"], stdin_text=self.hook_payload())
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["decision"], "block")
+
+    def test_recovery_allows_only_missing_authority_kinds(self):
+        self.write_state("Flow schema: 3\nRecovery: active\n")
+        allowed = ("missing-input", "authority", "external-access", "paid-privacy", "scope-risk", "irreversible")
+        for kind in allowed:
+            with self.subTest(kind=kind):
+                rc, out = self.await_user(kind=kind)
+                self.assertEqual(rc, 0)
+                self.assertEqual(json.loads(out)["awaiting_kind"], kind)
+                rc, _ = run_main(["prompt-context"], stdin_text=self.hook_payload())
+                self.assertEqual(rc, 0)
 
     def test_status_reports_awaiting_user(self):
         rc, out = run_main(["status", "--root", self.root])

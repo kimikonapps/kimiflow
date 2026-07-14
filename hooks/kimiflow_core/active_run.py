@@ -11,7 +11,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 
-from . import phase_reads
+from . import phase_reads, state
 from .atomic import atomic_write
 
 
@@ -26,7 +26,7 @@ USAGE = """#!/usr/bin/env bash
 #   active-run.sh mark-built|mark-accepted --id <id> [--root <path>] [--write] [--pretty]
 #   active-run.sh mark-rejected|drop-item --id <id> --reason <text> [--root <path>] [--write] [--pretty]
 #   active-run.sh refresh-baseline [--root <path>] [--write] [--pretty]
-#   active-run.sh await-user --run <path> [--reason <text>] [--root <path>] [--write] [--pretty]
+#   active-run.sh await-user --run <path> [--kind <kind>] [--reason <text>] [--root <path>] [--write] [--pretty]
 #   active-run.sh phase-read --run <path> --phase <0-7> --file phases/<file>.md [--root <path>] [--write] [--pretty]
 #   active-run.sh phase-read-status --run <path> [--root <path>] [--json] [--pretty]
 #   active-run.sh phase-read-gate --run <path> --through-phase <0-7> [--root <path>]
@@ -50,6 +50,17 @@ class ActiveError(Exception):
         super().__init__(message)
         self.message = message
         self.code = code
+
+
+RECOVERY_AWAIT_USER_KINDS = {
+    "missing-input",
+    "authority",
+    "external-access",
+    "paid-privacy",
+    "scope-risk",
+    "irreversible",
+}
+AWAIT_USER_KINDS = RECOVERY_AWAIT_USER_KINDS | {"preview", "commit"}
 
 
 def usage():
@@ -388,6 +399,7 @@ def status_json(root):
         "stale_risk": stale.get("risk", "unknown"),
         "stale": stale,
         "awaiting_user": active.get("awaiting_user") is True,
+        "awaiting_kind": active.get("awaiting_kind") if active.get("awaiting_user") is True else None,
         "terminal": status in ("done", "parked", "failed", "aborted"),
         "next_action": (
             "revalidate_then_refresh_baseline"
@@ -654,19 +666,35 @@ def cmd_refresh_baseline(args):
 
 
 def cmd_await_user(args):
-    opts = parse_options(args, "await-user", {"--root": "", "--run": "", "--reason": "", "--write": False, "--pretty": False})
+    opts = parse_options(args, "await-user", {"--root": "", "--run": "", "--kind": "", "--reason": "", "--write": False, "--pretty": False})
     need_jq()
     if not opts["--run"]:
         die("await-user requires --run", 2)
     root = resolve_root(opts["--root"], strict=opts["--write"])
     bind_owner_for_write(root, opts["--write"])
     status = require_active(root)
-    run_rel = rel_path(root, resolve_run_dir(root, opts["--run"]))
+    run_dir = resolve_run_dir(root, opts["--run"])
+    run_rel = rel_path(root, run_dir)
     if run_rel != status["run"]:
         die("await-user: --run does not match active session: %s" % status["run"], 1)
+    kind = opts["--kind"].strip().lower()
+    flow_schema_value = state.state_value(os.path.join(run_dir, "STATE.md"), "Flow schema")
+    flow_schema_parts = flow_schema_value.split()
+    flow_schema = flow_schema_parts[0] if flow_schema_parts else ""
+    recovery = state.state_value(os.path.join(run_dir, "STATE.md"), "Recovery").strip().lower()
+    if kind and kind not in AWAIT_USER_KINDS:
+        die("await-user: unknown --kind: %s" % kind, 2)
+    if flow_schema.isdigit() and int(flow_schema) >= 3 and not kind:
+        die("await-user: schema-3 runs require --kind", 2)
+    if recovery == "active" and kind not in RECOVERY_AWAIT_USER_KINDS:
+        die("await-user: --kind %s is not allowed during active recovery" % (kind or "<missing>"), 2)
     active = load_active(root)
     updated = dict(active)
     updated["awaiting_user"] = True
+    if kind:
+        updated["awaiting_kind"] = kind
+    else:
+        updated.pop("awaiting_kind", None)
     if opts["--reason"]:
         updated["awaiting_reason"] = opts["--reason"]
     else:
@@ -675,7 +703,7 @@ def cmd_await_user(args):
     updated["updated_at"] = iso_now()
     if opts["--write"]:
         write_active(root, updated)
-    json_print({"status": "awaiting_user", "written": opts["--write"] is True, "run": run_rel, "reason": opts["--reason"] or None}, opts["--pretty"])
+    json_print({"status": "awaiting_user", "written": opts["--write"] is True, "run": run_rel, "awaiting_kind": kind or None, "reason": opts["--reason"] or None}, opts["--pretty"])
 
 
 def cmd_phase_read(args):
@@ -1097,7 +1125,7 @@ def cmd_prompt_context():
     if active.get("awaiting_user") is True:
         # The user answered the gate question the orchestrator was awaiting; resume the run.
         resumed = dict(active)
-        for key in ("awaiting_user", "awaiting_reason", "awaiting_since"):
+        for key in ("awaiting_user", "awaiting_kind", "awaiting_reason", "awaiting_since"):
             resumed.pop(key, None)
         resumed["updated_at"] = iso_now()
         write_active(root, resumed)

@@ -226,6 +226,24 @@ assert_jq "$out" '.awaiting_user == false' "prompt_context_clears_awaiting_user"
 out="$(printf '{"cwd":"%s","session_id":"owner-session"}' "$REPO" | KIMIFLOW_HOST=codex "$SCRIPT" stop-gate)"
 assert_jq "$out" '.decision == "block"' "stop_gate_blocks_after_awaiting_user_cleared"
 
+printf 'Flow schema: 3\nRecovery: active\n' >> "$REPO/.kimiflow/demo/STATE.md"
+if run_active await-user --run .kimiflow/demo --reason "another technical round" --write >/dev/null 2>&1; then
+  fail "schema3_await_user_requires_kind"
+else
+  pass "schema3_await_user_requires_kind"
+fi
+if run_active await-user --run .kimiflow/demo --kind preview --reason "approve another technical round" --write >/dev/null 2>&1; then
+  fail "recovery_rejects_preview_pause"
+else
+  pass "recovery_rejects_preview_pause"
+fi
+out="$(printf '{"cwd":"%s","session_id":"owner-session"}' "$REPO" | KIMIFLOW_HOST=codex "$SCRIPT" stop-gate)"
+assert_jq "$out" '.decision == "block"' "rejected_recovery_pause_keeps_stop_gate_closed"
+out="$(run_active await-user --run .kimiflow/demo --kind external-access --reason "credential unavailable" --write)"
+assert_jq "$out" '.status == "awaiting_user" and .awaiting_kind == "external-access"' "recovery_allows_external_access_pause"
+out="$(printf '{"cwd":"%s","session_id":"owner-session"}' "$REPO" | KIMIFLOW_HOST=codex "$SCRIPT" prompt-context)"
+assert_jq "$out" '.hookSpecificOutput.hookEventName == "UserPromptSubmit"' "typed_recovery_pause_resumes_on_user_prompt"
+
 printf 'two\n' > "$REPO/src/a.txt"
 ( cd "$REPO" && git add src/a.txt && git commit -q -m change-a )
 out="$(run_active status)"

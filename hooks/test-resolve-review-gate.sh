@@ -5,12 +5,21 @@ set -u
 SCRIPT="$(cd "$(dirname "$0")" && pwd)/resolve-review-gate.sh"
 WORK="$(mktemp -d)"; FD="$WORK/findings"; trap 'rm -rf "$WORK"' EXIT
 FAILS=0
+BEFORE="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+AFTER="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 pass() { printf 'PASS: %s\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1"; FAILS=$((FAILS + 1)); }
-reset() { rm -rf "$FD"; mkdir -p "$FD"; }
+reset() { rm -rf "$FD"; rm -f "$WORK/STATE.md" "$WORK/RECOVERY.md"; mkdir -p "$FD"; }
 put()  { printf '%s\n' "$2" > "$FD/$1"; }                 # put r1-B.md "FINDING ..."
 putraw(){ printf '%b' "$2" > "$FD/$1"; }                  # exact bytes (multi-line/leading space)
 run()  { "$SCRIPT" "$FD" "$@"; }
+receipt() {
+  local gate="$1" source="$2" start="$3" cap="$4" before="${5:-$BEFORE}" after="${6:-$AFTER}"
+  printf 'Review gate: %s\nReview epoch start: %s\nReview epoch cap: %s\nStrategy fingerprint: %s\nRecovery: active\n' \
+    "$gate" "$start" "$cap" "$after" > "$WORK/STATE.md"
+  printf '<!-- kimiflow:recovery gate=%s source-round=%s epoch-start=%s cap=%s before=%s after=%s -->\n' \
+    "$gate" "$source" "$start" "$cap" "$before" "$after" > "$WORK/RECOVERY.md"
+}
 # assert field <output> <fieldnum> <expected> <label>
 af() { got="$(printf '%s' "$1" | cut -f"$2")"; if [ "$got" = "$3" ]; then pass "$4"; else fail "$4 (f$2='$got' want '$3')"; fi; }
 
@@ -125,13 +134,16 @@ out="$(run --round 08 --expect B --cap 10)"; af "$out" 1 CLOSED "zeropad_round_h
 reset
 put r2-B.md "FINDING HIGH src/old:1 :: old strategy"
 put r3-B.md "FINDING HIGH src/new:1 :: new strategy"
-af "$(run --round 3 --expect B --epoch-start 3 --cap 4)" 3 open-findings "epoch_first_round_skips_previous_strategy"
+af "$(run --round 3 --expect B --epoch-start 3 --cap 4 --gate plan)" 3 malformed "epoch_without_receipt_is_malformed"
+receipt plan 2 3 4
+af "$(run --round 3 --expect B --epoch-start 3 --cap 4 --gate plan)" 3 open-findings "epoch_first_round_skips_previous_strategy"
 
 # anti-oscillation still applies after the first round inside the new epoch.
 reset
 put r3-B.md "FINDING HIGH src/a:1 :: x"
 put r4-B.md "FINDING HIGH src/b:2 :: y"
-af "$(run --round 4 --expect B --epoch-start 3 --cap 5)" 3 oscillation "epoch_internal_oscillation"
+receipt plan 2 3 5
+af "$(run --round 4 --expect B --epoch-start 3 --cap 5 --gate plan)" 3 oscillation "epoch_internal_oscillation"
 
 # a finding from an older failed epoch is not a reappearance in the current strategy epoch.
 reset
@@ -139,7 +151,8 @@ put r1-B.md "FINDING HIGH src/a:1 :: old"
 put r3-B.md "FINDING HIGH src/c:3 :: c
 FINDING HIGH src/d:4 :: d"
 put r4-B.md "FINDING HIGH src/a:1 :: new epoch"
-af "$(run --round 4 --expect B --epoch-start 3 --cap 5)" 3 open-findings "epoch_reappearance_ignores_older_epochs"
+receipt plan 2 3 5
+af "$(run --round 4 --expect B --epoch-start 3 --cap 5 --gate plan)" 3 open-findings "epoch_reappearance_ignores_older_epochs"
 
 # a disappeared finding that returns inside the current epoch is still rejected.
 reset
@@ -149,14 +162,39 @@ FINDING HIGH src/c:3 :: c"
 put r4-B.md "FINDING HIGH src/b:2 :: b
 FINDING HIGH src/c:3 :: c"
 put r5-B.md "FINDING HIGH src/a:1 :: a"
-af "$(run --round 5 --expect B --epoch-start 3 --cap 6)" 3 reappeared "epoch_internal_reappearance"
+receipt plan 2 3 6
+af "$(run --round 5 --expect B --epoch-start 3 --cap 6 --gate plan)" 3 reappeared "epoch_internal_reappearance"
 
 # clean at an epoch cap opens, while a later round stays closed.
 reset
 put r4-B.md "NONE"
-af "$(run --round 4 --expect B --epoch-start 3 --cap 4)" 1 OPEN "epoch_clean_at_cap_opens"
+receipt plan 2 3 4
+af "$(run --round 4 --expect B --epoch-start 3 --cap 4 --gate plan)" 1 OPEN "epoch_clean_at_cap_opens"
 put r5-B.md "NONE"
-af "$(run --round 5 --expect B --epoch-start 3 --cap 4)" 3 cap-reached "epoch_clean_beyond_cap_stays_closed"
+af "$(run --round 5 --expect B --epoch-start 3 --cap 4 --gate plan)" 3 cap-reached "epoch_clean_beyond_cap_stays_closed"
+
+# a later epoch is not caller-trusted: continuity, fingerprints, marker, and STATE must agree.
+reset
+put r1-B.md "FINDING HIGH src/a:1 :: unresolved"
+put r2-B.md "FINDING HIGH src/a:1 :: unresolved"
+af "$(run --round 2 --expect B --epoch-start 2 --cap 3 --gate plan)" 3 malformed "epoch_reset_without_recovery_rejected"
+receipt plan 0 2 3
+af "$(run --round 2 --expect B --epoch-start 2 --cap 3 --gate plan)" 3 malformed "epoch_noncontiguous_source_rejected"
+receipt plan 1 2 3 "$BEFORE" "$BEFORE"
+af "$(run --round 2 --expect B --epoch-start 2 --cap 3 --gate plan)" 3 malformed "epoch_equal_fingerprints_rejected"
+receipt plan 1 2 3
+sed -i.bak 's/Review epoch cap: 3/Review epoch cap: 4/' "$WORK/STATE.md" && rm "$WORK/STATE.md.bak"
+af "$(run --round 2 --expect B --epoch-start 2 --cap 3 --gate plan)" 3 malformed "epoch_state_mismatch_rejected"
+receipt plan 1 2 3
+af "$(run --round 2 --expect B --epoch-start 2 --cap 3 --gate plan)" 3 open-findings "epoch_matching_receipt_allows_new_strategy"
+
+# code and plan receipts are gate-specific.
+reset
+put r3-code-verified.md "FINDING HIGH src/code:3 :: unresolved"
+receipt plan 2 3 4
+af "$(run --round 3 --expect code-verified --epoch-start 3 --cap 4 --gate code)" 3 malformed "epoch_wrong_gate_receipt_rejected"
+receipt code 2 3 4
+af "$(run --round 3 --expect code-verified --epoch-start 3 --cap 4 --gate code)" 3 open-findings "epoch_code_receipt_accepted"
 
 # explicit epoch bounds are fail-closed; legacy calls without the option retain their old range.
 reset

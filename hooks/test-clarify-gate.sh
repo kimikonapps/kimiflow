@@ -180,6 +180,7 @@ Flow schema: 3
 Status: active
 Mode: fix
 Scope: small
+Build risk: none
 Phase 0: done
 Phase 1: done
 EOF
@@ -228,23 +229,37 @@ chmod +x "$WORK/bin/stat"
 out="$(record_fix_approval_with_gnu_stat)"
 assert_field "$out" 2 OPEN "record_fix_approval_opens"
 assert_contains "$(cat "$RUN/DIAGNOSIS.md")" "basis=" "record_fix_approval_persists_basis"
+assert_contains "$(cat "$RUN/STATE.md")" "Fix approval: confirmed" "record_fix_approval_persists_state_marker"
+assert_contains "$(cat "$RUN/STATE.md")" "Fix approval basis:" "record_fix_approval_persists_authority_basis"
 out="$(run_post_diagnosis_gate)"
 assert_field "$out" 2 OPEN "complete_fix_preview_opens"
 
 printf '%s\n' 'The cause changed after approval.' >> "$RUN/DIAGNOSIS.md"
 out="$(run_post_diagnosis_gate)"
-assert_field "$out" 2 CLOSED "changed_diagnosis_invalidates_fix_approval"
-assert_contains "$out" "fix_approval_basis_stale" "changed_diagnosis_stale_detail"
+assert_field "$out" 2 OPEN "changed_diagnosis_keeps_authority_approval"
 
-out="$(record_fix_approval)"
-assert_field "$out" 2 OPEN "rerecord_changed_diagnosis_opens"
-printf '%s\n' 'Do unrelated cleanup too.' >> "$RUN/PLAN.md"
+printf '%s\n' 'Use a different bounded implementation strategy.' >> "$RUN/PLAN.md"
 out="$(run_post_diagnosis_gate)"
-assert_field "$out" 2 CLOSED "changed_plan_invalidates_fix_approval"
-assert_contains "$out" "fix_approval_basis_stale" "changed_plan_stale_detail"
+assert_field "$out" 2 OPEN "changed_plan_keeps_authority_approval"
+
+printf '%s\n' 'Affected files: src/recovered.ts' >> "$RUN/STATE.md"
+out="$(run_post_diagnosis_gate)"
+assert_field "$out" 2 OPEN "changed_affected_files_keep_authority_approval"
+
+printf '%s\n' 'AC-2: Preserve the approved boundary.' >> "$RUN/ACCEPTANCE.md"
+out="$(run_post_diagnosis_gate)"
+assert_field "$out" 2 CLOSED "changed_acceptance_invalidates_fix_approval"
+assert_contains "$out" "fix_approval_basis_stale" "changed_acceptance_stale_detail"
 
 out="$(record_fix_approval)"
-assert_field "$out" 2 OPEN "rerecord_changed_plan_opens"
+assert_field "$out" 2 OPEN "rerecord_changed_acceptance_opens"
+printf '%s\n' 'The requested outcome changed.' >> "$RUN/PROBLEM.md"
+out="$(run_post_diagnosis_gate)"
+assert_field "$out" 2 CLOSED "changed_problem_invalidates_fix_approval"
+assert_contains "$out" "fix_approval_basis_stale" "changed_problem_stale_detail"
+
+out="$(record_fix_approval)"
+assert_field "$out" 2 OPEN "rerecord_changed_problem_opens"
 sed -i.bak 's/Scope: small/Scope: large/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
 out="$(run_post_diagnosis_gate)"
 assert_field "$out" 2 CLOSED "changed_scope_invalidates_fix_approval"
@@ -253,6 +268,16 @@ assert_contains "$out" "fix_approval_basis_stale" "changed_scope_stale_detail"
 sed -i.bak 's/Scope: large/Scope: small/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
 out="$(record_fix_approval)"
 assert_field "$out" 2 OPEN "rerecord_current_basis_opens"
+sed -i.bak 's/Build risk: none/Build risk: required/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+out="$(run_post_diagnosis_gate)"
+assert_field "$out" 2 CLOSED "changed_risk_invalidates_fix_approval"
+assert_contains "$out" "fix_approval_basis_stale" "changed_risk_stale_detail"
+
+out="$(record_fix_approval)"
+assert_field "$out" 2 OPEN "rerecord_changed_risk_opens"
+grep -v '^Fix approval' "$RUN/STATE.md" > "$RUN/STATE.tmp" && mv "$RUN/STATE.tmp" "$RUN/STATE.md"
+out="$(run_post_diagnosis_gate)"
+assert_field "$out" 2 OPEN "legacy_diagnosis_approval_fallback_opens"
 sed -i.bak 's/source=current-run/source=prior-chat/' "$RUN/DIAGNOSIS.md" && rm "$RUN/DIAGNOSIS.md.bak"
 out="$(run_post_diagnosis_gate)"
 assert_field "$out" 2 CLOSED "prior_chat_fix_approval_closes"

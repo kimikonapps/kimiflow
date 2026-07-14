@@ -94,7 +94,7 @@ sha256_stream() {
   fi
 }
 
-fix_approval_basis() {
+legacy_fix_approval_basis() {
   {
     printf '%s\n' 'artifact=PROBLEM.md'
     cat "$run_dir/PROBLEM.md"
@@ -109,14 +109,33 @@ fix_approval_basis() {
   } | sha256_stream
 }
 
+fix_authority_basis() {
+  {
+    printf '%s\n' 'artifact=PROBLEM.md'
+    cat "$run_dir/PROBLEM.md"
+    printf '%s\n' 'artifact=ACCEPTANCE.md'
+    cat "$run_dir/ACCEPTANCE.md"
+    printf 'flow_schema=%s\nmode=%s\nscope=%s\nbuild_risk=%s\n' \
+      "$flow_schema" "$mode_value" "$scope" "$build_risk"
+  } | sha256_stream
+}
+
 write_fix_approval() {
-  local basis="$1" diagnosis="$run_dir/DIAGNOSIS.md" tmp mode
+  local authority_basis="$1" legacy_basis="$2" diagnosis="$run_dir/DIAGNOSIS.md" tmp state_tmp mode state_mode
   tmp="$(mktemp "$run_dir/.DIAGNOSIS.md.XXXXXX")" || return 1
-  awk '!/<!--[[:space:]]*kimiflow:fix-approval[^>]*-->/ { print }' "$diagnosis" > "$tmp" || { rm -f "$tmp"; return 1; }
-  printf '<!-- kimiflow:fix-approval cause=confirmed fix=confirmed scope=confirmed risk=confirmed source=current-run basis=%s -->\n' "$basis" >> "$tmp"
+  state_tmp="$(mktemp "$run_dir/.STATE.md.XXXXXX")" || { rm -f "$tmp"; return 1; }
+  awk '!/<!--[[:space:]]*kimiflow:fix-approval[^>]*-->/ { print }' "$diagnosis" > "$tmp" \
+    || { rm -f "$tmp" "$state_tmp"; return 1; }
+  printf '<!-- kimiflow:fix-approval cause=confirmed fix=confirmed scope=confirmed risk=confirmed source=current-run basis=%s -->\n' "$legacy_basis" >> "$tmp"
+  awk '{ line=tolower($0); gsub(/\*\*/, "", line); sub(/^[[:space:]]*-[[:space:]]*/, "", line); if (line !~ /^[[:space:]]*fix approval([[:space:]]+basis)?:/) print }' "$state" > "$state_tmp" \
+    || { rm -f "$tmp" "$state_tmp"; return 1; }
+  printf 'Fix approval: confirmed\nFix approval basis: %s\n' "$authority_basis" >> "$state_tmp"
   mode="$(stat -c '%a' "$diagnosis" 2>/dev/null || stat -f '%Lp' "$diagnosis" 2>/dev/null || true)"
-  [ -z "$mode" ] || chmod "$mode" "$tmp" || { rm -f "$tmp"; return 1; }
-  mv "$tmp" "$diagnosis"
+  state_mode="$(stat -c '%a' "$state" 2>/dev/null || stat -f '%Lp' "$state" 2>/dev/null || true)"
+  [ -z "$mode" ] || chmod "$mode" "$tmp" || { rm -f "$tmp" "$state_tmp"; return 1; }
+  [ -z "$state_mode" ] || chmod "$state_mode" "$state_tmp" || { rm -f "$tmp" "$state_tmp"; return 1; }
+  mv "$tmp" "$diagnosis" || { rm -f "$tmp" "$state_tmp"; return 1; }
+  mv "$state_tmp" "$state" || { rm -f "$state_tmp"; return 1; }
 }
 
 scope="$(kimiflow_state_value "$state" scope | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
@@ -158,30 +177,39 @@ if [ "$mode_value" = "fix" ]; then
     [ -s "$diagnosis" ] || emit CLOSED 1 fix-approval-missing "fix_diagnosis_missing"
     [ -s "$run_dir/PLAN.md" ] || emit CLOSED 1 fix-approval-missing "fix_plan_missing"
     [ -s "$run_dir/ACCEPTANCE.md" ] || emit CLOSED 1 fix-approval-missing "fix_acceptance_missing"
-    basis="$(fix_approval_basis)" || emit CLOSED 1 malformed "fix_approval_hash_unavailable"
+    authority_basis="$(fix_authority_basis)" || emit CLOSED 1 malformed "fix_approval_hash_unavailable"
+    legacy_basis="$(legacy_fix_approval_basis)" || emit CLOSED 1 malformed "fix_approval_hash_unavailable"
 
     if [ "$record_fix_approval" -eq 1 ]; then
-      write_fix_approval "$basis" || emit CLOSED 1 malformed "fix_approval_write_failed"
+      write_fix_approval "$authority_basis" "$legacy_basis" || emit CLOSED 1 malformed "fix_approval_write_failed"
     fi
 
-    marker="$(grep -Eio '<!--[[:space:]]*kimiflow:fix-approval[^>]*-->' "$diagnosis" | head -1 || true)"
-    marker="$(printf '%s\n' "$marker" | sed 's/<!--[[:space:]]*//; s/[[:space:]]*-->//')"
-    [ -n "$marker" ] || emit CLOSED 1 fix-approval-missing "fix_approval_missing"
+    state_approval="$(kimiflow_state_value "$state" "Fix approval" | tr '[:upper:]' '[:lower:]')"
+    state_approval_basis="$(kimiflow_state_value "$state" "Fix approval basis" | tr '[:upper:]' '[:lower:]')"
+    if [ -n "$state_approval$state_approval_basis" ]; then
+      [ "$state_approval" = "confirmed" ] || add_blocker "fix_approval_unconfirmed"
+      [ -n "$state_approval_basis" ] || add_blocker "fix_approval_basis_missing"
+      [ -z "$state_approval_basis" ] || [ "$state_approval_basis" = "$authority_basis" ] || add_blocker "fix_approval_basis_stale"
+    else
+      marker="$(grep -Eio '<!--[[:space:]]*kimiflow:fix-approval[^>]*-->' "$diagnosis" | head -1 || true)"
+      marker="$(printf '%s\n' "$marker" | sed 's/<!--[[:space:]]*//; s/[[:space:]]*-->//')"
+      [ -n "$marker" ] || emit CLOSED 1 fix-approval-missing "fix_approval_missing"
 
-    approval_source="$(printf '%s\n' "$marker" | sed -n 's/.*source=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
-    approval_cause="$(printf '%s\n' "$marker" | sed -n 's/.*cause=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
-    approval_fix="$(printf '%s\n' "$marker" | sed -n 's/.*fix=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
-    approval_scope="$(printf '%s\n' "$marker" | sed -n 's/.*scope=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
-    approval_risk="$(printf '%s\n' "$marker" | sed -n 's/.*risk=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
-    approval_basis="$(printf '%s\n' "$marker" | sed -n 's/.*basis=\([A-Fa-f0-9][A-Fa-f0-9]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
+      approval_source="$(printf '%s\n' "$marker" | sed -n 's/.*source=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
+      approval_cause="$(printf '%s\n' "$marker" | sed -n 's/.*cause=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
+      approval_fix="$(printf '%s\n' "$marker" | sed -n 's/.*fix=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
+      approval_scope="$(printf '%s\n' "$marker" | sed -n 's/.*scope=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
+      approval_risk="$(printf '%s\n' "$marker" | sed -n 's/.*risk=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
+      approval_basis="$(printf '%s\n' "$marker" | sed -n 's/.*basis=\([A-Fa-f0-9][A-Fa-f0-9]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
 
-    case "$approval_source" in current-run|current_run) ;; *) add_blocker "fix_approval_not_current_run" ;; esac
-    [ "$approval_cause" = "confirmed" ] || add_blocker "fix_cause_unconfirmed"
-    [ "$approval_fix" = "confirmed" ] || add_blocker "fix_approach_unconfirmed"
-    [ "$approval_scope" = "confirmed" ] || add_blocker "fix_scope_unconfirmed"
-    [ "$approval_risk" = "confirmed" ] || add_blocker "fix_risk_unconfirmed"
-    [ -n "$approval_basis" ] || add_blocker "fix_approval_basis_missing"
-    [ -z "$approval_basis" ] || [ "$approval_basis" = "$basis" ] || add_blocker "fix_approval_basis_stale"
+      case "$approval_source" in current-run|current_run) ;; *) add_blocker "fix_approval_not_current_run" ;; esac
+      [ "$approval_cause" = "confirmed" ] || add_blocker "fix_cause_unconfirmed"
+      [ "$approval_fix" = "confirmed" ] || add_blocker "fix_approach_unconfirmed"
+      [ "$approval_scope" = "confirmed" ] || add_blocker "fix_scope_unconfirmed"
+      [ "$approval_risk" = "confirmed" ] || add_blocker "fix_risk_unconfirmed"
+      [ -n "$approval_basis" ] || add_blocker "fix_approval_basis_missing"
+      [ -z "$approval_basis" ] || [ "$approval_basis" = "$legacy_basis" ] || add_blocker "fix_approval_basis_stale"
+    fi
 
     if [ "$blockers" -eq 0 ]; then
       emit_open

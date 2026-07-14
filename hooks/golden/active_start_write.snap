@@ -1,7 +1,7 @@
 @@exit@@
 0
 @@stdout@@
-{"schema_version":1,"present":true,"status":"active","active_file":".kimiflow/session/ACTIVE_RUN.json","run":".kimiflow/demo","state_path":".kimiflow/demo/STATE.md","items_path":".kimiflow/demo/ITEMS.jsonl","started_at":"TIMESTAMP","started_head":"COMMIT","last_checked_head":"COMMIT","host":"unknown","mode":"feature","scope":"small","affected_files":[],"item_counts":{"total":0,"pending":0,"built":0,"accepted":0,"rejected":0,"dropped":0,"open":0},"stale_risk":"unknown","stale":{"risk":"unknown","changed_paths":[".kimiflow/project/FINDINGS.md",".kimiflow/session/ACTIVE_RUN.json"],"relevant_changed_paths":[],"reason":"affected_paths_unknown"},"awaiting_user":false,"terminal":false,"next_action":"revalidate_then_refresh_baseline"}
+{"schema_version":1,"present":true,"status":"active","active_file":".kimiflow/session/ACTIVE_RUN.json","run":".kimiflow/demo","state_path":".kimiflow/demo/STATE.md","items_path":".kimiflow/demo/ITEMS.jsonl","started_at":"TIMESTAMP","started_head":"COMMIT","last_checked_head":"COMMIT","host":"unknown","mode":"feature","scope":"small","affected_files":[],"item_counts":{"total":0,"pending":0,"built":0,"accepted":0,"rejected":0,"dropped":0,"open":0},"stale_risk":"unknown","stale":{"risk":"unknown","changed_paths":[".kimiflow/project/FINDINGS.md",".kimiflow/session/ACTIVE_RUN.json"],"relevant_changed_paths":[],"reason":"affected_paths_unknown"},"awaiting_user":false,"awaiting_kind":null,"terminal":false,"next_action":"revalidate_then_refresh_baseline"}
 @@stderr@@
 @@files@@
 .kimiflow/project/FINDINGS.md	mode=644	hash=sha256:a2ed99a0a376d3147db54333f62ba30603ac43d8cf558ff240d9a724251cbf82

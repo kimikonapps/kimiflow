@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-14
 
-**Status:** Approved design
+**Status:** Implemented
 
 ## Goal
 

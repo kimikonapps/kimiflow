@@ -103,8 +103,8 @@ reviewer no longer raises it:
 
 Gate: `resolve-review-gate.sh findings --round 2 --expect A,B` → `clean⇥0⇥clean⇥…` → **0 open ✅**.
 Anti-oscillation check: open HIGH count went 1 → 0 (strictly decreased), nothing reappeared → healthy.
-(Cap is 3; had round 3 still shown an open blocker, the gate would **stop and ask**, never
-auto-proceed.)
+(Cap is 3; had round 3 still shown an open blocker, the gate would stay **CLOSED**, record the
+failed strategy in `RECOVERY.md`, and start a materially different global epoch without asking.)
 
 **Fix Preview — the single pre-build Human Gate:** verified cause = rotated refresh token produces an
 uncaught empty-body parse; fix = status-aware reauth plus one bounded transient retry; not included =

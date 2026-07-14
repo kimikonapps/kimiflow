@@ -8,18 +8,38 @@
 # `FINDING <SEVERITY>` at column 0; <ref> and <reason> may be arbitrary UTF-8. Output is stable
 # reason-codes (the orchestrator localizes for display).
 #
-# Usage: resolve-review-gate.sh <findings-dir> --round <N> --expect <lensA,lensB> [--epoch-start 1] [--cap 3]
+# Usage: resolve-review-gate.sh <findings-dir> --round <N> --expect <lensA,lensB> [--gate plan|code] [--epoch-start 1] [--cap 3]
 # Output (one TAB line, exit 0): <VERDICT>\t<open_count|->\t<reason_code>\t<detail>
 #   VERDICT ∈ {OPEN,CLOSED}; reason_code ∈ {clean,open-findings,incomplete,malformed,oscillation,reappeared,cap-reached}
 # R2 invariant targets: hooks/resolve-review-gate.sh; --round <N> --expect <lensCSV>; --expect code-verified
 set -u
 emit() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "${4:-}"; exit 0; }
 
-dir=""; round=""; expect=""; cap=3; epoch_start=1; epoch_arg=false
+state_value() {
+  local file="$1" wanted="$2"
+  awk -v wanted="$wanted" '
+    {
+      line=$0
+      gsub(/\r/, "", line)
+      gsub(/\*\*/, "", line)
+      sub(/^[[:space:]]*-[[:space:]]*/, "", line)
+      pos=index(line, ":")
+      if (!pos) next
+      label=substr(line, 1, pos-1)
+      value=substr(line, pos+1)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", label)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      if (tolower(label) == tolower(wanted)) { print value; exit }
+    }
+  ' "$file" 2>/dev/null
+}
+
+dir=""; round=""; expect=""; gate=""; cap=3; epoch_start=1; epoch_arg=false
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --round)       round="${2:-}";       shift 2 || shift ;;
     --expect)      expect="${2:-}";      shift 2 || shift ;;
+    --gate)        gate="${2:-}";        shift 2 || shift ;;
     --cap)         cap="${2:-3}";         shift 2 || shift ;;
     --epoch-start) epoch_start="${2:-}"; epoch_arg=true; shift 2 || shift ;;
     -*)            shift ;;
@@ -31,11 +51,57 @@ case "$cap"         in ''|*[!0-9]*) emit CLOSED - malformed "bad --cap" ;; esac
 case "$epoch_start" in ''|*[!0-9]*) emit CLOSED - malformed "bad --epoch-start" ;; esac
 [ -n "$dir" ]    || emit CLOSED - malformed "missing findings-dir"
 [ -n "$expect" ] || emit CLOSED - malformed "missing --expect"
+case "$gate" in ''|plan|code) ;; *) emit CLOSED - malformed "bad --gate" ;; esac
 # Normalize base-10 so a zero-padded round (e.g. 08) can't trip octal arithmetic later.
 round=$((10#$round)); cap=$((10#$cap)); epoch_start=$((10#$epoch_start))
 if [ "$epoch_arg" = true ]; then
   [ "$epoch_start" -ge 1 ] && [ "$epoch_start" -le "$round" ] && [ "$epoch_start" -le "$cap" ] \
     || emit CLOSED - malformed "invalid --epoch-start ${epoch_start} for round ${round}, cap ${cap}"
+fi
+
+if [ "$epoch_arg" = true ] && [ "$epoch_start" -gt 1 ]; then
+  [ -n "$gate" ] || emit CLOSED - malformed "later epoch requires --gate"
+  run_dir="$(dirname "${dir%/}")"
+  state="$run_dir/STATE.md"
+  recovery="$run_dir/RECOVERY.md"
+  [ -s "$state" ] || emit CLOSED - malformed "missing recovery STATE.md"
+  [ -s "$recovery" ] || emit CLOSED - malformed "missing RECOVERY.md"
+  marker="$(grep -E "^<!-- kimiflow:recovery gate=${gate} source-round=[0-9]+ epoch-start=${epoch_start} cap=${cap} before=[A-Fa-f0-9]{64} after=[A-Fa-f0-9]{64} -->$" "$recovery" 2>/dev/null | tail -n1 || true)"
+  [ -n "$marker" ] || emit CLOSED - malformed "missing matching recovery receipt"
+
+  marker_body="${marker#<!-- kimiflow:recovery }"
+  marker_body="${marker_body% -->}"
+  marker_source=""; marker_start=""; marker_cap=""; marker_before=""; marker_after=""
+  OLDIFS="$IFS"; IFS=' '; set -- $marker_body; IFS="$OLDIFS"
+  for field in "$@"; do
+    case "$field" in
+      source-round=*) marker_source="${field#source-round=}" ;;
+      epoch-start=*) marker_start="${field#epoch-start=}" ;;
+      cap=*) marker_cap="${field#cap=}" ;;
+      before=*) marker_before="${field#before=}" ;;
+      after=*) marker_after="${field#after=}" ;;
+    esac
+  done
+  marker_source=$((10#$marker_source)); marker_start=$((10#$marker_start)); marker_cap=$((10#$marker_cap))
+  [ "$marker_source" -eq $((epoch_start - 1)) ] \
+    || emit CLOSED - malformed "non-contiguous recovery source round"
+  [ "$marker_start" -eq "$epoch_start" ] && [ "$marker_cap" -eq "$cap" ] \
+    || emit CLOSED - malformed "recovery receipt bounds mismatch"
+  marker_before="$(printf '%s' "$marker_before" | tr '[:upper:]' '[:lower:]')"
+  marker_after="$(printf '%s' "$marker_after" | tr '[:upper:]' '[:lower:]')"
+  [ "$marker_before" != "$marker_after" ] || emit CLOSED - malformed "unchanged strategy fingerprint"
+
+  state_gate="$(state_value "$state" "Review gate" | tr '[:upper:]' '[:lower:]')"
+  state_start="$(state_value "$state" "Review epoch start")"
+  state_cap="$(state_value "$state" "Review epoch cap")"
+  state_fingerprint="$(state_value "$state" "Strategy fingerprint" | tr '[:upper:]' '[:lower:]')"
+  state_recovery="$(state_value "$state" "Recovery" | tr '[:upper:]' '[:lower:]')"
+  case "$state_start" in ''|*[!0-9]*) emit CLOSED - malformed "bad STATE review epoch start" ;; esac
+  case "$state_cap" in ''|*[!0-9]*) emit CLOSED - malformed "bad STATE review epoch cap" ;; esac
+  state_start=$((10#$state_start)); state_cap=$((10#$state_cap))
+  [ "$state_gate" = "$gate" ] && [ "$state_start" -eq "$epoch_start" ] && [ "$state_cap" -eq "$cap" ] \
+    && [ "$state_fingerprint" = "$marker_after" ] && [ "$state_recovery" = "active" ] \
+    || emit CLOSED - malformed "recovery STATE mismatch"
 fi
 
 # The round ledger is global for the caller's expected lens set. A caller cannot bypass the
