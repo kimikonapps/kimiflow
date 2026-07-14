@@ -14,6 +14,17 @@
 # R2 invariant targets: hooks/resolve-review-gate.sh; --round <N> --expect <lensCSV>; --expect code-verified
 set -u
 emit() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "${4:-}"; exit 0; }
+FINDING_RE='^FINDING (BLOCKER|HIGH|MEDIUM|LOW) .+ :: .+$'
+
+sha256_file() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    return 1
+  fi
+}
 
 state_value() {
   local file="$1" wanted="$2"
@@ -59,15 +70,35 @@ if [ "$epoch_arg" = true ]; then
     || emit CLOSED - malformed "invalid --epoch-start ${epoch_start} for round ${round}, cap ${cap}"
 fi
 
+if [ "$epoch_arg" = true ] && [ -n "$gate" ]; then
+  run_dir="$(dirname "${dir%/}")"
+  recovery="$run_dir/RECOVERY.md"
+  basis="$run_dir/PLAN.md"
+  [ -s "$basis" ] || emit CLOSED - malformed "missing ${gate} strategy basis"
+  basis_fingerprint="$(sha256_file "$basis")" \
+    || emit CLOSED - malformed "sha256 unavailable"
+  baseline_lines="$(grep -E "^<!-- kimiflow:strategy gate=${gate} epoch-start=1 fingerprint=[A-Fa-f0-9]{64} -->$" "$recovery" 2>/dev/null || true)"
+  [ "$(printf '%s\n' "$baseline_lines" | grep -c .)" -eq 1 ] \
+    || emit CLOSED - malformed "missing or duplicate ${gate} strategy baseline"
+  baseline="$baseline_lines"
+  baseline_fingerprint="${baseline##* fingerprint=}"
+  baseline_fingerprint="${baseline_fingerprint% -->}"
+  baseline_fingerprint="$(printf '%s' "$baseline_fingerprint" | tr '[:upper:]' '[:lower:]')"
+  if [ "$epoch_start" -eq 1 ]; then
+    [ "$baseline_fingerprint" = "$basis_fingerprint" ] \
+      || emit CLOSED - malformed "stale ${gate} strategy baseline"
+  fi
+fi
+
 if [ "$epoch_arg" = true ] && [ "$epoch_start" -gt 1 ]; then
   [ -n "$gate" ] || emit CLOSED - malformed "later epoch requires --gate"
-  run_dir="$(dirname "${dir%/}")"
   state="$run_dir/STATE.md"
-  recovery="$run_dir/RECOVERY.md"
   [ -s "$state" ] || emit CLOSED - malformed "missing recovery STATE.md"
   [ -s "$recovery" ] || emit CLOSED - malformed "missing RECOVERY.md"
-  marker="$(grep -E "^<!-- kimiflow:recovery gate=${gate} source-round=[0-9]+ epoch-start=${epoch_start} cap=${cap} before=[A-Fa-f0-9]{64} after=[A-Fa-f0-9]{64} -->$" "$recovery" 2>/dev/null | tail -n1 || true)"
-  [ -n "$marker" ] || emit CLOSED - malformed "missing matching recovery receipt"
+  marker_lines="$(grep -E "^<!-- kimiflow:recovery gate=${gate} source-round=[0-9]+ epoch-start=${epoch_start} cap=${cap} before=[A-Fa-f0-9]{64} after=[A-Fa-f0-9]{64} -->$" "$recovery" 2>/dev/null || true)"
+  [ "$(printf '%s\n' "$marker_lines" | grep -c .)" -eq 1 ] \
+    || emit CLOSED - malformed "missing or duplicate matching recovery receipt"
+  marker="$marker_lines"
 
   marker_body="${marker#<!-- kimiflow:recovery }"
   marker_body="${marker_body% -->}"
@@ -90,6 +121,61 @@ if [ "$epoch_arg" = true ] && [ "$epoch_start" -gt 1 ]; then
   marker_before="$(printf '%s' "$marker_before" | tr '[:upper:]' '[:lower:]')"
   marker_after="$(printf '%s' "$marker_after" | tr '[:upper:]' '[:lower:]')"
   [ "$marker_before" != "$marker_after" ] || emit CLOSED - malformed "unchanged strategy fingerprint"
+  [ "$marker_after" = "$basis_fingerprint" ] \
+    || emit CLOSED - malformed "stale ${gate} strategy fingerprint"
+
+  previous_marker="$(grep -E "^<!-- kimiflow:recovery gate=${gate} source-round=[0-9]+ epoch-start=[0-9]+ cap=[0-9]+ before=[A-Fa-f0-9]{64} after=[A-Fa-f0-9]{64} -->$" "$recovery" 2>/dev/null \
+    | awk -v current_start="$epoch_start" -v current_cap="$cap" -v baseline="$baseline_fingerprint" '
+        BEGIN { last_start=0; current_count=0; bad=0; expected=tolower(baseline) }
+        {
+          source=$4; sub(/^source-round=/, "", source); source += 0
+          start=$5; sub(/^epoch-start=/, "", start); start += 0
+          receipt_cap=$6; sub(/^cap=/, "", receipt_cap); receipt_cap += 0
+          before=$7; sub(/^before=/, "", before); before=tolower(before)
+          after=$8; sub(/^after=/, "", after); after=tolower(after)
+          if (start <= 1 || start <= last_start || start > current_start) bad=1
+          if (source != start - 1 || receipt_cap < start || before == after || before != expected) bad=1
+          if (start < current_start) previous=$0
+          if (start == current_start) {
+            current_count++
+            if (receipt_cap != current_cap) bad=1
+          }
+          expected=after
+          last_start=start
+        }
+        END {
+          if (bad || current_count != 1) print "__MALFORMED__"
+          else print previous
+        }
+      ')"
+  [ "$previous_marker" != "__MALFORMED__" ] \
+    || emit CLOSED - malformed "non-monotonic or duplicate ${gate} recovery receipts"
+  expected_before="$baseline_fingerprint"
+  if [ -n "$previous_marker" ]; then
+    expected_before="${previous_marker##* after=}"
+    expected_before="${expected_before% -->}"
+    expected_before="$(printf '%s' "$expected_before" | tr '[:upper:]' '[:lower:]')"
+  fi
+  [ "$marker_before" = "$expected_before" ] \
+    || emit CLOSED - malformed "broken ${gate} strategy fingerprint chain"
+
+  OLDIFS="$IFS"; IFS=','; set -- $expect; IFS="$OLDIFS"
+  for lens in "$@"; do
+    source_file="$dir/r${marker_source}-${lens}.md"
+    [ -f "$source_file" ] \
+      || emit CLOSED - malformed "missing recovery source r${marker_source}-${lens}.md"
+    [ -s "$source_file" ] \
+      || emit CLOSED - malformed "empty recovery source r${marker_source}-${lens}.md"
+    if [ "$(grep -c '' "$source_file")" -eq 1 ] && [ "$(head -n1 "$source_file")" = "NONE" ]; then
+      continue
+    fi
+    source_lineno=0
+    while IFS= read -r source_line || [ -n "$source_line" ]; do
+      source_lineno=$((source_lineno + 1))
+      printf '%s\n' "$source_line" | grep -qE "$FINDING_RE" \
+        || emit CLOSED - malformed "recovery source r${marker_source}-${lens}.md:${source_lineno}"
+    done < "$source_file"
+  done
 
   state_gate="$(state_value "$state" "Review gate" | tr '[:upper:]' '[:lower:]')"
   state_start="$(state_value "$state" "Review epoch start")"
@@ -130,8 +216,6 @@ $(expected_round_files "$rnum")
 EOF
   return 1
 }
-
-FINDING_RE='^FINDING (BLOCKER|HIGH|MEDIUM|LOW) .+ :: .+$'
 
 open_count=0
 cur_ids=""   # newline-list of "<SEV> <ref>" identities for open findings this round

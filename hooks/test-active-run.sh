@@ -243,6 +243,11 @@ out="$(run_active await-user --run .kimiflow/demo --kind external-access --reaso
 assert_jq "$out" '.status == "awaiting_user" and .awaiting_kind == "external-access"' "recovery_allows_external_access_pause"
 out="$(printf '{"cwd":"%s","session_id":"owner-session"}' "$REPO" | KIMIFLOW_HOST=codex "$SCRIPT" prompt-context)"
 assert_jq "$out" '.hookSpecificOutput.hookEventName == "UserPromptSubmit"' "typed_recovery_pause_resumes_on_user_prompt"
+sed -i.bak 's/Recovery: active/Recovery: clean/' "$REPO/.kimiflow/demo/STATE.md" && rm "$REPO/.kimiflow/demo/STATE.md.bak"
+out="$(run_active await-user --run .kimiflow/demo --kind commit --reason "clean recovery commit gate" --write)"
+assert_jq "$out" '.status == "awaiting_user" and .awaiting_kind == "commit"' "clean_recovery_reenables_commit_pause"
+out="$(printf '{"cwd":"%s","session_id":"owner-session"}' "$REPO" | KIMIFLOW_HOST=codex "$SCRIPT" prompt-context)"
+assert_jq "$out" '.hookSpecificOutput.hookEventName == "UserPromptSubmit"' "clean_recovery_commit_pause_resumes"
 
 printf 'two\n' > "$REPO/src/a.txt"
 ( cd "$REPO" && git add src/a.txt && git commit -q -m change-a )

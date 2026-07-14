@@ -144,8 +144,14 @@ mode_value="$(kimiflow_state_value "$state" mode | tr '[:upper:]' '[:lower:]')"
 flow_schema="$(kimiflow_state_value "$state" "Flow schema" | awk '{print $1}')"
 affected_files="$(kimiflow_state_value "$state" "Affected files")"
 build_risk="$(kimiflow_state_value "$state" "Build risk" | tr '[:upper:]' '[:lower:]')"
+state_approval="$(kimiflow_state_value "$state" "Fix approval" | tr '[:upper:]' '[:lower:]')"
+state_approval_basis="$(kimiflow_state_value "$state" "Fix approval basis" | tr '[:upper:]' '[:lower:]')"
+legacy_approval_present="$(grep -Eio '<!--[[:space:]]*kimiflow:fix-approval[^>]*-->' "$run_dir/DIAGNOSIS.md" 2>/dev/null | head -1 || true)"
 if [ "$record_fix_approval" -eq 1 ] && [ "$mode_value" != "fix" ]; then
   emit CLOSED 1 malformed "fix_approval_mode_invalid"
+fi
+if [ "$post_diagnosis" -eq 1 ] && [ -n "$state_approval$state_approval_basis$legacy_approval_present" ] && [ "$mode_value" != "fix" ]; then
+  emit CLOSED 1 fix-approval-blockers "fix_approval_mode_changed"
 fi
 case "$mode_value" in
   feature) artifact="$(find_first INTENT.md 2>/dev/null || true)" ;;
@@ -154,7 +160,7 @@ case "$mode_value" in
   *) artifact="$(find_first INTENT.md PROBLEM.md AUDIT-INTENT.md 2>/dev/null || true)" ;;
 esac
 
-if [ "$scope" = "trivial" ]; then
+if [ "$scope" = "trivial" ] && { [ "$post_diagnosis" -eq 0 ] || [ "$mode_value" != "fix" ]; }; then
   emit_open
 fi
 
@@ -182,10 +188,10 @@ if [ "$mode_value" = "fix" ]; then
 
     if [ "$record_fix_approval" -eq 1 ]; then
       write_fix_approval "$authority_basis" "$legacy_basis" || emit CLOSED 1 malformed "fix_approval_write_failed"
+      state_approval="$(kimiflow_state_value "$state" "Fix approval" | tr '[:upper:]' '[:lower:]')"
+      state_approval_basis="$(kimiflow_state_value "$state" "Fix approval basis" | tr '[:upper:]' '[:lower:]')"
     fi
 
-    state_approval="$(kimiflow_state_value "$state" "Fix approval" | tr '[:upper:]' '[:lower:]')"
-    state_approval_basis="$(kimiflow_state_value "$state" "Fix approval basis" | tr '[:upper:]' '[:lower:]')"
     if [ -n "$state_approval$state_approval_basis" ]; then
       [ "$state_approval" = "confirmed" ] || add_blocker "fix_approval_unconfirmed"
       [ -n "$state_approval_basis" ] || add_blocker "fix_approval_basis_missing"

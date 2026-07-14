@@ -62,10 +62,14 @@ behavioral contract still requires evidence that safe local/configured alternati
 
 ## Recovery Receipt
 
-The review resolver remains read-only. For the first epoch (`S=1`) and for calls that omit
-`--epoch-start`, behavior stays compatible. For every explicit later epoch (`S>1`), the resolver
-requires `--gate plan|code` and derives `STATE.md` plus `RECOVERY.md` from the findings directory's
-parent run directory.
+The review resolver remains read-only. Calls that omit `--epoch-start` stay compatible. Explicit
+gate-aware epochs use `PLAN.md` as the canonical strategy basis for both plan and code recovery and
+derive `STATE.md` plus `RECOVERY.md` from the findings directory's parent run directory. Before each
+gate's first round, RECOVERY contains exactly one verified baseline:
+
+```text
+<!-- kimiflow:strategy gate=plan epoch-start=1 fingerprint=<sha256(PLAN.md)> -->
+```
 
 `RECOVERY.md` contains one machine-readable marker inside the compact human-readable epoch entry:
 
@@ -77,7 +81,9 @@ The resolver verifies:
 
 - `source-round = epoch-start - 1`, preserving the global immutable ledger;
 - marker gate, epoch start, and cap match the call;
-- `before` and `after` are valid, different SHA-256 values;
+- every expected source-round findings file exists, is nonempty, and parses canonically;
+- `before` matches the verified baseline or previous same-gate receipt, while `after` is a different
+  value recomputed directly from the current `PLAN.md` bytes;
 - STATE says `Review gate`, `Review epoch start`, `Review epoch cap`, `Strategy fingerprint`, and
   `Recovery: active` with values matching the marker and call.
 
@@ -106,8 +112,8 @@ must reject rewording, model-only changes, or file churn as a new strategy.
 5. During active recovery, `preview`/`commit` are rejected and each allowed missing-authority kind can
    pause the run.
 6. A rejected pause leaves the Stop gate blocking; a permitted pause lets the turn end.
-7. A later epoch without a receipt, with mismatched state, non-contiguous rounds, or equal fingerprints
-   is `CLOSED / malformed`.
+7. A later epoch without a receipt, verified baseline, complete source ledger, changed `PLAN.md`, or
+   matching fingerprint chain is `CLOSED / malformed`.
 8. A matching receipt permits normal intra-epoch resolver behavior but never emits `OPEN` by itself.
 9. Existing resolver, approval, active-run, host-smoke, render, release-consistency, and full hook tests
    remain green.

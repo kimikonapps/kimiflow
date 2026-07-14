@@ -172,6 +172,7 @@ grep -q 'research-driven product expansion is forbidden' "$ROOT/reference.md" &&
 grep -q -- '--epoch-start <S>' "$ROOT/reference.md" && ok "canonical strategy epoch bounds documented" || bad "canonical strategy epoch bounds missing"
 grep -q -- '--gate <plan|code>' "$ROOT/reference.md" && ok "canonical strategy epoch gate documented" || bad "canonical strategy epoch gate missing"
 grep -q 'kimiflow:recovery gate=<plan|code>' "$ROOT/reference.md" && ok "canonical recovery receipt documented" || bad "canonical recovery receipt missing"
+grep -q 'kimiflow:strategy gate=<plan|code>' "$ROOT/reference.md" && ok "canonical strategy baseline documented" || bad "canonical strategy baseline missing"
 grep -q -- 'await-user --kind <kind>' "$ROOT/reference.md" && ok "canonical typed user pauses documented" || bad "canonical typed user pauses missing"
 grep -q 'Autonomous recovery contract' "$ROOT/reference.md" && ok "canonical autonomous review recovery documented" || bad "canonical autonomous review recovery missing"
 grep -q 'Minimum-complete' "$ROOT/SKILL.md" && ok "canonical minimum-complete rule loaded" || bad "canonical minimum-complete rule missing"

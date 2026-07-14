@@ -157,6 +157,15 @@ class TestAwaitUser(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(json.loads(out)["decision"], "block")
 
+    def test_clean_recovery_transition_reenables_deliberate_gate(self):
+        self.write_state("Flow schema: 3\nRecovery: active\n")
+        rc, _ = self.await_user(kind="commit")
+        self.assertEqual(rc, 2)
+        self.write_state("Flow schema: 3\nRecovery: clean\n")
+        rc, out = self.await_user(kind="commit")
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["awaiting_kind"], "commit")
+
     def test_recovery_allows_only_missing_authority_kinds(self):
         self.write_state("Flow schema: 3\nRecovery: active\n")
         allowed = ("missing-input", "authority", "external-access", "paid-privacy", "scope-risk", "irreversible")
