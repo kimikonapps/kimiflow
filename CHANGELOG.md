@@ -5,6 +5,7 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 ## Unreleased
 
 ### Changed
+- **Review caps now change strategy instead of asking for another run** (`resolve-review-gate.sh`, Phase 2/4/5/7, review rubric, behavioral scenario 03): plan/code findings keep immutable global round ledgers while `--epoch-start` scopes anti-oscillation to one strategy epoch; cap/oscillation/reappearance records compact recovery, uses bounded memory/current primary sources and a falsifiable strategy delta, then continues through the existing Stop gate. Only missing authority/external state may await the user; existing one-time Preview and Commit Gates are unchanged.
 - **README and demo are current and substantially leaner** (`README.md`, `README.de.md`, `docs/demo/`): the default GitHub README is now a concise English entry point with a separate German version, deep operational detail links to the canonical docs, current Codex install/update commands, and the re-rendered demo reflects adaptive Discovery, scope-aware recall, mode-specific Previews, and evidence-only learning promotion.
 
 ## 0.1.67

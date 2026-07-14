@@ -120,4 +120,50 @@ reset
 put r1-B.md "FINDING HIGH src/a:1 :: x"
 out="$(run --round 08 --expect B --cap 10)"; af "$out" 1 CLOSED "zeropad_round_has_verdict"
 
+# strategy epochs preserve the global ledger but do not compare the first epoch round with the
+# failed strategy immediately before it.
+reset
+put r2-B.md "FINDING HIGH src/old:1 :: old strategy"
+put r3-B.md "FINDING HIGH src/new:1 :: new strategy"
+af "$(run --round 3 --expect B --epoch-start 3 --cap 4)" 3 open-findings "epoch_first_round_skips_previous_strategy"
+
+# anti-oscillation still applies after the first round inside the new epoch.
+reset
+put r3-B.md "FINDING HIGH src/a:1 :: x"
+put r4-B.md "FINDING HIGH src/b:2 :: y"
+af "$(run --round 4 --expect B --epoch-start 3 --cap 5)" 3 oscillation "epoch_internal_oscillation"
+
+# a finding from an older failed epoch is not a reappearance in the current strategy epoch.
+reset
+put r1-B.md "FINDING HIGH src/a:1 :: old"
+put r3-B.md "FINDING HIGH src/c:3 :: c
+FINDING HIGH src/d:4 :: d"
+put r4-B.md "FINDING HIGH src/a:1 :: new epoch"
+af "$(run --round 4 --expect B --epoch-start 3 --cap 5)" 3 open-findings "epoch_reappearance_ignores_older_epochs"
+
+# a disappeared finding that returns inside the current epoch is still rejected.
+reset
+put r3-B.md "FINDING HIGH src/a:1 :: a
+FINDING HIGH src/b:2 :: b
+FINDING HIGH src/c:3 :: c"
+put r4-B.md "FINDING HIGH src/b:2 :: b
+FINDING HIGH src/c:3 :: c"
+put r5-B.md "FINDING HIGH src/a:1 :: a"
+af "$(run --round 5 --expect B --epoch-start 3 --cap 6)" 3 reappeared "epoch_internal_reappearance"
+
+# clean at an epoch cap opens, while a later round stays closed.
+reset
+put r4-B.md "NONE"
+af "$(run --round 4 --expect B --epoch-start 3 --cap 4)" 1 OPEN "epoch_clean_at_cap_opens"
+put r5-B.md "NONE"
+af "$(run --round 5 --expect B --epoch-start 3 --cap 4)" 3 cap-reached "epoch_clean_beyond_cap_stays_closed"
+
+# explicit epoch bounds are fail-closed; legacy calls without the option retain their old range.
+reset
+put r1-B.md "NONE"
+af "$(run --round 1 --expect B --epoch-start x --cap 2)" 3 malformed "epoch_nonnumeric_malformed"
+af "$(run --round 1 --expect B --epoch-start 0 --cap 2)" 3 malformed "epoch_zero_malformed"
+af "$(run --round 1 --expect B --epoch-start 2 --cap 3)" 3 malformed "epoch_after_round_malformed"
+af "$(run --round 2 --expect B --epoch-start 2 --cap 1)" 3 malformed "epoch_after_cap_malformed"
+
 echo "----"; if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi

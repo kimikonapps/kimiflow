@@ -8,29 +8,35 @@
 # `FINDING <SEVERITY>` at column 0; <ref> and <reason> may be arbitrary UTF-8. Output is stable
 # reason-codes (the orchestrator localizes for display).
 #
-# Usage: resolve-review-gate.sh <findings-dir> --round <N> --expect <lensA,lensB> [--cap 3]
+# Usage: resolve-review-gate.sh <findings-dir> --round <N> --expect <lensA,lensB> [--epoch-start 1] [--cap 3]
 # Output (one TAB line, exit 0): <VERDICT>\t<open_count|->\t<reason_code>\t<detail>
 #   VERDICT ∈ {OPEN,CLOSED}; reason_code ∈ {clean,open-findings,incomplete,malformed,oscillation,reappeared,cap-reached}
 # R2 invariant targets: hooks/resolve-review-gate.sh; --round <N> --expect <lensCSV>; --expect code-verified
 set -u
 emit() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "${4:-}"; exit 0; }
 
-dir=""; round=""; expect=""; cap=3
+dir=""; round=""; expect=""; cap=3; epoch_start=1; epoch_arg=false
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --round)  round="${2:-}"; shift 2 || shift ;;
-    --expect) expect="${2:-}"; shift 2 || shift ;;
-    --cap)    cap="${2:-3}";   shift 2 || shift ;;
-    -*)       shift ;;
-    *)        [ -z "$dir" ] && dir="$1"; shift ;;
+    --round)       round="${2:-}";       shift 2 || shift ;;
+    --expect)      expect="${2:-}";      shift 2 || shift ;;
+    --cap)         cap="${2:-3}";         shift 2 || shift ;;
+    --epoch-start) epoch_start="${2:-}"; epoch_arg=true; shift 2 || shift ;;
+    -*)            shift ;;
+    *)             [ -z "$dir" ] && dir="$1"; shift ;;
   esac
 done
-case "$round" in ''|*[!0-9]*) emit CLOSED - malformed "bad-or-missing --round" ;; esac
-case "$cap"   in ''|*[!0-9]*) emit CLOSED - malformed "bad --cap" ;; esac
+case "$round"       in ''|*[!0-9]*) emit CLOSED - malformed "bad-or-missing --round" ;; esac
+case "$cap"         in ''|*[!0-9]*) emit CLOSED - malformed "bad --cap" ;; esac
+case "$epoch_start" in ''|*[!0-9]*) emit CLOSED - malformed "bad --epoch-start" ;; esac
 [ -n "$dir" ]    || emit CLOSED - malformed "missing findings-dir"
 [ -n "$expect" ] || emit CLOSED - malformed "missing --expect"
 # Normalize base-10 so a zero-padded round (e.g. 08) can't trip octal arithmetic later.
-round=$((10#$round)); cap=$((10#$cap))
+round=$((10#$round)); cap=$((10#$cap)); epoch_start=$((10#$epoch_start))
+if [ "$epoch_arg" = true ]; then
+  [ "$epoch_start" -ge 1 ] && [ "$epoch_start" -le "$round" ] && [ "$epoch_start" -le "$cap" ] \
+    || emit CLOSED - malformed "invalid --epoch-start ${epoch_start} for round ${round}, cap ${cap}"
+fi
 
 # The round ledger is global for the caller's expected lens set. A caller cannot bypass the
 # revision budget by submitting a clean file after the cap; stop before reading/counting it.
@@ -96,7 +102,7 @@ prev_files="$(expected_round_files "$prev")"
 prev_exists=false
 [ -n "$prev_files" ] && prev_exists=true
 
-if [ "$prev" -ge 1 ] && [ "$prev_exists" = true ]; then
+if [ "$prev" -ge "$epoch_start" ] && [ "$prev_exists" = true ]; then
   prev_open=0
   while IFS= read -r pf; do
     [ -n "$pf" ] || continue
@@ -106,11 +112,11 @@ if [ "$prev" -ge 1 ] && [ "$prev_exists" = true ]; then
 $prev_files
 EOF
   [ "$open_count" -ge "$prev_open" ] && emit CLOSED "$open_count" oscillation "${prev_open}->${open_count}"
-  if [ "$prev" -ge 2 ]; then
+  if [ "$prev" -gt "$epoch_start" ]; then
     while IFS= read -r id; do
       [ -n "$id" ] || continue
       id_in_round "$id" "$prev" && continue
-      k=1
+      k="$epoch_start"
       while [ "$k" -le $((prev - 1)) ]; do
         id_in_round "$id" "$k" && emit CLOSED "$open_count" reappeared "$id"
         k=$((k + 1))
