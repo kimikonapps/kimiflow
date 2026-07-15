@@ -6,6 +6,18 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.1
+
+The frontend-quality release: feature work can opt into a token-efficient visual quality lane, while the gate now remains reliable across Git layers, nested repositories, recovery retries, and nuanced design intent.
+
+### Added
+- **Token-efficient frontend quality lanes** (`frontend-quality-gate.sh`, Phase 0/2/6/7, Claude/Codex skills and focused references): UI features route to compact standard or flagship design guidance only when relevant, then require deterministic visual QA evidence without loading frontend design payload into bug-fix or backend-only runs.
+
+### Fixed
+- **Frontend evidence cannot silently go stale** (`frontend-quality-gate.sh`): routing snapshots bind raw worktree bytes plus Git-layer identities, deletions, symlinks, clean-filter changes, and recursively unsuppressed submodule deltas while preserving normal staging of unchanged rendered content.
+- **Start, routing, and recovery edge cases fail closed** (`frontend-quality-gate.sh`): prepared-run resume is crash-safe, Git-native commit IDs support SHA-1/SHA-256 and reject malformed values structurally, generic backend paths no longer look like UI, negated polish intent remains standard, and legacy Source-Truth receipts migrate to exact Version-2 identity.
+- **Focused regression coverage** (`test-frontend-quality-gate.sh`): 135 assertions cover the new lane and its reviewed lifecycle, path, recovery, OID, submodule, clean-filter, and intent-classification boundaries.
+
 ## 0.2.0
 
 The autonomous recovery release: persistent review blockers now make Kimiflow change strategy and continue autonomously instead of asking the user to approve another equivalent run.
