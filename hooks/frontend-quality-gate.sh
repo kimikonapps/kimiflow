@@ -46,6 +46,12 @@ MAX_PNG = 25 * 1024 * 1024
 MAX_RAW = 128 * 1024 * 1024
 MAX_DIM = 16384
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
+VALID_RECOVERY_STATES = {
+    ("clean", "no", "clean"),
+    ("clean", "no", "active"),
+    ("active", "no", "active"),
+    ("active", "yes", "active"),
+}
 
 
 def emit(status, reason, details):
@@ -60,12 +66,24 @@ def emit(status, reason, details):
     raise SystemExit(0)
 
 
-def run(cmd, cwd=None):
-    proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    out, err = proc.communicate()
+def run(cmd, cwd=None, data=None):
+    proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.PIPE if data is not None else None,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = proc.communicate(data)
     if proc.returncode != 0:
         raise RuntimeError("command_failed:%s:%s" % (cmd[0], err.decode("utf-8", "replace").strip()))
     return out
+
+
+def canonical_commit_oid(root, value):
+    if not isinstance(value, str) or not value or not re.match(r"^[0-9a-f]+$", value):
+        return None
+    try:
+        resolved = run(["git", "rev-parse", "--verify", value + "^{commit}"], cwd=root)
+        resolved = resolved.decode("ascii").strip()
+    except (RuntimeError, UnicodeError):
+        return None
+    return resolved if resolved == value else None
 
 
 def atomic_text(path, text):
@@ -249,12 +267,30 @@ def excluded_path(path):
     return path == ".kimiflow" or path.startswith(".kimiflow/")
 
 
-def git_delta(root, started_head):
+def indexed_submodule_paths(root):
+    paths = []
+    raw = run(["git", "ls-files", "--stage", "-z"], cwd=root)
+    for row in raw.split(b"\0"):
+        if not row:
+            continue
+        metadata, raw_path = row.split(b"\t", 1)
+        mode, _, stage = metadata.decode("ascii").split()
+        if mode == "160000" and stage == "0":
+            paths.append(decode_path(raw_path))
+    return paths
+
+
+def git_delta(root, started_head, seen=None):
+    real_root = os.path.realpath(root)
+    seen = set() if seen is None else set(seen)
+    if real_root in seen:
+        return set()
+    seen.add(real_root)
     paths = set()
     commands = (
-        ["git", "diff", "--name-status", "-z", "--find-renames", "%s..HEAD" % started_head],
-        ["git", "diff", "--cached", "--name-status", "-z", "--find-renames"],
-        ["git", "diff", "--name-status", "-z", "--find-renames"],
+        ["git", "diff", "--ignore-submodules=none", "--name-status", "-z", "--find-renames", "%s..HEAD" % started_head],
+        ["git", "diff", "--ignore-submodules=none", "--cached", "--name-status", "-z", "--find-renames"],
+        ["git", "diff", "--ignore-submodules=none", "--name-status", "-z", "--find-renames"],
     )
     for command in commands:
         out = run(command, cwd=root)
@@ -263,6 +299,13 @@ def git_delta(root, started_head):
     for raw in out.split(b"\0"):
         if raw:
             paths.add(decode_path(raw))
+    for path in indexed_submodule_paths(root):
+        candidate = os.path.join(root, path)
+        if not os.path.isdir(candidate) or not os.path.lexists(os.path.join(candidate, ".git")):
+            continue
+        head = run(["git", "rev-parse", "--verify", "HEAD"], cwd=candidate).decode("ascii").strip()
+        if git_delta(candidate, head, seen):
+            paths.add(path)
     result = set()
     for path in paths:
         path = path[2:] if path.startswith("./") else path
@@ -311,22 +354,151 @@ def viewport_dims(value):
 
 
 def has_ui_path(paths):
-    segments = set("ui frontend component components page pages view views screen screens style styles".split())
-    extensions = (".html", ".css", ".scss", ".sass", ".less", ".jsx", ".tsx", ".vue", ".svelte")
+    unambiguous = {"ui", "frontend"}
+    generic = set("component components page pages view views screen screens style styles".split())
+    frontend_extensions = (
+        ".html", ".css", ".scss", ".sass", ".less", ".jsx", ".tsx",
+        ".vue", ".svelte", ".mdx",
+    )
+    web_script_extensions = (".js", ".ts", ".mjs", ".cjs")
     for path in paths:
         lower = path.lower().replace("\\", "/")
-        if any(part in segments for part in lower.split("/")) or lower.endswith(extensions):
+        parts = set(lower.split("/"))
+        if parts & unambiguous or lower.endswith(frontend_extensions):
+            return True
+        if parts & generic and lower.endswith(frontend_extensions + web_script_extensions):
             return True
     return False
 
 
 def flagship_intent(text):
-    normalized = re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
-    return any(re.search(r"(?:^| )%s(?: |$)" % re.escape(term), normalized)
-               for term in ("polish", "redesign", "ui ux", "visual uplift", "visual refresh"))
+    normalized = re.sub(
+        r"\b(?:don't|dont|doesn't|doesnt|won't|wont|can't|cant|cannot)\b",
+        "do not", text.lower(),
+    )
+    tokens = re.findall(r"[a-z0-9]+|[-.,;:!?]", normalized)
+    phrases = (
+        ("polish",), ("redesign",), ("ui", "ux"),
+        ("visual", "uplift"), ("visual", "refresh"),
+    )
+    negators = {"not", "no", "without", "avoid", "never", "nicht", "kein", "keine", "keinen", "ohne"}
+    boundaries = {".", ";", ":", "!", "?", "but", "however", "yet", "instead"}
+    separators = {",", "and", "or"}
+    matches = []
+    for phrase in phrases:
+        width = len(phrase)
+        for index in range(len(tokens) - width + 1):
+            if tuple(tokens[index:index + width]) == phrase:
+                matches.append((index, width))
+    starts = {index for index, _ in matches}
+    for index, _ in sorted(matches):
+        scope_start = 0
+        for boundary in range(index - 1, -1, -1):
+            if tokens[boundary] in boundaries:
+                scope_start = boundary + 1
+                break
+        negations = [
+            position for position in range(scope_start, index)
+            if tokens[position] in negators and
+            not (tokens[position] == "no" and position + 2 < index and
+                 tokens[position + 1:position + 3] == ["-", "code"])
+        ]
+        if not negations:
+            return True
+        negation = negations[-1]
+        coordinated = any(tokens[position] in separators for position in range(negation + 1, index))
+        prior_flagship = any(negation < start < index for start in starts)
+        if coordinated and not prior_flagship:
+            return True
+    return False
 
 
-def basis_hash(marker, start_value, mode, request_name, request_bytes, paths, lane, evidence):
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        while True:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def add_tree_versions(versions, raw, index=False):
+    for row in raw.split(b"\0"):
+        if not row:
+            continue
+        metadata, raw_path = row.split(b"\t", 1)
+        path = decode_path(raw_path)
+        if path not in versions:
+            continue
+        fields = metadata.decode("ascii").split()
+        if index:
+            mode, oid, stage = fields
+            token = "%s:%s%s" % (mode, oid, "@stage" + stage if stage != "0" else "")
+        else:
+            mode, _, oid = fields
+            token = "%s:%s" % (mode, oid)
+        versions[path].add(token)
+
+
+def git_path_versions(root, started_head, paths):
+    ordered = sorted(paths)
+    versions = {path: set() for path in ordered}
+    if not ordered:
+        return versions
+    pathspec = ["--"] + ordered
+    for revision in (started_head, "HEAD"):
+        raw = run(["git", "--literal-pathspecs", "ls-tree", "-rz", revision] + pathspec, cwd=root)
+        add_tree_versions(versions, raw)
+    raw = run(["git", "--literal-pathspecs", "ls-files", "--stage", "-z"] + pathspec, cwd=root)
+    add_tree_versions(versions, raw, index=True)
+    return versions
+
+
+def affected_snapshot(root, started_head, paths):
+    versions = git_path_versions(root, started_head, paths)
+    snapshot = []
+    for rel in sorted(paths):
+        candidate = os.path.join(root, rel)
+        try:
+            info = os.lstat(candidate)
+        except FileNotFoundError:
+            snapshot.append([rel, "missing", "work=missing", sorted(versions[rel])])
+            continue
+        mode = stat.S_IMODE(info.st_mode)
+        if stat.S_ISLNK(info.st_mode):
+            oid = run(["git", "hash-object", "--stdin"], cwd=root,
+                      data=os.fsencode(os.readlink(candidate))).decode("ascii").strip()
+            work_version = "120000:%s" % oid
+            versions[rel].add(work_version)
+            snapshot.append([rel, "symlink", mode, "work=" + work_version, sorted(versions[rel])])
+        elif stat.S_ISREG(info.st_mode):
+            oid = run(["git", "hash-object", "--path=%s" % rel, candidate], cwd=root).decode("ascii").strip()
+            git_mode = "100755" if mode & 0o111 else "100644"
+            work_version = "%s:%s" % (git_mode, oid)
+            versions[rel].add(work_version)
+            snapshot.append([rel, "file", mode, "work=" + work_version,
+                             "raw=" + file_sha256(candidate), sorted(versions[rel])])
+        elif stat.S_ISDIR(info.st_mode):
+            git_entry = os.path.join(candidate, ".git")
+            if os.path.lexists(git_entry):
+                head = run(["git", "rev-parse", "--verify", "HEAD"], cwd=candidate).decode("ascii").strip()
+                work_version = "160000:%s" % head
+                versions[rel].add(work_version)
+                nested_paths = git_delta(candidate, head)
+                nested = affected_snapshot(candidate, head, nested_paths)
+                snapshot.append([rel, "git-directory", mode, "work=" + work_version,
+                                 sorted(versions[rel]), nested])
+            else:
+                snapshot.append([rel, "directory", mode, "work=directory", sorted(versions[rel])])
+        else:
+            snapshot.append([rel, "special", stat.S_IFMT(info.st_mode), mode,
+                             "work=special", sorted(versions[rel])])
+    return snapshot
+
+
+def basis_hash(root, marker, start_value, mode, request_name, request_bytes, paths, lane, evidence):
     payload = {
         "contract": marker,
         "start": start_value,
@@ -334,6 +506,7 @@ def basis_hash(marker, start_value, mode, request_name, request_bytes, paths, la
         "request": request_name,
         "request_sha256": hashlib.sha256(request_bytes).hexdigest(),
         "paths": sorted(paths),
+        "affected_snapshot": affected_snapshot(root, start_value.split("@", 1)[-1], paths),
         "lane": lane,
         "evidence": evidence,
     }
@@ -389,7 +562,7 @@ def recovery_receipt(path):
     values, errors = exact_fields(path, RECOVERY_KEYS)
     if errors:
         return None, "recovery_receipt_invalid"
-    if values["Version"] != "1" or values["Status"] not in ("closed", "resolved"):
+    if values["Version"] not in ("1", "2") or values["Status"] not in ("closed", "resolved"):
         return None, "recovery_receipt_invalid"
     if not re.match(r"^[1-9][0-9]*$", values["Attempt"]):
         return None, "recovery_receipt_invalid"
@@ -616,7 +789,8 @@ def qa_contract(run_dir, lane, root, affected, route_receipt_path, recovery, err
         return None
     return {
         "lane": lane,
-        "source_hash": norm_hash(values["Source truth"]),
+        "source_hash": hashlib.sha256(values["Source truth"].strip().encode("utf-8")).hexdigest(),
+        "legacy_source_hash": norm_hash(values["Source truth"]),
         "viewport": viewport,
         "state_hash": norm_hash(values["State"]),
         "strategy_hash": norm_hash(values["Strategy"]),
@@ -628,7 +802,7 @@ def qa_contract(run_dir, lane, root, affected, route_receipt_path, recovery, err
 
 def receipt_from_meta(status, attempt, kind, lane, meta=None):
     values = {
-        "Version": "1", "Status": status, "Attempt": str(attempt), "Kind": kind,
+        "Version": "2", "Status": status, "Attempt": str(attempt), "Kind": kind,
         "Lane": lane, "Source truth hash": "n/a", "Viewport": "n/a",
         "State hash": "n/a", "Strategy hash": "n/a", "Pixel hash": "n/a",
     }
@@ -642,28 +816,13 @@ def receipt_from_meta(status, attempt, kind, lane, meta=None):
 
 
 def recovery_transition(state_path, frontend, owns, global_recovery, verdict):
-    if frontend not in ("clean", "active") or owns not in ("no", "yes") or global_recovery not in ("clean", "active"):
-        return False, "recovery_state_invalid"
-    if frontend == "clean" and owns == "yes":
+    current = (frontend, owns, global_recovery)
+    if current not in VALID_RECOVERY_STATES:
         return False, "recovery_state_invalid"
     if verdict == "CLOSED":
-        if frontend == "clean" and owns == "no" and global_recovery == "clean":
-            new = ("active", "yes", "active")
-        elif frontend == "clean" and owns == "no" and global_recovery == "active":
-            new = ("active", "no", "active")
-        elif frontend == "active" and owns == "no" and global_recovery == "clean":
-            new = ("active", "yes", "active")
-        elif frontend == "active" and owns == "no" and global_recovery == "active":
-            new = ("active", "no", "active")
-        else:
-            new = ("active", "yes", "active")
+        new = ("active", "yes" if global_recovery == "clean" else owns, "active")
     else:
-        if frontend == "clean" and owns == "no":
-            new = ("clean", "no", global_recovery)
-        elif frontend == "active" and owns == "no":
-            new = ("clean", "no", global_recovery)
-        else:
-            new = ("clean", "no", "clean")
+        new = ("clean", "no", "clean" if owns == "yes" else global_recovery)
     replace_state(state_path, {
         "Frontend quality recovery": new[0],
         "Frontend quality recovery owns global": new[1],
@@ -743,15 +902,18 @@ start_value = state_one(values, "Frontend quality start", errors)
 frontend_recovery = state_one(values, "Frontend quality recovery", errors)
 owns_global = state_one(values, "Frontend quality recovery owns global", errors)
 mode = state_one(values, "Mode", errors, "duplicate_mode" if len(values.get("Mode", [])) > 1 else None)
+status = state_one(values, "Status", errors, "duplicate_status" if len(values.get("Status", [])) > 1 else None)
 global_recovery = state_one(values, "Recovery", errors, "duplicate_global_recovery" if len(values.get("Recovery", [])) > 1 else None)
 
 if contract != "1": errors.append("unsupported_contract")
 if lane not in ("off", "standard", "flagship"): errors.append("lane_invalid")
 if mode not in ("feature", "fix", "audit"): errors.append("mode_invalid")
+if status not in ("active", "backlog"): errors.append("status_invalid")
 if frontend_recovery not in ("clean", "active"): errors.append("frontend_recovery_invalid")
 if owns_global not in ("no", "yes"): errors.append("frontend_recovery_owner_invalid")
 if global_recovery not in ("clean", "active"): errors.append("global_recovery_invalid")
-if frontend_recovery == "clean" and owns_global == "yes": errors.append("recovery_state_invalid")
+if (frontend_recovery, owns_global, global_recovery) not in VALID_RECOVERY_STATES:
+    errors.append("recovery_state_invalid")
 
 if active_error:
     errors.append(active_error)
@@ -762,27 +924,18 @@ if not marker_present:
 elif marker != 1 or isinstance(marker, bool):
     errors.append("active_contract_marker_invalid")
 started_head = active.get("started_head", "") if isinstance(active, dict) else ""
-if not re.match(r"^[0-9a-f]{40}$", started_head):
+if canonical_commit_oid(root, started_head) is None:
     errors.append("started_head_invalid")
 
 if record_start_mode:
-    # The marker is intentionally absent before the first successful start record.
-    start_errors = [code for code in errors if code != "active_contract_marker_missing"]
-    expected_start = (
-        (lane == "off", "start_lane_invalid"),
-        (routing == "provisional", "start_routing_invalid"),
-        (evidence == "pending", "start_evidence_invalid"),
-        (basis == "pending", "start_basis_invalid"),
-        (start_value in ("pending", "clean@%s" % started_head), "start_value_invalid"),
-        (frontend_recovery == "clean", "start_recovery_invalid"),
-        (owns_global == "no", "start_recovery_owner_invalid"),
-        (global_recovery == "clean", "start_global_recovery_invalid"),
-    )
-    start_errors.extend(code for valid, code in expected_start if not valid)
+    # A new marker is absent before marker-first start recording. The affected
+    # list is intentionally unavailable during Phase 0.
+    ignored_start_errors = {"active_contract_marker_missing", "affected_header_missing"}
+    start_errors = [code for code in errors if code not in ignored_start_errors]
     if start_errors:
         emit("CLOSED", start_errors[0], start_errors)
     try:
-        head_raw = run(["git", "rev-parse", "HEAD"], cwd=root)
+        head_raw = run(["git", "rev-parse", "--verify", "HEAD^{commit}"], cwd=root)
         current_head = head_raw.decode("ascii").strip()
         delta = git_delta(root, current_head)
     except Exception as exc:
@@ -791,14 +944,73 @@ if record_start_mode:
         emit("CLOSED", "start_head_mismatch", ["start_head_mismatch"])
     if delta:
         emit("CLOSED", "dirty_start", ["dirty_start"])
-    active["frontend_quality_contract"] = 1
+
+    final_start = "clean@%s" % started_head
+    classified_errors = []
+    classified_evidence = None
+    if evidence != "pending":
+        classified_evidence = evidence_value(evidence, mode, lane, classified_errors)
+    classified = classified_evidence is not None and not classified_errors
+    old_start = re.match(r"^clean@([0-9a-f]+)$", start_value)
+    old_start_valid = bool(old_start and canonical_commit_oid(root, old_start.group(1)))
+    recovery_clean = (frontend_recovery, owns_global, global_recovery) == ("clean", "no", "clean")
+    initial = (
+        status == "active" and lane == "off" and routing == "provisional" and
+        evidence == "pending" and basis == "pending" and start_value == "pending" and
+        recovery_clean
+    )
+    completed = (
+        status == "active" and marker_present and routing == "provisional" and
+        basis == "pending" and start_value == final_start and recovery_clean and
+        ((lane == "off" and evidence == "pending") or classified)
+    )
+    resumable = (
+        status == "backlog" and routing == "provisional" and basis == "pending" and
+        old_start_valid and classified and recovery_clean
+    )
+
+    if status == "active" and old_start and start_value != final_start:
+        emit("CLOSED", "start_resume_not_authorized", ["start_resume_not_authorized"])
+    if not (initial or completed or resumable):
+        if status == "backlog":
+            expected_start = (
+                (routing == "provisional", "start_routing_invalid"),
+                (classified, "start_evidence_invalid"),
+                (basis == "pending", "start_basis_invalid"),
+                (old_start_valid, "start_value_invalid"),
+                (recovery_clean, "start_recovery_invalid"),
+            )
+        else:
+            expected_start = (
+                (lane == "off", "start_lane_invalid"),
+                (routing == "provisional", "start_routing_invalid"),
+                (evidence == "pending", "start_evidence_invalid"),
+                (basis == "pending", "start_basis_invalid"),
+                (start_value in ("pending", final_start), "start_value_invalid"),
+                (recovery_clean, "start_recovery_invalid"),
+                (not (start_value == final_start and not marker_present), "active_contract_marker_missing"),
+            )
+        shape_errors = [code for valid, code in expected_start if not valid]
+        emit("CLOSED", shape_errors[0] if shape_errors else "start_state_invalid",
+             shape_errors or ["start_state_invalid"])
+
     try:
-        atomic_json(active_path, active)
-        replace_state(state_path, {"Frontend quality start": "clean@%s" % started_head})
+        if not marker_present:
+            active["frontend_quality_contract"] = 1
+            atomic_json(active_path, active)
+        updates = {}
+        if start_value != final_start:
+            updates["Frontend quality start"] = final_start
+        if resumable:
+            updates["Status"] = "active"
+        if updates:
+            replace_state(state_path, updates)
     except (OSError, ValueError) as exc:
         emit("CLOSED", "start_write_failed", [str(exc)])
     emit("OPEN", "start-recorded", [])
 
+if status != "active":
+    errors.append("run_status_not_active")
 if errors:
     emit("CLOSED", errors[0], errors)
 if start_value != "clean@%s" % started_head:
@@ -821,16 +1033,21 @@ try:
 except (OSError, UnicodeError):
     emit("CLOSED", "request_file_invalid", ["request_file_invalid"])
 route_errors = []
-evidence_value(evidence, mode, lane, route_errors)
+route_evidence = evidence_value(evidence, mode, lane, route_errors)
 if mode == "feature" and has_ui_path(actual_paths) and lane == "off":
     route_errors.append("lane_route_mismatch")
-if mode == "feature" and flagship_intent(request_text) and lane != "flagship":
+if (mode == "feature" and route_evidence and route_evidence[0] == "yes" and
+        flagship_intent(request_text) and lane != "flagship"):
     route_errors.append("flagship_route_mismatch")
 if mode in ("fix", "audit") and lane != "off":
     route_errors.append("lane_route_mismatch")
 if route_errors:
     emit("CLOSED", route_errors[0], route_errors)
-expected_basis = basis_hash(marker, start_value, mode, request_name, request_bytes, actual_paths, lane, evidence)
+try:
+    expected_basis = basis_hash(root, marker, start_value, mode, request_name, request_bytes,
+                                actual_paths, lane, evidence)
+except (OSError, RuntimeError, UnicodeError, ValueError) as exc:
+    emit("CLOSED", "routing_basis_input_invalid", [str(exc).split(":")[0]])
 
 if record_routing_mode:
     try:
@@ -875,7 +1092,8 @@ if recovery and recovery["Kind"] == "visual":
     if meta is None:
         identity_errors.append("recovery_visual_evidence_missing")
     else:
-        if recovery["Source truth hash"] != meta["source_hash"]: identity_errors.append("source_truth_changed")
+        source_hash = meta["legacy_source_hash"] if recovery["Version"] == "1" else meta["source_hash"]
+        if recovery["Source truth hash"] != source_hash: identity_errors.append("source_truth_changed")
         if recovery["Viewport"] != meta["viewport"]: identity_errors.append("viewport_changed")
         if recovery["State hash"] != meta["state_hash"]: identity_errors.append("state_changed")
         if recovery["Status"] == "closed":
@@ -886,6 +1104,16 @@ if recovery and recovery["Kind"] == "visual":
             if recovery["Strategy hash"] != meta["strategy_hash"]: identity_errors.append("resolved_strategy_mismatch")
             if recovery["Pixel hash"] != meta["pixel_hash"]: identity_errors.append("resolved_pixel_mismatch")
     base_errors.extend(identity_errors)
+
+if (recovery and recovery["Status"] == "resolved" and recovery["Version"] == "1" and
+        not base_errors and write):
+    migrated = receipt_from_meta("resolved", recovery["Attempt"], recovery["Kind"], lane,
+                                 meta if recovery["Kind"] == "visual" else None)
+    try:
+        write_recovery(recovery_path, migrated)
+    except (OSError, ValueError) as exc:
+        emit("CLOSED", "recovery_write_failed", [str(exc)])
+    recovery = migrated
 
 if recovery and recovery["Status"] == "resolved" and frontend_recovery == "active" and not base_errors:
     if not write:

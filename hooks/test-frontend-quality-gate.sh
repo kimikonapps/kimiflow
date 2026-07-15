@@ -59,22 +59,6 @@ os.replace(tmp, path)
 PY
 }
 
-remove_affected_header() {
-  python3 - "$1" <<'PY'
-import os, sys, tempfile
-path = sys.argv[1]
-lines = open(path, encoding="utf-8").read().splitlines()
-matches = [i for i, line in enumerate(lines) if line == "Affected files:"]
-if len(matches) != 1:
-    raise SystemExit("affected header")
-del lines[matches[0]]
-fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".state.")
-with os.fdopen(fd, "w", encoding="utf-8") as handle:
-    handle.write("\n".join(lines) + "\n")
-os.replace(tmp, path)
-PY
-}
-
 write_png() {
   python3 - "$1" "$2" "$3" "${4:-18}" <<'PY'
 import binascii, os, struct, sys, time, zlib
@@ -128,8 +112,8 @@ new_repo() {
 }
 
 write_active() {
-  repo="$1" run_rel="${2:-.kimiflow/run}" marker="${3:-absent}"
-  python3 - "$repo/.kimiflow/session/ACTIVE_RUN.json" "$run_rel" "$(git -C "$repo" rev-parse HEAD)" "$marker" <<'PY'
+  repo="$1" run_rel="${2:-.kimiflow/run}" marker="${3:-absent}" started_head="${4:-$(git -C "$repo" rev-parse HEAD)}"
+  python3 - "$repo/.kimiflow/session/ACTIVE_RUN.json" "$run_rel" "$started_head" "$marker" <<'PY'
 import json, sys
 path, run, head, marker = sys.argv[1:]
 obj = {"schema_version": 1, "status": "active", "run": run, "started_head": head, "host": "codex", "mode": "feature"}
@@ -214,6 +198,16 @@ finish_off_delta() {
   set_affected "$repo/.kimiflow/run/STATE.md" "$@"
   replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality evidence" "ui-surface=no; ref=request:INTENT.md"
   record_routing "$repo"
+}
+
+finish_standard_capture() {
+  repo="$1" path="$2"
+  set_affected "$repo/.kimiflow/run/STATE.md" "$path"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality" "standard"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality evidence" "ui-surface=yes; ref=path:$path"
+  record_routing "$repo" >/dev/null
+  write_png "$repo/.kimiflow/run/evidence/final.png" 2 2 18
+  write_qa "$repo/.kimiflow/run" standard passed initial-capture hierarchy-reset final.png
 }
 
 test_canonical_git_delta_sources() {
@@ -361,17 +355,10 @@ PY
 
 prepare_standard() {
   repo="$1"
-  write_active "$repo"
-  write_state "$repo"
-  record_start "$repo" >/dev/null
+  prepare_off_delta "$repo"
   mkdir -p "$repo/src/ui"
   printf 'export default 1\n' > "$repo/src/ui/App.tsx"
-  set_affected "$repo/.kimiflow/run/STATE.md" src/ui/App.tsx
-  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality" "standard"
-  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality evidence" "ui-surface=yes; ref=path:src/ui/App.tsx"
-  record_routing "$repo" >/dev/null
-  write_png "$repo/.kimiflow/run/evidence/final.png" 2 2 18
-  write_qa "$repo/.kimiflow/run" standard passed initial-capture hierarchy-reset final.png
+  finish_standard_capture "$repo" src/ui/App.tsx
 }
 
 test_standard_and_flagship_pass_contract() {
@@ -600,16 +587,141 @@ test_affected_snapshot_detects_delete_after_capture() {
   write_state "$repo"
   record_start "$repo" >/dev/null
   printf 'export default 2\n' > "$repo/src/ui/App.tsx"
-  set_affected "$repo/.kimiflow/run/STATE.md" src/ui/App.tsx
-  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality" "standard"
-  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality evidence" "ui-surface=yes; ref=path:src/ui/App.tsx"
-  record_routing "$repo" >/dev/null
-  write_png "$repo/.kimiflow/run/evidence/final.png" 2 2 18
-  write_qa "$repo/.kimiflow/run" standard passed initial-capture hierarchy-reset final.png
+  finish_standard_capture "$repo" src/ui/App.tsx
   assert_has "$("$GATE" "$repo/.kimiflow/run")" $'FRONTEND_QUALITY_GATE\tOPEN' "capture_before_delete_opens"
   rm "$repo/src/ui/App.tsx"
   out="$("$GATE" "$repo/.kimiflow/run")"
   assert_has "$out" 'routing_basis_stale' "delete_after_capture_stales_routing_basis"
+}
+
+test_affected_snapshot_covers_git_layers() {
+  repo="$(new_repo index-after-capture)"
+  mkdir -p "$repo/src/ui"
+  printf 'export default 1\n' > "$repo/src/ui/App.tsx"
+  git -C "$repo" add src/ui/App.tsx
+  git -C "$repo" commit -qm ui-base
+  write_active "$repo"
+  write_state "$repo"
+  record_start "$repo" >/dev/null
+  printf 'export default 3\n' > "$repo/src/ui/App.tsx"
+  finish_standard_capture "$repo" src/ui/App.tsx
+  git -C "$repo" add src/ui/App.tsx
+  assert_has "$("$GATE" "$repo/.kimiflow/run")" $'FRONTEND_QUALITY_GATE\tOPEN' \
+    "staging_captured_worktree_preserves_routing_basis"
+  blob="$(printf 'export default 4\n' | git -C "$repo" hash-object -w --stdin)"
+  git -C "$repo" update-index --cacheinfo "100644,$blob,src/ui/App.tsx"
+  out="$("$GATE" "$repo/.kimiflow/run")"
+  assert_has "$out" 'routing_basis_stale' "index_only_change_stales_routing_basis"
+
+  repo="$(new_repo index-worktree-swap)"
+  mkdir -p "$repo/src/ui"
+  printf 'export default 1\n' > "$repo/src/ui/App.tsx"
+  git -C "$repo" add src/ui/App.tsx
+  git -C "$repo" commit -qm ui-base
+  write_active "$repo"
+  write_state "$repo"
+  record_start "$repo" >/dev/null
+  printf 'export default 2\n' > "$repo/src/ui/App.tsx"
+  finish_standard_capture "$repo" src/ui/App.tsx
+  git -C "$repo" add src/ui/App.tsx
+  git -C "$repo" show HEAD:src/ui/App.tsx > "$repo/src/ui/App.tsx"
+  out="$("$GATE" "$repo/.kimiflow/run")"
+  assert_has "$out" 'routing_basis_stale' "index_worktree_swap_stales_routing_basis"
+
+  repo="$(new_repo clean-filter-raw-change)"
+  git -C "$repo" config filter.digits.clean "sed 's/[0-9]/N/g'"
+  git -C "$repo" config filter.digits.smudge cat
+  printf '*.tsx filter=digits\n' > "$repo/.gitattributes"
+  mkdir -p "$repo/src/ui"
+  printf 'baseline\n' > "$repo/src/ui/App.tsx"
+  git -C "$repo" add .gitattributes src/ui/App.tsx
+  git -C "$repo" commit -qm ui-base
+  write_active "$repo"
+  write_state "$repo"
+  record_start "$repo" >/dev/null
+  printf 'export default 1\n' > "$repo/src/ui/App.tsx"
+  finish_standard_capture "$repo" src/ui/App.tsx
+  printf 'export default 2\n' > "$repo/src/ui/App.tsx"
+  out="$("$GATE" "$repo/.kimiflow/run")"
+  assert_has "$out" 'routing_basis_stale' "clean_filter_cannot_hide_raw_change"
+
+  sub="$WORK/submodule-origin"
+  mkdir -p "$sub/src"
+  git -C "$sub" init -q
+  git -C "$sub" config user.email test@example.com
+  git -C "$sub" config user.name Test
+  printf 'export default 1\n' > "$sub/src/App.tsx"
+  git -C "$sub" add src/App.tsx
+  git -C "$sub" commit -qm base
+  repo="$(new_repo submodule-after-capture)"
+  git -C "$repo" -c protocol.file.allow=always submodule add -q "$sub" vendor/ui
+  git -C "$repo" commit -qam submodule-base
+  write_active "$repo"
+  write_state "$repo"
+  record_start "$repo" >/dev/null
+  printf 'export default 2\n' > "$repo/vendor/ui/src/App.tsx"
+  finish_standard_capture "$repo" vendor/ui
+  printf 'export default 3\n' > "$repo/vendor/ui/src/App.tsx"
+  out="$("$GATE" "$repo/.kimiflow/run")"
+  assert_has "$out" 'routing_basis_stale' "dirty_submodule_content_stales_routing_basis"
+  bad_name=$'bad\nname.tsx'
+  printf 'bad\n' > "$repo/vendor/ui/$bad_name"
+  out="$(record_routing "$repo" 2>&1 || true)"
+  assert_has "$out" 'git_delta_invalid' "nested_newline_path_stays_machine_readable"
+
+  repo="$(new_repo ignored-submodule-config)"
+  mkdir -p "$repo/src/ui"
+  printf 'export default 1\n' > "$repo/src/ui/App.tsx"
+  git -C "$repo" add src/ui/App.tsx
+  git -C "$repo" commit -qm ui-base
+  git -C "$repo" -c protocol.file.allow=always submodule add -q "$sub" vendor/ui
+  git -C "$repo" commit -qam submodule-base
+  write_active "$repo"
+  write_state "$repo"
+  record_start "$repo" >/dev/null
+  printf 'export default 2\n' > "$repo/src/ui/App.tsx"
+  printf 'export default 2\n' > "$repo/vendor/ui/src/App.tsx"
+  git -C "$repo" config diff.ignoreSubmodules all
+  set_affected "$repo/.kimiflow/run/STATE.md" src/ui/App.tsx
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality" "standard"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality evidence" "ui-surface=yes; ref=path:src/ui/App.tsx"
+  out="$(record_routing "$repo")"
+  assert_has "$out" 'affected_files_mismatch' "ignore_submodules_cannot_hide_dirty_path"
+
+  leaf="$WORK/nested-leaf"
+  mkdir -p "$leaf/src"
+  git -C "$leaf" init -q
+  git -C "$leaf" config user.email test@example.com
+  git -C "$leaf" config user.name Test
+  printf 'leaf 1\n' > "$leaf/src/App.tsx"
+  git -C "$leaf" add src/App.tsx
+  git -C "$leaf" commit -qm base
+  middle="$WORK/nested-middle"
+  mkdir -p "$middle"
+  git -C "$middle" init -q
+  git -C "$middle" config user.email test@example.com
+  git -C "$middle" config user.name Test
+  git -C "$middle" -c protocol.file.allow=always submodule add -q "$leaf" nested/ui
+  git -C "$middle" commit -qam leaf-submodule
+  repo="$(new_repo nested-ignore-config)"
+  mkdir -p "$repo/src/ui"
+  printf 'export default 1\n' > "$repo/src/ui/App.tsx"
+  git -C "$repo" add src/ui/App.tsx
+  git -C "$repo" commit -qm ui-base
+  git -C "$repo" -c protocol.file.allow=always submodule add -q "$middle" vendor/middle
+  git -C "$repo" commit -qam middle-submodule
+  git -C "$repo" -c protocol.file.allow=always submodule update -q --init --recursive
+  write_active "$repo"
+  write_state "$repo"
+  record_start "$repo" >/dev/null
+  printf 'export default 2\n' > "$repo/src/ui/App.tsx"
+  git -C "$repo/vendor/middle" config diff.ignoreSubmodules all
+  printf 'leaf 2\n' > "$repo/vendor/middle/nested/ui/src/App.tsx"
+  set_affected "$repo/.kimiflow/run/STATE.md" src/ui/App.tsx
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality" "standard"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality evidence" "ui-surface=yes; ref=path:src/ui/App.tsx"
+  out="$(record_routing "$repo")"
+  assert_has "$out" 'affected_files_mismatch' "nested_ignore_submodules_cannot_hide_dirty_path"
 }
 
 test_visual_source_identity_preserves_case() {
@@ -622,13 +734,64 @@ test_visual_source_identity_preserves_case() {
   write_png "$repo/.kimiflow/run/evidence/final.png" 2 2 99
   out="$("$GATE" "$repo/.kimiflow/run" --write)"
   assert_has "$out" 'source_truth_changed' "source_truth_case_change_is_identity_change"
+
+  repo="$(new_repo source-whitespace)"
+  prepare_standard "$repo"
+  write_qa "$repo/.kimiflow/run" standard blocked initial-capture hierarchy-reset final.png 1
+  replace_line "$repo/.kimiflow/run/DESIGN-QA.md" "Source truth" "project-system:src/ui/My File.tsx"
+  "$GATE" "$repo/.kimiflow/run" --write >/dev/null
+  write_qa "$repo/.kimiflow/run" standard passed fix-capture-compare source-whitespace-fix final.png
+  replace_line "$repo/.kimiflow/run/DESIGN-QA.md" "Source truth" "project-system:src/ui/My  File.tsx"
+  write_png "$repo/.kimiflow/run/evidence/final.png" 2 2 99
+  out="$("$GATE" "$repo/.kimiflow/run" --write)"
+  assert_has "$out" 'source_truth_changed' "source_truth_whitespace_change_is_identity_change"
+
+  repo="$(new_repo legacy-source-identity)"
+  prepare_standard "$repo"
+  write_qa "$repo/.kimiflow/run" standard blocked initial-capture hierarchy-reset final.png 1
+  "$GATE" "$repo/.kimiflow/run" --write >/dev/null
+  legacy_hash="$(python3 -c "import hashlib; print(hashlib.sha256(b'project-system:src/ui/app.tsx').hexdigest())")"
+  replace_line "$repo/.kimiflow/run/FRONTEND-QUALITY-RECOVERY" "Version" "1"
+  replace_line "$repo/.kimiflow/run/FRONTEND-QUALITY-RECOVERY" "Source truth hash" "$legacy_hash"
+  write_qa "$repo/.kimiflow/run" standard passed fix-capture-compare legacy-migration-fix final.png
+  write_png "$repo/.kimiflow/run/evidence/final.png" 2 2 99
+  out="$("$GATE" "$repo/.kimiflow/run" --write)"
+  assert_has "$out" $'FRONTEND_QUALITY_GATE\tOPEN' "legacy_source_identity_migrates"
+  assert_has "$(grep '^Version:' "$repo/.kimiflow/run/FRONTEND-QUALITY-RECOVERY")" 'Version: 2' \
+    "legacy_source_identity_writes_v2"
+  replace_line "$repo/.kimiflow/run/FRONTEND-QUALITY-RECOVERY" "Version" "1"
+  replace_line "$repo/.kimiflow/run/FRONTEND-QUALITY-RECOVERY" "Source truth hash" "$legacy_hash"
+  assert_has "$("$GATE" "$repo/.kimiflow/run" --write)" $'FRONTEND_QUALITY_GATE\tOPEN' \
+    "clean_legacy_recovery_completes"
+  assert_has "$(grep '^Version:' "$repo/.kimiflow/run/FRONTEND-QUALITY-RECOVERY")" 'Version: 2' \
+    "clean_legacy_recovery_writes_v2"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality recovery" "active"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality recovery owns global" "yes"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Recovery" "active"
+  replace_line "$repo/.kimiflow/run/FRONTEND-QUALITY-RECOVERY" "Version" "1"
+  replace_line "$repo/.kimiflow/run/FRONTEND-QUALITY-RECOVERY" "Source truth hash" "$legacy_hash"
+  assert_has "$("$GATE" "$repo/.kimiflow/run" --write)" $'FRONTEND_QUALITY_GATE\tOPEN' \
+    "resolved_legacy_recovery_completes"
+  assert_has "$(grep '^Version:' "$repo/.kimiflow/run/FRONTEND-QUALITY-RECOVERY")" 'Version: 2' \
+    "resolved_legacy_recovery_writes_v2"
+  replace_line "$repo/.kimiflow/run/DESIGN-QA.md" "Source truth" "project-system:src/UI/App.tsx"
+  assert_has "$("$GATE" "$repo/.kimiflow/run")" 'source_truth_changed' \
+    "migrated_legacy_recovery_preserves_exact_identity"
 }
 
 test_record_start_allows_missing_affected_header() {
   repo="$(new_repo start-without-affected)"
   write_active "$repo"
   write_state "$repo"
-  remove_affected_header "$repo/.kimiflow/run/STATE.md"
+  python3 - "$repo/.kimiflow/run/STATE.md" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+needle = "Affected files:\n"
+if text.count(needle) != 1:
+    raise SystemExit("affected header")
+open(path, "w", encoding="utf-8").write(text.replace(needle, "", 1))
+PY
   out="$(record_start "$repo")"
   assert_has "$out" $'FRONTEND_QUALITY_GATE\tOPEN' "record_start_without_affected_header_opens"
   out="$("$GATE" "$repo/.kimiflow/run")"
@@ -651,6 +814,34 @@ test_sha256_started_head_is_supported() {
   write_state "$repo"
   out="$(record_start "$repo")"
   assert_has "$out" $'FRONTEND_QUALITY_GATE\tOPEN' "sha256_started_head_opens"
+
+  invalid_repo="$(new_repo invalid-oids)"
+  write_state "$invalid_repo"
+  assert_invalid_started_head() {
+    name="$1" value="$2"
+    write_active "$invalid_repo" .kimiflow/run absent "$value"
+    assert_has "$(record_start "$invalid_repo")" 'started_head_invalid' "started_head_rejects_$name"
+  }
+  head="$(git -C "$invalid_repo" rev-parse HEAD)"
+  blob="$(printf 'blob\n' | git -C "$invalid_repo" hash-object -w --stdin)"
+  assert_invalid_started_head symbolic HEAD
+  assert_invalid_started_head short "${head%????????????????????????????????}"
+  assert_invalid_started_head expression "$head^0"
+  assert_invalid_started_head nonexistent 0000000000000000000000000000000000000000
+  assert_invalid_started_head noncommit "$blob"
+  python3 - "$invalid_repo/.kimiflow/session/ACTIVE_RUN.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["started_head"] = 42
+open(path, "w", encoding="utf-8").write(json.dumps(data) + "\n")
+PY
+  if out="$(record_start "$invalid_repo" 2>&1)"; then
+    pass started_head_nonstring_stays_structured
+  else
+    fail started_head_nonstring_stays_structured
+  fi
+  assert_has "$out" 'started_head_invalid' "started_head_rejects_nonstring"
 }
 
 test_backend_generic_segments_stay_off() {
@@ -658,18 +849,14 @@ test_backend_generic_segments_stay_off() {
   prepare_off_delta "$repo"
   mkdir -p "$repo/src/components"
   printf 'value = 1\n' > "$repo/src/components/auth.py"
-  set_affected "$repo/.kimiflow/run/STATE.md" src/components/auth.py
-  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality evidence" "ui-surface=no; ref=request:INTENT.md"
-  out="$(record_routing "$repo")"
+  out="$(finish_off_delta "$repo" src/components/auth.py)"
   assert_has "$out" $'FRONTEND_QUALITY_GATE\tOPEN' "backend_components_python_stays_off"
 
   repo="$(new_repo frontend-components)"
   prepare_off_delta "$repo"
   mkdir -p "$repo/src/components"
   printf 'export default 1\n' > "$repo/src/components/Button.tsx"
-  set_affected "$repo/.kimiflow/run/STATE.md" src/components/Button.tsx
-  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality evidence" "ui-surface=no; ref=request:INTENT.md"
-  out="$(record_routing "$repo")"
+  out="$(finish_off_delta "$repo" src/components/Button.tsx)"
   assert_has "$out" 'lane_route_mismatch' "frontend_components_tsx_requires_ui_lane"
 }
 
@@ -677,7 +864,7 @@ test_negated_flagship_intent_stays_standard() {
   repo="$(new_repo negated-flagship)"
   write_active "$repo"
   write_state "$repo"
-  printf 'Add the UI capability, but do not polish or redesign the UI.\n' > "$repo/.kimiflow/run/INTENT.md"
+  printf '%s\n' 'Add the UI capability. Do not polish, redesign, or under any circumstances regardless of feedback from product design and engineering reviewers apply a visual refresh.' > "$repo/.kimiflow/run/INTENT.md"
   record_start "$repo" >/dev/null
   mkdir -p "$repo/src/ui"
   printf 'export default 1\n' > "$repo/src/ui/App.tsx"
@@ -686,6 +873,22 @@ test_negated_flagship_intent_stays_standard() {
   replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality evidence" "ui-surface=yes; ref=path:src/ui/App.tsx"
   out="$(record_routing "$repo")"
   assert_has "$out" $'FRONTEND_QUALITY_GATE\tOPEN' "negated_polish_stays_standard"
+
+  printf '%s\n' "Add the UI capability. We can't polish or redesign the UI." > "$repo/.kimiflow/run/INTENT.md"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality routing" "provisional"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality basis" "pending"
+  out="$(record_routing "$repo")"
+  assert_has "$out" $'FRONTEND_QUALITY_GATE\tOPEN' "cant_polish_stays_standard"
+
+  printf '%s\n' 'Add no-code UI polish.' > "$repo/.kimiflow/run/INTENT.md"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality routing" "provisional"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality basis" "pending"
+  out="$(record_routing "$repo")"
+  assert_has "$out" 'flagship_route_mismatch' "no_code_polish_requires_flagship"
+
+  printf '%s\n' 'Add a no-polish UI update.' > "$repo/.kimiflow/run/INTENT.md"
+  out="$(record_routing "$repo")"
+  assert_has "$out" $'FRONTEND_QUALITY_GATE\tOPEN' "no_polish_stays_standard"
 }
 
 test_recovery_truth_table_rejects_incoherent_state() {
@@ -761,6 +964,7 @@ test_visual_recovery_identity_is_immutable
 test_off_contract_recovery_without_capture
 test_prepared_run_resume_rebinds_clean_baseline
 test_affected_snapshot_detects_delete_after_capture
+test_affected_snapshot_covers_git_layers
 test_visual_source_identity_preserves_case
 test_record_start_allows_missing_affected_header
 test_sha256_started_head_is_supported
