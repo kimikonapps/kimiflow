@@ -115,6 +115,20 @@ if [ -x "$ROOT/hooks/plan-blocker-gate.sh" ] && bash -n "$ROOT/hooks/plan-blocke
 if [ -x "$ROOT/hooks/test-plan-blocker-gate.sh" ] && bash -n "$ROOT/hooks/test-plan-blocker-gate.sh" 2>/dev/null; then ok "plan-blocker gate test ok"; else bad "plan-blocker gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/red-green-gate.sh" ] && bash -n "$ROOT/hooks/red-green-gate.sh" 2>/dev/null; then ok "red-green gate helper ok"; else bad "red-green gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-red-green-gate.sh" ] && bash -n "$ROOT/hooks/test-red-green-gate.sh" 2>/dev/null; then ok "red-green gate test ok"; else bad "red-green gate test missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/frontend-quality-gate.sh" ] && bash -n "$ROOT/hooks/frontend-quality-gate.sh" 2>/dev/null; then ok "frontend quality gate helper ok"; else bad "frontend quality gate helper missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/test-frontend-quality-gate.sh" ] && bash -n "$ROOT/hooks/test-frontend-quality-gate.sh" 2>/dev/null; then ok "frontend quality gate test ok"; else bad "frontend quality gate test missing/not-exec/bad"; fi
+for spec in frontend-quality-standard.md frontend-quality-flagship.md frontend-quality-qa.md; do
+  [ -s "$ROOT/references/$spec" ] && ok "frontend quality reference present: $spec" || bad "frontend quality reference missing: $spec"
+done
+grep -q 'frontend-quality-standard.md' "$ROOT/phases/phase-2-understand.md" && ok "Phase 2 lazy frontend routing present" || bad "Phase 2 lazy frontend routing missing"
+grep -q 'frontend-quality-qa.md' "$ROOT/phases/phase-6-verify.md" && ok "Phase 6 frontend QA gate present" || bad "Phase 6 frontend QA gate missing"
+grep -Fq "\$KIMIFLOW_PLUGIN_ROOT/references/frontend-quality-standard.md" "$ROOT/phases/phase-2-understand.md" && ok "Phase 2 Codex frontend reference is plugin-rooted" || bad "Phase 2 Codex frontend reference is not plugin-rooted"
+grep -Fq "\$KIMIFLOW_PLUGIN_ROOT/references/frontend-quality-qa.md" "$ROOT/phases/phase-6-verify.md" && ok "Phase 6 Codex frontend QA is plugin-rooted" || bad "Phase 6 Codex frontend QA is not plugin-rooted"
+grep -q 'Frontend quality recovery: clean' "$ROOT/phases/phase-7-review-commit.md" && ok "Phase 7 frontend serialization present" || bad "Phase 7 frontend serialization missing"
+grep -q 'frontend-quality-gate.sh' "$SKILL" && ok "Codex wrapper maps frontend quality gate" || bad "Codex wrapper missing frontend quality gate"
+[ "$(wc -c < "$ROOT/references/frontend-quality-standard.md")" -le 5000 ] && ok "standard frontend reference budget" || bad "standard frontend reference over budget"
+[ "$(wc -c < "$ROOT/references/frontend-quality-flagship.md")" -le 2500 ] && ok "flagship frontend reference budget" || bad "flagship frontend reference over budget"
+[ "$(wc -c < "$ROOT/references/frontend-quality-qa.md")" -le 5000 ] && ok "QA frontend reference budget" || bad "QA frontend reference over budget"
 if [ -x "$ROOT/hooks/lsp-diagnostics.sh" ] && bash -n "$ROOT/hooks/lsp-diagnostics.sh" 2>/dev/null; then ok "local diagnostics helper ok"; else bad "local diagnostics helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-lsp-diagnostics.sh" ] && bash -n "$ROOT/hooks/test-lsp-diagnostics.sh" 2>/dev/null; then ok "local diagnostics test ok"; else bad "local diagnostics test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/memory-router.sh" ] && bash -n "$ROOT/hooks/memory-router.sh" 2>/dev/null; then ok "memory router helper ok"; else bad "memory router helper missing/not-exec/bad"; fi
