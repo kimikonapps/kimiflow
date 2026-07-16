@@ -4,6 +4,13 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.3
+
+The autonomous solo-developer release: Kimiflow front-loads material decisions, adapts strategy without
+babysitting, and keeps a single safe workspace with atomic local checkpoints.
+
 ### Changed
 
 - **Schema-4 runs no longer need routine babysitting**: Kimiflow batches real ambiguity up front, explains the
