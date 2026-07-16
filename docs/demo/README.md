@@ -2,7 +2,7 @@
 
 The README's **30-second demo** links here. The committed clip is a scripted overview of the current
 Kimiflow front door and core loop: launcher → project state → adaptive discovery → mode choice →
-clarify/understand/plan → mechanical gates → commit stop → learning loop.
+clarify/understand/plan → mechanical gates → atomic local commit → learning loop.
 
 Two ways to produce it. **Prefer A** — a real recording is the honest, credible artifact. B is a
 cosmetic placeholder, clearly labelled.
@@ -26,13 +26,13 @@ that makes a gate *work*.
 **Record → convert:**
 ```bash
 asciinema rec kimiflow.cast -c "claude"        # then, inside: /kimiflow --fix <the bug>
-# drive the run; Ctrl-D to stop recording when the commit-gate STOPs
+# drive the run; Ctrl-D after the verified local commit and learning summary
 agg --theme monokai --font-size 18 kimiflow.cast kimiflow.gif
 ```
 
-**Tips:** terminal ~100×30, a high-contrast theme, and *stop at the commit-gate* — the whole point is
-showing it waits for you. `kimiflow.cast` is plain JSON; trim dead air before converting if a phase
-ran long.
+**Tips:** terminal ~100×30, a high-contrast theme, and include the clarification batch, autonomous
+recovery, and final local commit. `kimiflow.cast` is plain JSON; trim dead air before converting if a
+phase ran long.
 
 ## B — branded illustration (placeholder, clearly labelled)
 

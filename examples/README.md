@@ -5,9 +5,9 @@ phases, the gates and the artifacts **before** installing.
 
 | File | Scope | Mode | What it shows |
 |------|-------|------|---------------|
-| [`01-small-fix.md`](01-small-fix.md) | `small` | fix | the lean path — direct diagnosis, one Fix Preview, 1 reviewer, commit-gate |
-| [`02-risky-bugfix.md`](02-risky-bugfix.md) | `large` | fix | the full loop — proven cause, one Fix Preview, 2-reviewer plan-gate with a real HIGH, commit-gate |
-| [`03-feature.md`](03-feature.md) | `large` | feature | adaptive Discovery, a proven architecture fork, Build Preview approval, and a non-blocking MEDIUM |
+| [`01-small-fix.md`](01-small-fix.md) | `small` | fix | the lean path — direct diagnosis, two-axis code review, atomic local commit |
+| [`02-risky-bugfix.md`](02-risky-bugfix.md) | `large` | fix | the full loop — proven cause, 2-reviewer plan-gate with a real HIGH, autonomous recovery |
+| [`03-feature.md`](03-feature.md) | `large` | feature | one clarification batch, adaptive Discovery, a proven architecture fork, and a non-blocking MEDIUM |
 
 > **These are illustrative walkthroughs, not captured transcripts.** They are faithful
 > reconstructions of how a run reads, built from the skill spec (`SKILL.md` / `reference.md`) — the
@@ -17,5 +17,5 @@ phases, the gates and the artifacts **before** installing.
 > [`../evals/outcomes.md`](../evals/outcomes.md) (still 0 real rows — by design).
 
 Legend for the phase markers used below: ⚪0 setup/scope · 🔵1 clarify · 🟣2 understand/diagnose ·
-⚫3 plan · 🟡4 plan-gate · 🟠5 implement · 🟤6 verify · 🟢7 code-review→commit-gate. ✋ = a stop that
+⚫3 plan · 🟡4 plan-gate · 🟠5 implement · 🟤6 verify · 🟢7 code-review→local commit. ✋ = a stop that
 waits for you · ⛔ = a gate that can refuse · ✅ = a gate that passed.

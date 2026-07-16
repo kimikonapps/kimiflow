@@ -45,7 +45,7 @@ Was willst du tun?
 2. Projektkarte prüfen/aktualisieren
 3. Offene Findings ansehen/abarbeiten
 4. Geparkten Run fortsetzen
-5. Full Loop starten (grill + plan + Freigabe vor Build)
+5. Full Loop starten (grill + plan + autonomer Build, außer bei wesentlicher Entscheidung)
 6. Grill / Spec klären
 7. Plan vorbereiten
 8. Freigegebenen Plan bauen
@@ -70,18 +70,17 @@ every machine.
 use the current conversation topic only when it is unambiguous; otherwise ask one plain-language question.
 
 - `kimiflow full` — strict full loop: feature intent or fix diagnosis, understanding/research, plan, plan-gate,
-  then one mode-specific Preview approval before implementation.
+  then implementation; the alias itself creates no approval stop and only a material decision pauses.
 - `kimiflow grill` — clarify/spec only, no code.
 - `kimiflow plan` — clarify + understand + plan + plan-gate, then park/resume, no code.
 - `kimiflow build` — implement an already-approved/prepared plan; if none exists, ask whether to run `full`,
   `plan`, or `quick`.
 - `kimiflow quick` — intentionally lean small, low-risk path. Features confirm complete intent; clear fixes
-  defer their one approval until the post-diagnosis Fix Preview
-  unless the request is truly trivial and exact.
+  diagnose and continue autonomously unless a material product/authority/risk decision is missing.
 - `kimiflow review` — read-only existing-feature/current-change review, no code.
 - `kimiflow audit` — read-only cleanup/refactoring scan first, no code until a slice is approved.
-- `kimiflow fix` — bug flow with reproduction/Red evidence, root-cause proof, current fix research, one Fix
-  Preview approval, and Green evidence.
+- `kimiflow fix` — bug flow with reproduction/Red evidence, root-cause proof, current fix research, a bounded
+  implementation, and Green evidence; no routine approval stop.
 
 If `.kimiflow/project/INDEX.json` is missing, bias the first menu toward Project Map Bootstrap:
 `quick` / `skip`. If a map exists, use it first: read `INDEX.json`,
@@ -136,9 +135,9 @@ hygiene pass, not an implementation mode:
   whether tests/docs cover the delivered behavior. It is review-only; confirmed findings become fix/improve choices,
   not automatic edits.
 - Natural aliases: show `full`, `grill`, `plan`, `build`, `quick`, `review`, `audit`, and `fix` as shortcuts in
-  launcher text. `full` always includes one mode-specific Preview approval; `grill`, `plan`,
-  `review`, and `audit` are no-code until the user explicitly approves a later build/fix. `quick` is lean, not
-  assumption-free: features confirm behavior/scope/outcome, while fixes prove cause and confirm the bounded remedy.
+  launcher text. `full` adds rigor, not a routine approval stop; `grill`, `plan`, `review`, and `audit` are no-code
+  until the user explicitly authorizes a later build/fix. `quick` is lean, not assumption-free: features confirm
+  behavior/scope/outcome, while fixes prove cause and apply the bounded remedy autonomously.
 - Memory: list `MEMORY.md` budget, learning counts by status, vault availability, and curation reasons (the
   full `memory` object — incl. the `memory.provider.*` fields used below — needs `launcher-status.sh --full`;
   the default snapshot carries `memory_summary` only). Offer
@@ -179,9 +178,13 @@ implementation, and STOP.
 
 ---
 
-## Working-tree start gate (Phase 0 · resume)
+## Workspace preflight (Phase 0 · resume)
 
-Before any normal write-mode Kimiflow run starts (feature, fix, audit, project-map/update, docs write) — and before a resumed backlog run continues into Phase 5 — run `hooks/working-tree-gate.sh`. The stable output is `WORKING_TREE_GATE<TAB>OPEN|CLOSED<TAB>dirty=<n><TAB>staged=<n><TAB>unstaged=<n><TAB>untracked=<n><TAB>reason=<code><TAB>detail=<paths>`. `OPEN` is required before slugging, active-session start, or file edits. `CLOSED` means: stop, show the dirty-path summary, and ask the user to commit, stash, or otherwise clean the worktree first. Do not continue by accepting the risk; the point is to avoid mixing an old diff with a new Kimiflow run. Read-only launcher/status/inspection may still run and report the dirty state. `.kimiflow/` local state is ignored by the gate.
+Before every normal write run and before a backlog resumes into Phase 5, run `hooks/workspace-preflight.sh status --pretty`. It uses Git's stable porcelain interfaces (`git worktree list --porcelain -z`, `git status --porcelain=v2 -z`, `git ls-files --others --ignored --exclude-standard -z`) and reports the current root/branch/HEAD/dirty paths plus every linked tree's dirty paths, complete ignored-content count with a bounded path sample, lock/prunable state, active metadata, ownership, and Codex-managed classification. Show one compact summary before the product contract.
+
+The solo-dev default is the current worktree, sequential implementation, and zero additional worktrees. Only unregistered stale administration metadata may be previewed/written with `workspace-preflight.sh prune [--write]`; a registered prunable tree fails closed instead of orphaning ownership. A terminal registry entry left behind after a successful disposition can be reconciled by `prune --write` without deleting files. Inventory happens first; when it exposes ambiguity, create STATE and start the schema-4 active session before asking **one batched upfront workspace decision**, not one question per item. Record that first `workspace` wait durably; `active-run.sh` rejects a second wait on fresh, restarted, and resumed runs. Never force-remove, reset, clean, stash, delete branches, or stage/commit foreign paths. Run the existing `working-tree-gate.sh` afterward as the final current-tree clean assertion; Git-ignored `.kimiflow/` runtime state does not enter normal dirty routing, but tracked, non-ignored untracked, and ignored content all block exceptional-tree registration/disposition. If the authorized disposition advanced HEAD, immediately record the clean result with `active-run.sh refresh-baseline --workspace-disposition --write`; this requires the durable workspace-decision receipt, and frontend start accepts a newer HEAD only when that exact disposition head is also pinned in ACTIVE_RUN.
+
+Exceptional isolation needs explicit authority and `workspace-preflight.sh register --path <tree> --run .kimiflow/<slug> --write`. Trusted ownership uses the primary tree's `.kimiflow/session/WORKTREE_REGISTRY.json` plus a matching random-identity receipt in Git's linked-worktree administrative directory; a replacement tree at the same filesystem path cannot inherit it. The helper rejects primary/Codex-managed targets, symlinked/non-regular parents or records, malformed JSON and missing/mismatched receipts; registry mutations hold a file lock, write atomically without following registry/receipt paths, and cap registration at one even under concurrency. `remove --path <tree> --write` opens only for a registered, receipt-matched, noncurrent, clean, ignored-content-free, unlocked tree whose primary run is terminal (`done`, `failed`, or `aborted`); `parked` remains resumable and is retained. It pins and cross-checks the target directory, Git pointer, administrative back-reference, and pre/post status identity; then it atomically renames the complete checkout into a unique reported sibling archive and moves only the pinned matching administrative record into Git's reported `kimiflow-retired-worktrees/<identity>` metadata archive. Both moves are inode-revalidated through pinned parent descriptors. It never runs global prune or `git worktree remove`; a file created during disposition lands in the checkout archive, and any swapped foreign checkout/archive/admin entry is preserved and refused rather than blindly relocated; unrelated prunable metadata remains untouched and the branch survives. A safe detach failure restores only a still identity-matched checkout for retry; a changed archive is left untouched and reported as failure. A later registry failure is reconciled without file deletion. `archive_path` and `metadata_archive_path` are both returned, and archive deletion is never automatic. Target-tree metadata alone cannot prove ownership. Codex-managed paths below `$CODEX_HOME/worktrees` are app-owned and are never altered by Kimiflow; use Codex task archive/retention controls instead. Sources: https://git-scm.com/docs/git-worktree · https://git-scm.com/docs/git-status · https://learn.chatgpt.com/docs/environments/git-worktrees
 
 ---
 
@@ -214,6 +217,7 @@ hooks/active-run.sh mark-accepted --id item_001 --write
 hooks/active-run.sh mark-rejected --id item_001 --reason "..." --write
 hooks/active-run.sh drop-item --id item_001 --reason "out of scope" --write
 hooks/active-run.sh refresh-baseline --write
+hooks/active-run.sh await-user --run .kimiflow/<slug> --kind <kind> --reason "..." --write
 hooks/active-run.sh finish --write
 hooks/active-run.sh park --reason "waiting for user validation" --write
 hooks/active-run.sh fail --reason "verification failed" --write
@@ -240,8 +244,9 @@ no-ops for other or owner-unknown sessions.
 
 **Parallel writes:** `conflict-check` compares each intended path with the active run's declared affected paths.
 It returns `allow_disjoint`, `block_overlap`, or `block_unknown`; parent/child path overlaps count as conflicts.
-Only `allow_disjoint` permits edits in the shared checkout. On either block result, wait, narrow the scope, or
-use a separate Git worktree. Never stage, commit, revert, or clean another session's files.
+Only `allow_disjoint` permits edits in the shared checkout. On either block result, wait or narrow the scope.
+Do not create a Git worktree by default; the single exceptional path follows the registered Workspace-preflight
+contract above. Never stage, commit, revert, or clean another session's files.
 
 **Item lifecycle:** sequential changes accumulate as items:
 
@@ -293,9 +298,9 @@ Do not narrate tool use, subagent activity, discovered context, state updates, m
 | source | location | set by |
 |---|---|---|
 | flag | `--quiet` / `--verbose` (one-off, **never persists**) | the invocation |
-| project | `.kimiflow/verbosity` (at the git root) | `--set-verbosity`, `--settings`, onboarding |
-| global (Claude Code) | `~/.claude/kimiflow/verbosity` | `--settings`, onboarding |
-| global (Codex) | `${CODEX_HOME:-~/.codex}/kimiflow/verbosity` when invoked with `KIMIFLOW_HOST=codex` | `--settings`, onboarding |
+| project | `.kimiflow/verbosity` (at the git root) | `--set-verbosity`, `--settings` |
+| global (Claude Code) | `~/.claude/kimiflow/verbosity` | `--settings` |
+| global (Codex) | `${CODEX_HOME:-~/.codex}/kimiflow/verbosity` when invoked with `KIMIFLOW_HOST=codex` | `--settings` |
 | default | — | `balanced` |
 
 **File format (both scopes):** a single line — the bare level word + newline (e.g. `verbose`). No keys, no other content. This format **structurally enforces the self-contained rule**: only a valid level word is ever read/honored, so a gate/cost/scope line placed in (especially) the global file is not a level and is silently ignored.
@@ -304,20 +309,20 @@ Do not narrate tool use, subagent activity, discovered context, state updates, m
 
 **Helper — all reads AND writes go through one tested script** (`hooks/resolve-verbosity.sh`, invoked from the installed Kimiflow plugin root; Claude Code uses `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/hooks/resolve-verbosity.sh`, Codex uses `KIMIFLOW_HOST=codex <plugin-root>/hooks/resolve-verbosity.sh`; unit-tested by `hooks/test-resolve-verbosity.sh`):
 - `get [--flag <level>]` → resolves and echoes the level (precedence above).
-- `onboard-check [--flag <level>]` → echoes `ASK` iff nothing is set anywhere (the winning source is the built-in default), else `SKIP`. Moves the first-run "is it already set?" decision out of the orchestrator's judgment and into the script, so onboarding can't misfire on an already-configured project.
+- `onboard-check [--flag <level>]` → compatibility/status command: echoes `ASK` iff nothing is set anywhere, else `SKIP`. Normal actionable runs do not turn `ASK` into a prompt; they use `balanced`.
 - `set <project|global> <level>` → validates, `mkdir -p`s the parent, writes, **verifies the write** (stderr + exit 1 on failure — never a false success), echoes the path. A garbage level/scope is rejected without writing.
 
 **Invocations (orchestrator behavior):**
 - **`--quiet` / `--verbose`** — resolve this run only via `get --flag <level>`; never call `set`, never persist.
 - **`--set-verbosity <level>`** — utility invocation: `set project <level>`, report the path, **exit** (no loop).
 - **`--settings`** — ask verbosity + scope; Build Preview policy `risk|always|off` (project only) → `resolve-build-gate.sh set`; and cross-family routing `auto|off|auto <order>` (project only). Report paths, then exit.
-- **First-run onboarding** — at Phase 0 of a normal run, run `onboard-check` and fire **iff it prints `ASK` ∧ the session is interactive**. `ASK` already encodes the whole config precondition (no flag, no project file, no global file) — it is **mechanical**, not the orchestrator's to re-derive. Then ask **once** for level + save-scope → `set <scope> <level>`. An explicit answer makes the next `onboard-check` print `SKIP` ⇒ never asked again. **`SKIP`, headless (no interactive channel), or the user dismisses ⇒ `balanced`, no `set`, no block** (so it stays unset and a later interactive run may ask again — only an explicit answer persists).
+- **Unset first run** — use `balanced` immediately with no prompt and no write. The launcher or explicit `--settings` remains the place to choose and persist another level.
 
 ---
 
 ## Model routing (per-role) (all phases)
 
-Kimiflow routes by four capability tiers so the workflow stays portable across Codex and Claude: `top` (strongest available host model), `balanced` (value-tier implementation model), `cheap` (smallest suitable bounded-support model), and `cross_family_top` (strong model from a different family). **Hard invariant:** the active session model is `top` and owns orchestration, planning, Phase-2 synthesis, risky diagnosis, and final quality verdicts. If the host exposes the current model and it is below `top`, stop before Phase 0 and ask the user to switch; never let a cheaper main session coordinate `top` subagents as a substitute orchestrator. Leaf routing is advisory allocation — never a gate or block; on hosts without per-subagent model selection all leaves inherit the `top` session model.
+Kimiflow routes by four capability tiers so the workflow stays portable across Codex and Claude: `top` (strongest available host model), `balanced` (value-tier implementation model), `cheap` (smallest suitable bounded-support model), and `cross_family_top` (strong model from a different family). Prefer `top` for the active session because it owns orchestration, planning, Phase-2 synthesis, risky diagnosis, and final quality verdicts. If the host exposes a lower active tier, record the quality fallback and continue without a model-switch prompt; bounded top-tier review/verification seats may strengthen the result but never masquerade as a changed orchestrator. Leaf routing is advisory allocation — never a gate or block.
 
 **Default seats (when the host supports per-subagent model selection):**
 - **`top`:** orchestrator, Discovery Assessment/Research Brief, source evaluation/synthesis/Decision Triage, planner(s), plan/code reviewers, independent semantic verifiers, and risky diagnosis. A cross-family seat may replace a `top` review/verification/diagnosis seat only with `cross_family_top`.
@@ -326,18 +331,18 @@ Kimiflow routes by four capability tiers so the workflow stays portable across C
 - **Discovery worker budget:** `none|pulse` spawns no research worker by default. `focused` normally uses one `cheap|balanced` worker and at most two in parallel only for explicitly independent lanes. A selective `top|cross_family_top` countercheck may replace one quality seat for security/privacy/auth/payment/public-contract/migration/lock-in/high-cost/immature-tech decisions; it tries to refute the chosen option rather than repeating broad research.
 - **Current Codex mapping:** `top=gpt-5.6-sol`, `balanced=gpt-5.6-terra`, `cheap=gpt-5.6-luna`; a pinned strongest available Claude model fills `cross_family_top`. Do not use Codex `ultra` inside Kimiflow: it adds automatic delegation under an already-orchestrated workflow; use deliberate `high`/`xhigh` seats instead.
 - **Opus-pinned implementation leaves — Claude Code host + Fable-family session only:** when the session model is the Fable family (Fable 5 + Mythos 5) and the host supports per-subagent model selection, spawn normal **implementer and bounded synthesizer** leaves at per-spawn `model: opus` — the next non-Fable Anthropic value tier — while reserving Fable for orchestration, planning, Phase-2 synthesis, same-family review, and independent semantic verification. A cross-family seat's same-family fallback uses the `top` session model for quality-verdict roles; implementation fallbacks may use Opus. The `failure-security` exception below may still use a strong non-Fable model to avoid a Fable-family refusal. Advisory, **never a gate**; a **No-Op** outside a Fable-family session.
-- **Cross-family CLI (different family, when available):** one Phase-4 plan-review lens (`small` → the single reviewer; `large` → lens B) · one Phase-7 code-review axis (default `spec-correctness`) · the Phase-5 escalation diagnosis call · when the material-fork dual-plan triggers, one of its two planners · at `large`, the additive Phase-6 independent verifier (read-only) and second best-of-2 candidate. On a Claude Code host **every cross-family seat except the best-of-2 implementer** is filled by an **ordered chain** (default Codex → Gemini via `agy` → same-family; configurable → "Opt-out & order"); the best-of-2 implementer is Codex-only and never substitutes. The `large` Phase-6 verifier starts at Gemini when available, then follows the configured fallback order.
+- **Cross-family CLI (different family, when available):** one Phase-4 plan-review lens (`small` → the single reviewer; `large` → lens B) · one Phase-7 code-review axis (default `spec-correctness`) · the Phase-5 escalation diagnosis call · when the material-fork dual-plan triggers, one of its two planners · at `large`, the additive Phase-6 independent verifier (read-only). On a Claude Code host every cross-family seat is filled by an **ordered read-only chain** (default Codex → Gemini via `agy` → same-family; configurable → "Opt-out & order"). The `large` Phase-6 verifier starts at Gemini when available, then follows the configured fallback order. Implementation remains one sequential path in the current worktree.
 - **Security-sensitive lens family (advisory default) — non-Fable when available:** route the Phase-7 `failure-security` lens and any secret-scan interpretation to a strong model **outside the Fable family** (*"Fable family"* = Fable 5 + Mythos 5) when available — on a Claude Code host the pinned Codex Sol or designated strong Gemini tier qualifies; a Fable-family safety classifier can decline benign security-adjacent work, silently emptying the lens. If those seats are unavailable, use a strong non-Fable Claude fallback such as Opus under a Fable session, else the `top` session model. When `failure-security` is scheduled, it takes priority over `spec-correctness` for the one cross-family/non-Fable seat under a Fable-family session; `quick` schedules only `spec-correctness`, so it never substitutes the axis. **No second seat, no agent-budget/engine change.**
 - **`effort` per seat (advisory):** allocate `high`/`xhigh` to `top` quality seats; use `medium`/`high` for the `balanced` implementer and `low`/`medium` for `cheap` support. Raise effort or tier only for a named risk or failed evidence, not by default. Bash hooks carry no model and are out of scope.
 - Record the applied routing once in `STATE.md` (e.g. `model_routing: top=gpt-5.6-sol, balanced=gpt-5.6-terra, cheap=gpt-5.6-luna, cross_family=auto`).
 
 **Cross-family transport (pinned — the reviewer-output channel is per transport, NOT always stdout):**
 - **Attempt condition:** Claude Code host → `command -v codex` and/or `command -v agy` (either present → available); Codex host → `command -v claude`. None present → same-family seat + `cross_family: unavailable` in STATE.md.
-- **Claude Code host — Codex tier:** review/diagnosis/verify seats run `codex exec -m gpt-5.6-sol -c model_reasoning_effort="high" -s read-only --output-last-message <tmpfile> "<prompt>" </dev/null`; the best-of-2 implementer candidate runs the same with `-s workspace-write` and its own worktree as cwd. The `<tmpfile>` content is the reviewer output (codex raw stdout is an event/activity stream; never persist it). **Pin model, effort, and `-s` explicitly on every call** — never assume host config: a local `~/.codex/config.toml` can override any of them. **`</dev/null` is mandatory** — without a stdin redirect `codex exec` blocks on "Reading additional input from stdin…". **Every seat call and every malformed-retry is a NEW codex-exec session (never resume/continue a prior one)** — context-sticking between calls is an observed failure mode, so the per-call isolation is part of the transport contract.
+- **Claude Code host — Codex tier:** review/diagnosis/verify seats run `codex exec -m gpt-5.6-sol -c model_reasoning_effort="high" -s read-only --output-last-message <tmpfile> "<prompt>" </dev/null`. The `<tmpfile>` content is the reviewer output (codex raw stdout is an event/activity stream; never persist it). **Pin model, effort, and `-s` explicitly on every call** — never assume host config: a local `~/.codex/config.toml` can override any of them. **`</dev/null` is mandatory** — without a stdin redirect `codex exec` blocks on "Reading additional input from stdin…". **Every seat call and every malformed-retry is a NEW codex-exec session (never resume/continue a prior one)** — context-sticking between calls is an observed failure mode, so the per-call isolation is part of the transport contract.
 - **Claude Code host — Gemini tier (Antigravity `agy`):** `agy -p "<prompt>" --sandbox --model "Gemini 3.5 Flash (High)"` — read-only review/diagnosis/verify seats only (never the implementer). **`--sandbox` AND a "answer only from the provided packet; do not use any tools" instruction are MANDATORY:** unconstrained, `agy` is an agentic coding agent that scans the local filesystem (a home-dir `find`; transient repo copies under `~/.gemini/antigravity-cli/scratch/`) and emits a tool-activity stream in place of findings; sandboxed + no-tools it returns the clean final message on stdout, which IS the reviewer output (persist verbatim). **Pin the model explicitly** — `agy` is a multi-model gateway (also serves Claude/GPT-OSS models); an unpinned pick would break cross-family diversity. Pass large packets via stdin (`cat <packet-file> | agy -p "<nudge>" --sandbox --model "Gemini 3.5 Flash (High)"`) to avoid an argv limit. (`agy` has no `--output-last-message`/`-o json` equivalent, so the sandbox+no-tools constraint is what keeps stdout clean.)
 - **Codex host:** `claude -p --model fable --effort high "<prompt>"` — pin the current strongest Claude tier; never inherit an unverified cheap/default tier. If that tier is unavailable, treat the call as a failed cross-family seat and use the normal fallback chain. The final message is stdout.
-- **Timeouts (set explicitly per call — the host default would kill the call and read as failure):** review/diagnosis/verify calls ~5 min; the best-of-2 implementer ~30 min, run in the background.
-- **Failure = fallback, never a block:** nonzero exit, timeout, interactive/auth prompt, empty output, a **quota/usage-limit/rate-limit response**, or a **refusal-shaped final message** (a model-safety refusal note in place of findings/`NONE` — e.g. a Fable-family classifier declining benign security-adjacent work; a blank refusal is already covered by *empty output*. The orchestrator only ever sees the seat's final message — no API status field is exposed on any transport — so a refusal or a limit notice is recognized by the *shape of the message*, not a status field. **Grammar-validity backstop:** any final message that is not valid `FINDING` lines / the `NONE` sentinel counts as a failure, never a result — so a quota/limit notice or an `agy` tool-activity stream can never be mis-persisted as a review.) → the **next tier in the chain** takes over the SAME seat (Codex → Gemini → same-family by default, or per the `.kimiflow/cross-family` order), **sticky per hop for the rest of the run** (limits reviewer-identity flapping; a later semantic oscillation starts normal autonomous strategy recovery). Substitution, not an added spawn; note `cross_family: fallback (<reason>)` in STATE.md. **Exception — the best-of-2 implementer seat never substitutes** (a second same-family candidate adds no selection diversity, and `agy` is never an implementer): its failure degrades the run to best-of-1 with a `best_of_2: degraded (<reason>)` STATE.md note instead.
+- **Timeouts (set explicitly per call — the host default would kill the call and read as failure):** review/diagnosis/verify calls use about 5 minutes.
+- **Failure = fallback, never a block:** nonzero exit, timeout, interactive/auth prompt, empty output, a **quota/usage-limit/rate-limit response**, or a **refusal-shaped final message** (a model-safety refusal note in place of findings/`NONE` — e.g. a Fable-family classifier declining benign security-adjacent work; a blank refusal is already covered by *empty output*. The orchestrator only ever sees the seat's final message — no API status field is exposed on any transport — so a refusal or a limit notice is recognized by the *shape of the message*, not a status field. **Grammar-validity backstop:** any final message that is not valid `FINDING` lines / the `NONE` sentinel counts as a failure, never a result — so a quota/limit notice or an `agy` tool-activity stream can never be mis-persisted as a review.) → the **next tier in the chain** takes over the SAME seat (Codex → Gemini → same-family by default, or per the `.kimiflow/cross-family` order), **sticky per hop for the rest of the run** (limits reviewer-identity flapping; a later semantic oscillation starts normal autonomous strategy recovery). Substitution, not an added spawn; note `cross_family: fallback (<reason>)` in STATE.md.
 - A CLI exec call counts as **one subagent-equivalent** against the agent budget.
 - **Findings persist (external reviewers only):** an external CLI reviewer cannot write repo files itself; the orchestrator persists its final message **byte-for-byte verbatim** as that lens's findings file. The permitted operations are defined exhaustively in the Review rubric's immutability rule — they apply to grammar-invalid files only.
 
@@ -347,14 +352,14 @@ Kimiflow routes by four capability tiers so the workflow stays portable across C
 
 ## Build Preview / Risk Gate (Phase 4 → Phase 5)
 
-The internal plan remains fully gated, but the user sees a plain-language contract rather than reviewing HOW in `PLAN.md`. Features/audits use the conditional Build Preview below. Schema-3 fixes use one always-confirmed Fix Preview after diagnosis; it replaces both the old pre-diagnosis confirmation and the generic Build Preview, so a normal fix has one pre-build Human Gate plus the final commit gate.
+The internal plan remains fully gated, but the user sees a plain-language outcome rather than reviewing HOW in `PLAN.md`. Schema 4 treats the original explicit build request as authority for reversible work: after the summary, `Build risk: none` continues without a prompt. Schema 3 retains its old Preview gates for resumability.
 
-- **Policy:** `.kimiflow/build-gate` contains `risk|always|off`; missing/invalid → `risk`, legacy `on` → `always`. `resolve-build-gate.sh get|set|decide` is the tested source of truth. `risk` stops only for named material risk; `always` stops every build; `off` shows the preview and continues. `full` always stops regardless of policy.
+- **Policy:** `.kimiflow/build-gate` contains `risk|always|off`; missing/invalid → `risk`, legacy `on` → `always`. `resolve-build-gate.sh get|set|decide` is the tested source of truth. `risk` stops only for named material risk; `always` is an explicit project override; `off` shows the summary and continues. Aliases, including `full`, never change the decision.
 - **Risk declaration:** the top model records `Build risk: none|required` plus reason in STATE after Discovery. `required` means scope expansion; unresolved product choice; breaking change; risky migration; public API/durable data contract; paid or privacy-sensitive external service; hard-to-reverse architecture; or material drift from confirmed intent. Routine reversible HOW is `none`.
-- **Preview:** derive from INTENT, Discovery decisions, and ACCEPTANCE, not planner narration: `Will build` · `Not included` · `Important decisions` · `Risks/irreversibility` · `Effort`. Keep it to one screen and omit task lists, classes, and incidental file paths.
-- **Feature/audit decision:** `resolve-build-gate.sh decide --state .kimiflow/<slug>/STATE.md --interactive <yes|no> [--alias full]` reads the durable risk declaration and emits `CONTINUE|STOP|PARK`; missing/invalid state or a supplied legacy `--risk` that disagrees with STATE parks. Direct `--risk <none|required>` remains a legacy caller fallback only. CONTINUE → preview then Phase 5. STOP → approve/change/defer. PARK/headless → backlog. `--prepare` always parks before this decision.
-- **Fix decision:** after internal plan review, show **Verified cause · Will fix · Not included · Affected scope · Risks/regression**. A schema-3 stop first records `active-run.sh await-user --run <run> --kind preview --reason <text> --write`. Approve runs `clarify-gate.sh <run> --record-fix-approval`; its authority-basis record in STATE must then pass `clarify-gate.sh <run> --post-diagnosis` before Phase 5. Change returns to the owning phase; defer/headless parks. Do not also run the generic Build Preview resolver. Schema <3 preserves its prior resume behavior.
-- **Resume:** run working-tree and plan-basis safety first, narrowly revalidate Phase 2/3 if stale, regenerate the mode-specific preview, and ask only at its required decision. Legacy parked plans remain usable; no Discovery/Fix Preview marker is retroactively required unless revalidation enters the new schema flow.
+- **Summary:** derive from intent/problem, Discovery/diagnosis, and acceptance: `Will build/fix` · `Not included` · `Important decisions` · `Risks/irreversibility` · `Effort`; fixes add the verified cause. Keep it to one screen.
+- **Schema-4 decision:** `resolve-build-gate.sh decide --state .kimiflow/<slug>/STATE.md --interactive <yes|no> [--alias full]` emits `CONTINUE|STOP|PARK`. CONTINUE enters Phase 5 without `await-user`. STOP records exactly one matching material kind (`authority|external-access|paid-privacy|scope-risk|irreversible`), asks the decision, and continues inside the confirmed boundary; PARK/headless becomes backlog. `--prepare` parks by design.
+- **Schema-3 compatibility:** legacy feature/audit Preview and post-diagnosis fix approval (`--kind preview`, `--record-fix-approval`, `--post-diagnosis`) remain resumable; no schema-4 run creates those waits.
+- **Resume:** run workspace and plan-basis safety first, narrowly revalidate Phase 2/3 if stale, regenerate the plain-language summary, and ask only for a material decision. Legacy parked plans remain usable; schema-3 Preview markers remain legacy-only and are never introduced into schema 4.
 
 ---
 
@@ -380,43 +385,37 @@ run, not an automatic edit.
 
 Goal: shared understanding BEFORE research/plan. kimiflow runs the interview **itself** (embedded, no external skill).
 
-**Interview loop:**
-- **One question at a time**, wait for the answer.
-- **Offer a recommended answer or choices** per question — the user reacts instead of composing from scratch.
-- Resolve in **dependency order** (the branch before its leaves).
+**Compact clarification:**
+- Ask **one compact batch** containing only the missing material facts; wait once, not after every item.
+- **Offer a recommended default or choices** for each item so the user can react instead of composing from scratch.
+- Order items by **dependency** (the branch before its leaves) inside that batch.
 - **What you can answer from the code/project, do NOT ask — look it up yourself.**
 
 **Questions in plain language (mandatory):**
 - Everyday language. No jargon, no code/framework/tool vocabulary. An unavoidable technical term → explain it in half a sentence.
-- Short questions, **one thought per question**. No nested multi-questions.
+- Short items, **one thought per item**. No nested multi-questions.
 - Concrete and with an example ("More like X or like Y?"), not abstract.
 - Ask **WHAT** and **WHY** (goal, value, boundaries) — not **HOW** (implementation).
 
 **Autonomy boundary:** do not ask the user to choose reversible implementation details that research/code can settle without changing product scope. Pick the smallest conservative default and record it. Ask only when the choice changes user-visible scope, creates an irreversible public/data contract or migration, materially changes security/privacy, introduces paid infrastructure, or leaves two meaningfully different product outcomes. The user defines WHAT; the top model owns routine HOW.
 
-**Feature/audit intent evidence for small/quick:** confirm user-visible behavior, in/out-of-scope boundary, and the observable
-outcome before research or planning. There is no minimum question count. If the prompt already answers all three,
-show the inferred intent and ask one compact confirmation. Otherwise ask only the unresolved product question, one
-at a time, with a recommendation. Never ask technical HOW that project evidence, research, or a safe reversible
-default can settle. Exact `trivial` work is exempt. Prior chat sharpens the summary but is not current confirmation.
+**Feature/audit front-loaded intent evidence:** before research/planning, ask one compact batch only for missing product behavior, scope, UX, or acceptance facts. Then show a short goal/included/excluded/done contract. If the current request explicitly authorizes implementation, continue; otherwise ask once for authority. Never ask technical HOW that evidence/research/a reversible default can settle. Exact `trivial` work is exempt.
 
 **Mechanical clarify gate:** `hooks/clarify-gate.sh .kimiflow/<slug>` is the fail-closed Phase-1 check. For
-feature/audit `small|quick`, `INTENT.md` or `AUDIT-INTENT.md` must include one compact marker:
+every nontrivial schema-4 feature/audit, `INTENT.md` or `AUDIT-INTENT.md` includes:
 
 ```md
-<!-- kimiflow:clarify-evidence behavior=confirmed scope=confirmed outcome=confirmed source=current-run -->
+<!-- kimiflow:clarify-evidence behavior=confirmed scope=confirmed outcome=confirmed authority=explicit|confirmed summary=present source=current-run -->
 ```
 
-Write the marker only after the user confirms all three dimensions in the current run. The gate ignores question
-count. Old valid count-based markers remain readable for prepared runs. A normal fix instead passes Phase 1 with
-a non-empty `PROBLEM.md`; it asks only for missing information that blocks diagnosis and has no routine Human Gate.
+Write the marker only when all dimensions and authority are present in the current run; `explicit` may come directly from the build request. The gate ignores question count. Schema-3/count markers stay readable. A normal fix passes with a non-empty `PROBLEM.md` and asks only for diagnosis-blocking input.
 
 **Bounded:** stop when behavior, scope, and outcome are confirmed. Ask no question merely to reach a quota. Priority: scope > security/privacy > UX; technical gaps go to Phase 2. **Terminal state:** write INTENT.md → gate → research; do not implement.
 
 **INTENT.md template** (plain language, NO tech/code):
 ```
 # Intent: <feature in plain words>
-<!-- kimiflow:clarify-evidence behavior=confirmed scope=confirmed outcome=confirmed source=current-run -->
+<!-- kimiflow:clarify-evidence behavior=confirmed scope=confirmed outcome=confirmed authority=explicit summary=present source=current-run -->
 ## What we're building   (1–3 sentences)
 ## Why / goal            (which problem, for whom, what value)
 ## Out of scope          (deliberately left out)
@@ -426,7 +425,7 @@ a non-empty `PROBLEM.md`; it asks only for missing information that blocks diagn
 ## Open questions        ([NEEDS CLARIFICATION: …] — max 3, only what truly blocks)
 ```
 
-**Gate:** show a **≤3-line summary of INTENT.md + its path** (do NOT paste the whole file), ask "Does this match?", continue only after explicit OK.
+**Gate:** show a **≤3-line summary of INTENT.md + its path**. Continue immediately when authority is `explicit`; ask only when authority/material product intent remains unresolved.
 
 ---
 
@@ -468,7 +467,7 @@ Goal: kimiflow must **truly understand** the affected code before planning — e
 ## Open unknowns — none when status is sufficient/not_required
 ```
 
-Marker contract: `depth=none|pulse|focused`; `status=sufficient|not_required|incomplete|conflicting|stale|blocked`; `lanes=none|complete`; `claims=none|sourced`; integer open `technical_gaps`/`user_decisions`; `scope_change=no|confirmed`. `discovery-gate.sh` validates this shape and requires `source_url` plus `source_type` for `claims=sourced`. It cannot prove completeness or source interpretation. New STATE files record `Flow schema: 3` and always declare Discovery: non-trivial feature runs use `yes`, while trivial/fix/audit/review use `no`. Schema-2+ omissions and mode/scope mismatches close; only pre-schema runs treat an absent requirement as legacy-resumable.
+Marker contract: `depth=none|pulse|focused`; `status=sufficient|not_required|incomplete|conflicting|stale|blocked`; `lanes=none|complete`; `claims=none|sourced`; integer open `technical_gaps`/`user_decisions`; `scope_change=no|confirmed`. `discovery-gate.sh` validates this shape and requires `source_url` plus `source_type` for `claims=sourced`. It cannot prove completeness or source interpretation. New STATE files record `Flow schema: 4` and always declare Discovery: non-trivial feature runs use `yes`, while trivial/fix/audit/review use `no`. Schemas 2–3 remain resumable.
 
 The classification is a one-way scope gate: only `required` may enlarge the plan, `default` may choose an implementation without enlarging it, and `optional` stays out of `PLAN.md`/`ACCEPTANCE.md`. A reviewer may challenge a wrong classification with evidence, but cannot promote optional robustness or a hypothetical future requirement merely by preferring it.
 
@@ -512,7 +511,7 @@ When those facts are sufficient to investigate, write the brief and continue wit
 
 **Fix Preview gate (Phase 4, schema 3):** after the plan gate is internally clean, show one compact preview with the verified cause, exact bounded fix, exclusions, affected scope, and risk/regression. Ask "Soll ich ihn so fixen?" in the user's language. Approval is recorded mechanically:
 
-After explicit approval, run `hooks/clarify-gate.sh .kimiflow/<slug> --record-fix-approval`. It writes `Fix approval: confirmed` plus a SHA-256 authority basis to STATE over `PROBLEM.md`, `ACCEPTANCE.md`, flow schema, mode, scope, and build risk; it also keeps the legacy `kimiflow:fix-approval` DIAGNOSIS marker readable for old runs. Then run `hooks/clarify-gate.sh .kimiflow/<slug> --post-diagnosis`; OPEN is required before production-code changes. This is the fix's only pre-build Human Gate. Technical changes to diagnosis, plan, affected files, or strategy inside that authority boundary do not repeat the Preview; changed problem, acceptance, mode, scope, or risk makes it stale. The final Commit Gate remains unchanged.
+After explicit approval, schema-3 runs use `--record-fix-approval` and `--post-diagnosis` as before. Schema 4 instead uses the front-loaded authority plus durable material-risk decision and has no routine Fix Preview or final Commit wait.
 
 **BUG-REPRO.md (Phase 2 + Phase 6 evidence):**
 ```
@@ -605,7 +604,7 @@ Keep all three **flat markdown and short**. This is the lightweight version of s
 
 ---
 
-## Project Map Bootstrap (Phase 0 offer · Phase 2 read)
+## Project Map Bootstrap (explicit setup · Phase 2 read)
 
 Creates a local, evidence-backed project map so future feature/fix/audit runs start with a compact
 understanding of what already exists. It is **recommended, skippable, and never a prerequisite**:
@@ -618,9 +617,8 @@ authoritative cache for Slice 1.
 **Trigger:**
 - `--project-map quick` → run the bootstrap/update and STOP after reporting paths.
 - `--project-map skip` → record `project_map: skipped` in the active `STATE.md` and continue.
-- Normal non-trivial run + missing `.kimiflow/project/INDEX.json` → offer once (`quick` / `skip`).
-  Decline/headless/no answer/skip → continue normally.
-- `trivial` runs do not offer the bootstrap unless the user explicitly passes `--project-map`.
+- Normal non-trivial run + missing `.kimiflow/project/INDEX.json` → record `project_map: skipped` and continue without a prompt.
+- `trivial` runs skip the bootstrap unless the user explicitly passes `--project-map`.
 
 **What `quick` writes:** `quick` is the single bootstrap tier — a fast orientation pass that reads
 manifests, top-level structure, entry points, central modules, core flows, conventions, tests, and
@@ -769,10 +767,12 @@ Impact rules:
 - Invalid/missing commit data with no usable hashes → `unknown`.
 
 **Delta refresh (recommended, non-blocking):** If a normal feature/fix/audit touches a `stale` or
-`potentially_stale` affected section, offer a targeted refresh before Phase 2. On accept, read only the
-section's `files`/`prefixes`, update the relevant markdown/`FACTS.jsonl` entries, then run
-`project-map-status.sh refresh --section <name>...`. On decline/headless/no answer/`unknown`, continue
-with normal Phase-2 code exploration and note the status in `STATE.md`.
+`potentially_stale` affected section and the bounded local refresh is safe under the run's existing write
+authority, read only that section's `files`/`prefixes`, update the relevant markdown/`FACTS.jsonl` entries,
+then run `project-map-status.sh refresh --section <name>...` automatically. If the refresh is unsafe,
+unknown, or outside current authority, continue with normal Phase-2 code exploration and note the gap in
+`STATE.md`; never create a map-choice prompt. Explicit standalone map/doc/improve runs retain their material
+focus/storage decision.
 
 **Adaptive Phase-2 depth:** After likely affected paths are known, run
 `project-map-status.sh coverage --affected <path>...`. Use `compressed` when affected paths are mapped and
@@ -1152,7 +1152,7 @@ The vault is an **optional** notes MCP (e.g. Obsidian Local REST API's built-in 
 - **Plan-finding evidence and scope threshold.** Phase-4 BLOCKER/HIGH findings require a cited intent/AC boundary, `required` research constraint, current API/compatibility rule, project standard, or concrete security/data-loss failure with demonstrable impact. "More robust", "might be useful later", an `optional` research item, a hypothetical combination, or a stylistic preference is not blocking. MEDIUM/LOW never causes another plan revision. Research-informed quality is mandatory; research-driven product expansion is forbidden.
 - **Gate count (mechanical, current round only) — delegated to the tested resolver.** The orchestrator runs `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/hooks/resolve-review-gate.sh .kimiflow/<slug>/findings --round <N> --expect <lensCSV> --gate <plan|code> --epoch-start <S> --cap <C>`, where `S` is the current strategy epoch's first global round and absolute `C=S+B-1` (`B=2` for small/quick, `B=3` for large/audit/release-critical). `PLAN.md` is the canonical strategy basis for both gates. Before each gate's round 1, `RECOVERY.md` gets exactly one `<!-- kimiflow:strategy gate=<plan|code> epoch-start=1 fingerprint=<sha256(PLAN.md)> -->`; explicit gate-aware calls require and recompute it. Calls omitting `--epoch-start` remain legacy-compatible. The script is the **single source of truth**: it validates completeness + canonical grammar, counts open BLOCKER/HIGH, applies anti-oscillation only inside `S..N`, and echoes `VERDICT⇥count⇥reason_code⇥detail`. Only `OPEN/clean` advances. `incomplete|malformed` repairs/substitutes reviewer transport in the same round; `open-findings` permits the next targeted repair inside the epoch; `oscillation|reappeared|cap-reached` keeps the gate CLOSED and starts autonomous strategy recovery—never a continue prompt. It is language-agnostic and unit-tested by `hooks/test-resolve-review-gate.sh`; it never reads `REVIEW.md` or emits `OPEN` for recovery.
 - **Resolution = non-recurrence, re-derived by the reviewer (closes self-attestation).** A finding counts as resolved only because the freshly re-spawned reviewer of the next round, re-reviewing the revised `PLAN.md`/diff, **no longer emits it**. The orchestrator never flips a finding's status by its own judgment and never writes a self-supplied "resolved".
-- **Fixed review basis and source discovery (Phase 7).** Pin one basis before spawning and reuse it for every axis and rerun. Resolve `review_target_sha` with `git rev-parse HEAD`. Validate a user-supplied base ref; otherwise use the repository default branch for committed branch work, or `HEAD` for a working-tree-only review. Set `review_base_sha` to `git merge-base <review_base_ref> <review_target_sha>` (or the target SHA for working-tree-only review). Record refs/SHAs, the exact `git diff <review_base_sha>...<review_target_sha>` plus `git diff <review_target_sha>` commands, and `git log <review_base_sha>..<review_target_sha>` in `CODE-REVIEW.md`. Named-path reviews append the same pathspec to both diff commands. Validate a non-empty committed/worktree diff before spawning; a clean diff ends without reviewer calls. No reviewer infers its own base. Discover compact, referenced inputs rather than dumping whole files:
+- **Fixed review basis and source discovery (Phase 7).** Pin one basis per review round and reuse it for every axis in that round. Resolve `review_target_sha` with `git rev-parse HEAD` at the start of every round, so a repair commit is included by the next rerun. Validate a user-supplied base ref; otherwise a schema-4 run with local Red/clean-tree verification checkpoints uses the immutable `started_head` persisted in ACTIVE_RUN and STATE; otherwise use the repository default branch for committed branch work, or `HEAD` for a working-tree-only review. Set `review_base_sha` to `git merge-base <review_base_ref> <review_target_sha>` (or the target SHA for working-tree-only review). Record refs/SHAs, `git diff <review_base_sha>...<review_target_sha>`, `git diff <review_target_sha>`, `git diff --cached`, `git ls-files --others --exclude-standard -- <named paths>`, and `git log <review_base_sha>..<review_target_sha>` in `CODE-REVIEW.md`; append the same named pathspec where supported and include every named new file's contents in the packet. Only an empty combined committed + staged + unstaged + untracked set may skip reviewer calls. No reviewer infers its own base. Discover compact, referenced inputs rather than dumping whole files:
   - **Spec sources, precedence order:** explicit user source → run-local `ACCEPTANCE.md` plus `INTENT.md`/`PROBLEM.md` → issue/PR references in reviewed commits → branch-matching PRD/spec material under `docs/`, `specs/`, or `.scratch/`. Record conflicts; higher-precedence sources win. If none exists, record `Spec: unavailable` and do not infer intent from the diff. The axis still checks observable existing contracts and regressions, but makes no requirement-completeness claim.
   - **Standards sources:** the nearest applicable `AGENTS.md`/`CLAUDE.md`, then `CONTRIBUTING.md`, `CODING_STANDARDS.md`, `.kimiflow/STANDARDS.md`, and relevant architecture/decision docs. More local documented rules win. Skip rules already enforced by a formatter, linter, type checker, or other deterministic tool.
 - **Code-review ensemble (Phase 7): candidate-first, orchestrator-verified, axis-preserving.** Phase 7 does not rely on one general reviewer. It builds one compact review packet, then sends focused candidates to multiple fresh-context axes. `quick` uses only `spec-correctness`; `small` uses at least `spec-correctness` + `failure-security` and folds documented standards into R2 only when R3 is not scheduled; add the third for hooks/plugins/memory/launcher/API/contracts/multi-surface/high-risk changes. `large`/release-critical uses all three. This reassigns the existing seats; it does not add reviewer calls. One axis (default: `spec-correctness`) is **cross-family by default** when a different-family CLI is available (→ "Model routing (per-role)"). Standard axes:
@@ -1161,8 +1161,8 @@ The vault is an **optional** notes MCP (e.g. Obsidian Local REST API's built-in 
   - `standards-integration`: documented project standards, host parity, plugin metadata, installed hooks, launcher/docs wiring, command/API/schema contracts, and the smell baseline below.
   Each axis writes `.kimiflow/<slug>/code-review-candidates/r<N>-<axis>.md` with one line per issue: `CANDIDATE <SEVERITY> <ref> :: <claim> :: verify=<smallest check>`, or `NONE`. The orchestrator verifies candidates through targeted reads/commands/reproduction, then records source status and accepted/rejected/unverified candidates under separate `Spec / Correctness`, `Failure / Security`, and `Standards / Integration` headings in `CODE-REVIEW.md`. Keep cross-axis duplicates visible and linked there without reranking, but promote an exact underlying defect only once with all applicable axis labels. Promote confirmed findings into `.kimiflow/<slug>/findings/r<N>-code-verified.md` as `FINDING <SEVERITY> <ref> :: [<axis-labels>] <reason>`, using `spec`, `risk`, and/or `standards` joined by `+`. For any BLOCKER/HIGH candidate, verification includes an **active refutation attempt** (execute its `verify=` check, read the full code path — "could this be wrong?"): survives → promote; refuted → record as rejected. On a partial rerun, carry forward still-applicable verified findings from unaffected axes; shared/uncertain changes rerun every scheduled axis. The resolver counts the promoted file, never raw candidates.
 - **Standards smell baseline (heuristic, not law):** Mysterious Name; Duplicated Code; Feature Envy; Data Clumps; Primitive Obsession; Repeated Switches; Shotgun Surgery; Divergent Change; Speculative Generality; Message Chains; Middle Man; Refused Bequest. Repository standards override this list. A smell is never a hard violation by itself: promote only when tied to a documented standard or demonstrable correctness/integration impact; otherwise route a concrete smaller alternative to `ADVISORIES.md` as a non-gating `FLAG`.
-- **Code-review scope (Phase 7): correctness/requirements/security/contracts/documented standards, NOT style-only preference.** Also check: were tests weakened/deleted to go green? This is **mechanized** by `hooks/test-weakening-scan.sh` (deleted test files, added `.skip`/`xit`/`it.only`/`@Disabled`/`@pytest.mark.skip`/`t.Skip`/`assumeTrue(false)`, removed assertions) → `FLAG` advisories in `.kimiflow/<slug>/ADVISORIES.md`. **Advisories are non-gating** — a separate channel, never counted by the gate grep — and are **surfaced at the commit-gate**, where the human dismisses (legit refactor) or promotes them (fail-closed: an unresolved FLAG blocks the commit). The scan is a **minimum**: semantic weakening (changed expected values, loosened tolerances) is not detected.
-- **Simplicity lens (Phase 7 — slimness as a counter-force, defined once; used folded or dedicated).** A reviewer dimension whose KPI is **"what can be deleted while the `ACCEPTANCE` tests stay green?"** — it makes slimness an active force, not a polite principle. It **FLAGs** (never a gate finding): a new abstraction/layer/option with **<2 real call sites and no written reason** (earn the abstraction: ≥2 callers OR a stated reason); a single-caller pass-through; error-handling for **impossible** states; speculative generality / config nobody asked for. For each, it **proposes the smaller version** (not just "this is complex"). Output rides the **advisory** channel → `.kimiflow/<slug>/ADVISORIES.md`, triaged at the commit-gate (dismiss-with-reason or adopt) — non-gating, so no false-positive thrash, but un-ignorable. Runs **only where a Phase-7 review runs (`small`/`large`)**; `trivial` (no loop, 1–2 files) is exempt. **Token-cheap by default:** at `small` it is **folded into the existing code-reviewer** (no new spawn); a **dedicated, blind prosecutor** runs at `large` (or via the tripwire below). **Size tripwire** — a *changed-line* heuristic that **complements** (does not redefine) the file-count/risk scope tiers: when `git diff --stat` shows a diff **much larger than its scope suggests** (rough guide: a `small` change >~150 changed lines), escalate to the dedicated prosecutor and raise a **STOP+justify** advisory. Orchestrator-read (`git diff --stat`) — no new hook.
+- **Code-review scope (Phase 7): correctness/requirements/security/contracts/documented standards, NOT style-only preference.** Also check: were tests weakened/deleted to go green? This is **mechanized** by `hooks/test-weakening-scan.sh` (deleted test files, added `.skip`/`xit`/`it.only`/`@Disabled`/`@pytest.mark.skip`/`t.Skip`/`assumeTrue(false)`, removed assertions) → `FLAG` advisories in `.kimiflow/<slug>/ADVISORIES.md`. **Advisories are non-gating** — a separate channel, never counted by the gate grep — and are surfaced at the commit boundary, where the orchestrator verifies the evidence and either dismisses with a concrete non-impact reason or promotes to a real finding and returns to implementation/review. Unresolved flags still block the commit; user input is required only when the evidence exposes a material product/authority/risk decision. The scan is a **minimum**: semantic weakening (changed expected values, loosened tolerances) is not detected.
+- **Simplicity lens (Phase 7 — slimness as a counter-force, defined once; used folded or dedicated).** A reviewer dimension whose KPI is **"what can be deleted while the `ACCEPTANCE` tests stay green?"** — it makes slimness an active force, not a polite principle. It **FLAGs** (never a gate finding): a new abstraction/layer/option with **<2 real call sites and no written reason** (earn the abstraction: ≥2 callers OR a stated reason); a single-caller pass-through; error-handling for **impossible** states; speculative generality / config nobody asked for. For each, it **proposes the smaller version** (not just "this is complex"). Output rides the **advisory** channel → `.kimiflow/<slug>/ADVISORIES.md`; the orchestrator verifies each flag, adopts it or dismisses it with evidence, and continues without a user stop. Runs **only where a Phase-7 review runs (`small`/`large`)**; `trivial` (no loop, 1–2 files) is exempt. **Token-cheap by default:** at `small` it is **folded into the existing code-reviewer** (no new spawn); a **dedicated, blind prosecutor** runs at `large` (or via the tripwire below). **Size tripwire** — a *changed-line* heuristic that **complements** (does not redefine) the file-count/risk scope tiers: when `git diff --stat` shows a diff **much larger than its scope suggests** (rough guide: a `small` change >~150 changed lines), escalate to the dedicated prosecutor and require an evidence-backed adopt/dismiss record. Orchestrator-read (`git diff --stat`) — no new hook.
 - **Tests are evidence, not the boundary of truth.** Judge against **intent, acceptance, the diff, and actual behavior** — not the test suite alone. Green tests certify only what they assert, not correctness; a green suite may *support* a finding but never *refutes* one grounded in code/spec — "not covered by a test" / "no test fails" is **not** a counter-argument. An **untested real risk is still a finding**, and **missing coverage of a real risk can itself be a finding** — but anti-hallucination still binds: severity = provable impact (HIGH only with a reference + demonstrable impact; a coverage gap with no demonstrable risk → MEDIUM/LOW, or dropped). A finding of this kind names: **reference · violated expectation · impact · why tests miss it** (or why tests are irrelevant here).
 
 **What the gate does and does NOT guarantee.** The gate is *sound over its inputs*: given the findings files, the verdict is mechanical and fail-closed — a `gate open` can't be self-reported past an open BLOCKER/HIGH. It does **not** certify the findings are *complete*: a too-lenient reviewer that misses a real blocker, or wrongly writes `NONE`, is not caught by the resolver. The de-biasers against *that* failure are reviewer independence, adversarial framing, the default cross-family lens (`small`+, when a different-family CLI is available), and (large/critical) multi-run review — not the resolver. The resolver hardens against self-report **inflation**; reviewer quality is what guards **completeness**.
@@ -1171,7 +1171,7 @@ The vault is an **optional** notes MCP (e.g. Obsidian Local REST API's built-in 
 
 **Autonomous recovery contract:** a new epoch is allowed only after `RECOVERY.md` records one coherent falsifiable hypothesis plus a materially different strategy (evidenced root cause, algorithm/control flow, integration/architecture boundary, dependency choice, or AC-preserving task decomposition) and `PLAN.md` changes. A model switch, more tokens, rewording, whitespace, or file churn is not a strategy change; changed plan bytes are necessary, not sufficient. Each compact chronological entry stores: gate + trigger + source/next rounds/cap; blocker identities; failed strategy + refuting evidence; new hypothesis + semantic delta; before/after fingerprints; `active|clean|superseded` outcome; and `<!-- kimiflow:recovery gate=<plan|code> source-round=<N> epoch-start=<S> cap=<C> before=<sha256> after=<sha256> -->`. `before` must equal that gate's verified baseline or previous receipt `after`; `after` and STATE `Strategy fingerprint` must equal the resolver's current SHA-256 of `PLAN.md`. The complete expected source-round findings set must still exist, be nonempty, and parse canonically. STATE also matches review gate/start/cap and `Recovery: active|clean`. Missing/stale/duplicate baselines, broken chains, fabricated hashes, unchanged bytes, ledger gaps, or inconsistent state emit `CLOSED/malformed`. Semantic materiality remains reviewer/eval judgment.
 
-Recovery re-reads the cited code and confirmed AC/intent, classifies the failure, then uses the cheapest missing evidence in order: top re-analysis → one run-history/project-memory query for blocker + failed strategy (`--max 5`) → focused current primary-source research only when uncovered/stale → smallest refuting spike/reproduction → alternative architecture or AC-preserving decomposition. Do not repeat a failed strategy/query/source. After two failed recovery epochs, use one independent `top|cross_family_top` recovery solver, not extra standing reviewers. Plan recovery reruns only the needed Discovery/diagnosis/plan work plus plan-blocker/AC/subtraction; code recovery reruns diagnosis/implementation/verification and preserves Red/Green evidence. Technical blockers continue through `active-run.sh stop-gate` without `await-user`. Schema-3 pauses require `active-run.sh await-user --kind <kind>`; while `Recovery: active`, only `missing-input|authority|external-access|paid-privacy|scope-risk|irreversible` are accepted and `preview|commit` fail closed. An `OPEN/clean` resolver verdict immediately changes the matching STATE and RECOVERY outcome from `active` to `clean` before Preview/Commit may run. Recovery alone never repeats existing one-time Preview or Commit gates.
+Recovery re-reads the cited code and confirmed AC/intent, classifies the failure, then uses the cheapest missing evidence in order: top re-analysis → one run-history/project-memory query for blocker + failed strategy (`--max 5`) → focused current primary-source research only when uncovered/stale → smallest refuting spike/reproduction → alternative architecture or AC-preserving decomposition. Do not repeat a failed strategy/query/source. After two failed recovery epochs, use one independent `top|cross_family_top` recovery solver, not extra standing reviewers. Plan recovery reruns only the needed Discovery/diagnosis/plan work plus plan-blocker/AC/subtraction; code recovery reruns diagnosis/implementation/verification and preserves Red/Green evidence. Technical blockers continue through `active-run.sh stop-gate` without `await-user`. Schema 4 accepts only `missing-input|authority|external-access|paid-privacy|scope-risk|irreversible|workspace`; `preview|commit` are invalid everywhere. Schema 3 keeps legacy typed waits outside recovery, while recovery rejects preview/commit. `OPEN/clean` immediately clears Recovery before continuing.
 
 **Knob — multi-run verdict (large/critical only):** run the promoted code-review verdict 3× and take the majority (single-judge verdicts have real run-to-run variance). Not for default `small`.
 
@@ -1224,7 +1224,7 @@ kimiflow ships a **Stop hook** (in `hooks/`) that blocks the turn from ending wh
 ```
 npm test --silent
 ```
-With that file present, the hook runs the command on stop; on failure it blocks with the failing output so the agent keeps working. No file → the hook exits 0 immediately. Keep it tests-only; do not block `git commit` (kimiflow's human commit-gate already covers that).
+With that file present, the hook runs the command on stop; on failure it blocks with the failing output so the agent keeps working. No file → the hook exits 0 immediately. Keep it tests-only; commit safety and schema-4 named-path local commits are handled separately in Phase 7.
 
 **Auto-enabled for `large` scope:** a `large` run writes this marker in Phase 7 from the test command verified green in Phase 6 (idempotent — an existing marker is left untouched) and announces it, so the hardest runs can't silently skip the gate. `small`/`trivial` and unrelated repos stay opt-in (no marker, no gate).
 
@@ -1243,18 +1243,20 @@ With that file present, the hook runs the command on stop; on failure it blocks 
 
 ---
 
-## Commit hygiene (Phase 7 commit-gate)
+## Commit hygiene (Phase 7 atomic local commit)
 
-Before the commit, after explicit user OK:
+For schema 4, the explicit build request authorizes verified local atomic commits; there is no second routine approval. Schema 3 keeps its legacy final gate. Push, release, publication, paid services, and irreversible external/data actions always need separate authority.
 
-**One defined exception:** the Phase-5 **Red test commit** (tests committed before the implementation) does not wait for the Phase-7 gate — it is limited to test files, stages only explicitly named paths, and is announced in one line; production code never rides along. Every other commit goes through this gate.
+Phase 5 has two narrow early checkpoints. The **Red test commit** remains tests-only, stages named paths, and never carries production code; before committing it, inspect that staged diff, run `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/hooks/test-weakening-scan.sh` plus secret/path hygiene, and resolve every advisory. A **clean-tree verification checkpoint** is allowed only when the decisive local build/test demonstrably refuses dirty state: keep the STATE-backed ACTIVE_RUN `started_head` as the Phase-7 review base; stage only named run-owned paths; inspect the staged diff; run the same plugin-rooted weakening scan, secret/path hygiene, and every dirty-tree-compatible check; append and autonomously resolve every advisory before the commit; announce/create a path-limited local `verify:` commit; then run the decisive check immediately. Both checkpoint kinds use the same foreign-staging isolation below. A failure is technical evidence: return to Phase 5, fix, and create the next named checkpoint without a user wait; never amend or absorb foreign history. Normal builds do not use this exception. Push/publication remain separately authorized.
 
 1. Read `git status` + `git diff --staged` before composing the message.
 2. **Stage only explicitly named paths** — no `git add -A` / `git add .`.
-3. **Never** stage `.env`, keys, tokens, credentials — on suspicion, stop and ask.
-4. If the project has tests and the change touches code: run them. Red → STOP, no commit.
-5. **No co-author trailer, no "Generated with" line, no AI attribution.**
-6. Commit message: terse, what & why.
+3. Snapshot `git diff --cached --name-only -z` before staging. Classify pre-existing paths outside the run's exact named set as foreign; never unstage, overwrite, or include them. After staging the named paths, require `git diff --quiet -- <named paths>` so the worktree and index still match.
+4. Always isolate the commit with `git commit --only -m "<message>" -- <named paths>`. Then verify the commit's NUL-delimited path set is exactly the intended set and the foreign staged snapshot is unchanged. A plain pathless `git commit` is forbidden while foreign paths are staged.
+5. **Never** stage `.env`, keys, tokens, credentials — on suspicion, stop and ask.
+6. If the project has tests and the change touches code: run them. Red → no final commit. The clean-tree checkpoint above may precede only its named decisive check; all other runnable checks must already pass.
+7. **No co-author trailer, no "Generated with" line, no AI attribution.**
+8. Commit message: terse, what & why.
 
 **Mechanized (kimiflow repos only):** points 2–3 are also enforced by the `commit-secret-gate` PreToolUse hook — it **blocks** bulk adds (`git add -A`/`.` incl. whole-tree pathspec synonyms) and any `git commit` whose staged (or `-a`-auto-staged) paths match a minimum secret-pattern deny-list. **Skill-only use loads no hook.** The hook is **auto-active only where a `.kimiflow/` directory exists at the git root** (kimiflow creates one in Phase 0), so it never polices unrelated repos. Installer mechanics, the full pattern list, and false-positive handling: → `docs/commit-secret-gate.md`.
 

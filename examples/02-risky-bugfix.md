@@ -106,11 +106,11 @@ Anti-oscillation check: open HIGH count went 1 → 0 (strictly decreased), nothi
 (Cap is 3; had round 3 still shown an open blocker, the gate would stay **CLOSED**, record the
 failed strategy in `RECOVERY.md`, and start a materially different global epoch without asking.)
 
-**Fix Preview — the single pre-build Human Gate:** verified cause = rotated refresh token produces an
-uncaught empty-body parse; fix = status-aware reauth plus one bounded transient retry; not included =
-auth-provider or session redesign; scope = `refresh.ts` + focused tests; risk = auth-sensitive but bounded
-and regression-covered. ✋ **"Fix it this way?"** → approved. `DIAGNOSIS.md` records
-`clarify-gate.sh --record-fix-approval` writes the basis-bound approval; `--post-diagnosis` → OPEN. No second Build Preview follows.
+**Plain-language build summary:** verified cause = rotated refresh token produces an uncaught empty-body
+parse; fix = status-aware reauth plus one bounded transient retry; not included = auth-provider or
+session redesign; scope = `refresh.ts` + focused tests. The path is auth-sensitive but bounded,
+reversible, and regression-covered; no unresolved policy or security choice remains, so schema 4
+continues under the original fix authority.
 
 ### 🟠 Phase 5 — Implement (TDD)
 
@@ -132,14 +132,16 @@ and regression-covered. ✋ **"Fix it this way?"** → approved. `DIAGNOSIS.md` 
   request transparently refreshes. Passes.
 - Goal-backward: every AC artifact Exists / Substantive / Wired.
 
-### 🟢 Phase 7 — Code-review → commit-gate
+### 🟢 Phase 7 — Code-review → local commit
 
-1. `code-review-audit` (fresh, adversarial) over the diff + specs: correctness/security only; also
-   *"were tests weakened to go green?"* → no. Runs the bundled `test-weakening-scan.sh` and the
-   optional `secret-content-scan.sh` → both append any `FLAG`s to `ADVISORIES.md` (here: none).
-   → `CODE-REVIEW.md`: clean.
-2. Same findings-file + `resolve-review-gate.sh` loop as Phase 4 — round 1 clean, gate open.
-3. ✋ **Commit-gate — STOP.** Advisory triage first (no flags to dismiss). Then:
+1. Three fresh, narrow axes review the same pinned packet: `spec-correctness`, `failure-security`, and
+   `standards-integration`. They emit only `CANDIDATE ...` lines or `NONE`; the orchestrator verifies
+   each candidate, actively tries to refute every HIGH, and promotes confirmed issues once into
+   `findings/r1-code-verified.md`. Here all three candidate files are `NONE`, so the promoted file is
+   `NONE` and the resolver opens the code gate. Raw reviewer candidates are never counted directly.
+2. The bundled `test-weakening-scan.sh` and optional `secret-content-scan.sh` append `FLAG`s to
+   `ADVISORIES.md` (here: none); advisories are verified separately and never inflate the code gate.
+3. Advisory triage is evidence-based and clean. Stage only the two named run-owned paths, then show:
 
    ```
    fix(auth): handle rotated/expired refresh token without clearing the session
@@ -148,10 +150,9 @@ and regression-covered. ✋ **"Fix it this way?"** → approved. `DIAGNOSIS.md` 
     src/auth/refresh.spec.ts   | 58 +++++++++++++++++++++++++++++++
    ```
 
-   Shows `git status` + `git diff --staged`, **waits for your explicit OK**. On OK → commits the two
-   named paths only. Because scope is `large` and tests are green, it writes a local untracked
-   `.kimiflow/test-gate` (the verified test command) so future runs in this repo can't finish red —
-   and announces it. **Never auto-commits.**
+   After `git status` + `git diff --staged`, commits those paths locally. Because scope is `large` and
+   tests are green, it writes a local untracked `.kimiflow/test-gate` (the verified test command) so
+   future runs in this repo cannot finish red. Push and release remain explicit.
 4. Project memory: appends the provider's refresh-rotation contract to `.kimiflow/STANDARDS.md` and a
    3–5 line decision entry; optional one-line `LEDGER.md` run record (slug, scope=large, rounds=2,
    gate=open).

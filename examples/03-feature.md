@@ -6,9 +6,9 @@
 
 The two fix examples ([01](01-small-fix.md), [02](02-risky-bugfix.md)) show bug mode. This is the
 **feature** path, where Phase 2 isn't *diagnose* but *understand & research*, the artifacts are
-`INTENT.md` / `RESEARCH.md` (not `PROBLEM.md` / `DIAGNOSIS.md`), there is **no diagnose-gate**, and a
-this run's Discovery proves a material architecture fork and `full` adds **Build Preview approval**. Same plan-gate and
-commit-gate machinery as the fixes.
+`INTENT.md` / `RESEARCH.md` (not `PROBLEM.md` / `DIAGNOSIS.md`), there is **no diagnose-gate**, and
+this run's Discovery proves a material architecture fork. The `full` alias deepens the loop but does
+not add a routine approval stop. The same plan/review and local-commit machinery applies as for fixes.
 
 ---
 
@@ -21,13 +21,13 @@ commit-gate machinery as the fixes.
 - Routing: no symptom, an additive capability → **feature mode**.
 - Scope-gate: a settings control **+** a theme/persistence layer **+** app-bootstrap (avoid a flash on
   load) → several files, real design choices → **`large`**.
-  Announced: *"Scope: large — adaptive Discovery, 2 reviewers, plan-gate loop, Build Preview approval,
-  verify with regression + cold-start, test-gate auto-armed."*
+  Announced: *"Scope: large — adaptive Discovery, 2 reviewers, plan-gate loop, verify with regression
+  + cold-start, test-gate auto-armed."*
 - State dir: `.kimiflow/dark-mode-toggle/`.
 
 ### 🔵 Phase 1 — Clarify (intent)
 
-Three product ambiguities happen to remain, so kimiflow asks three plain-language questions (not a quota):
+Three product facts happen to be missing, so kimiflow asks for them together in one compact batch:
 
 1. *Apply immediately, or after a restart?* → **immediately**, live.
 2. *Persist across sessions, and follow the OS theme on first visit?* → **yes**, persist the choice;
@@ -36,7 +36,8 @@ Three product ambiguities happen to remain, so kimiflow asks three plain-languag
    over-build).
 
 → `INTENT.md` (goal · the three answers · explicit non-goals: no per-component themes, no server
-sync). ✋ **"Does this match?"** → confirmed.
+sync). Kimiflow shows that contract once in simple language and continues under the explicit build
+request; there is no second confirmation.
 
 ### 🟣 Phase 2 — Understand & research (memory-first → vault → web → synthesis → save)
 
@@ -102,8 +103,7 @@ and folded into task 1 (wrap `localStorage` in try/catch) — but it **did not c
 `BLOCKER`/`HIGH` gate. (Compare [`02`](02-risky-bugfix.md), where a round-1 `HIGH` closed the gate and
 forced a second round.)
 
-**Step 7 — Build Preview / Risk Gate.** The `full` alias requires explicit approval. It prints WHAT, not
-the internal technical plan:
+**Step 7 — plain-language Build Summary / Risk Gate.** It prints WHAT, not the internal technical plan:
 
 ```
 Will build ………… a live light/dark setting that persists, follows the OS initially, and avoids flashing
@@ -113,7 +113,8 @@ Risks ………………… private-mode storage degrades safely; first-paint be
 Effort ………………… large
 ```
 
-✋ **STOP — "Approve to build, change something, or defer?"** → approve → Phase 5. Headless `full` parks.
+No unresolved product, authority, privacy, security, cost, or irreversible choice remains. `Build risk:
+none` therefore continues directly to Phase 5; `full` does not manufacture an approval stop.
 
 ### 🟠 Phase 5 — Implement (TDD)
 
@@ -137,14 +138,17 @@ Effort ………………… large
 - Goal-backward: every AC artifact Exists / Substantive / Wired (the toggle is imported **and**
   rendered, the hook is actually consumed).
 
-### 🟢 Phase 7 — Code-review → commit-gate
+### 🟢 Phase 7 — Code-review → local commit
 
-1. `code-review-audit` (fresh, adversarial) over the diff + `INTENT.md` + `ACCEPTANCE.md`:
-   correctness/requirements/security only; also *"were tests weakened to go green?"* → no. Runs
-   `test-weakening-scan.sh` + the optional `secret-content-scan.sh` → `ADVISORIES.md` (none here).
-   → `CODE-REVIEW.md`: clean.
-2. Findings-file + `resolve-review-gate.sh` loop — round 1 clean, gate open.
-3. ✋ **Commit-gate — STOP.** No advisories to triage. Then:
+1. Three fresh axes review one pinned diff/spec packet: `spec-correctness`, `failure-security`, and
+   `standards-integration`. Candidate files contain only `CANDIDATE ...` lines or `NONE`; the
+   orchestrator verifies them and writes only confirmed, deduplicated issues to
+   `findings/r1-code-verified.md`. Here the candidate files and promoted file are `NONE`, so the
+   resolver opens the code gate. `test-weakening-scan.sh` and `secret-content-scan.sh` feed the
+   separate `ADVISORIES.md` channel (none here).
+2. Candidate review, orchestrator verification, and the promoted findings-file gate are all clean in
+   round 1.
+3. No advisories remain. Stage only the named run-owned paths, then show:
 
    ```
    feat(settings): live light/dark toggle — persisted, OS-default, no FOUC
@@ -157,9 +161,9 @@ Effort ………………… large
     e2e/theme.e2e.ts                 | 22 ++++++++++
    ```
 
-   Shows `git status` + `git diff --staged`, **waits for your explicit OK**. On OK → commits the named
-   paths only (no `git add -A`, no AI-attribution trailer). Because scope is `large` and tests are
-   green, it writes the local untracked `.kimiflow/test-gate` and announces it. **Never auto-commits.**
+   After `git status` + `git diff --staged`, commits the named paths locally (no `git add -A`, no
+   AI-attribution trailer). Because scope is `large` and tests are green, it writes the local
+   untracked `.kimiflow/test-gate`. Push and release remain explicit.
 4. Project memory: appends the `data-theme` + FOUC-script pattern to `.kimiflow/STANDARDS.md` and a
    3–5 line entry to `.kimiflow/DECISIONS.md`; optional `LEDGER.md` line (slug, scope=large, rounds=1,
    gate=open).
@@ -168,6 +172,6 @@ Effort ………………… large
 
 **What feature mode changed vs the fixes:** no `PROBLEM.md`/`DIAGNOSIS.md` and **no diagnose-gate** —
 instead `INTENT.md` + adaptive **Discovery** (project → focused evidence → synthesis), a proven-fork
-**considered-alternatives** record, and the **Build Preview approval** before code. The
-plan-gate, verify and commit-gate are identical to the fix path. And the round-1 `MEDIUM` that *didn't*
+**considered-alternatives** record, and a plain build summary before code. The plan-gate, verify, and
+atomic local commit are identical to the fix path. And the round-1 `MEDIUM` that *didn't*
 close the gate shows the gate's binary rule directly: **only `BLOCKER`/`HIGH` count.**

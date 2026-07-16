@@ -15,7 +15,7 @@ researched; only irreducible product/policy choices ask the user.
 | 3 | Semantic search / AI feature with several viable techniques | `focused`; one bounded evidence worker normally; top model chooses project fit |
 | 4 | OAuth login | `focused`; current official/security sources and selective top countercheck; no user HOW question |
 | 5 | Document processing with possible external data transfer | focused evidence, then one `user_required` privacy/policy decision |
-| 6 | Irreversible data migration | focused evidence, migration risk and explicit Build Preview approval |
+| 6 | Irreversible data migration | focused evidence, then one typed irreversible decision; no generic Preview wait |
 | 7 | New paid SaaS integration | focused cost/lock-in/privacy evidence; user decides acceptable policy/cost |
 | 8 | Feature already defined by project conventions/tests | `none`; project-derived choice, no re-research or worker |
 | 9 | Two current primary sources conflict materially | `status=conflicting`; research continues or stops blocked, never plans as sufficient |

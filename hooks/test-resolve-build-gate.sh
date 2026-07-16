@@ -48,6 +48,20 @@ assert_eq "$(run get)" "risk" "test_set_risk_roundtrip"
 run set always >/dev/null
 assert_eq "$(run get)" "always" "test_set_always_roundtrip"
 
+# set replaces a project-local symlink instead of truncating its target.
+reset
+printf 'foreign\n' > "$WORK/victim"
+mkdir -p "$PROJ/.kimiflow"
+ln -s "$WORK/victim" "$PROJ/.kimiflow/build-gate"
+run set off >/dev/null
+assert_eq "$(cat "$WORK/victim")" "foreign" "test_set_preserves_symlink_target"
+if [ -f "$PROJ/.kimiflow/build-gate" ] && [ ! -L "$PROJ/.kimiflow/build-gate" ]; then
+  pass "test_set_replaces_symlink_with_regular_file"
+else
+  fail "test_set_replaces_symlink_with_regular_file"
+fi
+assert_eq "$(run get)" "off" "test_set_symlink_roundtrip"
+
 # invalid set → exit 1, no file
 reset
 if run set nonsense >/dev/null 2>&1; then fail "test_set_invalid_rejected"; else pass "test_set_invalid_rejected"; fi
@@ -63,8 +77,9 @@ reset
 assert_eq "$(field "$(run decide --risk none --interactive yes)" 2)" "CONTINUE" "test_risk_none_continues"
 assert_eq "$(field "$(run decide --risk required --interactive yes)" 2)" "STOP" "test_risk_required_stops"
 assert_eq "$(field "$(run decide --risk required --interactive no)" 2)" "PARK" "test_risk_required_headless_parks"
-assert_eq "$(field "$(run decide --risk none --interactive yes --alias full)" 2)" "STOP" "test_full_always_stops"
-assert_eq "$(field "$(run decide --risk none --interactive no --alias full)" 2)" "PARK" "test_full_headless_parks"
+assert_eq "$(field "$(run decide --risk none --interactive yes --alias full)" 2)" "CONTINUE" "test_full_risk_none_continues"
+assert_eq "$(field "$(run decide --risk none --interactive no --alias full)" 2)" "CONTINUE" "test_full_risk_none_headless_continues"
+assert_eq "$(field "$(run decide --risk required --interactive yes --alias full)" 2)" "STOP" "test_full_material_risk_stops"
 reset; set_project always
 assert_eq "$(field "$(run decide --risk none --interactive yes)" 2)" "STOP" "test_always_stops"
 reset; set_project off

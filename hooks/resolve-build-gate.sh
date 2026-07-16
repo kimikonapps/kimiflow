@@ -28,7 +28,7 @@ project_file() {
 # Echo the first line of $1 (trimmed) iff it is a valid value; else return 1.
 read_value() {
   local f="$1" line
-  [ -f "$f" ] || return 1
+  [ -f "$f" ] && [ ! -L "$f" ] || return 1
   IFS= read -r line < "$f" 2>/dev/null || return 1
   line="${line#"${line%%[![:space:]]*}"}"   # ltrim
   line="${line%"${line##*[![:space:]]}"}"   # rtrim
@@ -54,9 +54,17 @@ if [ "$mode" = "set" ]; then
   if ! mkdir -p "$dir" 2>/dev/null; then
     printf 'resolve-build-gate: set: cannot create %s\n' "$dir" >&2; exit 1
   fi
-  if ! printf '%s\n' "$val" > "$target" 2>/dev/null; then
+  if [ -L "$dir" ] || [ ! -d "$dir" ]; then
+    printf 'resolve-build-gate: set: unsafe directory %s\n' "$dir" >&2; exit 1
+  fi
+  tmp="$(mktemp "$dir/.build-gate.XXXXXX" 2>/dev/null)" || {
+    printf 'resolve-build-gate: set: cannot create temporary file in %s\n' "$dir" >&2; exit 1
+  }
+  trap 'rm -f "$tmp"' EXIT HUP INT TERM
+  if ! printf '%s\n' "$val" > "$tmp" 2>/dev/null || ! mv -f "$tmp" "$target" 2>/dev/null; then
     printf 'resolve-build-gate: set: cannot write %s\n' "$target" >&2; exit 1
   fi
+  trap - EXIT HUP INT TERM
   if [ "$(read_value "$target" || true)" != "$val" ]; then
     printf 'resolve-build-gate: set: write verification failed for %s\n' "$target" >&2; exit 1
   fi
@@ -69,14 +77,13 @@ policy="$(read_value "$(project_file)" || printf 'risk')"
 if [ "$mode" = "decide" ]; then
   risk=""
   interactive=""
-  alias_value=""
   state_file=""
   state_requested=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --risk) shift; risk="${1:-}" ;;
       --interactive) shift; interactive="${1:-}" ;;
-      --alias) shift; alias_value="${1:-}" ;;
+      --alias) shift; [ -n "${1:-}" ] || { printf 'resolve-build-gate: decide: --alias needs a value\n' >&2; exit 2; } ;;
       --state) state_requested=1; shift; state_file="${1:-}" ;;
       *) printf 'resolve-build-gate: decide: unknown argument "%s"\n' "$1" >&2; exit 2 ;;
     esac
@@ -111,9 +118,7 @@ if [ "$mode" = "decide" ]; then
   esac
 
   stop_reason=""
-  if [ "$alias_value" = "full" ]; then
-    stop_reason="full"
-  elif [ "$policy" = "always" ]; then
+  if [ "$policy" = "always" ]; then
     stop_reason="policy-always"
   elif [ "$policy" = "risk" ] && [ "$risk" = "required" ]; then
     stop_reason="risk-required"

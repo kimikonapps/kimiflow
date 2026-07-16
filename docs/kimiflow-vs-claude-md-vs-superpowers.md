@@ -14,7 +14,8 @@ This article answers that honestly, including where mechanical gates are the *wr
 - **Superpowers** — a skills framework that enforces *process* (brainstorming-first, TDD,
   systematic-debugging, subagent-driven-development, verification-before-completion) through mandatory
   skill invocation and subagent patterns. It *disciplines how you work*.
-- **KimiFlow** — a single user-invoked feature/fix loop whose few critical checkpoints are **tested,
+- **KimiFlow** — a single feature/fix loop, explicitly invoked or automatically routed for authorized
+  substantial feature work, whose few critical checkpoints are **tested,
   fail-closed scripts and hooks**, not instructions. It *enforces a handful of invariants*.
 
 | | `CLAUDE.md` | Superpowers | KimiFlow |
@@ -54,9 +55,11 @@ KimiFlow's bet is that for a *small* set of checkpoints, you want the referee to
   number it didn't compute.
 - **Don't finish on red tests.** An opt-in `Stop` hook (`test-gate`) blocks completion while the
   project's tests fail.
-- **Don't commit without a human OK.** The commit-gate *stops* and shows the diff; "done" is never
-  "committed" until you say so. Before implementation, features/audits use a risk-based Build Preview;
-  fixes use one post-diagnosis Fix Preview and never a duplicate early confirmation.
+- **Don't commit foreign or unverified work.** Phase 7 stages only named run-owned paths after green
+  verification and clean review, then creates a local atomic commit under the original build authority.
+  Bulk staging and secret-looking paths remain mechanically blocked; push and release still need an
+  explicit request. Before implementation, only unresolved material product, authority, privacy,
+  security, cost, scope, or irreversible choices pause the loop.
 
 The pattern is consistent: **when a violation is costly and the model is tempted to rationalise past
 it, replace the judgement call with a mechanism.** That removes the rationalisation path entirely.
@@ -101,7 +104,7 @@ Before mechanising anything, ask:
 > under pressure?**
 
 - **Yes** → make it a mechanism (a hook, a fail-closed script, a hard stop). Secrets, open blockers,
-  red tests, commit-without-OK.
+  red tests, or foreign/unverified paths entering a commit.
 - **No** → keep it prose or a skill. Conventions, style, exploration, design taste, anything needing
   flexibility.
 
@@ -110,7 +113,8 @@ and why mechanical gates should stay few — and uncompromising — for the rest
 
 ---
 
-*KimiFlow is a public, user-invoked Claude Code skill + plugin: <https://github.com/kimikonapps/kimiflow>.
+*KimiFlow is a public Claude Code/Codex skill + plugin, explicitly invokable and automatically routed for
+matching authorized feature work: <https://github.com/kimikonapps/kimiflow>.
 The gates described here are real and tested — see [`hooks/`](../hooks/), the
 [`examples/`](../examples/), and the "What gates are mechanical" section of the
 [README](../README.md).*

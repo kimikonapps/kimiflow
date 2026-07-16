@@ -4,10 +4,18 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Changed
+
+- **Schema-4 runs no longer need routine babysitting**: Kimiflow batches real ambiguity up front, explains the
+  agreed target in plain language, changes technical strategy autonomously when a review stays blocked, and
+  pauses later only for material product, authority, security/privacy, cost, external-access, or irreversible
+  decisions.
+- **Solo-dev workspace hygiene and atomic local commits are now mechanical**: every run inventories the current
+  branch, dirty paths, and all linked worktrees; defaults to the current tree; caps exceptional registered trees
+  at one; preserves foreign work; and creates named-path local checkpoints/commits when required for clean-tree
+  verification. Push and release remain separately authorized.
 
 ## 0.2.2
-
 
 ### Changed
 - **Smart feature routing replaces the universal preflight prompt** (`AGENTS.md`, `CLAUDE.md`,

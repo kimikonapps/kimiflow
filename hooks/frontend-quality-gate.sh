@@ -926,6 +926,9 @@ elif marker != 1 or isinstance(marker, bool):
 started_head = active.get("started_head", "") if isinstance(active, dict) else ""
 if canonical_commit_oid(root, started_head) is None:
     errors.append("started_head_invalid")
+workspace_disposition_head = active.get("workspace_disposition_head", "") if isinstance(active, dict) else ""
+frontend_active_start = active.get("frontend_quality_start_head", "") if isinstance(active, dict) else ""
+frontend_start_missing = isinstance(active, dict) and "frontend_quality_start_head" not in active
 
 if record_start_mode:
     # A new marker is absent before marker-first start recording. The affected
@@ -940,12 +943,17 @@ if record_start_mode:
         delta = git_delta(root, current_head)
     except Exception as exc:
         emit("CLOSED", "git_delta_invalid", [str(exc).split(":")[0]])
-    if current_head != started_head:
-        emit("CLOSED", "start_head_mismatch", ["start_head_mismatch"])
     if delta:
         emit("CLOSED", "dirty_start", ["dirty_start"])
+    if current_head != started_head:
+        recorded_disposition = canonical_commit_oid(root, workspace_disposition_head)
+        if recorded_disposition != current_head:
+            emit("CLOSED", "workspace_disposition_missing", ["workspace_disposition_missing"])
 
-    final_start = "clean@%s" % started_head
+    # Workspace disposition may have preserved pre-run work in a local commit.
+    # Keep ACTIVE_RUN.started_head immutable for Phase-7 review, but bind the
+    # frontend lane to the clean HEAD that exists after that disposition.
+    final_start = "clean@%s" % current_head
     classified_errors = []
     classified_evidence = None
     if evidence != "pending":
@@ -997,6 +1005,8 @@ if record_start_mode:
     try:
         if not marker_present:
             active["frontend_quality_contract"] = 1
+        active["frontend_quality_start_head"] = current_head
+        if not marker_present or frontend_active_start != current_head:
             atomic_json(active_path, active)
         updates = {}
         if start_value != final_start:
@@ -1013,17 +1023,41 @@ if status != "active":
     errors.append("run_status_not_active")
 if errors:
     emit("CLOSED", errors[0], errors)
-if start_value != "clean@%s" % started_head:
+start_match = re.match(r"^clean@([0-9a-f]+)$", start_value)
+frontend_started_head = canonical_commit_oid(root, start_match.group(1)) if start_match else None
+if frontend_started_head is None:
     emit("CLOSED", "start_not_recorded", ["start_not_recorded"])
+active_frontend_head = canonical_commit_oid(root, frontend_active_start)
+if not frontend_start_missing and active_frontend_head != frontend_started_head:
+    emit("CLOSED", "start_active_mismatch", ["start_active_mismatch"])
 if not affected:
     emit("CLOSED", "affected_files_empty", ["affected_files_empty"])
 
 try:
-    actual_paths = git_delta(root, started_head)
+    actual_paths = git_delta(root, frontend_started_head)
 except Exception as exc:
     emit("CLOSED", "git_delta_invalid", [str(exc).split(":")[0]])
 if set(affected) != actual_paths:
     emit("CLOSED", "affected_files_mismatch", ["affected_files_mismatch"])
+
+# Contract 1 predates the ACTIVE_RUN copy of the immutable frontend start.
+# A normal write invocation may backfill that one missing field from the
+# already validated STATE receipt. Never overwrite an explicit receipt.
+migration_errors = []
+migration_evidence = evidence_value(evidence, mode, lane, migration_errors)
+if (write and frontend_start_missing and marker == 1 and status == "active" and
+        routing == "final" and basis != "pending" and migration_evidence is not None and
+        not migration_errors):
+    try:
+        active["frontend_quality_start_head"] = frontend_started_head
+        atomic_json(active_path, active)
+    except (OSError, ValueError) as exc:
+        emit("CLOSED", "start_write_failed", [str(exc)])
+    frontend_active_start = frontend_started_head
+
+active_frontend_head = canonical_commit_oid(root, frontend_active_start)
+if active_frontend_head is None or active_frontend_head != frontend_started_head:
+    emit("CLOSED", "start_active_mismatch", ["start_active_mismatch"])
 request_file, request_name = request_path(run_dir, mode)
 if not request_file or not os.path.isfile(request_file) or os.path.islink(request_file):
     emit("CLOSED", "request_file_missing", ["request_file_missing"])

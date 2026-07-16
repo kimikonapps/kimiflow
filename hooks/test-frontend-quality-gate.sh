@@ -4,6 +4,7 @@ set -u
 
 ROOT="$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)"
 GATE="$ROOT/hooks/frontend-quality-gate.sh"
+ACTIVE="$ROOT/hooks/active-run.sh"
 PASS=0
 FAIL=0
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/kimiflow-frontend-quality.XXXXXX")"
@@ -798,6 +799,108 @@ PY
   assert_has "$out" 'affected_header_missing' "normal_gate_still_requires_affected_header"
 }
 
+test_record_start_uses_clean_post_disposition_head() {
+  repo="$(new_repo post-disposition-start)"
+  write_active "$repo"
+  write_state "$repo"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Flow schema" "4"
+  printf '.kimiflow/\n' >> "$repo/.git/info/exclude"
+  python3 - "$repo/.kimiflow/session/ACTIVE_RUN.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["workspace_wait_used_at"] = "2026-07-16T12:00:00Z"
+open(path, "w", encoding="utf-8").write(json.dumps(data, separators=(",", ":")) + "\n")
+PY
+  original_head="$(git -C "$repo" rev-parse HEAD)"
+  printf 'preserved pre-run work\n' > "$repo/preserved.txt"
+  git -C "$repo" add preserved.txt
+  git -C "$repo" commit -qm 'preserve pre-run work'
+  disposition_head="$(git -C "$repo" rev-parse HEAD)"
+  "$ACTIVE" refresh-baseline --root "$repo" --workspace-disposition --write >/dev/null
+
+  out="$(record_start "$repo")"
+  assert_has "$out" $'FRONTEND_QUALITY_GATE\tOPEN' "post_disposition_start_opens"
+  assert_has "$(grep '^Frontend quality start:' "$repo/.kimiflow/run/STATE.md")" "clean@$disposition_head" "frontend_start_uses_post_disposition_head"
+  assert_has "$(cat "$repo/.kimiflow/session/ACTIVE_RUN.json")" "\"started_head\":\"$original_head\"" "review_start_head_stays_original"
+  assert_has "$(cat "$repo/.kimiflow/session/ACTIVE_RUN.json")" "\"frontend_quality_start_head\":\"$disposition_head\"" "frontend_start_is_pinned_in_active_run"
+  assert_has "$(grep '^Workspace disposition head:' "$repo/.kimiflow/run/STATE.md")" "$disposition_head" "workspace_disposition_survives_active_run_retirement"
+}
+
+test_workspace_disposition_receipt_is_one_shot() {
+  repo="$(new_repo disposition-one-shot)"
+  write_active "$repo"
+  write_state "$repo"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Flow schema" "4"
+  printf '.kimiflow/\n' >> "$repo/.git/info/exclude"
+  python3 - "$repo/.kimiflow/session/ACTIVE_RUN.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["workspace_wait_used_at"] = "2026-07-16T12:00:00Z"
+open(path, "w", encoding="utf-8").write(json.dumps(data, separators=(",", ":")) + "\n")
+PY
+  first_head="$(git -C "$repo" rev-parse HEAD)"
+  "$ACTIVE" refresh-baseline --root "$repo" --workspace-disposition --write >/dev/null
+  mkdir -p "$repo/src/ui"
+  printf 'export default 1\n' > "$repo/src/ui/App.tsx"
+  git -C "$repo" add src/ui/App.tsx
+  git -C "$repo" commit -qm 'later ui implementation'
+  out="$("$ACTIVE" refresh-baseline --root "$repo" --workspace-disposition --write 2>&1)"
+  assert_has "$out" 'already bound to another head' "workspace_disposition_cannot_rebase"
+  assert_has "$(grep 'workspace_disposition_head' "$repo/.kimiflow/session/ACTIVE_RUN.json")" "$first_head" "workspace_disposition_keeps_first_head"
+}
+
+test_record_start_rejects_unrecorded_head_advance() {
+  repo="$(new_repo unrecorded-start-advance)"
+  write_active "$repo"
+  write_state "$repo"
+  mkdir -p "$repo/src/ui"
+  printf 'export default 1\n' > "$repo/src/ui/App.tsx"
+  git -C "$repo" add src/ui/App.tsx
+  git -C "$repo" commit -qm 'ui change before frontend start'
+  out="$(record_start "$repo")"
+  assert_has "$out" 'workspace_disposition_missing' "unrecorded_head_advance_closes"
+}
+
+test_frontend_start_state_cannot_rebase_active_receipt() {
+  repo="$(new_repo immutable-frontend-start)"
+  write_active "$repo"
+  write_state "$repo"
+  record_start "$repo" >/dev/null
+  mkdir -p "$repo/src/ui"
+  printf 'export default 1\n' > "$repo/src/ui/App.tsx"
+  git -C "$repo" add src/ui/App.tsx
+  git -C "$repo" commit -qm 'ui change after frontend start'
+  moved_head="$(git -C "$repo" rev-parse HEAD)"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality start" "clean@$moved_head"
+  out="$(record_routing "$repo")"
+  assert_has "$out" 'start_active_mismatch' "mutable_state_cannot_rebase_frontend_start"
+}
+
+test_record_start_migrates_routed_contract_receipt() {
+  repo="$(new_repo routed-start-migration)"
+  prepare_off_delta "$repo"
+  printf 'backend\n' > "$repo/server.py"
+  set_affected "$repo/.kimiflow/run/STATE.md" server.py
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality evidence" "ui-surface=no; ref=request:INTENT.md"
+  record_routing "$repo" >/dev/null
+  printf 'Add a revised backend capability.\n' > "$repo/.kimiflow/run/INTENT.md"
+  "$GATE" "$repo/.kimiflow/run" --write >/dev/null
+  record_routing "$repo" >/dev/null
+  python3 - "$repo/.kimiflow/session/ACTIVE_RUN.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data.pop("frontend_quality_start_head", None)
+open(path, "w", encoding="utf-8").write(json.dumps(data, separators=(",", ":")) + "\n")
+PY
+  assert_has "$("$GATE" "$repo/.kimiflow/run")" 'start_active_mismatch' "legacy_routed_receipt_closes_before_migration"
+  out="$("$GATE" "$repo/.kimiflow/run" --write)"
+  assert_has "$out" $'FRONTEND_QUALITY_GATE\tOPEN' "routed_contract_receipt_migrates_during_recovery"
+  assert_has "$("$GATE" "$repo/.kimiflow/run")" $'FRONTEND_QUALITY_GATE\tOPEN' "migrated_routed_contract_opens"
+}
+
 test_sha256_started_head_is_supported() {
   repo="$WORK/sha256-start"
   mkdir -p "$repo/.kimiflow/session" "$repo/.kimiflow/run"
@@ -967,6 +1070,11 @@ test_affected_snapshot_detects_delete_after_capture
 test_affected_snapshot_covers_git_layers
 test_visual_source_identity_preserves_case
 test_record_start_allows_missing_affected_header
+test_record_start_uses_clean_post_disposition_head
+test_workspace_disposition_receipt_is_one_shot
+test_record_start_rejects_unrecorded_head_advance
+test_frontend_start_state_cannot_rebase_active_receipt
+test_record_start_migrates_routed_contract_receipt
 test_sha256_started_head_is_supported
 test_backend_generic_segments_stay_off
 test_negated_flagship_intent_stays_standard

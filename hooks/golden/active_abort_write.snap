@@ -1,10 +1,10 @@
 @@exit@@
 0
 @@stdout@@
-{"status":"aborted","written":true,"run":".kimiflow/demo","outcome":{"schema_version":1,"outcome":"aborted","reason":"aborted","completed_at":"TIMESTAMP","learning_review":{"status":"not_promoted","reason":"session_not_finished"}}}
+{"status":"aborted","written":true,"run":".kimiflow/demo","outcome":{"schema_version":1,"outcome":"aborted","reason":"aborted","completed_at":"TIMESTAMP","learning_review":{"status":"not_promoted","reason":"session_not_finished"},"workspace_retirement":{"status":"not-required"}}}
 @@stderr@@
 @@files@@
-.kimiflow/demo/SESSION-OUTCOME.json	mode=644	hash=sha256:2c8c960af785edf7f37d20c8e420674c3e628257ea85b45007dd30e24663283c
+.kimiflow/demo/SESSION-OUTCOME.json	mode=600	hash=sha256:ad820261512bb2dc1e0330866538faf8b73af60b2c12dfc6ca350e99d9f277e1
 .kimiflow/demo/STATE.md	mode=600	hash=sha256:fa174cd12efa4301682228d09669a777517e1af0ac6f35ff610c8b424682762a
 .kimiflow/project/FINDINGS.md	mode=644	hash=sha256:a2ed99a0a376d3147db54333f62ba30603ac43d8cf558ff240d9a724251cbf82
 README.md	mode=644	hash=sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03

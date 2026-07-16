@@ -23,7 +23,7 @@ dauerhaften, wiederaufnehmbaren Qualitätsvertrag:
 - State und Evidence liegen unter `.kimiflow/<slug>/`;
 - Plan- und Code-Review-Gates lösen BLOCKER/HIGH mechanisch auf;
 - Bugfixes brauchen Reproduktion, belegte Ursache und Red/Green-Evidence;
-- riskante Entscheidungen und Commits warten auf menschliche Freigabe;
+- wesentliche Produkt-/Berechtigungsentscheidungen warten auf menschliche Freigabe; verifizierte lokale Commits laufen automatisch, Push und Release bleiben explizit;
 - nur erfolgreich verifizierte Learnings werden kuratiert;
 - das stärkste gewählte Modell orchestriert, kleinere Worker übernehmen begrenzte Aufgaben.
 
@@ -86,9 +86,9 @@ Die Modi funktionieren mit `/kimiflow` in Claude Code und `$kimiflow` in Codex g
 
 | Modus | Zweck |
 |---|---|
-| `kimiflow full` | Strenger Large-Flow mit einer modusspezifischen Preview-Freigabe. |
+| `kimiflow full` | Strenger Large-Flow; pausiert nur für eine wesentliche Entscheidung. |
 | `kimiflow quick` | Schlanker Weg für kleine, risikoarme Änderungen. |
-| `kimiflow fix` | Erst diagnostizieren, dann eine Fix Preview und Red/Green-Verifikation. |
+| `kimiflow fix` | Erst diagnostizieren, dann begrenzt fixen und Red/Green verifizieren. |
 | `kimiflow grill` | Nur den Auftrag klären; kein Plan und kein Code. |
 | `kimiflow plan` | Intent, Recherche, Plan und Akzeptanzkriterien vorbereiten; kein Code. |
 | `kimiflow build` | Einen freigegebenen vorbereiteten Plan umsetzen. |
@@ -106,22 +106,22 @@ Explizite Formen:
 /kimiflow --project-map quick
 ```
 
-Für `small` und `quick` gibt es keine Mindestzahl an Fragen. Ein vollständiger Auftrag braucht nur
-eine kompakte Bestätigung; technische Lücken gehen in begrenzte Discovery statt in wiederholte
-User-Interviews. Exakte triviale Arbeit darf den Loop überspringen.
+Kimiflow fragt fehlende Produkt-/UX-/Scope-Punkte einmal kompakt ab, fasst den Vertrag einfach zusammen
+und läuft dann autonom. Ein expliziter Bauauftrag braucht keine zweite Bestätigung; technische Lücken
+gehen in begrenzte Discovery. Exakte triviale Arbeit darf den Loop überspringen.
 
 ## Acht Phasen
 
 | Phase | Ablauf |
 |---|---|
-| 0 Setup | Modus und kleinsten gültigen Scope wählen, Worktree prüfen, State anlegen. |
-| 1 Klären | Feature/Audit bestätigt Verhalten, Scope und Ergebnis. Ein klarer Fix schreibt den Problembrief ohne frühen Stopp. |
+| 0 Setup | Alle Worktrees inventarisieren, dauerhaften Run-State anlegen, sichere Aufräumentscheidung einmal bündeln. |
+| 1 Klären | Nur materielle Lücken fragen, einfachen Vertrag zeigen und bei expliziter Bau-Freigabe weiterlaufen. |
 | 2 Verstehen | Projektwissen und Code prüfen; Discovery `none`, `pulse` oder `focused`. Fixes reproduzieren und belegen die Ursache. |
 | 3 Planen | Flachen minimum-complete Plan und testbare Akzeptanzkriterien schreiben. |
-| 4 Review | Plan-Blocker lösen. Features nutzen eine risikobasierte Build Preview; Fixes fragen einmal nach der Diagnose mit basisgebundener Fix Preview. |
+| 4 Review | Plan-Blocker lösen; nur bei Autorität, materiellem Scope/Risiko, Privacy/Kosten oder Irreversibilität pausieren. |
 | 5 Umsetzen | Kleinste akzeptierte Änderung bauen; Fixes sichern Red-Evidence vor Production-Code. |
 | 6 Verifizieren | Akzeptanzkriterien, Regression, Red/Green und begrenzte lokale Diagnostics prüfen. |
-| 7 Review und Commit | Findings verifizieren, Learnings kuratieren, Diff zeigen und vor dem Commit auf Freigabe warten. |
+| 7 Review und Commit | Findings verifizieren, Learnings kuratieren und lokalen Named-Path-Commit erstellen; Push/Release bleiben explizit. |
 
 ## Mechanische Gates
 
@@ -129,12 +129,12 @@ User-Interviews. Exakte triviale Arbeit darf den Loop überspringen.
 
 | Gate | Gesicherte Grenze |
 |---|---|
-| Working-Tree-Gate | Neue Write-Runs starten mit sauberem getracktem Worktree. |
+| Workspace-Preflight | Alle Worktrees und Dirty-Pfade werden klassifiziert; ein eigener Ausnahme-Tree wird vollständig archiviert statt gelöscht. |
 | Clarify-/Discovery-Gates | Nötige Intent-, Quellen-, Scope- und Entscheidungs-Evidence existiert vor dem Plan. |
 | Plan-/Review-Gates | AC-Mapping und belegte BLOCKER/HIGHs werden in begrenzten Reparaturrunden gelöst. |
-| Fix-Preview-Gate | Freigabe wird an Problem, Diagnose, Plan, Acceptance und relevanten State gefingerprintet; Änderungen machen sie stale. |
+| Materielle-Entscheidungs-Gate | Reversible Technik läuft weiter; nur Autorität, Risiko, Zugriff, Privacy/Kosten oder Irreversibilität pausieren. |
 | Red/Green-Gate | Fixes brauchen aufgezeichnete failing/passing Evidence und Regression. |
-| Commit-Gate | Zeigt den finalen Diff und wartet vor dem Commit auf explizites OK. |
+| Atomic-Commit-Gate | Schema-4-Runs stagen Named Run-Paths und committen lokal unter der ursprünglichen Bau-Freigabe. |
 | Secret-/State-Hooks | Verdächtige Pfade, Bulk-Staging und Resolver ohne dauerhaften State werden blockiert. |
 | Test-Gate | Large-Runs können Abschluss blockieren, solange der konfigurierte Test rot ist. |
 
@@ -143,7 +143,7 @@ mechanisiert die Evidence-Grenzen, ohne Allwissenheit vorzutäuschen.
 
 ## Tokeneffiziente Skalierung
 
-- `trivial`: exakte risikoarme Arbeit; kurz umsetzen und verifizieren, dann Commit-Gate.
+- `trivial`: exakte risikoarme Arbeit; kurz umsetzen, verifizieren und lokal committen.
 - `small`: Default; kompakte Klärung, adaptive Discovery, ein Planner, begrenztes Review.
 - `large`: nur für breite Änderungen, neue Dependencies, Migrationen, Security/Privacy/Money,
   subtile Bugs oder explizites `full`.
@@ -173,11 +173,14 @@ Learnings abrufen oder exportieren. API-Keys landen nie in `.kimiflow/`.
 Details: [`reference.md`](reference.md#memory-router--learning-loop-phase-2-recall--phase-7-learn) und
 [`reference.md`](reference.md#vault-conventions-phase-2).
 
-## Parallele Tasks und Resume
+## Workspace-Sicherheit und Resume
 
 Ein aktiver Run speichert seine Codex- oder Claude-Owner-Session. Andere Sessions dürfen lesen,
-diskutieren und planen. Vor Writes prüfen sie Pfadkonflikte: disjunkte Dateien dürfen parallel,
-überlappende oder unbekannte Pfade warten, werden enger gescoped oder nutzen einen Worktree.
+diskutieren und planen. Vor Writes prüfen sie Pfadkonflikte. Die Umsetzung bleibt standardmäßig
+sequenziell im aktuellen Worktree. Ein einzelner Ausnahme-Worktree braucht explizite Freigabe und
+trusted Registrierung; ist er owned, terminal (`done`, `failed` oder `aborted`), clean und unlocked,
+werden Checkout und passende Git-Metadaten ohne destruktives Git-Remove archiviert. `parked` bleibt
+fortsetzbar; Codex-Worktrees bleiben app-owned.
 
 Vorbereitete und geparkte Runs lassen sich aus `.kimiflow/<slug>/` fortsetzen. Bei geänderten Dateien
 oder unbekannter Plan-Basis wird vor der Umsetzung revalidiert.

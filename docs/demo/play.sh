@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # kimiflow demo — SCRIPTED ILLUSTRATION of the current core workflow, NOT a
 # captured model run. It shows the current front door: launcher, project map,
-# adaptive discovery, gated build/fix flow, commit stop, and learning loop. Rendered
+# adaptive discovery, gated build/fix flow, local commit, and learning loop. Rendered
 # to a GIF by kimiflow-demo.tape. For a REAL run, see docs/demo/README.md.
 set -euo pipefail
 
@@ -29,11 +29,11 @@ e "🟣 understand ·· ${D}project first · Discovery none|pulse|focused · bro
 e "               ${D}fix → reproduce + prove cause · changing APIs → current primary source${Z}" 0.6
 e "⚫ plan ········ ${D}minimal tasks + EARS acceptance criteria → PLAN.md / ACCEPTANCE.md${Z}" 0.7
 e "🟡 plan-gate ··· ${D}reviewer findings → resolve-review-gate.sh →${Z} ${G}0 BLOCKER/HIGH${Z}" 0.8
-e "               ${Y}feature: risk/full Build Preview · fix: one post-diagnosis Fix Preview${Z}" 0.6
+e "               ${D}plain build summary · only material product/authority/risk choices pause${Z}" 0.6
 e "🟠 implement ··· ${D}TDD where useful · surgical diff · no unrelated refactors${Z}" 0.6
 e "🟤 verify ······ ${D}each acceptance check + regression evidence${Z}" 0.6
 e "🟢 review ······ ${D}code-review gate + test-weakening + secret advisory scan${Z}" 0.7
-e "               ${B}${Y}commit-gate shows the diff and STOPS for your OK${Z}" 0.9
+e "               ${B}${G}named run-owned paths committed locally · push stays explicit${Z}" 0.9
 e "↺ learn ······· ${D}successful evidence only → curate bounded project memory${Z}" 0.8
 e "" 0.3
 e "${B}less re-reading, better context, same hard gates — in Claude Code and Codex.${Z}" 1.2

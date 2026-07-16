@@ -5,8 +5,8 @@
 > invented. See [`README.md`](README.md) for why.
 
 A small, well-understood bug. The point of this example is the **scope-gate keeping it lean**:
-`small` skips the plan-gate *loop*, runs a single reviewer, and goes straight to the commit-gate —
-the same hard stops as a `large` run, none of the fan-out cost.
+`small` skips the plan-gate *loop*, keeps plan review to one lens, and goes straight through verification to
+an atomic local commit — the same correctness gates as a `large` run, none of the fan-out cost.
 
 ---
 
@@ -18,7 +18,7 @@ the same hard stops as a `large` run, none of the fan-out cost.
 
 - Routing: a reproducible "shows the wrong number" symptom → **fix mode**.
 - Scope-gate: one file, one obvious off-by-one, no architectural risk → **`small`**.
-  Announced: *"Scope: small — single reviewer, no plan-gate loop, no worktrees."*
+  Announced: *"Scope: small — lean review, no plan-gate loop, no worktrees."*
 - State dir: `.kimiflow/pagination-off-by-one/`.
 
 ### 🔵 Phase 1 — Problem brief
@@ -65,9 +65,9 @@ NONE
 Gate: `resolve-review-gate.sh findings --round 1 --expect B` → `clean⇥0⇥clean⇥…` → **0 open ✅**.
 Small scope → no second round, no loop.
 
-**Fix Preview — one pre-build Human Gate:** verified cause = exclusive slice bound; fix = remove the
-`- 1`; scope = paginator + its test; risk = low, no API change. ✋ **"Fix it this way?"** → approved.
-`clarify-gate.sh --record-fix-approval` records the basis-bound approval; `--post-diagnosis` → OPEN.
+**Plain-language build summary:** verified cause = exclusive slice bound; fix = remove the `- 1`;
+scope = paginator + its test; not included = API or pagination redesign; risk = none (small and
+reversible). The original fix request already authorizes the work, so schema 4 continues directly.
 
 ### 🟠 Phase 5 — Implement (TDD)
 
@@ -87,11 +87,14 @@ Small scope → no second round, no loop.
 - Regression: full suite green.
 - Goal-backward: AC-1's test exists, is substantive, and is wired (imported + run). Done ≠ done-only.
 
-### 🟢 Phase 7 — Code-review → commit-gate
+### 🟢 Phase 7 — Code-review → local commit
 
-- One `senior-reviewer` over the 1-line diff + `ACCEPTANCE.md` (correctness only, not style; also
-  *"was a test weakened to go green?"* → no). → `CODE-REVIEW.md`: clean.
-- ✋ **Commit-gate — STOP.** Shows the summary, `git status`, `git diff --staged`:
+- Two focused axes inspect the same pinned diff packet: `spec-correctness` traces AC-1 and regression
+  behavior; `failure-security` checks edge/failure behavior and folds in documented standards. Both
+  write `NONE` candidate files. The orchestrator verifies that result, writes
+  `findings/r1-code-verified.md: NONE`, and only that promoted file is counted by the gate.
+- After clean review, stages the two named paths and shows the summary, `git status`, and
+  `git diff --staged`:
 
   ```
   fix(products): paginate slice end is exclusive — return full pageSize per page
@@ -100,10 +103,11 @@ Small scope → no second round, no loop.
    src/products/paginate.spec.ts   | 14 ++++++++++
   ```
 
-  Waits for your **explicit OK**. On OK → commits the two named paths only (no `git add -A`, no
-  AI-attribution trailer). **Never auto-commits.**
+  Commits those named run-owned paths locally (no `git add -A`, no AI-attribution trailer). Push and
+  release remain separate explicit actions.
 
 ---
 
-**Why this is the cheap path:** same diagnosis, one Fix Preview, and commit-gate as a large run, but the scope-gate
-dropped the second reviewer, the plan-gate loop and any worktrees. Lean work stays lean.
+**Why this is the cheap path:** same diagnosis, review, verification, and atomic local commit as a
+large run, but the scope-gate kept Phase-4 plan review to one lens, skipped its loop, and avoided any
+worktree. Phase 7 still uses the minimum two independent code-review axes. Lean work stays lean.

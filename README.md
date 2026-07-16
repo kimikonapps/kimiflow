@@ -37,7 +37,7 @@ abilities:
 - state and evidence live under `.kimiflow/<slug>/`, so a run can resume safely;
 - plan and code-review findings use tested fail-closed resolvers;
 - fixes require reproduction, a proven cause, and red/green evidence;
-- risky decisions and commits stop for human approval;
+- material product/authority decisions stop for human approval; verified local commits are automatic, while push and release stay explicit;
 - successful learnings are curated, while failed or parked attempts are not promoted as truth;
 - the strongest selected model orchestrates and plans, while bounded workers handle cheaper tasks.
 
@@ -107,9 +107,9 @@ The same modes work with `/kimiflow` in Claude Code and `$kimiflow` in Codex.
 
 | Mode | Purpose |
 |---|---|
-| `kimiflow full` | Strict large-scope loop; one mode-specific Preview approval before implementation. |
+| `kimiflow full` | Strict large-scope loop; pauses only for a material decision. |
 | `kimiflow quick` | Lean path for a small, low-risk change. |
-| `kimiflow fix` | Diagnose first, show one post-diagnosis Fix Preview, then red/green verification. |
+| `kimiflow fix` | Diagnose first, apply a bounded fix, then require red/green verification. |
 | `kimiflow grill` | Clarify a request only; no plan or code. |
 | `kimiflow plan` | Prepare intent, research, plan, and acceptance criteria; no code. |
 | `kimiflow build` | Implement an approved prepared plan. |
@@ -127,22 +127,22 @@ Useful explicit forms:
 /kimiflow --project-map quick
 ```
 
-For `small` and `quick`, there is **no minimum question count**. A complete request needs only a
-compact confirmation; technical gaps go to bounded Discovery instead of becoming repeated user
-interviews. Exact trivial work may skip the loop.
+Kimiflow asks one compact batch only for missing product/UX/scope facts, then shows the contract in
+plain language and runs autonomously. An explicit build request needs no second confirmation;
+technical gaps go to bounded Discovery. Exact trivial work may skip the loop.
 
 ## Eight Phases
 
 | Phase | What happens |
 |---|---|
-| 0 Setup | Route mode, choose the smallest valid scope, check the worktree, and create durable state. |
-| 1 Clarify | Feature/audit confirms behavior, scope, and outcome. A clear fix records the problem brief without an early stop. |
+| 0 Setup | Inventory every worktree, create durable run state, then batch any safe-disposition decision once. |
+| 1 Clarify | Ask only material unknowns, show a simple contract, and continue under explicit build authority. |
 | 2 Understand | Inspect project knowledge and code; choose Discovery `none`, `pulse`, or `focused`. Fixes reproduce and prove the cause. |
 | 3 Plan | Write a flat minimum-complete plan and testable acceptance criteria. |
-| 4 Review | Resolve plan blockers. Features use a risk-based Build Preview; fixes always ask once after diagnosis with a basis-bound Fix Preview. |
+| 4 Review | Resolve plan blockers and pause only for a material authority, scope, risk, privacy, cost, or irreversible decision. |
 | 5 Implement | Apply the smallest accepted change, normally sequentially; fixes preserve red evidence before production code. |
 | 6 Verify | Check acceptance criteria, regression behavior, red/green evidence, and bounded local diagnostics. |
-| 7 Review and commit | Verify review candidates, resolve blockers, curate learnings, show the diff, and stop for commit approval. |
+| 7 Review and commit | Verify findings, curate learnings, and create a named-path local atomic commit; push/release stay explicit. |
 
 ## Mechanical Gates
 
@@ -150,12 +150,12 @@ interviews. Exact trivial work may skip the loop.
 
 | Gate | Enforced boundary |
 |---|---|
-| Working-tree gate | New write runs start from a clean tracked worktree. |
+| Workspace preflight | Every linked tree and dirty path is classified; cleanup is no-force, ownership-bound, and solo-dev by default. |
 | Clarify and Discovery gates | Required intent, source, scope, and decision evidence exists before planning. |
 | Plan-blocker and review gates | Acceptance mappings and evidenced `BLOCKER/HIGH` findings are resolved within a bounded repair budget. |
-| Fix Preview gate | Approval is fingerprinted against problem, diagnosis, plan, acceptance criteria, and relevant state; later changes invalidate it. |
+| Material-decision gate | Reversible technical work continues; only missing authority, material risk, external access, privacy/cost, or irreversibility pauses. |
 | Red/green gate | Fixes cannot finish without recorded failing and passing evidence plus regression coverage. |
-| Commit gate | Kimiflow shows the final diff and waits for explicit approval before committing. |
+| Atomic commit gate | Schema-4 runs stage named run-owned paths and commit locally under the original build authority. |
 | Secret/state hooks | Secret-looking paths, bulk staging, and resolver calls without durable state are blocked. |
 | Test gate | Large runs can block completion while the configured project test command is red. |
 
@@ -164,7 +164,7 @@ mechanizes the evidence boundaries without pretending a tool can prove that no b
 
 ## Token-Aware Scaling
 
-- `trivial`: exact, low-risk work; implement, verify briefly, then commit gate.
+- `trivial`: exact, low-risk work; implement, verify briefly, then commit locally.
 - `small`: default; compact clarification, adaptive Discovery, one planner, bounded review.
 - `large`: reserved for broad changes, new dependencies, migrations, security/privacy/money paths,
   subtle bugs, or explicit `full` runs.
@@ -196,11 +196,14 @@ See [`reference.md`](reference.md#memory-router--learning-loop-phase-2-recall--p
 artifact and privacy contract, and [`reference.md`](reference.md#vault-conventions-phase-2) for Vault
 setup details.
 
-## Parallel Tasks and Resume
+## Workspace Safety and Resume
 
 An active run records its owning Codex or Claude session. Other sessions may read, discuss, and plan.
-Before writing in the same checkout they run deterministic path-conflict checks: disjoint files may
-proceed; overlapping or unknown paths wait, narrow scope, or use a worktree.
+Before writing in the same checkout they run deterministic path-conflict checks. Implementation stays
+sequential in the current worktree by default. One exceptional temporary tree needs explicit authority,
+trusted registration, and is retired only when owned, terminal (`done`, `failed`, or `aborted`), clean,
+and unlocked; `parked` stays resumable. Retirement archives the complete checkout and its matched Git
+metadata without a destructive Git remove; Codex-managed trees remain controlled by the app.
 
 Prepared and parked runs can resume from `.kimiflow/<slug>/`. If affected files changed or the plan
 basis is unknown, Kimiflow revalidates before implementation instead of building a stale plan.

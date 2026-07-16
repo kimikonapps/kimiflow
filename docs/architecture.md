@@ -1,6 +1,7 @@
 # Architektur
 
-Kimiflow ist eine Prompt-/Shell-Hybrid-Engine fuer explizit gestartete Feature- und Bugfix-Laeufe. Die
+Kimiflow ist eine Prompt-/Shell-Hybrid-Engine fuer explizit gestartete Laeufe und automatisch geroutete,
+autorisierte substanzielle Feature-Arbeit. Normale Fixes und kleine risikoarme Arbeiten bleiben direkt. Die
 Kernidee: Das Modell fuehrt den Workflow, aber kritische Gates werden durch wiederverwendbare Shell-Skripte
 und persistente Artefakte geerdet.
 
@@ -23,7 +24,7 @@ User request
   -> Phasendetails aus phases/*.md plus Detailregeln aus reference.md / docs/
   -> mechanische Resolver/Hooks fuer Gates
   -> Artefakte unter .kimiflow/<slug>/ oder .kimiflow/project/
-  -> Commit-Gate stoppt fuer explizites OK
+  -> lokaler atomarer Commit der verifizierten, lauf-eigenen Pfade
 ```
 
 Claude Code nutzt den gerenderten Root-Skill und plugin-bundled Hooks. Codex nutzt einen gerenderten
@@ -37,13 +38,15 @@ PYTHONPATH="$PWD/hooks" python3 -m kimiflow_core.render
 
 `hooks/release-consistency-check.sh` rendert vor dem Release per `--check` und faellt bei Drift in
 `SKILL.md` oder `skills/kimiflow/SKILL.md` fehl, ohne lokale Drift zu ueberschreiben. Derselbe Check haelt
-Byte-Budgets fuer die immer geladene Prosa (`SKILL.md` <= 15,000 Bytes, Codex-Skill <= 15,000 Bytes), fuer Phase-Dateien
+Byte-Budgets fuer die immer geladene Prosa (`SKILL.md` <= 17,000 Bytes, Codex-Skill <= 15,000 Bytes), fuer Phase-Dateien
 (`phases/*.md` jeweils <= 20,000 Bytes) und fuer die Launcher-Default-Ausgabe (JSON <= 8,000 Bytes,
 Pretty <= 12,000 Bytes auf einem sauberen Fixture-Repo).
 
 ## Wichtige Invarianten
 
-- Kimiflow ist opt-in: Es startet nur, wenn der User Kimiflow explizit anfordert.
+- Explizites Kimiflow startet den Flow, explizites direkt/direkt umgeht ihn; autorisierte substanzielle
+  Feature-Arbeit mit materiellem Integrations-, Datenfluss-, Security-, API-, Architektur- oder Discovery-Risiko
+  wird automatisch geroutet. Normale Fixes, Reviews, Doku/Config und kleine risikoarme Features bleiben direkt.
 - Gate-Entscheidungen duerfen nicht nur behauptet werden; Resolver-Skripte liefern die mechanische Wahrheit,
   wo das moeglich ist.
 - Normale Laeufe persistieren State unter `.kimiflow/<slug>/`.

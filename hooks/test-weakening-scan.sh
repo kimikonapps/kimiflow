@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# kimiflow — test-weakening scan (ADVISORY, never blocks). Invoked by kimiflow in Phase 7
-# (NOT auto-registered as a hook). Scans the staged diff for signs that tests were
-# weakened to go green and prints FLAG advisory lines to stdout. kimiflow routes these
-# to .kimiflow/<slug>/ADVISORIES.md and forces human triage at the commit-gate
-# (dismiss = legit refactor, or promote = a real finding).
+# kimiflow — test-weakening scan (ADVISORY, never blocks). Invoked by Kimiflow at
+# Phase-5 checkpoint and Phase-7 commit boundaries (NOT auto-registered as a hook).
+# Scans the staged diff for signs that tests were weakened to go green and prints FLAG
+# advisory lines to stdout. Kimiflow routes these to .kimiflow/<slug>/ADVISORIES.md
+# for evidence-based triage (dismiss = legit refactor, or promote = a real finding).
 #
 # The pattern set is a MINIMUM (see reference.md → "Review rubric"): SEMANTIC
 # weakening — changed expected values, loosened tolerances, a test rewritten to a

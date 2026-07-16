@@ -7,9 +7,9 @@
 # Output:
 #   CLARIFY_GATE<TAB>OPEN|CLOSED<TAB>blockers=<n><TAB>reason=<code><TAB>detail=<codes>
 #
-# Feature/audit small/quick runs confirm behavior, scope, and outcome without a
-# question quota. Fixes proceed from a problem brief, then schema-3 runs use the
-# post-diagnosis mode to verify their single Fix Preview approval.
+# Feature/audit runs confirm behavior, scope, and outcome without a question
+# quota. Schema 4 also records implementation authority plus a plain summary.
+# Fixes proceed from a problem brief; legacy schema-3 runs keep their Preview.
 # R2 invariant target: hooks/clarify-gate.sh
 set -u
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -172,10 +172,13 @@ fi
 # the one pre-build confirmation to a durable Fix Preview after root-cause proof.
 if [ "$mode_value" = "fix" ]; then
   case "$flow_schema" in *[!0-9]*) emit CLOSED 1 malformed "flow_schema_invalid" ;; esac
-  if [ "$record_fix_approval" -eq 1 ] && { [ -z "$flow_schema" ] || [ "$flow_schema" -lt 3 ]; }; then
+  if [ "$record_fix_approval" -eq 1 ] && [ "$flow_schema" != "3" ]; then
     emit CLOSED 1 malformed "fix_approval_schema_unsupported"
   fi
-  if [ -n "$flow_schema" ] && [ "$flow_schema" -ge 3 ]; then
+  if [ -n "$flow_schema" ] && [ "$flow_schema" -ge 4 ]; then
+    emit_open
+  fi
+  if [ "$flow_schema" = "3" ]; then
     if [ "$post_diagnosis" -eq 0 ]; then
       emit_open
     fi
@@ -225,11 +228,26 @@ if [ "$mode_value" = "fix" ]; then
 fi
 
 needs_micro=0
-case "$scope" in
-  ""|small) needs_micro=1 ;;
-esac
+if [ "$mode_value" = "feature" ] || [ "$mode_value" = "audit" ]; then
+  if [ "$scope" != "trivial" ] && [ -n "$flow_schema" ] && [ "$flow_schema" -ge 4 ] 2>/dev/null; then
+    needs_micro=1
+  fi
+fi
+if [ "$needs_micro" -eq 0 ]; then
+  case "$scope" in
+    ""|small) needs_micro=1 ;;
+  esac
+fi
 if printf '%s\n%s\n' "$alias_value" "$mode_value" | grep -Eiq '(^|[[:space:][:punct:]])quick($|[[:space:][:punct:]])'; then
   needs_micro=1
+fi
+
+requires_implementation_authority=0
+if [ "$mode_value" = "feature" ]; then
+  case "$alias_value" in
+    plan|grill|review|audit) ;;
+    *) requires_implementation_authority=1 ;;
+  esac
 fi
 
 if [ "$needs_micro" -eq 0 ]; then
@@ -247,13 +265,23 @@ else
   evidence_behavior="$(printf '%s\n' "$marker" | sed -n 's/.*behavior=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
   evidence_scope="$(printf '%s\n' "$marker" | sed -n 's/.*scope=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
   evidence_outcome="$(printf '%s\n' "$marker" | sed -n 's/.*outcome=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
+  evidence_authority="$(printf '%s\n' "$marker" | sed -n 's/.*authority=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
+  evidence_summary="$(printf '%s\n' "$marker" | sed -n 's/.*summary=\([A-Za-z_-][A-Za-z0-9_-]*\).*/\1/p' | tr '[:upper:]' '[:lower:]')"
 
   case "$evidence_source" in
     current-run|current_run) ;;
     *) add_blocker "micro_grill_not_current_run" ;;
   esac
 
-  if [ -n "$evidence_behavior$evidence_scope$evidence_outcome" ]; then
+  if [ -n "$flow_schema" ] && [ "$flow_schema" -ge 4 ] 2>/dev/null && { [ "$mode_value" = "feature" ] || [ "$mode_value" = "audit" ]; }; then
+    [ "$evidence_behavior" = "confirmed" ] || add_blocker "intent_behavior_unconfirmed"
+    [ "$evidence_scope" = "confirmed" ] || add_blocker "intent_scope_unconfirmed"
+    [ "$evidence_outcome" = "confirmed" ] || add_blocker "intent_outcome_unconfirmed"
+    if [ "$requires_implementation_authority" -eq 1 ]; then
+      case "$evidence_authority" in explicit|confirmed) ;; *) add_blocker "implementation_authority_missing" ;; esac
+    fi
+    [ "$evidence_summary" = "present" ] || add_blocker "plain_summary_missing"
+  elif [ -n "$evidence_behavior$evidence_scope$evidence_outcome" ]; then
     [ "$evidence_behavior" = "confirmed" ] || add_blocker "intent_behavior_unconfirmed"
     [ "$evidence_scope" = "confirmed" ] || add_blocker "intent_scope_unconfirmed"
     [ "$evidence_outcome" = "confirmed" ] || add_blocker "intent_outcome_unconfirmed"

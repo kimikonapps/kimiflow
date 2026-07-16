@@ -163,6 +163,91 @@ assert_field "$out" 2 OPEN "large_artifact_without_micro_marker_opens"
 
 reset_run
 cat > "$RUN/STATE.md" <<'EOF'
+Flow schema: 4
+Status: active
+Mode: feature
+Scope: large
+Phase 0: done
+Phase 1: done
+EOF
+cat > "$RUN/INTENT.md" <<'EOF'
+# Intent
+Large schema-4 feature without a front-loaded contract.
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "schema4_large_requires_complete_frontloaded_contract"
+assert_contains "$out" "intent_evidence_missing" "schema4_large_missing_contract_detail"
+cat > "$RUN/INTENT.md" <<'EOF'
+# Intent
+<!-- kimiflow:clarify-evidence behavior=confirmed scope=confirmed outcome=confirmed authority=explicit summary=present source=current-run -->
+The user asked to build this bounded feature and received a simple summary.
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "schema4_large_complete_frontloaded_contract_opens"
+sed -i.bak 's/ authority=explicit//' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "schema4_feature_still_requires_implementation_authority"
+assert_contains "$out" "implementation_authority_missing" "schema4_feature_authority_detail"
+sed -i.bak 's/outcome=confirmed/outcome=confirmed authority=explicit/' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
+sed -i.bak 's/summary=present/summary=missing/' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "schema4_requires_plain_summary_receipt"
+assert_contains "$out" "plain_summary_missing" "schema4_plain_summary_detail"
+
+reset_run
+sed -i.bak 's/Alias: quick/Alias: plan/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+sed -i.bak '1i\
+Flow schema: 4' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+sed -i.bak 's/Scope: small/Scope: large/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+cat > "$RUN/INTENT.md" <<'EOF'
+# Intent
+<!-- kimiflow:clarify-evidence behavior=confirmed scope=confirmed outcome=confirmed summary=present source=current-run -->
+Prepare a plan only; no implementation has been authorized.
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "schema4_plan_does_not_claim_future_build_authority"
+
+reset_run
+sed -i.bak 's/Mode: feature/Mode: audit/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+sed -i.bak 's/Alias: quick/Alias: audit/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+sed -i.bak '1i\
+Flow schema: 4' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+cat > "$RUN/AUDIT-INTENT.md" <<'EOF'
+# Audit intent
+<!-- kimiflow:clarify-evidence behavior=confirmed scope=confirmed outcome=confirmed summary=present source=current-run -->
+Inspect this target read-only; no cleanup slice has been authorized.
+EOF
+rm "$RUN/INTENT.md"
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "schema4_audit_does_not_claim_future_build_authority"
+
+reset_run
+cat > "$RUN/STATE.md" <<'EOF'
+Flow schema: 4
+Status: active
+Mode: fix
+Scope: small
+Build risk: none
+Phase 0: done
+Phase 1: done
+EOF
+cat > "$RUN/PROBLEM.md" <<'EOF'
+# Problem
+<!-- kimiflow:clarify-evidence behavior=confirmed scope=confirmed outcome=confirmed authority=explicit summary=present source=current-run -->
+Fix the confirmed behavior inside the stated boundary.
+EOF
+rm "$RUN/INTENT.md"
+printf '# Diagnosis\nThe technical cause is proven.\n' > "$RUN/DIAGNOSIS.md"
+printf '# Plan\nApply the bounded correction.\n' > "$RUN/PLAN.md"
+printf '# Acceptance\nAC-1: The confirmed behavior is restored.\n' > "$RUN/ACCEPTANCE.md"
+out="$(run_post_diagnosis_gate)"
+assert_field "$out" 2 OPEN "schema4_fix_needs_no_post_diagnosis_approval"
+out="$(record_fix_approval)"
+assert_field "$out" 2 CLOSED "schema4_rejects_legacy_fix_approval_write"
+assert_contains "$out" "fix_approval_schema_unsupported" "schema4_legacy_fix_approval_detail"
+
+reset_run
+cat > "$RUN/STATE.md" <<'EOF'
 Status: active
 Mode: feature
 Scope: small

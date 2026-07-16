@@ -30,9 +30,9 @@ loop still runs.
 | Env `${CLAUDE_PLUGIN_ROOT}` | `hooks.json` command paths + `SKILL.md` resolver calls | **Load-bearing** — unset/rename → resolver scripts unfound |
 | Env `${CLAUDE_SKILL_DIR}` | `SKILL.md` resolver fallback + `reference.md` path passing to subagents | **Load-bearing** — unset/rename → fallback path breaks |
 | `TaskCreate` / `TaskUpdate` | Phase 0 glance task-list widget | Graceful — API change breaks the widget only; engine + STATE.md unaffected |
-| Subagent spawning (fresh, isolated context) | every delegated phase (understand / plan / review / verify) | **Load-bearing** — spawn-model change → the whole delegation loop breaks |
-| Named agent types `general-purpose` · `Explore` · `Plan` · `code-review-audit` · `senior-reviewer` | research / plan / review / explore delegations | Graceful-ish — rename/removal needs a fallback type, but is recoverable |
-| Subagent `isolation: worktree` | parallel-implementation knob (opt-in, OFF by default) | Graceful — breaks the parallel knob only; default sequential path unaffected |
+| Subagent spawning (fresh, isolated context) | optional fresh understand / plan / review / verify seats | Graceful — unavailable routing falls back to separate passes by the strongest current orchestrator; candidate grammar and mechanical gates remain load-bearing |
+| Named agent types `general-purpose` · `Explore` · `Plan` plus fresh axis-specific review prompts | research / plan / review / explore delegations | Graceful-ish — rename/removal needs a fallback type, but is recoverable; review correctness depends on the candidate grammar and axis prompt, not retired custom reviewer names |
+| Git worktree/status porcelain + POSIX file locking for registry mutations | `workspace-preflight.sh` complete inventory, identity receipt, one-tree cap, and atomic archive-before-detach retirement | **Load-bearing for exceptional-worktree writes** — format/command/lock/atomic-rename loss fails closed; normal read-only inventory remains available and there is no destructive fallback |
 | External `codex` CLI (optional) | pinned `gpt-5.6-sol` cross-family quality seat (Claude-host tier 1) | Graceful — absent → tier skipped; model/effort flags changing requires a transport update |
 | External `agy` (Antigravity) CLI (optional) | cross-family reviewer knob (Claude-host Gemini tier); invoked `agy -p … --sandbox --model "Gemini 3.5 Flash (High)"` | Graceful — absent → tier skipped, chain falls to same-family. `--sandbox`+no-tools required (unconstrained `agy` is agentic); output validated by the FINDING-grammar backstop |
 | External `python3` >= 3.9 (stdlib only) | `hooks/memory-router.sh` is a shim that execs `python3 -m memory_router` (the memory-router runtime: status / recall / record / curate / review-run / provider / …) | **Load-bearing** — absent or < 3.9 → the memory-router hook fails; its callers (`launcher-status.sh`, `active-run.sh`) fail closed and degrade gracefully. Replaces the former in-process Bash runtime (which required `jq`). |
@@ -61,7 +61,7 @@ loop still runs.
 | Hook deny/block output contract | `emit_deny` and `test-gate.sh` block output | **Load-bearing** — blocks stop taking effect |
 | `KIMIFLOW_HOST=codex` | Codex skill and stable hook wrappers invoke helpers with Codex-specific global config paths | Graceful-ish — without it global verbosity writes to Claude default; project gates still work |
 | Codex plan/status updates | Phase 0 glance task-list equivalent | Graceful — UI progress degrades; `STATE.md` remains the durable source |
-| Codex subagents (`explorer`, `worker`, `default`) + per-spawn `model`/`reasoning_effort` | Luna bounded support / Terra implementation / Sol plan-review-verify roles | **Load-bearing for routed runs** — unavailable overrides inherit the Sol top session; a non-Sol main session must stop before Phase 0 |
+| Codex subagents (`explorer`, `worker`, `default`) + per-spawn `model`/`reasoning_effort` | Luna bounded support / Terra implementation / Sol plan-review-verify roles | Graceful quality routing — unavailable overrides inherit the active session tier; a non-Sol main session records the fallback and continues without a model-switch prompt |
 | Codex web/search/tool availability | Phase 2 current external research | Graceful — absent → research degrades, codebase/project memory still ground the plan |
 | Optional notes MCP / app connectors | Phase 2 recall and vault memory | Graceful — absent → skip + note in STATE.md |
 
@@ -83,11 +83,9 @@ Run on every Claude Code or Codex upgrade (and at each kimiflow release):
    a new thread, and run `$kimiflow <tiny fix>`.
 5. **Codex hooks fire installed** — in a repo with a `.kimiflow/` dir, confirm `commit-secret-gate.sh`
    blocks `git add .` and the `Stop` test-gate engages through the stable Codex hook wrappers.
-6. **One trivial Claude end-to-end** — `/kimiflow <tiny fix>`: the Phase-0 task widget appears, the commit-gate
-   STOPs for explicit OK; and the opt-in policy holds — kimiflow launches when asked ("with kimiflow")
+6. **One trivial Claude end-to-end** — `/kimiflow <tiny fix>`: the Phase-0 task widget appears, workspace preflight is compact, and schema 4 commits named paths locally without a routine second OK; the opt-in policy holds — kimiflow launches when asked ("with kimiflow")
    but does not fire unprompted on an unrelated request (soft, description-guided — not a hard flag).
-7. **One trivial Codex end-to-end** — `$kimiflow <tiny fix>`: the Codex status/plan view appears, the
-   commit-gate STOPs for explicit OK; and the opt-in policy holds.
+7. **One trivial Codex end-to-end** — `$kimiflow <tiny fix>`: the Codex status/plan view and workspace summary appear, the local commit needs no routine second OK, and the opt-in policy holds.
 8. **Re-stamp** — update the "Last verified against" line above with the new `claude --version` and
    `codex --version`.
 

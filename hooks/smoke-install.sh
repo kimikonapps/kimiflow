@@ -76,10 +76,12 @@ grep -q 'Natural mode aliases' "$ROOT/reference.md" && ok "reference documents n
 for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'kimiflow review' 'kimiflow audit' 'kimiflow fix' 'kimiflow quick'; do
   grep -q "$term" "$ROOT/README.md" && ok "README documents mode alias: $term" || bad "README missing mode alias: $term"
 done
-grep -q 'mode-specific Preview approval' "$ROOT/SKILL.md" && ok "full mode includes one mode-specific Preview approval" || bad "full mode missing mode-specific Preview approval"
+grep -q 'full.*does not create an approval stop' "$ROOT/SKILL.md" && ok "full mode follows material-risk decisions" || bad "full mode still forces approval"
 grep -q 'question minimum' "$ROOT/SKILL.md" && ok "canonical skill removes intent question quota" || bad "canonical skill missing no-question-minimum rule"
-grep -q 'Feature/audit intent evidence for small/quick' "$ROOT/reference.md" && ok "reference documents feature/audit intent evidence" || bad "reference missing feature/audit intent evidence"
-grep -q 'no minimum question count' "$ROOT/README.md" && ok "README documents no question quota" || bad "README missing no-question-minimum rule"
+grep -q 'Feature/audit front-loaded intent evidence' "$ROOT/reference.md" && ok "reference documents front-loaded intent evidence" || bad "reference missing front-loaded intent evidence"
+grep -q 'one compact batch' "$ROOT/README.md" && ok "README documents batched clarification" || bad "README missing batched clarification"
+grep -q 'git commit --only' "$ROOT/phases/phase-7-review-commit.md" && grep -q 'foreign staged' "$ROOT/phases/phase-7-review-commit.md" \
+  && ok "atomic commit isolates foreign staged paths" || bad "atomic commit foreign-staging isolation missing"
 grep -q 'Vault Pulse' "$ROOT/SKILL.md" && ok "canonical skill requires scope=large Vault Pulse semantics" || bad "canonical skill missing Vault Pulse"
 grep -Eq 'Vault Pulse.*scope=large|scope=large.*Vault Pulse' "$ROOT/reference.md" && ok "reference documents scope=large Vault Pulse semantics" || bad "reference missing scope=large Vault Pulse semantics"
 grep -q 'Vault Pulse' "$ROOT/README.md" && ok "README documents scope=large Vault Pulse semantics" || bad "README missing Vault Pulse"
@@ -114,6 +116,22 @@ if [ -x "$ROOT/hooks/discovery-gate.sh" ] && bash -n "$ROOT/hooks/discovery-gate
 if [ -x "$ROOT/hooks/test-discovery-gate.sh" ] && bash -n "$ROOT/hooks/test-discovery-gate.sh" 2>/dev/null; then ok "discovery gate test ok"; else bad "discovery gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/working-tree-gate.sh" ] && bash -n "$ROOT/hooks/working-tree-gate.sh" 2>/dev/null; then ok "working-tree gate helper ok"; else bad "working-tree gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-working-tree-gate.sh" ] && bash -n "$ROOT/hooks/test-working-tree-gate.sh" 2>/dev/null; then ok "working-tree gate test ok"; else bad "working-tree gate test missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/workspace-preflight.sh" ] && bash -n "$ROOT/hooks/workspace-preflight.sh" 2>/dev/null; then ok "workspace preflight helper ok"; else bad "workspace preflight helper missing/not-exec/bad"; fi
+if grep -q 'show one plain summary' "$ROOT/phases/phase-0-setup.md" \
+  && grep -q 'await-user --run .kimiflow/<slug> --kind workspace' "$ROOT/phases/phase-0-setup.md" \
+  && grep -q 'Apply only the selected safe actions, rerun status' "$ROOT/phases/phase-0-setup.md" \
+  && grep -q 'test_schema4_workspace_wait_is_one_shot' "$ROOT/hooks/kimiflow_core/tests/test_active_run.py"; then
+  ok "schema4_workspace_summary_and_single_decision"
+else
+  bad "workspace summary/one-shot disposition procedure is incomplete"
+fi
+grep -q 'test_schema4_workspace_wait_is_one_shot' "$ROOT/hooks/kimiflow_core/tests/test_active_run.py" && ok "schema4_workspace_wait_is_mechanically_one_shot" || bad "workspace wait lacks one-shot regression coverage"
+grep -q 'test_schema4_workspace_wait_receipt_survives_park_and_resume' "$ROOT/hooks/kimiflow_core/tests/test_active_run.py" && ok "workspace receipt survives park/resume" || bad "workspace receipt lacks park/resume coverage"
+grep -q 'test_targeted_cleanup_preserves_unrelated_prunable_metadata' "$ROOT/hooks/kimiflow_core/tests/test_workspace_preflight.py" && ok "targeted retirement preserves unrelated metadata" || bad "targeted retirement lacks unrelated-metadata coverage"
+grep -q 'Only after step 3.55' "$ROOT/phases/phase-0-setup.md" && ok "frontend baseline follows workspace closure" || bad "frontend baseline timing bypasses workspace closure"
+if grep -Fqi 'use a separate git worktree' "$ROOT/hooks/kimiflow_core/active_run.py"; then bad "non-owner hook suggests an unguarded worktree"; else ok "non-owner hook preserves exceptional-worktree authority"; fi
+if grep -Ei 'code-review-audit|full.*one mode-specific Preview approval|explicit Build Preview approval|one post-diagnosis Fix Preview|ask the user to commit/stash/clean first|fix defers approval|Do not ask for approval yet|Freigabe vor Build|riskante Entscheidungen und Commits|One question at a time|STOP and ask the user to switch|STOP before Phase 0|asks for a Sol session|until a \*\*human\*\*|one defined exception.*commit-gate|Build/Fix Preview control|full waits once|clean-worktree|human commit-gate|STOPS for your OK|waits for your explicit OK|Never auto-commits|best-of-2 implementer|second best-of-2 candidate|own worktree|commit-without-OK' "$ROOT/README.md" "$ROOT/README.de.md" "$ROOT/.claude-plugin/plugin.json" "$ROOT/.claude-plugin/marketplace.json" "$ROOT/.codex-plugin/plugin.json" "$ROOT/docs/render/kimiflow/canonical/SKILL.md" "$ROOT/phases/phase-1-clarify.md" "$ROOT/phases/phase-2-understand.md" "$ROOT/phases/phase-5-build.md" "$ROOT/evals/scenarios/08-advisory-triage-failclosed.md" "$ROOT/evals/scenarios/13-top-model-orchestrator.md" "$ROOT/evals/scenarios/15-evidence-guided-discovery.md" "$ROOT/docs/render/kimiflow/overlays/codex.md" "$ROOT/reference.md" "$ROOT/docs/architecture.md" "$ROOT/docs/demo/play.sh" "$ROOT/docs/demo/README.md" "$ROOT/examples/README.md" "$ROOT/examples/01-small-fix.md" "$ROOT/examples/02-risky-bugfix.md" "$ROOT/examples/03-feature.md" "$ROOT/docs/kimiflow-vs-claude-md-vs-superpowers.md" >/dev/null; then bad "stale schema4 babysitting guidance remains"; else ok "schema4 babysitting guidance removed"; fi
+grep -q 'automatisch geroutete' "$ROOT/docs/architecture.md" && grep -q 'automatically routed' "$ROOT/docs/kimiflow-vs-claude-md-vs-superpowers.md" && ok "maintainer docs preserve automatic routing" || bad "maintainer docs lost automatic routing"
 if [ -x "$ROOT/hooks/clarify-gate.sh" ] && bash -n "$ROOT/hooks/clarify-gate.sh" 2>/dev/null; then ok "clarify gate helper ok"; else bad "clarify gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-clarify-gate.sh" ] && bash -n "$ROOT/hooks/test-clarify-gate.sh" 2>/dev/null; then ok "clarify gate test ok"; else bad "clarify gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/plan-blocker-gate.sh" ] && bash -n "$ROOT/hooks/plan-blocker-gate.sh" 2>/dev/null; then ok "plan-blocker gate helper ok"; else bad "plan-blocker gate helper missing/not-exec/bad"; fi
@@ -161,12 +179,19 @@ grep -q 'active-run.sh' "$ROOT/reference.md" && ok "reference documents active s
 grep -q 'Active Session Contract' "$ROOT/SKILL.md" && ok "canonical skill documents Active Session Contract" || bad "missing Active Session Contract in SKILL.md"
 grep -q 'Current-State Pulse / Gate' "$ROOT/SKILL.md" && ok "canonical skill documents Current-State Pulse / Gate" || bad "missing Current-State Pulse / Gate in SKILL.md"
 grep -q 'discovery-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents Discovery Gate" || bad "missing Discovery Gate in SKILL.md"
-grep -q 'Flow schema: 3' "$ROOT/phases/phase-0-setup.md" && ok "new runs declare flow schema 3" || bad "phase 0 missing flow schema 3"
+grep -q 'Flow schema: 4' "$ROOT/phases/phase-0-setup.md" && ok "new runs declare flow schema 4" || bad "phase 0 missing flow schema 4"
 grep -q -- '--state .kimiflow/<slug>/STATE.md' "$ROOT/phases/phase-4-review-approval.md" && ok "Build risk reads durable STATE" || bad "Phase 4 does not bind Build risk to STATE"
 grep -q 'No routine Human Gate here' "$ROOT/phases/phase-1-clarify.md" && ok "fixes skip early confirmation stop" || bad "Phase 1 still requires an early fix confirmation"
-grep -q -- 'clarify-gate.sh .kimiflow/<slug> --record-fix-approval' "$ROOT/phases/phase-4-review-approval.md" && ok "Fix Preview approval is basis-bound" || bad "Phase 4 missing basis-bound fix approval recorder"
-grep -q -- 'clarify-gate.sh .kimiflow/<slug> --post-diagnosis' "$ROOT/phases/phase-4-review-approval.md" && ok "Fix Preview approval is mechanically rechecked" || bad "Phase 4 missing post-diagnosis fix approval gate"
-grep -q 'kimiflow:fix-approval' "$ROOT/reference.md" && ok "reference documents durable Fix Preview approval" || bad "reference missing durable Fix Preview approval"
+grep -q 'Schema-3 runs retain their legacy' "$ROOT/phases/phase-4-review-approval.md" && ok "schema3 Preview stays resumable" || bad "Phase 4 missing schema3 compatibility"
+grep -q 'Schema 4 does this automatically under the original build authority' "$ROOT/phases/phase-7-review-commit.md" && ok "schema4_atomic_commit_contract" || bad "Phase 7 missing schema4 atomic commit"
+grep -q 'Clean-tree verification checkpoint' "$ROOT/phases/phase-5-build.md" \
+  && grep -q 'STATE-backed `started_head`' "$ROOT/phases/phase-7-review-commit.md" \
+  && ok "schema4_clean_tree_verification_checkpoint" || bad "clean-tree verification checkpoint/review basis missing"
+grep -Fq '${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/hooks/test-weakening-scan.sh' "$ROOT/phases/phase-5-build.md" \
+  && ok "Phase 5 test-weakening scan is plugin-rooted" || bad "Phase 5 test-weakening scan is not plugin-rooted"
+grep -q 'git ls-files --others --exclude-standard' "$ROOT/phases/phase-7-review-commit.md" \
+  && ok "phase7_named_untracked_review_basis" || bad "Phase 7 review basis omits named untracked files"
+grep -q -- '--record-fix-approval' "$ROOT/reference.md" && ok "reference documents schema3 Fix Preview compatibility" || bad "reference missing schema3 Fix Preview compatibility"
 grep -q 'working-tree-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents working-tree gate" || bad "missing working-tree gate in SKILL.md"
 grep -q 'clarify-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents clarify gate" || bad "missing clarify gate in SKILL.md"
 grep -q 'red-green-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents red-green gate" || bad "missing red-green gate in SKILL.md"
@@ -189,7 +214,7 @@ grep -q -- '--epoch-start <S>' "$ROOT/reference.md" && ok "reference documents s
 grep -q -- '--gate <plan|code>' "$ROOT/reference.md" && ok "reference binds strategy epochs to review gate" || bad "missing strategy epoch gate binding"
 grep -q 'kimiflow:recovery gate=<plan|code>' "$ROOT/reference.md" && ok "reference documents recovery receipt" || bad "missing recovery receipt contract"
 grep -q 'kimiflow:strategy gate=<plan|code>' "$ROOT/reference.md" && ok "reference documents verified strategy baseline" || bad "missing strategy baseline contract"
-grep -q -- 'await-user --kind <kind>' "$ROOT/reference.md" && ok "reference documents typed user pauses" || bad "missing typed user pause contract"
+grep -Eq -- 'await-user .*--kind <kind>' "$ROOT/reference.md" && ok "reference documents typed user pauses" || bad "missing typed user pause contract"
 grep -q 'Autonomous recovery contract' "$ROOT/reference.md" && ok "reference documents autonomous review recovery" || bad "missing autonomous review recovery"
 grep -q 'Minimum-complete' "$ROOT/SKILL.md" && ok "canonical skill keeps minimum-complete planning loaded" || bad "missing minimum-complete core rule"
 grep -q 'Scope size alone never adds a second planner' "$ROOT/reference.md" && ok "reference keeps dual-plan conditional" || bad "missing conditional dual-plan guard"

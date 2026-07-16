@@ -3,7 +3,7 @@
 ## Gate under test
 After the internal plan gate, every run gets a plain-language Build Preview. `resolve-build-gate.sh decide`
 reads project policy plus the durable material risk in `STATE.md`: default `risk` + `Build risk: none` continues, while
-`Build risk: required` parks when headless. `full` and policy `always` also park headless. A timeout is never
+`Build risk: required` parks when headless. Alias `full` does not change the result; policy `always` is an explicit override and parks. A timeout is never
 approval for a risk-gated run.
 
 ## Setup
