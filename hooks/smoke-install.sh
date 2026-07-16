@@ -7,7 +7,7 @@
 #   https://github.com/anthropics/claude-code/issues/26251  (slash invocation vs disable-model-invocation)
 #   https://github.com/anthropics/claude-code/issues/22345  (plugin skills honoring disable-model-invocation)
 # The structural half is automated below; the parts that need a real CC session (actual
-# /plugin install, /kimiflow slash invocation, no-auto-trigger) are printed as a MANUAL checklist.
+# /plugin install, slash invocation, and model routing) are printed as a MANUAL checklist.
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FAILS=0
@@ -59,9 +59,11 @@ printf '%s\n' "$fm" | grep -qE '^argument-hint:'                            && o
 printf '%s\n' "$fm" | grep -q -- '--launcher|--menu'                         && ok "launcher argument hint present"       || bad "launcher argument hint missing"
 printf '%s\n' "$fm" | grep -q -- '--project-map <quick|skip>'   && ok "project-map argument hint present"     || bad "project-map argument hint missing"
 printf '%s\n' "$fm" | grep -q -- '--verify-feature <feature-or-path>'          && ok "verify-feature argument hint present"  || bad "verify-feature argument hint missing"
-# Model-invocation is ENABLED (opt-in, on-request — the "invoke only when asked" policy lives in the
-# description, not a hard flag). It must NOT be `true`, or the model can't launch kimiflow on request.
-if printf '%s\n' "$fm" | grep -qE '^disable-model-invocation:[[:space:]]*true'; then bad "disable-model-invocation: true → model can't launch kimiflow on request"; else ok "model-invocable (disable-model-invocation not true) — opt-in/on-request per description"; fi
+# Model-invocation is enabled; routing boundaries live in the description rather than a hard flag.
+if printf '%s\n' "$fm" | grep -qE '^disable-model-invocation:[[:space:]]*true'; then bad "disable-model-invocation: true → model can't route or launch kimiflow"; else ok "model-invocable (disable-model-invocation not true)"; fi
+printf '%s\n' "$fm" | grep -q 'substantial feature work' && ok "description permits substantial-feature auto-routing" || bad "description missing substantial-feature auto-routing"
+printf '%s\n' "$fm" | grep -q 'explicit direct always bypasses' && ok "description preserves explicit direct override" || bad "description missing explicit direct override"
+printf '%s\n' "$fm" | grep -q 'Do not auto-trigger for fixes' && ok "description keeps fixes direct by default" || bad "description missing direct-by-default fix boundary"
 # user-invocable defaults true; it must NOT be false or /kimiflow vanishes from the slash menu.
 if printf '%s\n' "$fm" | grep -qE '^user-invocable:[[:space:]]*false'; then bad "user-invocable: false → /kimiflow hidden from the slash menu"; else ok "user-invocable not disabled (slash-invocable)"; fi
 
@@ -248,7 +250,9 @@ echo "== MANUAL (needs a live Claude Code session — cannot be automated) =="
 cat <<'MANUAL'
   [ ] /plugin marketplace add kimikonapps/kimiflow && /plugin install kimiflow@kimiflow → restart
   [ ] type "/kimiflow" → the command appears and fires (slash invocation works; cf. CC #26251)
-  [ ] kimiflow launches when you ASK for it ("with kimiflow" / "run kimiflow") but does NOT fire unprompted on an unrelated request (opt-in policy is description-guided, not a hard flag; cf. CC #22345)
+  [ ] a substantial cross-surface/integration/data/security/API/architecture/discovery feature auto-routes into Kimiflow
+  [ ] a normal fix, review, refactor, cleanup, docs/config task, or small low-risk feature stays direct unless Kimiflow is explicit
+  [ ] explicit "direct" bypasses Kimiflow and explicit "with kimiflow" launches it
   [ ] in a repo with .kimiflow/, attempting `git add .` is blocked by the commit-secret-gate hook
   [ ] the Stop test-gate engages when .kimiflow/test-gate is present and tests are red
   [ ] while an active Kimiflow session exists, its owner stays gated while a second project session can read, answer, and plan without any Stop continuation

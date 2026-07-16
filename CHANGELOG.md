@@ -4,7 +4,17 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Changed
+- **Smart feature routing replaces the universal preflight prompt** (`AGENTS.md`, `CLAUDE.md`,
+  Claude/Codex skill metadata, README, compatibility and smoke contracts): explicit `Kimiflow` and
+  `direct` remain hard overrides; fixes, reviews, refactors, cleanup, docs/config, and small low-risk
+  features stay direct, while the agent may automatically enter Kimiflow for substantial feature work
+  with material cross-surface, integration, data, security, public-API, architecture, or discovery
+  needs. Raw file count alone never triggers the loop.
+- **Frontend guidance gains compact product-design safeguards** (`frontend-quality-standard.md`,
+  `frontend-quality-qa.md`): task-oriented UI now favors earned familiarity, checks flow and language
+  against neighboring features, and repairs design drift at its token, shared-component, or conceptual
+  root without adding another gate, dependency, or design payload.
 
 ## 0.2.1
 

@@ -5,7 +5,7 @@ Read only in Phase 6 for `Frontend quality: standard|flagship`.
 ## Verify
 
 1. Render the real implementation at one meaningful viewport and named state. Use the same viewport/state as the visual reference when one exists.
-2. Compare hierarchy, alignment, rhythm, optical balance, responsive relationships, required states, accessibility cues and purposeful motion against the Source truth.
+2. Compare hierarchy, alignment, rhythm, optical balance, responsive relationships, required states, accessibility cues, purposeful motion, flow shape and terminology against the Source truth. When drift exists, verify the repair addresses its token, shared-component or conceptual cause rather than only the visible symptom.
 3. Record concrete findings as P0 (unusable/data-loss), P1 (major goal failure), P2 (clear visible/interaction defect), or P3 (reversible polish). Standard must close P0–P2; Flagship must also close concrete P3.
 4. Run deterministic checks. Capture a current, run-local canonical RGBA PNG only after code and routing receipt are current.
 

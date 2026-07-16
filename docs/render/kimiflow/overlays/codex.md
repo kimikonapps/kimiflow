@@ -1,6 +1,6 @@
 ---
 name: kimiflow
-description: "Codex port of the Kimiflow feature and bug-fix loop. Use ONLY when the user explicitly asks for Kimiflow, says \"with kimiflow\" or \"run kimiflow\", mentions the $kimiflow skill, or asks to build/fix through Kimiflow gates. Do NOT auto-trigger on ordinary feature, bug, refactor, review, or cleanup requests."
+description: "Codex port of the Kimiflow feature and bug-fix loop. Use automatically for substantial feature work that crosses product surfaces/subsystems, adds material integration/data/security/public-API/architecture risk, or needs real discovery. Explicit Kimiflow always starts it; explicit direct always bypasses it. Do not auto-trigger for fixes, reviews, refactors, cleanup, docs/config, or small low-risk features."
 ---
 
 # Kimiflow For Codex
@@ -8,6 +8,10 @@ description: "Codex port of the Kimiflow feature and bug-fix loop. Use ONLY when
 Run the Kimiflow loop for the user's request.
 
 This Codex skill is the host-native entrypoint for the same Kimiflow engine used by the Claude Code plugin. The canonical workflow lives in the installed plugin root (`SKILL.md` and `reference.md`); read those files before running any phase, then apply the Codex host map below.
+
+## Routing
+
+Invoke Kimiflow automatically only for substantial feature work covered by the frontmatter criteria. Use the current request as the target and do not ask a routing question. A raw file count is not sufficient; if no material trigger is clear, work directly. Never auto-invoke for a bug fix, review, refactor, cleanup, docs/config task, or small low-risk feature. Explicit `direct` bypasses Kimiflow; explicit Kimiflow invocation always wins.
 
 ## Invocation
 
@@ -23,8 +27,6 @@ Treat these as explicit Kimiflow requests:
 - `run kimiflow ...`
 - `with kimiflow ...`
 - `build/fix this through the Kimiflow gates`
-
-Do not invoke Kimiflow merely because the user asks for a normal feature, bug fix, cleanup, audit, or review.
 
 ## Host Map
 

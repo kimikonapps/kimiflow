@@ -54,7 +54,9 @@ if [ -f "$SKILL" ]; then ok "skill exists: skills/kimiflow/SKILL.md"; else bad "
 fm="$(awk 'NR==1 && $0=="---"{f=1;next} f && $0=="---"{exit} f' "$SKILL" 2>/dev/null || true)"
 printf '%s\n' "$fm" | grep -qE '^name:[[:space:]]*kimiflow' && ok "skill name: kimiflow" || bad "skill name missing/wrong"
 printf '%s\n' "$fm" | grep -qE '^description:' && ok "skill description present" || bad "skill description missing"
-printf '%s\n' "$fm" | grep -qi 'explicitly asks' && ok "opt-in guard present" || bad "opt-in guard missing"
+printf '%s\n' "$fm" | grep -q 'substantial feature work' && ok "description permits substantial-feature auto-routing" || bad "description missing substantial-feature auto-routing"
+printf '%s\n' "$fm" | grep -q 'explicit direct always bypasses' && ok "description preserves explicit direct override" || bad "description missing explicit direct override"
+printf '%s\n' "$fm" | grep -q 'Do not auto-trigger for fixes' && ok "description keeps fixes direct by default" || bad "description missing direct-by-default fix boundary"
 [ -f "$ROOT/skills/kimiflow/agents/openai.yaml" ] && ok "Codex skill metadata exists" || bad "missing agents/openai.yaml"
 grep -q 'KIMIFLOW_PLUGIN_ROOT/hooks/resolve-review-gate.sh' "$SKILL" && ok "skill uses absolute plugin-root helper paths" || bad "skill does not use plugin-root helper paths"
 if grep -q '\.\./\.\./hooks/' "$SKILL"; then bad "skill still documents cwd-sensitive ../../hooks paths"; else ok "skill avoids cwd-sensitive ../../hooks paths"; fi
@@ -308,7 +310,9 @@ cat <<'MANUAL'
   [ ] Add the Git marketplace (`codex plugin marketplace add kimikonapps/kimiflow`), then install kimiflow.
   [ ] Run the stable hook installer from that marketplace checkout once.
   [ ] Start a new Codex thread and invoke "$kimiflow <tiny change>".
-  [ ] Confirm Kimiflow launches only when explicitly requested.
+  [ ] Confirm a substantial cross-surface/integration/data/security/API/architecture/discovery feature auto-routes into Kimiflow.
+  [ ] Confirm a normal fix, review, refactor, cleanup, docs/config task, or small low-risk feature stays direct unless Kimiflow is explicit.
+  [ ] Confirm explicit "direct" bypasses Kimiflow and explicit "with kimiflow" launches it.
   [ ] In a repo with .kimiflow/, attempting `git add .` is blocked by the installed stable Codex hook.
   [ ] With .kimiflow/test-gate containing a failing command, Codex Stop is blocked.
   [ ] With an active Kimiflow session, its owner stays gated while a second project task can read, answer, and plan without any Stop continuation.

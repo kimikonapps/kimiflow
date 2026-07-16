@@ -21,7 +21,7 @@ loop still runs.
 | Plugin manifest `.claude-plugin/plugin.json` (`name`/`description`/`version`/`license`/`author`) | plugin packaging + version source of truth | **Load-bearing** — schema/field rename → plugin won't load |
 | Marketplace manifest `.claude-plugin/marketplace.json` | install / listing | **Load-bearing** — schema change → install fails |
 | Skill frontmatter `name` / `description` / `argument-hint` + `$ARGUMENTS` substitution | `SKILL.md` header + `## Modes` | **Load-bearing** — substitution/field change → args & routing break |
-| `disable-model-invocation: false` | `SKILL.md` frontmatter (model-invocable; **opt-in/on-request** policy lives in the `description`, not a hard flag) | **Load-bearing** — if forced back to `true`, the model can't launch kimiflow on request; the "only when asked, never unprompted" guard is **soft** (description-guided judgment), not mechanically enforced |
+| `disable-model-invocation: false` | `SKILL.md` frontmatter (model-invocable; smart feature routing and explicit direct/Kimiflow overrides live in the `description`) | **Load-bearing** — if forced back to `true`, the model cannot auto-route substantial features or launch Kimiflow on request; routing remains description-guided judgment rather than a hard host rule |
 | Slash invocation `/kimiflow` | user entry point | **Load-bearing** — command-routing change |
 | Hook event `PreToolUse` (matcher `Bash`) | `hooks/hooks.json` → `commit-secret-gate.sh` | **Load-bearing** — event/matcher rename → secret gate silently stops gating |
 | Hook event `Stop` | `hooks/hooks.json` → `test-gate.sh` | **Load-bearing** — event rename → test-gate silently stops gating |
@@ -48,7 +48,7 @@ loop still runs.
 |-----------|------------------------|---------------|
 | Plugin manifest `.codex-plugin/plugin.json` | Codex plugin packaging + version source of truth | **Load-bearing** — schema/field rename → plugin won't load |
 | Repo marketplace `.agents/plugins/marketplace.json` | Codex repo-local install/listing | **Load-bearing** — marketplace schema/path resolution change → install fails |
-| Skill frontmatter `name` / `description` | `skills/kimiflow/SKILL.md` | **Load-bearing** — skill not discoverable or opt-in guard not visible |
+| Skill frontmatter `name` / `description` | `skills/kimiflow/SKILL.md` | **Load-bearing** — skill not discoverable or smart-routing boundary not visible |
 | Skill metadata `skills/kimiflow/agents/openai.yaml` | Codex app/plugin presentation metadata | Graceful — display metadata degrades, engine unaffected |
 | Explicit skill invocation `$kimiflow` / `@kimiflow` / named request | user entry point | **Load-bearing** — if explicit skill invocation changes, users need new invocation docs |
 | Stable Codex hook directory `${CODEX_HOME:-~/.codex}/hooks` | `hooks/install-codex-hooks.sh` writes Kimiflow wrappers here | **Load-bearing** — if Codex stops scanning this hook directory, secret/state/test gates stop firing |

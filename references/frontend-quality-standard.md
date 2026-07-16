@@ -7,6 +7,9 @@ Read this file only for `Frontend quality: standard|flagship`. The top model own
 - Inspect existing design tokens, shared components, comparable screens, product copy and interaction conventions before designing.
 - Use a supplied mock, screenshot or visual reference as source truth for the named viewport/state. Otherwise use the project system plus the confirmed UI brief.
 - Reuse the project vocabulary when it is coherent. Change it only where the feature needs a clear, evidenced improvement.
+- For task-oriented product UI, favor earned familiarity: reuse standard affordances and the established component vocabulary; add novelty only when it materially improves the task.
+- Compare flow shape, progressive disclosure, hierarchy and terminology with neighboring features so visual polish does not hide product inconsistency.
+- Before repairing design drift, classify its root as a missing token, a bypassed shared component or a conceptual flow/hierarchy mismatch; fix that layer instead of patching the symptom.
 
 ## Geometric integrity
 

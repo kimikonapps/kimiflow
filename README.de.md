@@ -9,8 +9,9 @@ verstehen oder diagnostizieren, planen, reviewen, umsetzen, verifizieren, Code p
 Einfache Arbeit bleibt klein; wichtige Grenzen werden durch getestete Skripte und Hooks abgesichert,
 statt vom Modell nur behauptet zu werden.
 
-Kimiflow startet nie selbstständig. Nutze `/kimiflow` in Claude Code oder `$kimiflow` in Codex. Es
-antwortet in der Sprache, in der du schreibst.
+Kimiflow kann substanzielle Feature-Arbeit automatisch routen; Fixes und kleine risikoarme Aenderungen
+bleiben direkt, sofern du nicht `/kimiflow` in Claude Code oder `$kimiflow` in Codex aufrufst.
+Explizites `direkt` umgeht Kimiflow immer. Es antwortet in der Sprache, in der du schreibst.
 
 ## Warum Kimiflow
 
@@ -181,7 +182,10 @@ oder unbekannter Plan-Basis wird vor der Umsetzung revalidiert.
 
 ## Sicherheitsgrenzen
 
-- Kimiflow ist opt-in und startet nie automatisch.
+- Kimiflow routet nur substanzielle Feature-Arbeit mit materiellem Cross-Surface-, Integrations-,
+  Daten-, Security-, Public-API-, Architektur- oder Discovery-Bedarf automatisch. Fixes, Reviews,
+  Refactors, Cleanup, Doku/Config und kleine risikoarme Features bleiben ohne expliziten Aufruf direkt.
+- Explizites `direkt` umgeht Kimiflow immer; ein expliziter Kimiflow-Aufruf startet es immer.
 - `.kimiflow/` ist lokaler Run-State und wird standardmäßig nicht committed.
 - Der Secret-Hook prüft verdächtige Pfade, nicht Inhalte; für Content-Secrets dient der Advisory Scan
   oder ein Tool wie gitleaks.

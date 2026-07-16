@@ -1,6 +1,6 @@
 # R2 invariant target map. Generated from 2026-07-02-invariant-corpus.tsv; do not add or override needles here.
 # id	authoritative_target	verification_path	notes
-INV-001	SKILL.md	-	needle_sha256=edaba92e2c3564a21672bae6c8b61ad0d20d540460280a50fd38b52c83bc6e86; class=CORE-ALWAYS; current_target=SKILL.md; no_target_change=R2.2
+INV-001	SKILL.md	-	needle_sha256=fdedc5ab8d011e345614d847cb565623ff0d6f63aae6e01f0e502fce5442c4bf; class=CORE-ALWAYS; current_target=SKILL.md; routing_policy_updated=2026-07-16
 INV-002	SKILL.md	-	needle_sha256=7fd7d4d61d0a511c387a9be5583045e05bb51d39d9747b7b91392ae2306ae939; class=CORE-ALWAYS; current_target=SKILL.md; no_target_change=R2.2
 INV-003	SKILL.md	-	needle_sha256=5aa254c59610f6542b479c84f8012484c69cf8ede2fac21bff744434042bcc59; class=CORE-ALWAYS; current_target=SKILL.md; no_target_change=R2.2
 INV-004	SKILL.md	-	needle_sha256=0d0676fa15137c316e387fb8acee213e0752d8b9e1b7b9a7e6ff372e8d0f9654; class=CORE-ALWAYS+GATE-CHECKABLE; current_target=SKILL.md; no_target_change=R2.2

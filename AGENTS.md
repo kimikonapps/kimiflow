@@ -1,9 +1,11 @@
 # Projektregeln fuer Codex
 
-## Kimiflow-Preflight
+## Kimiflow-Routing
 
-- Vor jeder Code-Aenderung, jedem Build/Fix/Refactor, jeder Datei-Aenderung mit Produktwirkung oder jedem Commit zuerst stoppen und fragen: `Soll ich das mit Kimiflow laufen lassen oder direkt erledigen?`
+- Nicht vor jeder Aenderung nach `Kimiflow` oder `direkt` fragen. Route die Aufgabe selbststaendig.
+- Explizites `Kimiflow` startet Kimiflow; explizites `direkt` umgeht Kimiflow. Beide Angaben haben Vorrang vor automatischem Routing.
+- Bugfixes, Reviews, Refactors, Cleanup, Doku-/Config-Arbeit und kleine risikoarme Features direkt erledigen. Dafuer Kimiflow nur auf ausdruecklichen Wunsch starten.
+- Kimiflow automatisch fuer substanzielle Feature-Arbeit starten, wenn mindestens ein materieller Grund vorliegt: mehrere Produktoberflaechen oder Subsysteme, eine neue externe Integration oder ein relevanter Datenfluss, Migration/Security/Permissions/Public-API/Architektur-Risiko oder echter Discovery-Bedarf wegen materiell unklarem Intent bzw. Acceptance.
+- Reine Dateianzahl ist kein ausreichender Grund. Ist kein materieller Trigger klar, direkt arbeiten; keine Routing-Rueckfrage stellen.
 - Eine Wunschformulierung wie "ich haette gerne", "sollten wir", "waere es sinnvoll" oder eine fachliche Idee ist noch keine Bau-Freigabe.
-- Ohne klare Antwort nicht bauen. Bei `Kimiflow` den Kimiflow-Flow starten; bei `direkt` normal weiterarbeiten.
 - Reine Erklaerungen, Read-only-Inspektion, Statusabfragen und kleine Diagnose-Kommandos sind erlaubt, solange nichts am Projekt geaendert wird.
-- Diese Regel soll Qualitaet sichern, nicht Arbeit verhindern: Wenn Kimiflow gewaehlt wird, gelten dessen Gates; wenn direkt gewaehlt wird, gelten die normalen Projektregeln.

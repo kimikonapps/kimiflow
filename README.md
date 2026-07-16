@@ -24,8 +24,9 @@ the model to declare itself done.
 **findings**.
 <!-- capabilities:end -->
 
-Kimiflow never starts on its own. Invoke `/kimiflow` in Claude Code or `$kimiflow` in Codex.
-It answers in the language you use.
+Kimiflow can auto-route substantial feature work; fixes and small low-risk changes stay direct unless
+you explicitly invoke `/kimiflow` in Claude Code or `$kimiflow` in Codex. Explicit `direct` always
+bypasses it. It answers in the language you use.
 
 ## Why Kimiflow
 
@@ -205,7 +206,10 @@ basis is unknown, Kimiflow revalidates before implementation instead of building
 
 ## Safety Boundaries
 
-- Kimiflow is opt-in and never auto-triggers.
+- Kimiflow auto-routes only substantial feature work with material cross-surface, integration, data,
+  security, public-API, architecture, or discovery needs. Fixes, reviews, refactors, cleanup,
+  docs/config, and small low-risk features stay direct unless explicitly routed through Kimiflow.
+- Explicit `direct` always bypasses Kimiflow; an explicit Kimiflow request always starts it.
 - `.kimiflow/` is local run state and should not be committed by default.
 - The secret hook checks suspicious paths, not secret content; use the bundled advisory scanner or
   a tool such as gitleaks for content scanning.

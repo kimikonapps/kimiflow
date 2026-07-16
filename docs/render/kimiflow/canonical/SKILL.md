@@ -1,6 +1,6 @@
 ---
 name: kimiflow
-description: "Gated feature & bug-fix loop: clarify → research/diagnose (memory-first) → plan → plan-gate → implement → verify → red/green fix gate → code-review ensemble → commit (stops first). Modes: launcher/menu · full|grill|plan|build|quick|review|audit|fix · --prepare · --resume · --fix · --audit · --verify-feature · --project-map. OPT-IN: invoke ONLY when the user explicitly asks for kimiflow or its loop (e.g. \"with kimiflow\", \"run kimiflow\", \"kimiflow full\", \"build this through the gates\", or the /kimiflow command). Do NOT auto-trigger on ordinary feature/bug/refactor requests — the user opts in. Also slash-invocable via /kimiflow."
+description: "Gated feature and bug-fix loop: clarify, discover/diagnose, plan, implement, verify, review, and commit. AUTO-ROUTE for substantial feature work that crosses product surfaces/subsystems, adds material integration/data/security/public-API/architecture risk, or needs real discovery. Explicit Kimiflow always starts it; explicit direct always bypasses it. Do not auto-trigger for fixes, reviews, refactors, cleanup, docs/config, or small low-risk features. Modes: full|grill|plan|build|quick|review|audit|fix."
 disable-model-invocation: false
 argument-hint: [full|grill|plan|build|quick|review|audit|fix] [<feature-or-bug>] [--launcher|--menu] [--fix] [--audit <path>] [--verify-feature <feature-or-path>] [--prepare] [--project-map <quick|skip>] [--quiet|--verbose] [--set-verbosity <level>] [--settings]  ·  --resume <slug>
 ---
@@ -13,6 +13,7 @@ You are the **orchestrator**. Run the phases as a state machine, keep only essen
 
 ## Modes (invocation)
 
+- **Automatic feature routing:** enter the normal feature run automatically only for substantial feature work covered by the frontmatter criteria. Use the current request as the target; do not open the launcher or ask a routing question. A raw file count is not sufficient. If no material trigger is clear, work directly. Explicit `direct` bypasses Kimiflow; explicit Kimiflow invocation always wins.
 - **Launcher / menu:** **`/kimiflow`**, **`/kimiflow --launcher`**, **`/kimiflow --menu`**, or a vague explicit Kimiflow request ("run Kimiflow") opens a context-aware launcher. It first runs `hooks/launcher-status.sh`, uses `.launcher.primary_action` for one recommendation, and shows the compact `.launcher.status` groups; internal hygiene stays in drilldowns. It never writes code directly and never auto-picks a risky action. → reference.md "Launcher mode".
 - **`/kimiflow <feature-or-bug>`** — full run (phases 0–7).
 - **Natural mode aliases:** **`/kimiflow full|grill|plan|build|quick|review|audit|fix [target]`** and plain text such as **`kimiflow full`** are first-class shortcuts. If the target is omitted, use the current conversation topic only when it is unambiguous; otherwise ask one plain-language question. Alias meanings:
