@@ -4,6 +4,11 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.2
+
+
 ### Changed
 - **Smart feature routing replaces the universal preflight prompt** (`AGENTS.md`, `CLAUDE.md`,
   Claude/Codex skill metadata, README, compatibility and smoke contracts): explicit `Kimiflow` and
