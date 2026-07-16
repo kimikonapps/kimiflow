@@ -1,6 +1,6 @@
 # R2 invariant corpus. Generated from audited invariant/smoke sources; target maps must join by id and grep strong_needle from this file.
 # id	source	strong_needle	target_constraint	notes
-INV-001	SKILL.md routing policy approved 2026-07-16	Explicit `direct` bypasses Kimiflow; explicit Kimiflow invocation always wins.	core-always-or-approved-target	class=CORE-ALWAYS; current_target=SKILL.md
+INV-001	SKILL.md routing policy approved 2026-07-16	Discussion, ideation, recommendations, explanations, status requests, and wish formulations do not authorize implementation; keep them direct and read-only.	core-always-or-approved-target	class=CORE-ALWAYS; current_target=SKILL.md
 INV-002	2026-07-02-token-restructuring-invariants.md + 2026-07-02-invariant-check.sh:SKILL rules	never writes code directly and never auto-picks a risky action	core-always-or-approved-target	class=CORE-ALWAYS; current_target=SKILL.md
 INV-003	2026-07-02-token-restructuring-invariants.md + 2026-07-02-invariant-check.sh:SKILL rules	otherwise ask one plain-language question	core-always-or-approved-target	class=CORE-ALWAYS; current_target=SKILL.md
 INV-004	2026-07-02-token-restructuring-invariants.md + 2026-07-02-invariant-check.sh:SKILL rules	STOP at the pre-build approval gate	core-always-or-approved-target	class=CORE-ALWAYS+GATE-CHECKABLE; current_target=SKILL.md

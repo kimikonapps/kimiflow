@@ -24,9 +24,10 @@ the model to declare itself done.
 **findings**.
 <!-- capabilities:end -->
 
-Kimiflow can auto-route substantial feature work; fixes and small low-risk changes stay direct unless
-you explicitly invoke `/kimiflow` in Claude Code or `$kimiflow` in Codex. Explicit `direct` always
-bypasses it. It answers in the language you use.
+Kimiflow can auto-route actionable implementation requests for substantial feature work. Discussion,
+ideation, recommendations, explanations, status requests, and wish formulations stay direct and
+read-only. Fixes and small low-risk changes also stay direct unless you explicitly invoke `/kimiflow`
+in Claude Code or `$kimiflow` in Codex. Explicit `direct` or `direkt` always bypasses it.
 
 ## Why Kimiflow
 
@@ -206,10 +207,12 @@ basis is unknown, Kimiflow revalidates before implementation instead of building
 
 ## Safety Boundaries
 
-- Kimiflow auto-routes only substantial feature work with material cross-surface, integration, data,
-  security, public-API, architecture, or discovery needs. Fixes, reviews, refactors, cleanup,
-  docs/config, and small low-risk features stay direct unless explicitly routed through Kimiflow.
-- Explicit `direct` always bypasses Kimiflow; an explicit Kimiflow request always starts it.
+- Kimiflow auto-routes only actionable implementation requests for substantial feature work with
+  material cross-surface, integration, data, security, public-API, architecture, or discovery needs.
+  Discussion, ideation, recommendations, explanations, status requests, and wish formulations do not
+  authorize implementation. Fixes, reviews, refactors, cleanup, docs/config, and small low-risk
+  features stay direct unless explicitly routed through Kimiflow.
+- Explicit `direct` or `direkt` always bypasses Kimiflow; an explicit Kimiflow request always starts it.
 - `.kimiflow/` is local run state and should not be committed by default.
 - The secret hook checks suspicious paths, not secret content; use the bundled advisory scanner or
   a tool such as gitleaks for content scanning.

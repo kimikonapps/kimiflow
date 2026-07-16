@@ -61,8 +61,9 @@ printf '%s\n' "$fm" | grep -q -- '--project-map <quick|skip>'   && ok "project-m
 printf '%s\n' "$fm" | grep -q -- '--verify-feature <feature-or-path>'          && ok "verify-feature argument hint present"  || bad "verify-feature argument hint missing"
 # Model-invocation is enabled; routing boundaries live in the description rather than a hard flag.
 if printf '%s\n' "$fm" | grep -qE '^disable-model-invocation:[[:space:]]*true'; then bad "disable-model-invocation: true → model can't route or launch kimiflow"; else ok "model-invocable (disable-model-invocation not true)"; fi
-printf '%s\n' "$fm" | grep -q 'substantial feature work' && ok "description permits substantial-feature auto-routing" || bad "description missing substantial-feature auto-routing"
-printf '%s\n' "$fm" | grep -q 'explicit direct always bypasses' && ok "description preserves explicit direct override" || bad "description missing explicit direct override"
+printf '%s\n' "$fm" | grep -q 'actionable implementation requests' && ok "description limits auto-routing to implementation requests" || bad "description missing implementation-authorization boundary"
+printf '%s\n' "$fm" | grep -q 'Discussion, ideation' && ok "description keeps non-build discussion direct" || bad "description missing discussion-only boundary"
+printf '%s\n' "$fm" | grep -q 'explicit direct or direkt always bypasses' && ok "description preserves direct/direkt overrides" || bad "description missing direct/direkt overrides"
 printf '%s\n' "$fm" | grep -q 'Do not auto-trigger for fixes' && ok "description keeps fixes direct by default" || bad "description missing direct-by-default fix boundary"
 # user-invocable defaults true; it must NOT be false or /kimiflow vanishes from the slash menu.
 if printf '%s\n' "$fm" | grep -qE '^user-invocable:[[:space:]]*false'; then bad "user-invocable: false → /kimiflow hidden from the slash menu"; else ok "user-invocable not disabled (slash-invocable)"; fi
@@ -250,9 +251,10 @@ echo "== MANUAL (needs a live Claude Code session — cannot be automated) =="
 cat <<'MANUAL'
   [ ] /plugin marketplace add kimikonapps/kimiflow && /plugin install kimiflow@kimiflow → restart
   [ ] type "/kimiflow" → the command appears and fires (slash invocation works; cf. CC #26251)
-  [ ] a substantial cross-surface/integration/data/security/API/architecture/discovery feature auto-routes into Kimiflow
+  [ ] an actionable implementation request for a substantial cross-surface/integration/data/security/API/architecture/discovery feature auto-routes into Kimiflow
+  [ ] a discussion, idea, recommendation, explanation/status request, or wish formulation stays direct and read-only
   [ ] a normal fix, review, refactor, cleanup, docs/config task, or small low-risk feature stays direct unless Kimiflow is explicit
-  [ ] explicit "direct" bypasses Kimiflow and explicit "with kimiflow" launches it
+  [ ] explicit "direct" or "direkt" bypasses Kimiflow and explicit "with kimiflow" launches it
   [ ] in a repo with .kimiflow/, attempting `git add .` is blocked by the commit-secret-gate hook
   [ ] the Stop test-gate engages when .kimiflow/test-gate is present and tests are red
   [ ] while an active Kimiflow session exists, its owner stays gated while a second project session can read, answer, and plan without any Stop continuation
