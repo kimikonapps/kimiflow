@@ -4,6 +4,13 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.4
+
+The autonomous strategy-fit release: Kimiflow learns from comparable implementations without forcing
+unnecessary research or another user-confirmed technical loop.
+
 ### Changed
 
 - **Reference Strategy Fit stays bounded and autonomous**: Phase 2 now skips external research when project
