@@ -4,6 +4,13 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.5
+
+The targeted prior-fix recall release: Kimiflow can reuse earlier solutions when explicitly cued without broad
+memory loading, provider searches, or another user-managed loop.
+
 ### Changed
 
 - **Explicit prior-fix cues now trigger one targeted local recall at every scope**: when the user says a bug or
