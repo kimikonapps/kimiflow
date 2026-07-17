@@ -225,6 +225,12 @@ grep -Fq "Caps are total for the run's fit assessment" "$ROOT/phases/phase-2-und
 grep -Fq 'does not suppress a later named Discovery/Reference Strategy Fit gap' "$ROOT/phases/phase-2-understand.md" \
   && grep -Fq 'does not suppress a later named Discovery/Reference Strategy Fit gap' "$ROOT/reference.md" \
   && ok "Current State freshness does not suppress Reference Strategy Fit" || bad "Current State conflicts with Reference Strategy Fit"
+grep -Fq 'Explicit prior-work cue override' "$ROOT/phases/phase-2-understand.md" \
+  && grep -Fq 'Explicit prior-work cue override' "$ROOT/reference.md" \
+  && ok "explicit prior-fix cues override small/quick recall skip" || bad "explicit prior-fix recall override missing"
+grep -Fq 'MR recall --query-file <PROBLEM.md> --max 5 --write .kimiflow/<slug>/RECALL.md' "$ROOT/phases/phase-2-understand.md" \
+  && grep -Fq 'continues without a user question' "$ROOT/reference.md" \
+  && ok "prior-fix recall is bounded and non-interactive" || bad "prior-fix recall is broad or interactive"
 grep -q 'Build Preview / Risk Gate' "$ROOT/reference.md" && ok "reference documents conditional Build Preview" || bad "missing Build Preview risk policy"
 grep -q 'research-driven product expansion is forbidden' "$ROOT/reference.md" && ok "reference blocks research scope creep" || bad "missing research scope-creep guard"
 grep -q -- '--epoch-start <S>' "$ROOT/reference.md" && ok "reference documents strategy epoch bounds" || bad "missing strategy epoch bounds"

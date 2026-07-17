@@ -4,7 +4,12 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Changed
+
+- **Explicit prior-fix cues now trigger one bounded local recall at every scope**: when the user says a bug or
+  fix existed before, Kimiflow searches at most five current learning/run-history hits, verifies any old strategy
+  against the fresh reproduction and current code, and continues on a miss without broad memory/provider loading
+  or another user question.
 
 ## 0.2.4
 

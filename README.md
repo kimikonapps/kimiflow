@@ -175,7 +175,8 @@ mechanizes the evidence boundaries without pretending a tool can prove that no b
   task merely looks large.
 - The top model owns orchestration, synthesis, planning, review verdicts, and risky diagnosis.
 
-`small` and `quick` skip broad memory recall and the **Vault Pulse**; both run at `scope=large` only.
+`small` and `quick` skip broad memory recall and the **Vault Pulse** by default. An explicit user cue that a
+similar bug or fix existed before triggers one bounded local recall at any scope, without provider searches.
 Current-state checks and the final learning review still run at every non-trivial scope.
 
 ## Project Intelligence and Memory

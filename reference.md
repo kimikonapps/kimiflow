@@ -508,7 +508,7 @@ When those facts are sufficient to investigate, write the brief and continue wit
 **Diagnosis (Phase 2) — the three mandatory steps:**
 - **Reproduce:** ideally a **failing test** (Red). Not yet reproducible = a finding: refine the harness/input/environment and research first; ask only for missing problem input or inaccessible external state.
 - **Verify the root cause:** find AND prove the cause (`file:line` + why that spot produces the symptom). Hypothesis → minimal proof. **Not** the first guess.
-- **Adaptive fix research + Reference Strategy Fit (BEFORE the fix):** after the root cause is proven, choose `none|pulse|focused`. `none` covers a uniquely determined local regression and does not browse. For a named gap, large scope may use Vault first; small/quick skips recall and researches only when `pulse|focused`. Search the causal class, not merely the symptom; check the obvious guess against current code/tests and decisive primary sources, then apply the bounded cards and autonomous-exhaustion contract above. A fresh Vault hit that already answers the question replaces web research; if evidence is stale/conflicting, change the search vector or run a local counterfactual rather than asking for another round.
+- **Adaptive fix research + Reference Strategy Fit (BEFORE the fix):** after the root cause is proven, choose `none|pulse|focused`. `none` covers a uniquely determined local regression and does not browse. For a named gap, large scope may use Vault first; small/quick skips broad recall except for the explicit prior-work cue override and researches only when `pulse|focused`. Search the causal class, not merely the symptom; check the obvious guess against current code/tests and decisive primary sources, then apply the bounded cards and autonomous-exhaustion contract above. A fresh Vault hit that already answers the question replaces web research; if evidence is stale/conflicting, change the search vector or run a local counterfactual rather than asking for another round.
 
 **DIAGNOSIS.md:**
 ```
@@ -1027,9 +1027,19 @@ via `consolidate --write`.
 
 Before researching, recall locally first via `memory-router.sh recall`, then search whatever **optional memory
 providers** are connected — recall beats re-research. Each provider is independent and **graceful**: present →
-use, absent → note in STATE.md + continue (no provider is ever required). Recall and the Vault Pulse are
-**`scope=large` only**; `small`/`quick` skip both (recall payoff is thin on small tasks) and go straight to
-codebase + web. The learning loop (Phase 7 `review-run`) still runs at every scope.
+use, absent → note in STATE.md + continue (no provider is ever required). Broad recall and the Vault Pulse are
+`scope=large` by default; `small`/`quick` skip both unless the explicit prior-work cue below applies. The learning
+loop (Phase 7 `review-run`) still runs at every scope.
+
+**Explicit prior-work cue override (all scopes):** if the current user says the same/similar bug or fix existed
+before, or supplies an old commit, issue, run, or strategy, preserve that cue in `PROBLEM.md` and run exactly one
+bounded local `memory-router.sh recall --query-file <PROBLEM.md> --max 5 --write
+.kimiflow/<slug>/RECALL.md`. This one query searches current learnings plus bounded run-artifact history. At
+`small`/`quick`, do not run router status, a second recall, provider health, Vault Pulse, Vault/claude-mem search,
+or a repeated query. Read only the decisive hits and verify any old cause/strategy against current code, a fresh
+Red reproduction, and root-cause evidence; history is a hypothesis, never proof. A miss is recorded and the run
+continues without a user question. New evidence may justify one different search vector later through normal
+recovery, but the original cue query is never repeated.
 
 - **Vault** (notes MCP, e.g. Obsidian) — curated research notes; searched here, **also saved back** at Phase 2's
   end (see "Vault conventions" below).

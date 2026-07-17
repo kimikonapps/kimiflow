@@ -213,6 +213,13 @@ grep -Fq "Caps are total for the run's fit assessment" "$ROOT/phases/phase-2-und
 grep -Fq 'does not suppress a later named Discovery/Reference Strategy Fit gap' "$ROOT/phases/phase-2-understand.md" \
   && grep -Fq 'does not suppress a later named Discovery/Reference Strategy Fit gap' "$ROOT/reference.md" \
   && ok "canonical freshness and Reference Strategy Fit compose" || bad "canonical freshness suppresses Reference Strategy Fit"
+grep -Fq 'Explicit prior-work cue override' "$ROOT/phases/phase-2-understand.md" \
+  && grep -Fq 'Explicit prior-work cue override' "$ROOT/reference.md" \
+  && grep -Fq 'prior-work cue' "$SKILL" \
+  && ok "canonical prior-fix cue override reaches Codex" || bad "canonical prior-fix cue override missing in Codex"
+grep -Fq 'MR recall --query-file <PROBLEM.md> --max 5 --write .kimiflow/<slug>/RECALL.md' "$ROOT/phases/phase-2-understand.md" \
+  && grep -Fq 'continues without a user question' "$ROOT/reference.md" \
+  && ok "canonical prior-fix recall is bounded and non-interactive" || bad "canonical prior-fix recall is broad or interactive"
 grep -q 'Build Preview / Risk Gate' "$ROOT/reference.md" && ok "canonical conditional Build Preview documented" || bad "canonical Build Preview risk policy missing"
 grep -q 'Flow schema: 4' "$ROOT/phases/phase-0-setup.md" && ok "new runs declare flow schema 4" || bad "phase 0 missing flow schema 4"
 grep -q -- '--state .kimiflow/<slug>/STATE.md' "$ROOT/phases/phase-4-review-approval.md" && ok "Build risk reads durable STATE" || bad "Phase 4 does not bind Build risk to STATE"
