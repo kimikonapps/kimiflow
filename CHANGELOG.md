@@ -4,7 +4,13 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Changed
+
+- **Reference Strategy Fit stays bounded and autonomous**: Phase 2 now skips external research when project
+  evidence or a proven local regression uniquely determines the correction, compares at most two `pulse` or
+  three `focused` references for real plan-changing uncertainty, records compact `adopt|adapt|reject` fit evidence,
+  and turns source conflict or research exhaustion into a changed query, local counterfactual, or recovery strategy
+  instead of another user-confirmed run.
 
 ## 0.2.3
 

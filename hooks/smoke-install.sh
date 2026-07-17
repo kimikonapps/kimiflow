@@ -208,6 +208,17 @@ grep -q 'Spec / Correctness' "$ROOT/reference.md" && ok "reference preserves rev
 grep -q 'Standards smell baseline' "$ROOT/reference.md" && ok "reference documents advisory smell baseline" || bad "missing standards smell baseline"
 grep -q 'Scope classification' "$ROOT/reference.md" && ok "reference classifies research scope" || bad "missing research scope classification"
 grep -q 'depth=none|pulse|focused' "$ROOT/reference.md" && ok "reference documents adaptive Discovery" || bad "missing adaptive Discovery contract"
+grep -q 'Reference Strategy Fit' "$ROOT/phases/phase-2-understand.md" && ok "Phase 2 documents conditional Reference Strategy Fit" || bad "Phase 2 missing Reference Strategy Fit"
+grep -Eiq 'pulse.{0,160}(at most|max(imum)?)[^0-9]{0,20}2|pulse.{0,160}two.{0,160}references' "$ROOT/reference.md" \
+  && grep -Eiq 'focused.{0,160}(at most|max(imum)?)[^0-9]{0,20}3|focused.{0,160}three.{0,160}references' "$ROOT/reference.md" \
+  && ok "reference bounds Reference Strategy Fit evidence" || bad "reference missing bounded Reference Strategy Fit evidence"
+if grep -Fq 'small`/`quick` go straight to the web' "$ROOT/phases/phase-2-understand.md" "$ROOT/reference.md"; then
+  bad "small/quick fixes still force web research"
+else
+  ok "small/quick fix research is adaptive"
+fi
+grep -Eiq 'research limit.{0,120}(never|not).{0,80}user wait' "$ROOT/reference.md" \
+  && ok "reference keeps research limits autonomous" || bad "reference missing autonomous research-limit routing"
 grep -q 'Build Preview / Risk Gate' "$ROOT/reference.md" && ok "reference documents conditional Build Preview" || bad "missing Build Preview risk policy"
 grep -q 'research-driven product expansion is forbidden' "$ROOT/reference.md" && ok "reference blocks research scope creep" || bad "missing research scope-creep guard"
 grep -q -- '--epoch-start <S>' "$ROOT/reference.md" && ok "reference documents strategy epoch bounds" || bad "missing strategy epoch bounds"

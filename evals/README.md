@@ -90,6 +90,7 @@ location (Judging), and run each eval subagent in an environment without the use
 | 14 | plan scope ratchet | 2-4 |
 | 15 | evidence-guided feature discovery | 1-4 |
 | 16 | schema-4 bug-fix autonomy | 1-7 |
+| 17 | autonomous Reference Strategy Fit | 2-4 |
 
 **Reviewer-calibration** — a second dimension (does the *reviewer* judge cleanly under pressure, not
 just hold a gate?): [`reviewer-calibration.md`](reviewer-calibration.md) +

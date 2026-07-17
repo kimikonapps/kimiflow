@@ -196,6 +196,17 @@ grep -q 'Spec / Correctness' "$ROOT/reference.md" && ok "canonical review axes p
 grep -q 'Standards smell baseline' "$ROOT/reference.md" && ok "canonical advisory smell baseline documented" || bad "canonical standards smell baseline missing"
 grep -q 'Scope classification' "$ROOT/reference.md" && ok "canonical research scope classified" || bad "canonical research scope classification missing"
 grep -q 'depth=none|pulse|focused' "$ROOT/reference.md" && ok "canonical adaptive Discovery documented" || bad "canonical adaptive Discovery missing"
+grep -q 'Reference Strategy Fit' "$ROOT/phases/phase-2-understand.md" && ok "canonical Reference Strategy Fit documented" || bad "canonical Reference Strategy Fit missing"
+grep -Eiq 'pulse.{0,160}(at most|max(imum)?)[^0-9]{0,20}2|pulse.{0,160}two.{0,160}references' "$ROOT/reference.md" \
+  && grep -Eiq 'focused.{0,160}(at most|max(imum)?)[^0-9]{0,20}3|focused.{0,160}three.{0,160}references' "$ROOT/reference.md" \
+  && ok "canonical Reference Strategy Fit evidence bounded" || bad "canonical Reference Strategy Fit evidence unbounded"
+if grep -Fq 'small`/`quick` go straight to the web' "$ROOT/phases/phase-2-understand.md" "$ROOT/reference.md"; then
+  bad "canonical small/quick fixes still force web research"
+else
+  ok "canonical small/quick fix research is adaptive"
+fi
+grep -Eiq 'research limit.{0,120}(never|not).{0,80}user wait' "$ROOT/reference.md" \
+  && ok "canonical research limits stay autonomous" || bad "canonical autonomous research-limit routing missing"
 grep -q 'Build Preview / Risk Gate' "$ROOT/reference.md" && ok "canonical conditional Build Preview documented" || bad "canonical Build Preview risk policy missing"
 grep -q 'Flow schema: 4' "$ROOT/phases/phase-0-setup.md" && ok "new runs declare flow schema 4" || bad "phase 0 missing flow schema 4"
 grep -q -- '--state .kimiflow/<slug>/STATE.md' "$ROOT/phases/phase-4-review-approval.md" && ok "Build risk reads durable STATE" || bad "Phase 4 does not bind Build risk to STATE"

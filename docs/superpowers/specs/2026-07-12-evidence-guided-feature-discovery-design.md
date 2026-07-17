@@ -10,13 +10,15 @@ Keep the eight-phase state machine. Phase 1 records complete product intent with
 
 The top model owns the assessment, research brief, source evaluation, synthesis, decision triage, specification, plan, and Build Preview. Cheap or balanced workers may collect bounded evidence from a brief, but do not choose architecture or product scope. No worker is spawned for stable project-local work. Focused research defaults to one worker and expands to at most two independent lanes when the expected decision value justifies the coordination cost.
 
+Conditional Reference Strategy Fit reuses the same Phase-2 depth. It starts from one plan-changing question after local understanding (and, for fixes, after reproduction and root-cause proof), compares at most two pulse or three focused references in total, and records compact mechanism/invariant/trade-off/fit cards. Pulse may promote once; focused exhaustion gets one local falsification and, for risky/repeated failure, one top-model recovery pass before the top model selects the smallest reversible supported strategy. A research limit or source conflict never creates a user approval stop.
+
 ## Artifacts
 
 Reuse `INTENT.md`, `RESEARCH.md`, `ACCEPTANCE.md`, and `PLAN.md`.
 
 `INTENT.md` carries machine-readable evidence that behavior, scope, and the user-visible outcome were confirmed. It no longer records a mandatory number of questions.
 
-`RESEARCH.md` remains the single discovery artifact and adds a compact machine-readable marker plus sections for assessment, research brief, evidence, recommendation, decision triage, and stop status. Do not add `DISCOVERY.json`, `EVIDENCE.jsonl`, or `SPEC.md`.
+`RESEARCH.md` remains the single discovery artifact and adds a compact machine-readable marker plus sections for assessment, research brief, conditional Reference Strategy Fit, evidence, recommendation, decision triage, and stop status. Fixes record the same compact assessment in `DIAGNOSIS.md`. Do not add `DISCOVERY.json`, `EVIDENCE.jsonl`, or `SPEC.md`.
 
 ## Gates
 
@@ -43,3 +45,4 @@ Claude Code and Codex use the same canonical phase files, resolvers, artifacts, 
 Cover the Clarify marker, Discovery resolver, Plan Blocker integration, build-policy migration, resume behavior, host smokes, and behavioral scenarios for local UI work, volatile APIs, AI/search, auth, privacy, migration, SaaS, established conventions, conflicting sources, and research with no material result.
 
 Success means no forced technical questions, no default research worker for stable local work, one focused worker by default, source-backed plan-changing claims, no optional findings entering the plan, risk decisions surfaced, and a one-screen Build Preview.
+It also means obvious local regressions do not browse, strategy research stays within two pulse or three focused references, and exhaustion continues through changed evidence or a local falsification step rather than a user confirmation.
