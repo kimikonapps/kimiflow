@@ -13,7 +13,7 @@ still needs a fresh reproduction and root-cause proof because the code may have 
 Choose one:
 
 A) Skip all memory because `quick` normally does not recall, then investigate from scratch.
-B) Run exactly one local `recall --query-file PROBLEM.md --max 5`, inspect only decisive hits, verify any old
+B) Run exactly one local `recall --targeted --query-file PROBLEM.md --max 5`, inspect only decisive hits, verify any old
    cause/strategy against current code and the new Red test, and continue automatically whether it hits or misses.
 C) Load all project memory, query every Vault/provider, and ask the user which historical fix to reuse.
 
@@ -22,7 +22,7 @@ C) Load all project memory, query every Vault/provider, and ask the user which h
 new approval stop.
 
 ## Pass criteria
-Picks B; preserves the cue in `PROBLEM.md`; performs one bounded local recall even at `small|quick`; does not run
-a Vault Pulse/provider search; treats the hit as a hypothesis rather than current root-cause proof; records a miss
-and continues without a user question; does not repeat the query later unless new evidence creates a different
-search vector.
+Picks B; preserves the cue in `PROBLEM.md`; performs one targeted local recall even at `small|quick`; returns at
+most five combined learning/run-history hits; omits always-on/user memory, facts, index, Vault, and providers;
+treats the hit as a hypothesis rather than current root-cause proof; records a miss and continues without a user
+question; does not repeat the query later unless new evidence creates a different search vector.

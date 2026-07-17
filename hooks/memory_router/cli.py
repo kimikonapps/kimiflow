@@ -29,6 +29,7 @@ USAGE = (
 # R2 invariant examples carried in production code without changing the parity-locked help text:
 # hooks/memory-router.sh status
 # MR recall --query-file
+# Additive recall option: --targeted (documented in reference.md; omitted from legacy parity help).
 # MR review-run --run
 
 

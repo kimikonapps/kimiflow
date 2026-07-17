@@ -217,7 +217,8 @@ grep -Fq 'Explicit prior-work cue override' "$ROOT/phases/phase-2-understand.md"
   && grep -Fq 'Explicit prior-work cue override' "$ROOT/reference.md" \
   && grep -Fq 'prior-work cue' "$SKILL" \
   && ok "canonical prior-fix cue override reaches Codex" || bad "canonical prior-fix cue override missing in Codex"
-grep -Fq 'MR recall --query-file <PROBLEM.md> --max 5 --write .kimiflow/<slug>/RECALL.md' "$ROOT/phases/phase-2-understand.md" \
+grep -Fq 'MR recall --targeted --query-file <PROBLEM.md> --max 5 --write .kimiflow/<slug>/RECALL.md' "$ROOT/phases/phase-2-understand.md" \
+  && grep -Fq 'replaces the default broad recall' "$ROOT/reference.md" \
   && grep -Fq 'continues without a user question' "$ROOT/reference.md" \
   && ok "canonical prior-fix recall is bounded and non-interactive" || bad "canonical prior-fix recall is broad or interactive"
 grep -q 'Build Preview / Risk Gate' "$ROOT/reference.md" && ok "canonical conditional Build Preview documented" || bad "canonical Build Preview risk policy missing"

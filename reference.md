@@ -1033,11 +1033,12 @@ loop (Phase 7 `review-run`) still runs at every scope.
 
 **Explicit prior-work cue override (all scopes):** if the current user says the same/similar bug or fix existed
 before, or supplies an old commit, issue, run, or strategy, preserve that cue in `PROBLEM.md` and run exactly one
-bounded local `memory-router.sh recall --query-file <PROBLEM.md> --max 5 --write
-.kimiflow/<slug>/RECALL.md`. This one query searches current learnings plus bounded run-artifact history. At
-`small`/`quick`, do not run router status, a second recall, provider health, Vault Pulse, Vault/claude-mem search,
-or a repeated query. Read only the decisive hits and verify any old cause/strategy against current code, a fresh
-Red reproduction, and root-cause evidence; history is a hypothesis, never proof. A miss is recorded and the run
+bounded local `memory-router.sh recall --targeted --query-file <PROBLEM.md> --max 5 --write
+.kimiflow/<slug>/RECALL.md`. The targeted flag excludes always-on/user memory, facts, and the FTS index, then caps
+the combined current-learning and run-history hits at five. This path replaces the default broad recall at every
+scope: do not run router status, a second recall, provider health, Vault Pulse, Vault/claude-mem search, or a
+repeated query. Read only decisive hits and verify any old cause/strategy against current code, a fresh Red
+reproduction, and root-cause evidence; history is a hypothesis, never proof. A miss is recorded and the run
 continues without a user question. New evidence may justify one different search vector later through normal
 recovery, but the original cue query is never repeated.
 

@@ -228,7 +228,8 @@ grep -Fq 'does not suppress a later named Discovery/Reference Strategy Fit gap' 
 grep -Fq 'Explicit prior-work cue override' "$ROOT/phases/phase-2-understand.md" \
   && grep -Fq 'Explicit prior-work cue override' "$ROOT/reference.md" \
   && ok "explicit prior-fix cues override small/quick recall skip" || bad "explicit prior-fix recall override missing"
-grep -Fq 'MR recall --query-file <PROBLEM.md> --max 5 --write .kimiflow/<slug>/RECALL.md' "$ROOT/phases/phase-2-understand.md" \
+grep -Fq 'MR recall --targeted --query-file <PROBLEM.md> --max 5 --write .kimiflow/<slug>/RECALL.md' "$ROOT/phases/phase-2-understand.md" \
+  && grep -Fq 'replaces the default broad recall' "$ROOT/reference.md" \
   && grep -Fq 'continues without a user question' "$ROOT/reference.md" \
   && ok "prior-fix recall is bounded and non-interactive" || bad "prior-fix recall is broad or interactive"
 grep -q 'Build Preview / Risk Gate' "$ROOT/reference.md" && ok "reference documents conditional Build Preview" || bad "missing Build Preview risk policy"

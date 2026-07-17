@@ -162,8 +162,8 @@ class RecallJsonCase(unittest.TestCase):
         with open(os.path.join(self.project, name), "w", encoding="utf-8") as fh:
             fh.write(text)
 
-    def obj(self, query="auth", max_hits=5):
-        return recall.recall_json(self.root, query, max_hits)
+    def obj(self, query="auth", max_hits=5, targeted=False):
+        return recall.recall_json(self.root, query, max_hits, targeted=targeted)
 
     def test_key_order(self):
         o = self.obj()
@@ -260,6 +260,40 @@ class RecallJsonCase(unittest.TestCase):
         self.assertEqual(o["sources"]["history"]["count"], 1)
         self.assertIn("history_hits", o["explanation"]["reason_codes"])
 
+    def test_targeted_omits_broad_sources_and_caps_total_hits(self):
+        self.write("MEMORY.md", "auth broad memory\n")
+        self.write("USER.md", "auth user profile\n")
+        self.write("FACTS.jsonl", '{"kind":"module","path":"auth.py","summary":"auth"}\n')
+        self.write(
+            "LEARNINGS.jsonl",
+            "".join(
+                json.dumps({"id": "L%d" % i, "status": "current", "summary": "auth fix"}) + "\n"
+                for i in range(4)
+            ),
+        )
+        for i in range(4):
+            run = os.path.join(self.root, ".kimiflow", "runs", "demo-%d" % i)
+            os.makedirs(run)
+            with open(os.path.join(run, "PLAN.md"), "w", encoding="utf-8") as fh:
+                fh.write("auth historical fix %d\n" % i)
+
+        o = self.obj("auth", max_hits=5, targeted=True)
+
+        self.assertEqual(o["sources"]["memory"]["status"], "omitted_targeted")
+        self.assertEqual(o["sources"]["memory"]["content"], "")
+        self.assertEqual(o["sources"]["user_profile"]["status"], "omitted_targeted")
+        self.assertEqual(o["sources"]["facts"]["count"], 0)
+        self.assertEqual(o["sources"]["index"]["status"], "skipped_targeted")
+        self.assertEqual(o["sources"]["index"]["count"], 0)
+        self.assertEqual(o["sources"]["learnings"]["count"], 4)
+        self.assertEqual(o["sources"]["history"]["count"], 1)
+        self.assertEqual(o["explanation"]["hit_counts"]["total"], 5)
+        self.assertIn("targeted_recall", o["explanation"]["reason_codes"])
+        self.assertEqual(
+            {row["source"] for row in o["explanation"]["omitted_sources"]},
+            {"MEMORY.md", "USER.md", "FACTS.jsonl", "RECALL.sqlite"},
+        )
+
 
 class RecallRunCase(unittest.TestCase):
     def setUp(self):
@@ -313,6 +347,16 @@ class RecallRunCase(unittest.TestCase):
         code, _, err = self.run_recall(["--query", "x", "--bogus"])
         self.assertEqual(code, 2)
         self.assertEqual(err, "memory-router: recall: unknown argument: --bogus\n")
+
+    def test_targeted_flag_reaches_recall_contract(self):
+        with open(os.path.join(self.project, "MEMORY.md"), "w", encoding="utf-8") as fh:
+            fh.write("auth broad memory\n")
+        code, out, err = self.run_recall(["--query", "auth", "--targeted", "--max", "5"])
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "")
+        obj = json.loads(out)
+        self.assertEqual(obj["sources"]["memory"]["status"], "omitted_targeted")
+        self.assertIn("targeted_recall", obj["explanation"]["reason_codes"])
 
     def test_write_creates_md_json_and_usage(self):
         with open(os.path.join(self.project, "LEARNINGS.jsonl"), "w", encoding="utf-8") as fh:

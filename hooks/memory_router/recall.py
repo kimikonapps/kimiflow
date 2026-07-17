@@ -116,7 +116,7 @@ def jsonl_hits(path, terms, max_hits, fields):
     return out[:max_hits]
 
 
-def recall_json(root, query, max_hits):
+def recall_json(root, query, max_hits, targeted=False):
     project = os.path.join(root, ".kimiflow", "project")
     memory = os.path.join(project, "MEMORY.md")
     user_memory = os.path.join(project, "USER.md")
@@ -124,12 +124,16 @@ def recall_json(root, query, max_hits):
     facts = os.path.join(project, "FACTS.jsonl")
     budget = _int_env("KIMIFLOW_MEMORY_BUDGET", 900)
     user_budget = _int_env("KIMIFLOW_USER_MEMORY_BUDGET", 500)
-    memory_tokens = text.word_count_file(memory)
-    user_tokens = text.word_count_file(user_memory)
+    memory_tokens = 0 if targeted else text.word_count_file(memory)
+    user_tokens = 0 if targeted else text.word_count_file(user_memory)
     terms = terms_json_from_query(query)
     omitted = []
 
-    if os.path.isfile(memory):
+    if targeted:
+        memory_status = "omitted_targeted"
+        memory_content = ""
+        omitted.append("MEMORY.md omitted: targeted recall")
+    elif os.path.isfile(memory):
         if memory_tokens <= budget:
             memory_status = "included"
             memory_content = _sed_read(memory, 160)
@@ -142,7 +146,11 @@ def recall_json(root, query, max_hits):
         memory_content = ""
         omitted.append("MEMORY.md missing")
 
-    if os.path.isfile(user_memory):
+    if targeted:
+        user_status = "omitted_targeted"
+        user_content = ""
+        omitted.append("USER.md omitted: targeted recall")
+    elif os.path.isfile(user_memory):
         if user_tokens <= user_budget:
             user_status = "included"
             user_content = _sed_read(user_memory, 120)
@@ -157,24 +165,35 @@ def recall_json(root, query, max_hits):
 
     learning_hits = jsonl_hits(
         learnings, terms, max_hits, "id,kind,scope,topic,summary,status,sensitivity,evidence")
-    fact_hits = jsonl_hits(facts, terms, max_hits, "kind,area,path,summary,confidence")
-    index_hits = recall_index.fts_hits_json(root, terms, max_hits)
-    history_hits = recall_index.run_artifact_hits_json(root, terms, max_hits)
-
-    if len(index_hits) > 0:
-        index_status = "used"
-    elif os.path.isfile(os.path.join(project, "RECALL.sqlite")):
-        index_status = "available_no_hits"
-    elif recall_index.fts5_available():
-        index_status = "missing"
+    if targeted:
+        fact_hits = []
+        index_hits = []
+        history_hits = recall_index.run_artifact_hits_json(
+            root, terms, max(0, max_hits - len(learning_hits)))
+        index_status = "skipped_targeted"
+        omitted.extend(("FACTS.jsonl omitted: targeted recall",
+                        "RECALL.sqlite omitted: targeted recall"))
     else:
-        index_status = "unavailable"
+        fact_hits = jsonl_hits(facts, terms, max_hits, "kind,area,path,summary,confidence")
+        index_hits = recall_index.fts_hits_json(root, terms, max_hits)
+        history_hits = recall_index.run_artifact_hits_json(root, terms, max_hits)
+
+        if len(index_hits) > 0:
+            index_status = "used"
+        elif os.path.isfile(os.path.join(project, "RECALL.sqlite")):
+            index_status = "available_no_hits"
+        elif recall_index.fts5_available():
+            index_status = "missing"
+        else:
+            index_status = "unavailable"
 
     learn_n, fact_n, idx_n, hist_n = (
         len(learning_hits), len(fact_hits), len(index_hits), len(history_hits))
     total = learn_n + fact_n + idx_n + hist_n
 
     reason_codes = []
+    if targeted:
+        reason_codes.append("targeted_recall")
     if memory_status == "included":
         reason_codes.append("always_on_included")
     if memory_status == "omitted_over_budget":
@@ -211,14 +230,23 @@ def recall_json(root, query, max_hits):
         included_sources.append("RUN-HISTORY")
 
     omitted_sources = []
+    if memory_status == "omitted_targeted":
+        omitted_sources.append({"source": "MEMORY.md", "reason": "targeted_recall"})
     if memory_status == "omitted_over_budget":
         omitted_sources.append({"source": "MEMORY.md", "reason": "over_budget"})
     if memory_status == "missing":
         omitted_sources.append({"source": "MEMORY.md", "reason": "missing"})
+    if user_status == "omitted_targeted":
+        omitted_sources.append({"source": "USER.md", "reason": "targeted_recall"})
     if user_status == "omitted_over_budget":
         omitted_sources.append({"source": "USER.md", "reason": "over_budget"})
     if user_status == "missing":
         omitted_sources.append({"source": "USER.md", "reason": "missing"})
+    if targeted:
+        omitted_sources.extend((
+            {"source": "FACTS.jsonl", "reason": "targeted_recall"},
+            {"source": "RECALL.sqlite", "reason": "targeted_recall"},
+        ))
 
     return {
         "schema_version": 1,
@@ -327,6 +355,7 @@ def run(argv):
     pretty = False
     max_raw = "5"
     write_path = ""
+    targeted = False
     i = 0
     while i < len(argv):
         arg = argv[i]
@@ -345,6 +374,8 @@ def run(argv):
         elif arg == "--write":
             i += 1
             write_path = argv[i] if i < len(argv) else ""
+        elif arg == "--targeted":
+            targeted = True
         elif arg == "--pretty":
             pretty = True
         elif arg in ("--help", "-h"):
@@ -366,7 +397,7 @@ def run(argv):
         return die("recall --max must be a number", 2)
     max_hits = int(max_raw)
 
-    obj = recall_json(root, query, max_hits)
+    obj = recall_json(root, query, max_hits, targeted=targeted)
 
     if write_path:
         if not write_path.startswith("/"):
