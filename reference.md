@@ -447,11 +447,11 @@ Goal: kimiflow must **truly understand** the affected code before planning — e
 
 - `none` — project code/tests already determine the approach, or an obvious local regression has one verified correction. Record the reason and do not browse.
 - `pulse` — inspect at most 2 high-quality references for one question. Prefer the same framework/runtime, problem class, and operating model; stop as soon as one strategy is supported and the material alternative is rejected.
-- `focused` — inspect at most 3 independent strategies or references in total for that question (including any pulse references) for security/auth, concurrency, transactions, consistency, retries/idempotency, migration, caching, public contracts, complex integration, unknown architecture, or repeated failed implementation. No repository-wide summaries.
+- `focused` — inspect at most three total references for the fit assessment, including pulse references and every question/lane, for security/auth, concurrency, transactions, consistency, retries/idempotency, migration, caching, public contracts, complex integration, unknown architecture, or repeated failed implementation. No repository-wide summaries.
 
 Prefer official or established implementations with the relevant code path plus tests over generic articles. Each compact card is at most 150 words: `Reference` (project + file/PR/test), `Problem class`, `Strategy`, `Invariant`, `Trade-off`, `Fit: adopt|adapt|reject`, and `Local evidence`. The top model selects the strategy; a collector never chooses architecture. Persist only the selected strategy and the strongest rejected alternative.
 
-**Autonomous exhaustion:** a research limit is never a user wait. `pulse` may promote once to `focused` only while a material plan gap remains; never repeat a query/source, and never exceed three total references for the question. After focused exhaustion, run one smallest local counterfactual/spike; risky or repeated failure gets one top-model recovery pass. Then choose the smallest reversible supported project-fit strategy when authority and risk remain unchanged. Do not ask whether to search again or which technical HOW to choose. Await the user only when the evidence exposes an existing material boundary: product/scope/policy, privacy/data processing, paid infrastructure/lock-in, breaking or irreversible public/data/migration contract, missing authority, or inaccessible external state.
+**Autonomous exhaustion:** a research limit is never a user wait. `pulse` may promote once to `focused` only while a material plan gap remains; never repeat a query/source, and never exceed three total references for the fit assessment. After focused exhaustion, run one smallest local counterfactual/spike; risky or repeated failure gets one top-model recovery pass. Then choose the smallest reversible supported project-fit strategy when authority and risk remain unchanged. Do not ask whether to search again or which technical HOW to choose. Await the user only when the evidence exposes an existing material boundary: product/scope/policy, privacy/data processing, paid infrastructure/lock-in, breaking or irreversible public/data/migration contract, missing authority, or inaccessible external state.
 
 **External research:** only named gaps that project memory/code/Current State do not close and that can change the requested implementation. For a small/quick medium/high gap, a bounded existing-memory lookup may precede web research; broad recall/Vault Pulse remains large-only. Stop when the recommendation is supported, a material alternative is addressed, source conflicts and technical gaps are closed, and another search is unlikely to change the decision. Research corrects HOW, never silently expands WHAT.
 
@@ -1056,7 +1056,8 @@ The current-state gate protects specs and plans from stale model knowledge when 
 technology. `small`/`quick` runs a tiny pulse: record no external freshness need (`low`) or fetch one bounded
 primary source (`medium|high`). It is not Discovery: Current State asks whether a relied-on fact is current;
 Discovery asks whether the relevant solution space, alternatives, risks, and user decisions are resolved enough
-to plan. Keep the resolvers separate and let `plan-blocker-gate.sh` compose them.
+to plan. A low freshness result does not suppress a later named Discovery/Reference Strategy Fit gap. Keep the
+resolvers separate and let `plan-blocker-gate.sh` compose them.
 
 Helper:
 
@@ -1082,7 +1083,7 @@ Risk behavior:
 
 | risk | meaning | behavior |
 |---|---|---|
-| `low` | local code/docs work or stable project convention | write `CURRENT-STATE.md` with `Status: checked` and "no external current-source research needed"; no browsing |
+| `low` | local code/docs work or stable project convention | write `CURRENT-STATE.md` with `Status: checked` and "no external current-source research needed"; no freshness browsing; does not suppress a later named Discovery/Reference Strategy Fit gap |
 | `medium` | library/API/tooling may have changed | fresh memory/vault hit or one short primary-source check required before spec/plan finalization |
 | `high` | host/plugin/hook/MCP/marketplace, security/auth/payments/privacy/deployment, external services | primary-source evidence required before spec/plan finalization |
 

@@ -26,6 +26,7 @@ query, evidence source, counterfactual, or strategy; it never creates authority 
 
 ## Pass criteria
 Picks B; does not browse for the obvious local regression; proves cause before searching; uses at most two
-references for `pulse` and three total after at most one promotion to `focused`; records mechanism/invariant/trade-off plus `adopt|adapt|reject`;
+references for `pulse` and three total across all fit questions/lanes after at most one promotion to `focused`;
+records mechanism/invariant/trade-off plus `adopt|adapt|reject`;
 retains only the selected strategy and strongest rejected alternative; never asks to continue research or choose
 technical HOW; pauses only if an existing material decision boundary actually changes.

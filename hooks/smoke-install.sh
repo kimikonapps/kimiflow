@@ -219,6 +219,12 @@ else
 fi
 grep -Eiq 'research limit.{0,120}(never|not).{0,80}user wait' "$ROOT/reference.md" \
   && ok "reference keeps research limits autonomous" || bad "reference missing autonomous research-limit routing"
+grep -Fq "Caps are total for the run's fit assessment" "$ROOT/phases/phase-2-understand.md" \
+  && grep -Fq 'three total references for the fit assessment' "$ROOT/reference.md" \
+  && ok "Reference Strategy Fit cap cannot multiply across questions or lanes" || bad "Reference Strategy Fit cap is not run-total"
+grep -Fq 'does not suppress a later named Discovery/Reference Strategy Fit gap' "$ROOT/phases/phase-2-understand.md" \
+  && grep -Fq 'does not suppress a later named Discovery/Reference Strategy Fit gap' "$ROOT/reference.md" \
+  && ok "Current State freshness does not suppress Reference Strategy Fit" || bad "Current State conflicts with Reference Strategy Fit"
 grep -q 'Build Preview / Risk Gate' "$ROOT/reference.md" && ok "reference documents conditional Build Preview" || bad "missing Build Preview risk policy"
 grep -q 'research-driven product expansion is forbidden' "$ROOT/reference.md" && ok "reference blocks research scope creep" || bad "missing research scope-creep guard"
 grep -q -- '--epoch-start <S>' "$ROOT/reference.md" && ok "reference documents strategy epoch bounds" || bad "missing strategy epoch bounds"

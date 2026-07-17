@@ -207,6 +207,12 @@ else
 fi
 grep -Eiq 'research limit.{0,120}(never|not).{0,80}user wait' "$ROOT/reference.md" \
   && ok "canonical research limits stay autonomous" || bad "canonical autonomous research-limit routing missing"
+grep -Fq "Caps are total for the run's fit assessment" "$ROOT/phases/phase-2-understand.md" \
+  && grep -Fq 'three total references for the fit assessment' "$ROOT/reference.md" \
+  && ok "canonical Reference Strategy Fit cap is run-total" || bad "canonical Reference Strategy Fit cap can multiply"
+grep -Fq 'does not suppress a later named Discovery/Reference Strategy Fit gap' "$ROOT/phases/phase-2-understand.md" \
+  && grep -Fq 'does not suppress a later named Discovery/Reference Strategy Fit gap' "$ROOT/reference.md" \
+  && ok "canonical freshness and Reference Strategy Fit compose" || bad "canonical freshness suppresses Reference Strategy Fit"
 grep -q 'Build Preview / Risk Gate' "$ROOT/reference.md" && ok "canonical conditional Build Preview documented" || bad "canonical Build Preview risk policy missing"
 grep -q 'Flow schema: 4' "$ROOT/phases/phase-0-setup.md" && ok "new runs declare flow schema 4" || bad "phase 0 missing flow schema 4"
 grep -q -- '--state .kimiflow/<slug>/STATE.md' "$ROOT/phases/phase-4-review-approval.md" && ok "Build risk reads durable STATE" || bad "Phase 4 does not bind Build risk to STATE"
