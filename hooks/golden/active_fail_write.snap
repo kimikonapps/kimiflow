@@ -1,11 +1,13 @@
 @@exit@@
 0
 @@stdout@@
-{"status":"failed","written":true,"run":".kimiflow/demo","outcome":{"schema_version":1,"outcome":"failed","reason":"failed","completed_at":"TIMESTAMP","learning_review":{"status":"not_promoted","reason":"session_not_finished"},"workspace_retirement":{"status":"not-required"}}}
+{"status":"failed","written":true,"run":".kimiflow/demo","outcome":{"schema_version":1,"outcome":"failed","reason":"failed","completed_at":"TIMESTAMP","learning_review":{"status":"not_promoted","reason":"session_not_finished"},"outcome_evaluation":{"status":"evaluated","id":"out_COMMIT365a10381bb0803d20e14b16","terminal":"failed","classification":"inconclusive","promotable":false,"strategy_recall_hits":0,"strategy_recall_used":false,"first_plan_success":true,"economics_result":null,"net_estimated_tokens_saved":null},"workspace_retirement":{"status":"not-required"}}}
 @@stderr@@
 @@files@@
-.kimiflow/demo/SESSION-OUTCOME.json	mode=600	hash=sha256:cb18fe2ac918178cce2b2a4dc8c617de7baf20af707b5b3d7b385f611a1cf155
+.kimiflow/demo/OUTCOME-EVALUATION.json	mode=600	hash=sha256:1412ba2460107e115a46bb04e8f192407572a366ec1603ed0f5fedd2c21ef95e
+.kimiflow/demo/SESSION-OUTCOME.json	mode=600	hash=sha256:763fe33ad30674e2c274c746cd490c1e9d46ff2e73990acd008cf70cb266422a
 .kimiflow/demo/STATE.md	mode=600	hash=sha256:573a1c675fcd62c68718cc4226b86893c0ed6ec808008cee63be75cc6531eddd
 .kimiflow/project/FINDINGS.md	mode=644	hash=sha256:a2ed99a0a376d3147db54333f62ba30603ac43d8cf558ff240d9a724251cbf82
+.kimiflow/project/STRATEGY-OUTCOMES.jsonl	mode=600	hash=sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 README.md	mode=644	hash=sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03
 hooks/a.sh	mode=644	hash=sha256:ab08508fdf5ca4da5c4995987bc41c56c048aaa5eeb046417ae4049b7d40286e

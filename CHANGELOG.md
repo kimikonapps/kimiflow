@@ -4,12 +4,25 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.6
+
+The scoped-learning release: durable project memory now carries explicit applicability and current verification
+evidence without ecosystem-specific rules or a new schema.
+
 ### Changed
 
 - **Durable learnings stay scoped and revalidatable:** The existing Memory Router quality gate now requires every
   durable `learned` summary to carry compact applicability and a calendar-valid, non-empty verification basis.
   This keeps external framework/API lessons project-scoped without ecosystem lists, a schema change, or a new
   dependency.
+
+### Fixed
+
+- **Outcome-evaluation parity fixtures cover terminal session receipts:** Finish preview plus park, fail, and abort
+  snapshots now include the evaluator result and its local strategy-ledger artifacts, keeping the full release
+  gate aligned with the already-tested runtime behavior.
 
 ## 0.2.5
 
