@@ -16,6 +16,16 @@ def _write(path, text):
         handle.write(text)
 
 
+def _read_bytes(path):
+    with open(path, "rb") as handle:
+        return handle.read()
+
+
+def _read_text(path):
+    with open(path, "r", encoding="utf-8") as handle:
+        return handle.read()
+
+
 class OutcomeFixture(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp()
@@ -52,6 +62,8 @@ class OutcomeFixture(unittest.TestCase):
         _write(os.path.join(self.run_dir, name), text)
 
     def write_fixture(self):
+        prior = "out_" + ("a" * 64)
+        fake_secret = "x" * 32
         self.write(
             "STATE.md",
             "Flow schema: 4\n"
@@ -64,13 +76,14 @@ class OutcomeFixture(unittest.TestCase):
         )
         self.write(
             "INTENT.md",
-            "Build a local strategy outcome evaluator for future authentication work.\n",
+            "Build a local strategy outcome evaluator for authentication work. "
+            f"Do not retain token={fake_secret}.\n",
         )
         self.write(
             "PLAN.md",
             "# Plan\n\n"
             "Strategy: Reuse the local evidence gate before recalling an authentication strategy.\n"
-            "Strategy evidence: out_prior\n",
+            "Strategy evidence: %s\n" % prior,
         )
         self.write(
             "VERIFICATION.md",
@@ -99,7 +112,7 @@ class OutcomeFixture(unittest.TestCase):
                 "sources": {
                     "strategies": {
                         "count": 1,
-                        "hits": [{"id": "out_prior", "classification": "verified_success"}],
+                        "hits": [{"id": prior, "classification": "verified_success"}],
                     }
                 }
             }) + "\n",
@@ -122,6 +135,7 @@ class OutcomeEvaluationCase(OutcomeFixture):
         self.assertIs(evaluation["signals"]["strategy_recall_used"], True)
         self.assertTrue(evaluation["evidence_fingerprints"])
         self.assertTrue(all(row["status"] == "current" for row in evaluation["evidence_fingerprints"]))
+        self.assertNotIn("x" * 32, evaluation["terms"])
 
         result = outcomes.persist_evaluation(self.root, self.run_dir, evaluation)
         self.assertIs(result["written"], True)
@@ -172,6 +186,9 @@ class OutcomeEvaluationCase(OutcomeFixture):
 
         self.write_fixture()
         self.write("VERIFICATION.md", "<!-- kimiflow:verification outcome=failed criteria=passed regression=passed -->\n")
+        self.write("findings/r2-code-verified.md", "FINDING HIGH malformed\n")
+        self.assertEqual(self.evaluate("failed")["classification"], "inconclusive")
+
         self.write("findings/r2-code-verified.md", "FINDING HIGH app.py:1 :: verified regression\n")
         self.assertEqual(self.evaluate("failed")["classification"], "verified_failure")
 
@@ -185,8 +202,8 @@ class OutcomeEvaluationCase(OutcomeFixture):
         self.assertEqual(stat.S_IMODE(os.stat(ledger_path).st_mode), 0o600)
         self.assertEqual(stat.S_IMODE(os.stat(artifact_path).st_mode), 0o600)
 
-        before_ledger = open(ledger_path, "rb").read()
-        before_artifact = open(artifact_path, "rb").read()
+        before_ledger = _read_bytes(ledger_path)
+        before_artifact = _read_bytes(artifact_path)
         original_atomic = store.atomic_write
         calls = 0
 
@@ -201,8 +218,8 @@ class OutcomeEvaluationCase(OutcomeFixture):
         with mock.patch("memory_router.outcomes.store.atomic_write", side_effect=fail_second):
             with self.assertRaises(OSError):
                 outcomes.persist_evaluation(self.root, self.run_dir, changed)
-        self.assertEqual(open(ledger_path, "rb").read(), before_ledger)
-        self.assertEqual(open(artifact_path, "rb").read(), before_artifact)
+        self.assertEqual(_read_bytes(ledger_path), before_ledger)
+        self.assertEqual(_read_bytes(artifact_path), before_artifact)
 
         os.unlink(ledger_path)
         outside = os.path.join(self.root, "outside.txt")
@@ -210,8 +227,8 @@ class OutcomeEvaluationCase(OutcomeFixture):
         os.symlink(outside, ledger_path)
         with self.assertRaises((OSError, ValueError)):
             outcomes.persist_evaluation(self.root, self.run_dir, evaluation)
-        self.assertEqual(open(outside, "r", encoding="utf-8").read(), "sentinel\n")
-        self.assertEqual(open(artifact_path, "rb").read(), before_artifact)
+        self.assertEqual(_read_text(outside), "sentinel\n")
+        self.assertEqual(_read_bytes(artifact_path), before_artifact)
 
 
 class StrategyRecallCase(OutcomeFixture):
@@ -245,12 +262,19 @@ class StrategyRecallCase(OutcomeFixture):
                 "reasons": [],
             }
 
+        identifiers = {
+            "success_best": "out_" + ("1" * 64),
+            "success_weak": "out_" + ("2" * 64),
+            "failure": "out_" + ("3" * 64),
+            "irrelevant": "out_" + ("4" * 64),
+            "bad_head": "out_" + ("5" * 64),
+        }
         ledger = [
-            row("out_success_best", "verified_success", "Authentication token cache strategy", ["authentication", "token", "cache"], evidence_a),
-            row("out_success_weak", "verified_success", "Authentication fallback", ["authentication"], evidence_a),
-            row("out_failure", "verified_failure", "Avoid stale authentication token retries", ["authentication", "token"], evidence_b),
-            row("out_irrelevant", "verified_success", "Database migration", ["database", "migration"], evidence_a),
-            dict(row("out_bad_head", "verified_success", "Authentication malformed head", ["authentication"], evidence_a), source_head="--all"),
+            row(identifiers["success_best"], "verified_success", "Authentication token cache strategy", ["authentication", "token", "cache"], evidence_a),
+            row(identifiers["success_weak"], "verified_success", "Authentication fallback", ["authentication"], evidence_a),
+            row(identifiers["failure"], "verified_failure", "Avoid stale authentication token retries", ["authentication", "token"], evidence_b),
+            row(identifiers["irrelevant"], "verified_success", "Database migration", ["database", "migration"], evidence_a),
+            dict(row(identifiers["bad_head"], "verified_success", "Authentication malformed head", ["authentication"], evidence_a), source_head="--all"),
         ]
         project = os.path.join(self.root, ".kimiflow", "project")
         os.makedirs(project, exist_ok=True)
@@ -264,10 +288,35 @@ class StrategyRecallCase(OutcomeFixture):
             self.root, ["authentication", "token"], mode="feature"
         )
         self.assertEqual(result["count"], 2)
-        self.assertEqual([item["id"] for item in result["hits"]], ["out_success_best", "out_failure"])
+        self.assertEqual(
+            [item["id"] for item in result["hits"]],
+            [identifiers["success_best"], identifiers["failure"]],
+        )
         self.assertEqual(
             [item["classification"] for item in result["hits"]],
             ["verified_success", "verified_failure"],
+        )
+
+        poisoned = row(
+            "out_" + ("6" * 64),
+            "verified_success",
+            "Authentication fallback",
+            ["database"],
+            evidence_a,
+        )
+        store.atomic_write(
+            os.path.join(project, "STRATEGY-OUTCOMES.jsonl"),
+            json.dumps(poisoned, separators=(",", ":")) + "\n",
+            mode=0o600,
+        )
+        self.assertEqual(
+            outcomes.strategy_recall_json(self.root, ["database"], mode="feature")["hits"],
+            [],
+        )
+        store.atomic_write(
+            os.path.join(project, "STRATEGY-OUTCOMES.jsonl"),
+            "".join(json.dumps(item, separators=(",", ":")) + "\n" for item in ledger),
+            mode=0o600,
         )
 
         _write(os.path.join(self.root, "app.py"), "VALUE = 3\n")

@@ -8,7 +8,7 @@ files carry the iso_now nondeterminism."""
 import os
 import re
 
-from . import clock, contracts, recall_index, store, text, usage_metrics
+from . import clock, contracts, outcomes, recall_index, store, text, usage_metrics
 from .cli import die, resolve_root, usage
 
 # terms_json_from_query (Bash 1576-1580): split on runs of chars outside [:alnum:]_-
@@ -116,7 +116,7 @@ def jsonl_hits(path, terms, max_hits, fields):
     return out[:max_hits]
 
 
-def recall_json(root, query, max_hits, targeted=False):
+def recall_json(root, query, max_hits, targeted=False, strategies=False, mode=""):
     project = os.path.join(root, ".kimiflow", "project")
     memory = os.path.join(project, "MEMORY.md")
     user_memory = os.path.join(project, "USER.md")
@@ -187,9 +187,11 @@ def recall_json(root, query, max_hits, targeted=False):
         else:
             index_status = "unavailable"
 
+    strategy_source = outcomes.strategy_recall_json(root, terms, mode=mode) if strategies else None
+    strategy_n = strategy_source["count"] if strategy_source is not None else 0
     learn_n, fact_n, idx_n, hist_n = (
         len(learning_hits), len(fact_hits), len(index_hits), len(history_hits))
-    total = learn_n + fact_n + idx_n + hist_n
+    total = learn_n + fact_n + idx_n + hist_n + strategy_n
 
     reason_codes = []
     if targeted:
@@ -212,6 +214,8 @@ def recall_json(root, query, max_hits, targeted=False):
         reason_codes.append("fts_index_hits")
     if hist_n > 0:
         reason_codes.append("history_hits")
+    if strategy_n > 0:
+        reason_codes.append("strategy_outcome_hits")
     if total == 0:
         reason_codes.append("no_recall_hits")
 
@@ -228,6 +232,8 @@ def recall_json(root, query, max_hits, targeted=False):
         included_sources.append("RECALL.sqlite")
     if hist_n > 0:
         included_sources.append("RUN-HISTORY")
+    if strategy_n > 0:
+        included_sources.append("STRATEGY-OUTCOMES.jsonl")
 
     omitted_sources = []
     if memory_status == "omitted_targeted":
@@ -248,59 +254,65 @@ def recall_json(root, query, max_hits, targeted=False):
             {"source": "RECALL.sqlite", "reason": "targeted_recall"},
         ))
 
+    sources = {
+        "memory": {
+            "path": ".kimiflow/project/MEMORY.md",
+            "status": memory_status,
+            "tokens_estimate": memory_tokens,
+            "content": memory_content,
+        },
+        "user_profile": {
+            "path": ".kimiflow/project/USER.md",
+            "status": user_status,
+            "tokens_estimate": user_tokens,
+            "budget": user_budget,
+            "content": user_content,
+        },
+        "learnings": {
+            "path": ".kimiflow/project/LEARNINGS.jsonl",
+            "count": learn_n,
+            "hits": learning_hits,
+        },
+        "facts": {
+            "path": ".kimiflow/project/FACTS.jsonl",
+            "count": fact_n,
+            "hits": fact_hits,
+        },
+        "index": {
+            "path": ".kimiflow/project/RECALL.sqlite",
+            "status": index_status,
+            "count": idx_n,
+            "hits": index_hits,
+        },
+        "history": {
+            "path": ".kimiflow/project/RUN-HISTORY.json",
+            "status": "used" if hist_n > 0 else "available_no_hits",
+            "count": hist_n,
+            "hits": history_hits,
+        },
+    }
+    if strategy_source is not None:
+        sources["strategies"] = strategy_source
+    hit_counts = {
+        "learnings": learn_n,
+        "facts": fact_n,
+        "index": idx_n,
+        "history": hist_n,
+    }
+    if strategy_source is not None:
+        hit_counts["strategies"] = strategy_n
+    hit_counts["total"] = total
     return {
         "schema_version": 1,
         "query": query,
         "query_terms": terms,
         "token_budget": budget,
-        "sources": {
-            "memory": {
-                "path": ".kimiflow/project/MEMORY.md",
-                "status": memory_status,
-                "tokens_estimate": memory_tokens,
-                "content": memory_content,
-            },
-            "user_profile": {
-                "path": ".kimiflow/project/USER.md",
-                "status": user_status,
-                "tokens_estimate": user_tokens,
-                "budget": user_budget,
-                "content": user_content,
-            },
-            "learnings": {
-                "path": ".kimiflow/project/LEARNINGS.jsonl",
-                "count": learn_n,
-                "hits": learning_hits,
-            },
-            "facts": {
-                "path": ".kimiflow/project/FACTS.jsonl",
-                "count": fact_n,
-                "hits": fact_hits,
-            },
-            "index": {
-                "path": ".kimiflow/project/RECALL.sqlite",
-                "status": index_status,
-                "count": idx_n,
-                "hits": index_hits,
-            },
-            "history": {
-                "path": ".kimiflow/project/RUN-HISTORY.json",
-                "status": "used" if hist_n > 0 else "available_no_hits",
-                "count": hist_n,
-                "hits": history_hits,
-            },
-        },
+        "sources": sources,
         "explanation": {
             "reason_codes": reason_codes,
             "included_sources": included_sources,
             "omitted_sources": omitted_sources,
-            "hit_counts": {
-                "learnings": learn_n,
-                "facts": fact_n,
-                "index": idx_n,
-                "history": hist_n,
-                "total": total,
-            },
+            "hit_counts": hit_counts,
         },
         "omitted": omitted,
     }
@@ -332,6 +344,19 @@ def write_recall_markdown(path, obj):
     ]
     for item in _jq_or(obj.get("omitted"), []):
         parts.append("- %s\n" % item)
+    strategy_source = sources.get("strategies")
+    if isinstance(strategy_source, dict):
+        parts.append("\n## Strategy Outcomes\n\n")
+        hits = strategy_source.get("hits", [])
+        if not hits:
+            parts.append("- none\n")
+        else:
+            for hit in hits:
+                parts.append("- %s %s: %s\n" % (
+                    hit.get("classification", ""),
+                    hit.get("id", ""),
+                    hit.get("strategy", ""),
+                ))
     store.atomic_write(path, "".join(parts))
 
 
@@ -356,6 +381,7 @@ def run(argv):
     max_raw = "5"
     write_path = ""
     targeted = False
+    strategies = False
     i = 0
     while i < len(argv):
         arg = argv[i]
@@ -376,6 +402,8 @@ def run(argv):
             write_path = argv[i] if i < len(argv) else ""
         elif arg == "--targeted":
             targeted = True
+        elif arg == "--strategies":
+            strategies = True
         elif arg == "--pretty":
             pretty = True
         elif arg in ("--help", "-h"):
@@ -390,6 +418,7 @@ def run(argv):
         if not os.path.isfile(query_file):
             return die("query file not found: %s" % query_file, 2)
         query = _sed_read(query_file, 120)
+    mode = outcomes.mode_for_artifact(os.path.abspath(query_file)) if query_file else ""
     if not query:
         return die("recall requires --query or --query-file", 2)
     # Bash `case "$max" in ''|*[!0-9]*)`: reject the empty string AND any non-ASCII-digit.
@@ -397,7 +426,14 @@ def run(argv):
         return die("recall --max must be a number", 2)
     max_hits = int(max_raw)
 
-    obj = recall_json(root, query, max_hits, targeted=targeted)
+    obj = recall_json(
+        root,
+        query,
+        max_hits,
+        targeted=targeted,
+        strategies=strategies,
+        mode=mode,
+    )
 
     if write_path:
         if not write_path.startswith("/"):
@@ -407,6 +443,8 @@ def run(argv):
         usage_hits = (obj["sources"]["learnings"]["hits"]
                       + obj["sources"]["index"]["hits"]
                       + obj["sources"]["history"]["hits"])
+        if strategies:
+            usage_hits += obj["sources"]["strategies"]["hits"]
         usage_metrics.update_usage_metrics(root, usage_hits, "recall")
 
     contracts.json_print(obj, pretty)

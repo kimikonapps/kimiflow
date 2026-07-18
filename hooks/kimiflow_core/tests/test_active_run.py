@@ -157,11 +157,12 @@ class TestOutcomeEvaluation(unittest.TestCase):
                 "review-run) printf '%s\\n' '{\"status\":\"skipped\",\"written\":true}'; exit 0 ;;\n"
                 "verify-run) printf '%s\\n' 'LEARNING_REVIEW OPEN'; exit 0 ;;\n"
                 "evaluate-run)\n"
-                "  root=; run=; shift\n"
-                "  while [ \"$#\" -gt 0 ]; do case \"$1\" in --root) shift; root=$1 ;; --run) shift; run=$1 ;; esac; shift; done\n"
+                "  root=; run=; terminal=; shift\n"
+                "  while [ \"$#\" -gt 0 ]; do case \"$1\" in --root) shift; root=$1 ;; --run) shift; run=$1 ;; --terminal) shift; terminal=$1 ;; esac; shift; done\n"
                 "  if [ \"${KIMIFLOW_TEST_EVALUATE_WRITE:-0}\" = 1 ]; then mkdir -p \"$root/.kimiflow/project\"; printf partial > \"$root/.kimiflow/project/STRATEGY-OUTCOMES.jsonl\"; printf partial > \"$root/$run/OUTCOME-EVALUATION.json\"; fi\n"
                 "  if [ \"${KIMIFLOW_TEST_EVALUATE_FAIL:-0}\" = 1 ]; then exit 23; fi\n"
-                "  printf '%s\\n' '{\"status\":\"evaluated\",\"written\":true,\"evaluation\":{\"id\":\"out_test\",\"classification\":\"verified_success\",\"promotable\":true}}'; exit 0 ;;\n"
+                "  if [ \"${KIMIFLOW_TEST_EVALUATE_MALFORMED:-0}\" = 1 ]; then printf '%s\\n' '{\"status\":\"evaluated\",\"written\":false,\"evaluation\":{}}'; exit 0; fi\n"
+                "  printf '{\"status\":\"evaluated\",\"written\":true,\"evaluation\":{\"id\":\"out_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"terminal\":\"%s\",\"classification\":\"verified_success\",\"promotable\":true}}\\n' \"$terminal\"; exit 0 ;;\n"
                 "*) exit 2 ;;\n"
                 "esac\n"
             )
@@ -194,6 +195,12 @@ class TestOutcomeEvaluation(unittest.TestCase):
             self.assertIn("evaluate-run --root %s --run %s --terminal done --write" % (
                 self.repo, self.run_rel
             ), handle.read())
+
+    def test_finish_rejects_malformed_or_unwritten_evaluation(self):
+        with mock.patch.dict(os.environ, {"KIMIFLOW_TEST_EVALUATE_MALFORMED": "1"}):
+            rc, _ = run_main(["finish", "--root", self.repo, "--write"])
+        self.assertEqual(rc, 1)
+        self.assertTrue(os.path.isfile(active_run.active_file(self.repo)))
 
     def test_terminal_outcome_evaluation_is_best_effort(self):
         for command, expected in (("park", "parked"), ("fail", "failed"), ("abort", "aborted")):
@@ -1180,7 +1187,7 @@ class TestTerminalWorktreeRetirement(unittest.TestCase):
                 "#!/bin/sh\n"
                 "if [ \"$1\" = review-run ]; then printf '%s\\n' '{\"status\":\"skipped\"}'; exit 0; fi\n"
                 "if [ \"$1\" = verify-run ]; then printf '%s\\n' OPEN; exit 0; fi\n"
-                "if [ \"$1\" = evaluate-run ]; then printf '%s\\n' '{\"status\":\"evaluated\",\"evaluation\":{\"classification\":\"verified_success\"}}'; exit 0; fi\n"
+                "if [ \"$1\" = evaluate-run ]; then printf '%s\\n' '{\"status\":\"evaluated\",\"written\":true,\"evaluation\":{\"id\":\"out_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"terminal\":\"done\",\"classification\":\"verified_success\",\"promotable\":true}}'; exit 0; fi\n"
                 "exit 2\n"
             )
         os.chmod(router, 0o700)
@@ -1207,7 +1214,7 @@ class TestTerminalWorktreeRetirement(unittest.TestCase):
                 "#!/bin/sh\n"
                 "if [ \"$1\" = review-run ]; then printf '%s\\n' '{\"status\":\"skipped\"}'; exit 0; fi\n"
                 "if [ \"$1\" = verify-run ]; then printf '%s\\n' OPEN; exit 0; fi\n"
-                "if [ \"$1\" = evaluate-run ]; then printf '%s\\n' '{\"status\":\"evaluated\",\"evaluation\":{\"classification\":\"verified_success\"}}'; exit 0; fi\n"
+                "if [ \"$1\" = evaluate-run ]; then printf '%s\\n' '{\"status\":\"evaluated\",\"written\":true,\"evaluation\":{\"id\":\"out_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"terminal\":\"done\",\"classification\":\"verified_success\",\"promotable\":true}}'; exit 0; fi\n"
                 "exit 2\n"
             )
         os.chmod(router, 0o700)

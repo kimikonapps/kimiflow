@@ -210,6 +210,8 @@ The map is optional, local by default, and never blocks normal work when absent.
 The local Memory Router stores bounded project facts, decisions, standards, run history, and
 evidence-backed learnings. Promotion happens only after successful verification and source-freshness
 checks. Changed evidence supersedes stale learning instead of silently keeping it active.
+Completed runs also receive a local automatic outcome evaluation. Future matching runs see at most
+one verified success strategy and one evidenced failure strategy, both rechecked against current code.
 
 An Obsidian Vault is optional. Without it, project-local memory and every quality gate continue to
 work. With authenticated Vault MCP tools, Kimiflow can recall and export curated, non-private

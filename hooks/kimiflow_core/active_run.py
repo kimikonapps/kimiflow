@@ -1434,7 +1434,7 @@ def snapshot_finish(root, run_dir, snapshot):
         write_text(os.path.join(snapshot, "project.present"), "present\n")
     else:
         write_text(os.path.join(snapshot, "project.present"), "absent\n")
-    for name in ("LEARNING-REVIEW.md", "RUN-LIFECYCLE.json", "RUN-LIFECYCLE.md", "SESSION-OUTCOME.json"):
+    for name in ("LEARNING-REVIEW.md", "RUN-LIFECYCLE.json", "RUN-LIFECYCLE.md", "OUTCOME-EVALUATION.json", "SESSION-OUTCOME.json"):
         src = os.path.join(run_dir, name)
         present = os.path.join(snapshot, "run", "%s.present" % name)
         if os.path.isfile(src):
@@ -1459,7 +1459,7 @@ def restore_finish(root, run_dir, snapshot):
         shutil.copytree(os.path.join(snapshot, "project"), project)
     else:
         shutil.rmtree(project, ignore_errors=True)
-    for name in ("LEARNING-REVIEW.md", "RUN-LIFECYCLE.json", "RUN-LIFECYCLE.md", "SESSION-OUTCOME.json"):
+    for name in ("LEARNING-REVIEW.md", "RUN-LIFECYCLE.json", "RUN-LIFECYCLE.md", "OUTCOME-EVALUATION.json", "SESSION-OUTCOME.json"):
         dest = os.path.join(run_dir, name)
         if read_text(os.path.join(snapshot, "run", "%s.present" % name)).strip() == "present":
             shutil.copy2(os.path.join(snapshot, "run", name), dest)
@@ -1499,7 +1499,7 @@ def read_text(path):
         return ""
 
 
-def write_outcome(run_dir, outcome, reason, review, verify_line, run_descriptor=None):
+def write_outcome(run_dir, outcome, reason, review, verify_line, outcome_evaluation=None, run_descriptor=None):
     value = {
         "schema_version": 1,
         "outcome": outcome,
@@ -1507,6 +1507,7 @@ def write_outcome(run_dir, outcome, reason, review, verify_line, run_descriptor=
         "completed_at": iso_now(),
         "learning_review": review,
         "learning_verify": verify_line or None,
+        "outcome_evaluation": outcome_evaluation,
     }
     payload = json_pretty(value) + "\n"
     if run_descriptor is None:
@@ -1514,6 +1515,76 @@ def write_outcome(run_dir, outcome, reason, review, verify_line, run_descriptor=
     else:
         write_run_text(run_descriptor, "SESSION-OUTCOME.json", payload)
     return value
+
+
+def memory_router_path():
+    return os.environ.get("KIMIFLOW_MEMORY_ROUTER") or os.path.join(
+        os.path.abspath(os.path.dirname(__file__) + "/.."),
+        "memory-router.sh",
+    )
+
+
+def evaluate_terminal_outcome(router, root, run_rel, terminal):
+    if not (os.path.exists(router) and os.access(router, os.X_OK)):
+        return {"status": "error", "exit_code": 1, "reason": "memory_router_unavailable"}, 1, ""
+    proc = run_cmd([
+        router,
+        "evaluate-run",
+        "--root", root,
+        "--run", run_rel,
+        "--terminal", terminal,
+        "--write",
+    ])
+    if proc.returncode != 0:
+        return {
+            "status": "error",
+            "exit_code": proc.returncode or 1,
+            "reason": "outcome_evaluation_failed",
+        }, proc.returncode or 1, proc.stderr
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        payload = None
+    evaluation = payload.get("evaluation") if isinstance(payload, dict) else None
+    classification = evaluation.get("classification") if isinstance(evaluation, dict) else None
+    promotable = evaluation.get("promotable") if isinstance(evaluation, dict) else None
+    classification_matches_terminal = (
+        classification == "inconclusive"
+        or (terminal == "done" and classification == "verified_success")
+        or (terminal == "failed" and classification == "verified_failure")
+    )
+    valid_evaluation = (
+        isinstance(payload, dict)
+        and payload.get("status") == "evaluated"
+        and payload.get("written") is True
+        and isinstance(evaluation, dict)
+        and re.fullmatch(r"out_[0-9a-f]{64}", str(evaluation.get("id", ""))) is not None
+        and evaluation.get("terminal") == terminal
+        and classification in ("verified_success", "verified_failure", "inconclusive")
+        and classification_matches_terminal
+        and promotable is (classification in ("verified_success", "verified_failure"))
+    )
+    if not valid_evaluation:
+        return {
+            "status": "error",
+            "exit_code": 1,
+            "reason": "outcome_evaluation_malformed",
+        }, 1, ""
+    signals = evaluation.get("signals") if isinstance(evaluation.get("signals"), dict) else {}
+    economics = evaluation.get("economics") if isinstance(evaluation.get("economics"), dict) else {}
+    summary = {
+        "status": "evaluated",
+        "id": evaluation.get("id"),
+        "terminal": evaluation.get("terminal"),
+        "classification": classification,
+        "promotable": promotable,
+        "strategy_recall_hits": signals.get("strategy_recall_hits", 0),
+        "strategy_recall_used": signals.get("strategy_recall_used") is True,
+        "first_plan_success": signals.get("first_plan_success") is True,
+        "economics_result": economics.get("result"),
+        "net_estimated_tokens_saved": economics.get("net_estimated_tokens_saved"),
+    }
+    return summary, 0, ""
 
 
 def read_run_json(run_descriptor, name):
@@ -1653,7 +1724,7 @@ def cmd_finish(args):
     phase_gate = phase_reads.gate(root, run_dir, 7, active=load_active(root))
     if phase_gate.get("status") == "CLOSED":
         die("finish refused: phase-read gate closed (%s)" % phase_gate.get("detail", "unknown"), 1)
-    router = os.environ.get("KIMIFLOW_MEMORY_ROUTER") or os.path.join(os.path.abspath(os.path.dirname(__file__) + "/.."), "memory-router.sh")
+    router = memory_router_path()
     if not (os.path.exists(router) and os.access(router, os.X_OK)):
         die("memory router missing or not executable: %s" % router, 1)
     if opts["--write"]:
@@ -1680,6 +1751,19 @@ def cmd_finish(args):
                 restore_finish(root, run_dir, snapshot)
                 sys.stderr.write(verify + ("\n" if verify else ""))
                 return verify_proc.returncode
+            outcome_evaluation, evaluation_code, evaluation_stderr = evaluate_terminal_outcome(
+                router,
+                root,
+                run_rel,
+                "done",
+            )
+            if evaluation_code != 0:
+                restore_finish(root, run_dir, snapshot)
+                if evaluation_stderr:
+                    sys.stderr.write(evaluation_stderr)
+                    if not evaluation_stderr.endswith("\n"):
+                        sys.stderr.write("\n")
+                return evaluation_code
         finally:
             shutil.rmtree(snapshot, ignore_errors=True)
         with pinned_terminal_run(run_dir, load_active(root)) as pinned:
@@ -1689,6 +1773,7 @@ def cmd_finish(args):
                 "",
                 review,
                 verify,
+                outcome_evaluation,
                 run_descriptor=pinned["run_descriptor"],
             )
             update_terminal_state(pinned, "done", phase7_done=True)
@@ -1703,7 +1788,12 @@ def cmd_finish(args):
             retire_active_session(root, pinned, "done", run_rel)
         result_status = "finished"
     else:
-        outcome = {"schema_version": 1, "outcome": "preview", "learning_review": {"status": "preview", "written": False}}
+        outcome = {
+            "schema_version": 1,
+            "outcome": "preview",
+            "learning_review": {"status": "preview", "written": False},
+            "outcome_evaluation": {"status": "preview"},
+        }
         result_status = "preview"
     json_print({"status": result_status, "written": opts["--write"] is True, "run": run_rel, "outcome": outcome}, opts["--pretty"])
     return 0
@@ -1724,12 +1814,22 @@ def cmd_terminal(command, args):
     run_rel = status["run"]
     run_dir = resolve_run_dir(root, run_rel)
     ensure_terminal_run_path(run_dir, load_active(root))
+    if opts["--write"]:
+        outcome_evaluation, _, _ = evaluate_terminal_outcome(
+            memory_router_path(),
+            root,
+            run_rel,
+            outcome,
+        )
+    else:
+        outcome_evaluation = {"status": "preview"}
     outcome_json = {
         "schema_version": 1,
         "outcome": outcome,
         "reason": opts["--reason"],
         "completed_at": iso_now(),
         "learning_review": {"status": "not_promoted", "reason": "session_not_finished"},
+        "outcome_evaluation": outcome_evaluation,
     }
     if opts["--write"]:
         with pinned_terminal_run(run_dir, load_active(root)) as pinned:

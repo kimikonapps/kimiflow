@@ -938,13 +938,14 @@ curation. Invoke from the installed plugin root (Codex: set `KIMIFLOW_HOST=codex
 
 ```text
 memory-router.sh status [--root <path>] [--pretty]
-memory-router.sh recall --query <text>|--query-file <path> [--max <n>] [--write <path>]
+memory-router.sh recall --query <text>|--query-file <path> [--strategies] [--max <n>] [--write <path>]
 memory-router.sh history [--query <text>|--query-file <path>] [--max <n>] [--write]
 memory-router.sh metrics [--global] [--global-purge]
 memory-router.sh classify --input <path>|--text <text>
 memory-router.sh record --summary <text> --topic <topic> --evidence <ref>...
 memory-router.sh review-run --run <path> [--write] [--skip <reason>]
 memory-router.sh verify-run --run <path>
+memory-router.sh evaluate-run --run <path> --terminal <done|failed|aborted|parked> [--write]
 memory-router.sh curate [--write]
 memory-router.sh index [--write]
 memory-router.sh consolidate [--write]
@@ -964,6 +965,24 @@ rows to `LEARNINGS.jsonl`, refreshes bounded `MEMORY.md`+`MEMORY-INDEX.json`+opt
 pending/approved/applied/rejected counts. Then run `memory-router.sh verify-run --run .kimiflow/<slug>`;
 **`CLOSED` blocks the run from being marked done.** Trivial runs may use `review-run --write --skip "<reason>"`,
 but the reason must be written to `LEARNING-REVIEW.md` and verified. Summaries follow the user's language.
+
+**Automatic outcome and strategy loop:** Phase 3 records exact-one `Strategy: <12–240 safe one-line
+characters>` plus `Strategy evidence: <out_<64 lowercase hex>|none>`. Phase 6 keeps one exact receipt:
+`<!-- kimiflow:verification outcome=<passed|failed> criteria=<passed|failed|not_run> regression=<passed|failed|not_run> -->`. `active-run.sh finish --write` automatically runs `evaluate-run` after
+learning verification inside the same rollback boundary; `park|fail|abort` evaluate best-effort and never add
+a user stop. Every terminal run gets `.kimiflow/<slug>/OUTCOME-EVALUATION.json`. Only a fully verified `done`
+run becomes `verified_success`; `verified_failure` additionally requires terminal `failed` plus an exact failed
+verification receipt or BLOCKER/HIGH in the latest numeric code-review finding. Abort, park, unsafe/missing
+strategy text and incomplete/stale evidence remain `inconclusive`.
+
+Promotable rows are deduplicated by run in mode-0600
+`.kimiflow/project/STRATEGY-OUTCOMES.jsonl`; writes to the artifact and ledger roll back as one pair. Rows contain
+only bounded strategy text, task terms, outcome signals, source/evidence fingerprints, current Git head/changed
+paths and existing economics — never transcript or secret values. `recall --strategies` adds
+`sources.strategies` to the normal `RECALL.json`, at most one verified success and one verified failure. It
+omits rows when evidence fingerprints changed, the stored Git object/path grammar is invalid, or any affected
+path drifted/turned dirty. Phase 2 uses this flag in the same broad or exactly-once targeted call, so direct
+Claude, direct Codex and the optional terminal controller share one local, token-bounded strategy context.
 
 **Learning quality gate:** `review-run --write` fails closed before writing when a candidate is too short,
 generic, missing verified evidence, a project-rule answer without a rule/convention signal, a pitfall without an

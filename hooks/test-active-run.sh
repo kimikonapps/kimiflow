@@ -62,11 +62,12 @@ case "${1:-}" in
     printf 'LEARNING_REVIEW\tOPEN\tstatus=recorded\tfreshness=current\tpath=.kimiflow/demo/LEARNING-REVIEW.md\n'
     ;;
   evaluate-run)
-    root=""; run=""
+    root=""; run=""; terminal=""
     while [ "$#" -gt 0 ]; do
       case "$1" in
         --root) shift; root="${1:-}" ;;
         --run) shift; run="${1:-}" ;;
+        --terminal) shift; terminal="${1:-}" ;;
       esac
       shift || true
     done
@@ -79,7 +80,10 @@ case "${1:-}" in
       printf 'synthetic outcome evaluation failure\n' >&2
       exit 23
     fi
-    printf '{"schema_version":1,"status":"evaluated","written":true,"evaluation":{"id":"out_test","classification":"verified_success","promotable":true}}\n'
+    classification="inconclusive"; promotable="false"
+    if [ "$terminal" = "done" ]; then classification="verified_success"; promotable="true"; fi
+    if [ "$terminal" = "failed" ]; then classification="verified_failure"; promotable="true"; fi
+    printf '{"schema_version":1,"status":"evaluated","written":true,"evaluation":{"id":"out_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","terminal":"%s","classification":"%s","promotable":%s}}\n' "$terminal" "$classification" "$promotable"
     ;;
   *)
     printf 'fake-memory-router: unsupported command %s\n' "${1:-}" >&2

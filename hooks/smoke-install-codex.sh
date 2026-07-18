@@ -153,6 +153,16 @@ grep -q 'frontend-quality-gate.sh' "$SKILL" && ok "Codex wrapper maps frontend q
 if [ -x "$ROOT/hooks/lsp-diagnostics.sh" ] && bash -n "$ROOT/hooks/lsp-diagnostics.sh" 2>/dev/null; then ok "local diagnostics helper ok"; else bad "local diagnostics helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-lsp-diagnostics.sh" ] && bash -n "$ROOT/hooks/test-lsp-diagnostics.sh" 2>/dev/null; then ok "local diagnostics test ok"; else bad "local diagnostics test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/memory-router.sh" ] && bash -n "$ROOT/hooks/memory-router.sh" 2>/dev/null; then ok "memory router helper ok"; else bad "memory router helper missing/not-exec/bad"; fi
+if [ -f "$ROOT/hooks/memory_router/outcomes.py" ] \
+  && "$ROOT/hooks/memory-router.sh" evaluate-run --help >/dev/null 2>&1 \
+  && grep -q -- '--strategies' "$ROOT/phases/phase-2-understand.md" \
+  && grep -q 'Strategy evidence:' "$ROOT/phases/phase-3-plan.md" \
+  && grep -q 'kimiflow:verification outcome=' "$ROOT/phases/phase-6-verify.md" \
+  && grep -q 'OUTCOME-EVALUATION.json' "$ROOT/phases/phase-7-review-commit.md"; then
+  ok "automatic strategy outcome contract"
+else
+  bad "automatic strategy outcome contract incomplete"
+fi
 if [ -x "$ROOT/hooks/test-memory-router-parity.sh" ] && bash -n "$ROOT/hooks/test-memory-router-parity.sh" 2>/dev/null; then ok "memory router test ok"; else bad "memory router test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/vault-mcp-setup.sh" ] && bash -n "$ROOT/hooks/vault-mcp-setup.sh" 2>/dev/null; then ok "vault MCP setup helper ok"; else bad "vault MCP setup helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-vault-mcp-setup.sh" ] && bash -n "$ROOT/hooks/test-vault-mcp-setup.sh" 2>/dev/null; then ok "vault MCP setup test ok"; else bad "vault MCP setup test missing/not-exec/bad"; fi
@@ -217,7 +227,7 @@ grep -Fq 'Explicit prior-work cue override' "$ROOT/phases/phase-2-understand.md"
   && grep -Fq 'Explicit prior-work cue override' "$ROOT/reference.md" \
   && grep -Fq 'prior-work cue' "$SKILL" \
   && ok "canonical prior-fix cue override reaches Codex" || bad "canonical prior-fix cue override missing in Codex"
-grep -Fq 'MR recall --targeted --query-file <PROBLEM.md> --max 5 --write .kimiflow/<slug>/RECALL.md' "$ROOT/phases/phase-2-understand.md" \
+grep -Fq 'MR recall --targeted --strategies --query-file <PROBLEM.md> --max 5 --write .kimiflow/<slug>/RECALL.md' "$ROOT/phases/phase-2-understand.md" \
   && grep -Fq 'replaces the default broad recall' "$ROOT/reference.md" \
   && grep -Fq 'continues without a user question' "$ROOT/reference.md" \
   && ok "canonical prior-fix recall is bounded and non-interactive" || bad "canonical prior-fix recall is broad or interactive"

@@ -383,6 +383,26 @@ class RecallRunCase(unittest.TestCase):
         strategy_recall.assert_called_once_with(self.root, obj["query_terms"], mode="")
         self.assertIn("## Strategy Outcomes", _read(os.path.join(self.root, "RECALL.md")))
 
+    def test_strategies_infers_mode_from_query_artifact_state(self):
+        run_dir = os.path.join(self.root, ".kimiflow", "demo")
+        os.makedirs(run_dir)
+        query = os.path.join(run_dir, "INTENT.md")
+        with open(query, "w", encoding="utf-8") as fh:
+            fh.write("authentication strategy\n")
+        with open(os.path.join(run_dir, "STATE.md"), "w", encoding="utf-8") as fh:
+            fh.write("Mode: feature\n")
+        with mock.patch(
+            "memory_router.recall.outcomes.strategy_recall_json",
+            return_value={"path": "x", "status": "missing", "count": 0, "hits": []},
+        ) as strategy_recall:
+            code, _, _ = self.run_recall(["--query-file", query, "--strategies"])
+        self.assertEqual(code, 0)
+        strategy_recall.assert_called_once_with(
+            self.root,
+            ["authentication", "strategy"],
+            mode="feature",
+        )
+
     def test_write_creates_md_json_and_usage(self):
         with open(os.path.join(self.project, "LEARNINGS.jsonl"), "w", encoding="utf-8") as fh:
             fh.write('{"id":"L1","status":"current","topic":"auth","summary":"auth flow","evidence":["src/a.py"]}\n')
