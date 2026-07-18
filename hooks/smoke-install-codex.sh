@@ -337,6 +337,21 @@ if test_gate_other_passes "$tmp1"; then ok "active test gate ignores unrelated C
 
 tmp3="$(mktemp -d)"
 ( cd "$tmp3" && git init -q )
+mkdir -p "$tmp3/.kimiflow/demo"
+cat > "$tmp3/.kimiflow/demo/STATE.md" <<'EOF'
+Flow schema: 4
+Status: active
+Recovery: clean
+Affected files: README.md
+Phase 0: done
+Phase 1: done
+Phase 2: done
+Phase 3: done
+Phase 4: done
+Phase 5: in-progress
+Phase 6: open
+Phase 7: open
+EOF
 active_phase_out="$(bash "$ACTIVE_HOOK" start --root "$tmp3" --run .kimiflow/demo --write 2>/dev/null || true)"
 if printf '%s\n' "$active_phase_out" | jq -e '.phase_reads_required == true' >/dev/null 2>&1; then
   ok "active session wrapper enables phase reads from plugin root"
@@ -354,6 +369,12 @@ if printf '%s\n' "$phase_gate" | grep -q $'PHASE_READ_GATE\tCLOSED' \
   ok "active session wrapper phase-read gate closes on missing read"
 else
   bad "active session wrapper phase-read gate did not close on missing read"
+fi
+next_action="$(bash "$ACTIVE_HOOK" next-action --root "$tmp3" 2>/dev/null || true)"
+if printf '%s\n' "$next_action" | jq -e '.graph_status == "ready" and .current_node == "phase_5" and (.action | length > 0)' >/dev/null 2>&1; then
+  ok "active session wrapper resolves installed transition graph"
+else
+  bad "active session wrapper did not resolve installed transition graph"
 fi
 rm -rf "$tmp1" "$tmp2" "$tmp3" "$tmp_home"
 

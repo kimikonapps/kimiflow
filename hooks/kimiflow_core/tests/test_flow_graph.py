@@ -112,6 +112,19 @@ class TestFlowGraph(unittest.TestCase):
         with self.assertRaises(flow_graph.FlowGraphError):
             flow_graph.load_graph()
 
+        invalid_action = flow_contract()
+        invalid_action["transitions"][0]["action"] = "NOT-VALID"
+        self.write_manifest(invalid_action)
+        with self.assertRaises(flow_graph.FlowGraphError):
+            flow_graph.load_graph()
+
+        fractional = {"schema_version": 2, "phases": phase_rows(), "flow": flow_contract()}
+        fractional["phases"][1]["id"] = 1.5
+        with open(os.path.join(self.root, "phases", "PHASES.json"), "w", encoding="utf-8") as handle:
+            json.dump(fractional, handle)
+        with self.assertRaises(flow_graph.FlowGraphError):
+            flow_graph.load_graph()
+
     def test_resume_resolves_phase_and_invalid_state_fails_closed(self):
         result = self.resolve()
         self.assertEqual(
@@ -150,6 +163,10 @@ class TestFlowGraph(unittest.TestCase):
         self.write_state(current=5)
         items = self.resolve(counts={"pending": 1, "built": 1, "rejected": 1, "open": 3})
         self.assertEqual((items["action"], items["target_node"]), ("rework_rejected_items", "phase_5"))
+
+        self.write_state(current=2)
+        early_item = self.resolve(counts={"pending": 1, "built": 0, "rejected": 0, "open": 1})
+        self.assertEqual((early_item["action"], early_item["target_node"]), ("run_phase", "phase_2"))
 
     def test_legacy_manifest_preserves_coarse_action(self):
         self.write_manifest(schema_version=1)

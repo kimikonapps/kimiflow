@@ -461,10 +461,20 @@ run_active drop-item --id item_001 --reason "integration test complete" --write 
 sed -i.bak 's/Phase 5: in-progress/Phase 5: done/; s/Phase 6: open/Phase 6: in-progress/' "$REPO/.kimiflow/demo/STATE.md" && rm "$REPO/.kimiflow/demo/STATE.md.bak"
 out="$(run_active next-action --event verification_failed)"
 assert_jq "$out" '.current_node == "phase_6" and .action == "recover_build" and .target_node == "phase_5"' "next_action_routes_verification_failure"
+out="$(run_active next-action)"
+assert_jq "$out" '.current_node == "phase_6" and .action == "run_phase" and .target_node == "phase_6"' "next_action_cli_resolves_same_transition_as_hooks"
 out="$(printf '{"cwd":"%s","session_id":"owner-session"}' "$REPO" | KIMIFLOW_HOST=codex KIMIFLOW_PLUGIN_ROOT="$PLUGIN" "$SCRIPT" prompt-context)"
 assert_jq "$out" '(.hookSpecificOutput.additionalContext | contains("run_phase")) and (.hookSpecificOutput.additionalContext | contains("phase_6"))' "prompt_context_uses_exact_transition"
 out="$(printf '{"cwd":"%s","session_id":"owner-session"}' "$REPO" | KIMIFLOW_HOST=codex KIMIFLOW_PLUGIN_ROOT="$PLUGIN" "$SCRIPT" stop-gate)"
 assert_jq "$out" '(.reason | contains("run_phase")) and (.reason | contains("phase_6"))' "next_action_cli_and_hooks_share_transition"
+printf 'two\n' > "$REPO/src/a.txt"
+( cd "$REPO" && git add src/a.txt && git commit -q -m stale-flow-fixture )
+out="$(printf '{"cwd":"%s","session_id":"owner-session"}' "$REPO" | KIMIFLOW_HOST=codex KIMIFLOW_PLUGIN_ROOT="$PLUGIN" "$SCRIPT" prompt-context)"
+prompt_revalidation_count="$(printf '%s\n' "$out" | jq -r '.hookSpecificOutput.additionalContext' | grep -o 'revalidate' | wc -l | tr -d ' ')"
+[ "$prompt_revalidation_count" -eq 1 ] && pass "schema4_stale_prompt_has_one_revalidation_instruction" || fail "schema4_stale_prompt_has_one_revalidation_instruction"
+out="$(printf '{"cwd":"%s","session_id":"owner-session"}' "$REPO" | KIMIFLOW_HOST=codex KIMIFLOW_PLUGIN_ROOT="$PLUGIN" "$SCRIPT" stop-gate)"
+stop_revalidation_count="$(printf '%s\n' "$out" | jq -r '.reason' | grep -o 'revalidate' | wc -l | tr -d ' ')"
+[ "$stop_revalidation_count" -eq 1 ] && pass "schema4_stale_stop_has_one_revalidation_instruction" || fail "schema4_stale_stop_has_one_revalidation_instruction"
 
 reset_repo
 run_active start --run .kimiflow/demo --write >/dev/null

@@ -14,7 +14,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 
-from . import phase_reads, state, workspace_preflight
+from . import flow_graph, phase_reads, state, workspace_preflight
 from .atomic import atomic_write
 
 try:
@@ -28,6 +28,7 @@ USAGE = """#!/usr/bin/env bash
 #
 # Orchestrator commands:
 #   active-run.sh status [--root <path>] [--pretty]
+#   active-run.sh next-action [--root <path>] [--event <event>] [--pretty]
 #   active-run.sh start --run <path> [--root <path>] [--mode <mode>] [--scope <scope>] [--host <host>] [--write] [--pretty]
 #   active-run.sh conflict-check [--root <path>] [--path <path>]... [--pretty]
 #   active-run.sh append-item --title <text> [--kind <kind>] [--root <path>] [--write] [--pretty]
@@ -364,7 +365,7 @@ def same_session(left, right):
     return bool(left and right and left.get("host") == right.get("host") and left.get("session_id") == right.get("session_id"))
 
 
-def status_json(root):
+def status_json(root, event=""):
     active = load_active(root)
     if not (active.get("present") is True and active.get("status") != "invalid"):
         return {
@@ -389,6 +390,14 @@ def status_json(root):
     counts = item_counts(read_items(items))
     status = active.get("status", "active")
     phase_required = phase_reads.phase_reads_required(root, run_dir, active=active)
+    legacy_next_action = flow_graph.legacy_action(stale, counts)
+    transition = flow_graph.resolve_transition(
+        os.path.dirname(state),
+        active=active,
+        stale=stale,
+        item_counts=counts,
+        event=event,
+    )
     result = {
         "schema_version": 1,
         "present": True,
@@ -410,14 +419,10 @@ def status_json(root):
         "awaiting_user": active.get("awaiting_user") is True,
         "awaiting_kind": active.get("awaiting_kind") if active.get("awaiting_user") is True else None,
         "terminal": status in ("done", "parked", "failed", "aborted"),
-        "next_action": (
-            "revalidate_then_refresh_baseline"
-            if stale.get("risk") in ("needs_revalidation", "unknown")
-            else "resolve_or_accept_items"
-            if counts["open"] > 0
-            else "finish_or_continue"
-        ),
+        "next_action": legacy_next_action,
     }
+    if transition.get("graph_status") != "legacy":
+        result["transition"] = transition
     if phase_required:
         result["phase_reads_required"] = True
     for key in ("workspace_wait_used_at", "workspace_disposition_head", "frontend_quality_start_head"):
@@ -1068,6 +1073,40 @@ def cmd_status(args):
     need_jq()
     root = resolve_root(opts["--root"], strict=False)
     json_print(status_json(root), opts["--pretty"])
+
+
+def cmd_next_action(args):
+    opts = parse_options(args, "next-action", {"--root": "", "--event": "", "--pretty": False})
+    need_jq()
+    root = resolve_root(opts["--root"], strict=False)
+    status = status_json(root, event=opts["--event"])
+    if status.get("present") is True:
+        transition = status.get("transition")
+        if not isinstance(transition, dict):
+            run_dir = resolve_run_dir(root, status["run"])
+            transition = flow_graph.resolve_transition(
+                run_dir,
+                active=load_active(root),
+                stale=status.get("stale"),
+                item_counts=status.get("item_counts"),
+                event=opts["--event"],
+            )
+    else:
+        transition = {
+            "schema_version": 1,
+            "graph_status": "no_active_run",
+            "graph_schema_version": None,
+            "event": opts["--event"] or "resume",
+            "current_node": None,
+            "action": "none",
+            "target_node": None,
+            "reason": "no_active_run",
+            "current_phase": None,
+            "current_file": None,
+            "target_phase": None,
+            "target_file": None,
+        }
+    json_print(transition, opts["--pretty"])
 
 
 def cmd_start(args):
@@ -1841,6 +1880,18 @@ def hook_root(input_text, data=None):
     return resolve_root(cwd or os.getcwd(), strict=False)
 
 
+def transition_summary(transition):
+    if not isinstance(transition, dict):
+        return "unavailable"
+    action = str(transition.get("action") or "none")
+    current = str(transition.get("current_node") or "unknown")
+    target = str(transition.get("target_node") or "unknown")
+    detail = "%s at %s -> %s" % (action, current, target)
+    if transition.get("target_file"):
+        detail += " (%s)" % transition["target_file"]
+    return detail
+
+
 def hook_owner_relation(status, data):
     owner = valid_owner(status.get("owner"))
     caller = hook_session_identity(data)
@@ -1904,6 +1955,7 @@ def cmd_prompt_context():
             resumed.pop(key, None)
         resumed["updated_at"] = iso_now()
         write_active(root, resumed)
+        status = status_json(root)
     run = status["run"]
     stale = status["stale_risk"]
     open_count = status["item_counts"]["open"]
@@ -1912,7 +1964,13 @@ def cmd_prompt_context():
         "Do not route follow-up fixes/features to another skill. Before editing, append or update run items with hooks/active-run.sh append-item/mark-built/mark-accepted/mark-rejected/drop-item. "
         "Open item count: %s. Finish only through hooks/active-run.sh finish --write, or park/fail/abort with a reason." % (run, open_count)
     )
-    if stale in ("needs_revalidation", "unknown"):
+    if isinstance(status.get("transition"), dict):
+        context += " Exact next action: %s." % transition_summary(status["transition"])
+    exact_revalidation = (
+        isinstance(status.get("transition"), dict)
+        and status["transition"].get("action") == "revalidate_then_refresh_baseline"
+    )
+    if stale in ("needs_revalidation", "unknown") and not exact_revalidation:
         context += " Active-session freshness is %s; revalidate the plan/code first, then run hooks/active-run.sh refresh-baseline --write before finishing." % stale
     sys.stdout.write(json_pretty({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": context}}) + "\n")
     return 0
@@ -1936,11 +1994,21 @@ def cmd_stop_gate():
         # The orchestrator is legitimately waiting on a user answer at an engine gate
         # (set via await-user); let the turn end instead of blocking the question.
         return 0
-    reason = (
-        "kimiflow active-session gate: %s is still open. Open items: %s. Continue the Kimiflow loop, or close it mechanically with hooks/active-run.sh finish --write, park --write --reason <text>, fail --write --reason <text>, or abort --write --reason <text>."
-        % (status["run"], status["item_counts"]["open"])
+    if isinstance(status.get("transition"), dict):
+        reason = (
+            "kimiflow active-session gate: %s is still open. Open items: %s. Exact next action: %s. Continue that action, or close it mechanically with hooks/active-run.sh finish --write, park --write --reason <text>, fail --write --reason <text>, or abort --write --reason <text>."
+            % (status["run"], status["item_counts"]["open"], transition_summary(status["transition"]))
+        )
+    else:
+        reason = (
+            "kimiflow active-session gate: %s is still open. Open items: %s. Continue the Kimiflow loop, or close it mechanically with hooks/active-run.sh finish --write, park --write --reason <text>, fail --write --reason <text>, or abort --write --reason <text>."
+            % (status["run"], status["item_counts"]["open"])
+        )
+    exact_revalidation = (
+        isinstance(status.get("transition"), dict)
+        and status["transition"].get("action") == "revalidate_then_refresh_baseline"
     )
-    if status["stale_risk"] in ("needs_revalidation", "unknown"):
+    if status["stale_risk"] in ("needs_revalidation", "unknown") and not exact_revalidation:
         reason += " Active-session freshness is %s, so revalidate and run hooks/active-run.sh refresh-baseline --write before finishing." % status["stale_risk"]
     sys.stdout.write(json_pretty({"decision": "block", "reason": reason}) + "\n")
     return 0
@@ -1955,6 +2023,8 @@ def main(argv=None):
     try:
         if command == "status":
             cmd_status(args)
+        elif command == "next-action":
+            cmd_next_action(args)
         elif command == "start":
             cmd_start(args)
         elif command == "conflict-check":

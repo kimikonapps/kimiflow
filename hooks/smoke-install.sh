@@ -276,6 +276,21 @@ rm -rf "$tmp1" "$tmp2"
 echo "== phase-read enforcement (consumer-shaped scratch project) =="
 consumer="$(mktemp -d)"
 ( cd "$consumer" && git init -q )
+mkdir -p "$consumer/.kimiflow/demo"
+cat > "$consumer/.kimiflow/demo/STATE.md" <<'EOF'
+Flow schema: 4
+Status: active
+Recovery: clean
+Affected files: README.md
+Phase 0: done
+Phase 1: done
+Phase 2: done
+Phase 3: done
+Phase 4: done
+Phase 5: in-progress
+Phase 6: open
+Phase 7: open
+EOF
 active_out="$(KIMIFLOW_PLUGIN_ROOT="$ROOT" "$ROOT/hooks/active-run.sh" start --root "$consumer" --run .kimiflow/demo --write 2>/dev/null || true)"
 if printf '%s\n' "$active_out" | jq -e '.phase_reads_required == true' >/dev/null 2>&1; then
   ok "active-run start enables phase reads from plugin root"
@@ -293,6 +308,12 @@ if printf '%s\n' "$phase_gate" | grep -q $'PHASE_READ_GATE\tCLOSED' \
   ok "phase-read gate closes on missing consumer read"
 else
   bad "phase-read gate did not close on missing consumer read"
+fi
+next_action="$(KIMIFLOW_PLUGIN_ROOT="$ROOT" "$ROOT/hooks/active-run.sh" next-action --root "$consumer" 2>/dev/null || true)"
+if printf '%s\n' "$next_action" | jq -e '.graph_status == "ready" and .current_node == "phase_5" and (.action | length > 0)' >/dev/null 2>&1; then
+  ok "active-run resolves installed transition graph"
+else
+  bad "active-run did not resolve installed transition graph"
 fi
 rm -rf "$consumer"
 

@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "phases": [
     {
       "id": 0,
@@ -41,5 +41,31 @@
       "name": "review-commit",
       "file": "phases/phase-7-review-commit.md"
     }
-  ]
+  ],
+  "flow": {
+    "schema_version": 1,
+    "terminal_node": "done",
+    "guards": [
+      {"condition": "awaiting_user", "action": "wait_for_material_decision", "target": "current", "blocks_events": true},
+      {"condition": "stale", "action": "revalidate_then_refresh_baseline", "target": "current", "blocks_events": true},
+      {"condition": "recovery_plan", "action": "recover_plan_strategy", "target": "phase_2", "blocks_events": false},
+      {"condition": "recovery_code", "action": "recover_build", "target": "phase_5", "blocks_events": false},
+      {"condition": "items_rejected", "action": "rework_rejected_items", "target": "phase_5", "blocks_events": false},
+      {"condition": "items_pending", "action": "build_pending_items", "target": "phase_5", "blocks_events": false},
+      {"condition": "items_built", "action": "verify_built_items", "target": "phase_6", "blocks_events": false}
+    ],
+    "transitions": [
+      {"from": "phase_0", "event": "phase_done", "to": "phase_1", "action": "run_phase"},
+      {"from": "phase_1", "event": "phase_done", "to": "phase_2", "action": "run_phase"},
+      {"from": "phase_2", "event": "phase_done", "to": "phase_3", "action": "run_phase"},
+      {"from": "phase_3", "event": "phase_done", "to": "phase_4", "action": "run_phase"},
+      {"from": "phase_4", "event": "phase_done", "to": "phase_5", "action": "run_phase"},
+      {"from": "phase_5", "event": "phase_done", "to": "phase_6", "action": "run_phase"},
+      {"from": "phase_6", "event": "phase_done", "to": "phase_7", "action": "run_phase"},
+      {"from": "phase_7", "event": "phase_done", "to": "done", "action": "finish_run"},
+      {"from": "phase_4", "event": "plan_recovery", "to": "phase_2", "action": "recover_plan_strategy"},
+      {"from": "phase_6", "event": "verification_failed", "to": "phase_5", "action": "recover_build"},
+      {"from": "phase_7", "event": "review_failed", "to": "phase_5", "action": "recover_build"}
+    ]
+  }
 }

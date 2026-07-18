@@ -206,6 +206,8 @@ Commands:
 
 ```bash
 hooks/active-run.sh status --pretty
+hooks/active-run.sh next-action --pretty
+hooks/active-run.sh next-action --event verification_failed --pretty
 hooks/active-run.sh start --run .kimiflow/<slug> --mode feature --scope small --write
 hooks/active-run.sh conflict-check --path src/one.ts --path src/two.ts --pretty
 hooks/active-run.sh phase-read --run .kimiflow/<slug> --phase 0 --file phases/phase-0-setup.md --write
@@ -229,9 +231,17 @@ the phase file named in `phases/PHASES.json` on entry to each phase and records 
 the next boundary that checks it: clarify checks through Phase 1, plan-blocker through Phase 4, and `finish` through
 Phase 7. Legacy runs without the marker stay open on the phase-read gate.
 
+`phases/PHASES.json` schema 2 also carries Kimiflow's bounded transition graph. `next-action` derives one
+read-only transition from the durable run state; `--event phase_done|plan_recovery|verification_failed|review_failed`
+routes an observed gate result through an explicit edge. Awaiting-user and stale guards block event advancement;
+plan/code recovery and, once build has been reached, rejected/pending/built items route to the owning phase. Invalid graph/state combinations
+fail closed as `repair_transition_graph` or `repair_state`. Schema-1 manifests and runs before Flow schema 4 return
+`graph_status=legacy` and retain the old coarse action. The existing scalar `status.next_action` is unchanged;
+the exact result is additive at `status.transition`.
+
 **Prompt behavior:** the `UserPromptSubmit` hook calls `active-run.sh prompt-context`. In the owner session it
 injects a small reminder to keep the follow-up inside Kimiflow unless the user explicitly exits/parks/fails/
-aborts/switches. Other Codex or Claude sessions are not adopted into the run: they may read, answer, analyze,
+aborts/switches, plus the same exact action/node returned by `next-action`. Other Codex or Claude sessions are not adopted into the run: they may read, answer, analyze,
 and plan normally, and receive only a compact advisory to run `conflict-check` before shared-checkout edits.
 The hook does not store the raw prompt text.
 
@@ -239,7 +249,7 @@ The hook does not store the raw prompt text.
 host/session identity owns the non-terminal active run, unless the stop is already a hook continuation. Other
 sessions and legacy ownerless runs always pass Stop so an answer can never be replaced by another run's gate.
 The owner model must continue the Kimiflow loop or close it mechanically with `finish`, `park`, `fail`, or
-`abort`. While an active run exists, the separate red-test Stop gate uses the same owner relation and also
+`abort`; the block reason names the exact action/node instead of asking for an unspecified additional run. While an active run exists, the separate red-test Stop gate uses the same owner relation and also
 no-ops for other or owner-unknown sessions.
 
 **Parallel writes:** `conflict-check` compares each intended path with the active run's declared affected paths.

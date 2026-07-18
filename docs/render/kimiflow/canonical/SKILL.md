@@ -60,7 +60,7 @@ You are the **orchestrator**. Run the phases as a state machine, keep only essen
 
 ## Phase Files (on-demand)
 
-Phase detail is loaded only when entering that phase. For post-R2 runs, `hooks/active-run.sh start --run .kimiflow/<slug> --write` marks `phase_reads_required: true`; read `phases/PHASES.json`, read the phase file, then record it with `hooks/active-run.sh phase-read --run .kimiflow/<slug> --phase <N> --file phases/<file>.md --write` before crossing the next gate boundary. `clarify-gate.sh` checks through Phase 1, `plan-blocker-gate.sh` through Phase 4, and `finish --write` through Phase 7.
+Phase detail is loaded only when entering that phase. For post-R2 runs, `hooks/active-run.sh start --run .kimiflow/<slug> --write` marks `phase_reads_required: true`; read `phases/PHASES.json`, read the phase file, then record it with `hooks/active-run.sh phase-read --run .kimiflow/<slug> --phase <N> --file phases/<file>.md --write` before crossing the next gate boundary. `clarify-gate.sh` checks through Phase 1, `plan-blocker-gate.sh` through Phase 4, and `finish --write` through Phase 7. Resume via `active-run.sh next-action`.
 
 | Phase | File | Always-loaded boundary cues |
 |---|---|---|
