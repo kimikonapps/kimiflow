@@ -127,6 +127,54 @@ EOF
   done
 }
 
+write_flow_manifest() {
+  mkdir -p "$PLUGIN/phases"
+  cat > "$PLUGIN/phases/PHASES.json" <<'EOF'
+{
+  "schema_version": 2,
+  "phases": [
+    {"id": 0, "name": "p0", "file": "phases/phase-0.md"},
+    {"id": 1, "name": "p1", "file": "phases/phase-1.md"},
+    {"id": 2, "name": "p2", "file": "phases/phase-2.md"},
+    {"id": 3, "name": "p3", "file": "phases/phase-3.md"},
+    {"id": 4, "name": "p4", "file": "phases/phase-4.md"},
+    {"id": 5, "name": "p5", "file": "phases/phase-5.md"},
+    {"id": 6, "name": "p6", "file": "phases/phase-6.md"},
+    {"id": 7, "name": "p7", "file": "phases/phase-7.md"}
+  ],
+  "flow": {
+    "schema_version": 1,
+    "terminal_node": "done",
+    "guards": [
+      {"condition": "awaiting_user", "action": "wait_for_material_decision", "target": "current", "blocks_events": true},
+      {"condition": "stale", "action": "revalidate_then_refresh_baseline", "target": "current", "blocks_events": true},
+      {"condition": "recovery_plan", "action": "recover_plan_strategy", "target": "phase_2", "blocks_events": false},
+      {"condition": "recovery_code", "action": "recover_build", "target": "phase_5", "blocks_events": false},
+      {"condition": "items_rejected", "action": "rework_rejected_items", "target": "phase_5", "blocks_events": false},
+      {"condition": "items_pending", "action": "build_pending_items", "target": "phase_5", "blocks_events": false},
+      {"condition": "items_built", "action": "verify_built_items", "target": "phase_6", "blocks_events": false}
+    ],
+    "transitions": [
+      {"from": "phase_0", "event": "phase_done", "to": "phase_1", "action": "run_phase"},
+      {"from": "phase_1", "event": "phase_done", "to": "phase_2", "action": "run_phase"},
+      {"from": "phase_2", "event": "phase_done", "to": "phase_3", "action": "run_phase"},
+      {"from": "phase_3", "event": "phase_done", "to": "phase_4", "action": "run_phase"},
+      {"from": "phase_4", "event": "phase_done", "to": "phase_5", "action": "run_phase"},
+      {"from": "phase_5", "event": "phase_done", "to": "phase_6", "action": "run_phase"},
+      {"from": "phase_6", "event": "phase_done", "to": "phase_7", "action": "run_phase"},
+      {"from": "phase_7", "event": "phase_done", "to": "done", "action": "finish_run"},
+      {"from": "phase_4", "event": "plan_recovery", "to": "phase_2", "action": "recover_plan_strategy"},
+      {"from": "phase_6", "event": "verification_failed", "to": "phase_5", "action": "recover_build"},
+      {"from": "phase_7", "event": "review_failed", "to": "phase_5", "action": "recover_build"}
+    ]
+  }
+}
+EOF
+  for i in 0 1 2 3 4 5 6 7; do
+    printf 'phase %s\n' "$i" > "$PLUGIN/phases/phase-$i.md"
+  done
+}
+
 run_active() {
   KIMIFLOW_HOST=codex CODEX_THREAD_ID=owner-session KIMIFLOW_PLUGIN_ROOT="$PLUGIN" KIMIFLOW_MEMORY_ROUTER="$FAKE_ROUTER" KIMIFLOW_FAKE_ROUTER_LOG="$ROUTER_LOG" "$SCRIPT" "$@" --root "$REPO"
 }
@@ -394,6 +442,29 @@ for i in 0 1 2 3 4 5 6 7; do
 done
 out="$(run_active finish --write)"
 assert_jq "$out" '.status == "finished" and .outcome.outcome == "done"' "finish_allows_fresh_phase_reads"
+
+reset_repo
+write_flow_manifest
+sed -i.bak '1i\
+Flow schema: 4\
+Recovery: clean\
+Review gate: code
+' "$REPO/.kimiflow/demo/STATE.md" && rm "$REPO/.kimiflow/demo/STATE.md.bak"
+out="$(run_active start --run .kimiflow/demo --write)"
+assert_jq "$out" '.transition.graph_status == "ready" and .transition.current_node == "phase_5" and .transition.action == "run_phase" and .next_action == "finish_or_continue"' "flow_status_adds_transition_without_breaking_legacy_scalar"
+out="$(run_active next-action)"
+assert_jq "$out" '.current_node == "phase_5" and .action == "run_phase" and .target_file == "phases/phase-5.md"' "next_action_cli_resolves_current_phase"
+run_active append-item --title "Graph item" --write >/dev/null
+out="$(run_active next-action)"
+assert_jq "$out" '.action == "build_pending_items" and .target_node == "phase_5"' "next_action_routes_pending_item"
+run_active drop-item --id item_001 --reason "integration test complete" --write >/dev/null
+sed -i.bak 's/Phase 5: in-progress/Phase 5: done/; s/Phase 6: open/Phase 6: in-progress/' "$REPO/.kimiflow/demo/STATE.md" && rm "$REPO/.kimiflow/demo/STATE.md.bak"
+out="$(run_active next-action --event verification_failed)"
+assert_jq "$out" '.current_node == "phase_6" and .action == "recover_build" and .target_node == "phase_5"' "next_action_routes_verification_failure"
+out="$(printf '{"cwd":"%s","session_id":"owner-session"}' "$REPO" | KIMIFLOW_HOST=codex KIMIFLOW_PLUGIN_ROOT="$PLUGIN" "$SCRIPT" prompt-context)"
+assert_jq "$out" '(.hookSpecificOutput.additionalContext | contains("run_phase")) and (.hookSpecificOutput.additionalContext | contains("phase_6"))' "prompt_context_uses_exact_transition"
+out="$(printf '{"cwd":"%s","session_id":"owner-session"}' "$REPO" | KIMIFLOW_HOST=codex KIMIFLOW_PLUGIN_ROOT="$PLUGIN" "$SCRIPT" stop-gate)"
+assert_jq "$out" '(.reason | contains("run_phase")) and (.reason | contains("phase_6"))' "next_action_cli_and_hooks_share_transition"
 
 reset_repo
 run_active start --run .kimiflow/demo --write >/dev/null
