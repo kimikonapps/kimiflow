@@ -6,6 +6,27 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.7
+
+The adaptive-architecture release: Kimiflow spends architecture tokens only when change risk warrants them,
+loads project principles by affected path, and requires falsifiable evidence before architecture-driven rewrites.
+
+### Added
+
+- **Senior Design is now a conditional branch inside the existing flow:** Local and reversible changes record a
+  one-line reason and continue directly. Cross-system, data-flow, integration, migration, security, public-contract,
+  concurrency, scale, or hard-to-reverse work receives a compact architecture decision that classifies the current
+  design as `fit`, `evolve`, or `replace`, compares one strongest alternative, and names an executable falsifier.
+- **Project standards load lazily by path and rule type:** Structured `Scope`, `Type`, `Rule`, and `Evidence` entries
+  are selected only for affected paths under strict rule and word budgets. Validated atomic recording, symlink
+  containment, prompt-injection and secret checks keep the local standards store safe and project-agnostic.
+
+### Changed
+
+- **Architecture critique must be evidence-backed:** Reviewers may demand architecture changes only with an
+  executable failing case or a concrete named invariant violation. Missing operating-envelope details are inferred
+  conservatively unless they would change an irreversible product decision, avoiding routine user babysitting.
+
 ## 0.2.6
 
 The scoped-learning release: durable project memory now carries explicit applicability and current verification
