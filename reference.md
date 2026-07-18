@@ -280,6 +280,41 @@ that state, prompt-context mentions revalidation, and finish is blocked until re
 
 ---
 
+## Optional Codex terminal controller
+
+Embedded `/kimiflow` and `$kimiflow` invocation remains the standard path. `hooks/kimiflow-runner.sh` is an
+optional controller for a user who deliberately starts Kimiflow from a terminal and does not want to babysit
+routine turn continuations. Install its managed wrapper explicitly with `hooks/install-kimiflow-cli.sh`.
+
+```bash
+kimiflow run "<task>"
+kimiflow status --pretty
+kimiflow resume [--message "<material decision>"]
+```
+
+The controller adopts the stable Codex non-interactive mechanism: initial `codex exec --json --sandbox
+workspace-write`, then `codex exec resume <thread-id>` for every actionable continuation. Approval policy
+`never` prevents an impossible headless prompt but does not widen the sandbox; there is no unrestricted-access
+fallback. Inherited parent session IDs are removed before nesting Codex, argv is never evaluated through a
+shell, and the emitted `thread.started` ID must match the active-run owner on every continuation.
+
+`.kimiflow/session/HEADLESS_RUN.json` is transport-only: schema, host, canonical root, thread ID, current run,
+turn count, timestamps, and controller status. It is atomic, mode 0600, symlink-refusing, project-local, and
+contains neither task nor transcript. `ACTIVE_RUN.json`, run artifacts, gates, Memory Router, and terminal
+outcomes remain the sole workflow truth. A first turn that creates neither an active run nor a changed terminal
+outcome fails closed, as do ownership/receipt/thread mismatches. Transport retries are bounded and never mark the
+Kimiflow workflow failed; a valid receipt remains resumable.
+
+Actionable states continue in the same thread without another user turn. `awaiting_user` and canonical headless
+`parked` are the only decision waits and return exit 3; they require `resume --message`. A process interruption
+returns 130 and can resume without a message while its active run remains open. This controller adds no daemon,
+agent runtime, provider, scheduler, GUI, memory store, or worktree. A future rich client may replace only the
+Codex transport adapter (for example with App Server); it must not fork Kimiflow state or policy.
+
+Sources: https://learn.chatgpt.com/docs/non-interactive-mode · https://learn.chatgpt.com/docs/developer-commands?surface=cli#cli-codex-app-server
+
+---
+
 ## Display verbosity (all phases)
 
 Tunes **how much the orchestrator prints** — nothing else.

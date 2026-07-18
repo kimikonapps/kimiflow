@@ -267,6 +267,15 @@ while IFS= read -r cmd; do
 done < <(jq -r '.hooks[]?[]?.hooks[]?.command' "$ROOT/hooks.json" 2>/dev/null)
 
 echo "== stable codex hook installer =="
+echo "== optional embedded-first terminal runner =="
+for rel in hooks/kimiflow-runner.sh hooks/install-kimiflow-cli.sh hooks/test-kimiflow-runner.sh hooks/test-install-kimiflow-cli.sh; do
+  if [ -x "$ROOT/$rel" ] && bash -n "$ROOT/$rel" 2>/dev/null; then ok "runner surface ok: $rel"; else bad "runner surface missing/not-exec/bad: $rel"; fi
+done
+PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import runner; assert runner.RECEIPT_RELATIVE == ".kimiflow/session/HEADLESS_RUN.json"' 2>/dev/null \
+  && ok "shared-core runner module imports" || bad "shared-core runner module unavailable"
+grep -q 'embedded plugin remains the default' "$ROOT/README.md" \
+  && grep -q 'same `.kimiflow/` state' "$ROOT/README.md" \
+  && ok "smoke_runner_surface_visible" || bad "embedded-first runner docs missing"
 INSTALLER="$ROOT/hooks/install-codex-hooks.sh"
 if [ -x "$INSTALLER" ] && bash -n "$INSTALLER" 2>/dev/null; then ok "installer script ok: hooks/install-codex-hooks.sh"; else bad "installer script missing/not-exec/bad"; fi
 tmp_home="$(mktemp -d)"

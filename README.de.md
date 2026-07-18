@@ -73,6 +73,28 @@ bash "${CODEX_HOME:-$HOME/.codex}/.tmp/marketplaces/kimiflow/hooks/install-codex
 Der Hook-Installer schreibt verwaltete Wrapper nach `${CODEX_HOME:-~/.codex}/hooks`. Der stabile
 Marketplace-Pfad verhindert, dass ein Update auf einen neuen versionierten Cache alte Wrapper bricht.
 
+### Optionaler Codex-Terminal-Runner
+
+Das eingebettete Plugin bleibt der Standard. Für lange Kimiflow-Aufgaben aus dem Terminal gibt es zusätzlich
+einen dünnen Controller, der nicht nach jedem Turn eine Bestätigung braucht:
+
+```bash
+bash hooks/install-kimiflow-cli.sh
+kimiflow run "setze das gewünschte Feature um"
+kimiflow status --pretty
+```
+
+Er startet die bereits authentifizierte Codex CLI im `workspace-write`-Sandbox, merkt sich die Codex-Thread-ID
+und setzt genau diesen Thread fort, bis der gemeinsame Kimiflow-Run abgeschlossen ist. Es entstehen kein zweiter
+Agent, Daemon, Memory-Store, Provider oder Worktree. Plugin und Terminal verwenden denselben `.kimiflow/`-State,
+dieselben Gates und dasselbe Memory.
+
+Nur ein materieller Kimiflow-Wait oder Park endet mit Status 3. Die Antwort erfolgt mit
+`kimiflow resume --message "<entscheidung>"`; unterbrochene oder transportbedingt gestoppte Runs können ohne
+Message fortgesetzt werden, solange ihr Active Run offen ist. Der lokale Receipt enthält nur Transportdaten,
+niemals Auftrag oder Transkript. `bash hooks/install-kimiflow-cli.sh --check` prüft den verwalteten Wrapper; ein
+fremdes `kimiflow`-Executable wird nicht überschrieben.
+
 ## Demo
 
 ![Kimiflow-Launcher und gegateter Feature-/Fix-Flow](docs/demo/kimiflow.gif)

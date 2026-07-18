@@ -103,6 +103,9 @@ class RunnerTests(unittest.TestCase):
             return json.load(handle)
 
     def test_run_starts_codex_safely_and_writes_minimal_receipt(self):
+        nested = os.path.join(self.root, "nested")
+        os.mkdir(nested)
+        self.assertEqual(runner._resolve_project_root(nested), os.path.realpath(self.root))
         adapter_contract = runner.CodexExecAdapter(codex="/usr/local/bin/codex")
         argv = adapter_contract.start_argv(self.root, "prompt")
         self.assertEqual(argv[:3], ["/usr/local/bin/codex", "exec", "--json"])
@@ -180,11 +183,13 @@ class RunnerTests(unittest.TestCase):
 
     def test_runner_fail_closed_cases_preserve_workflow_state(self):
         self.write_active(owner="other-thread")
-        before = open(self.active_path, "rb").read()
+        with open(self.active_path, "rb") as handle:
+            before = handle.read()
         with self.assertRaises(runner.RunnerError) as ctx:
             runner.run_task(self.root, "do not adopt", adapter=FakeAdapter())
         self.assertEqual(ctx.exception.status, "active_run_exists")
-        self.assertEqual(open(self.active_path, "rb").read(), before)
+        with open(self.active_path, "rb") as handle:
+            self.assertEqual(handle.read(), before)
 
         os.unlink(self.active_path)
         with self.assertRaises(runner.RunnerError) as ctx:
@@ -203,6 +208,12 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status, "unsafe_receipt")
         os.unlink(receipt)
 
+        os.makedirs(self.run_dir, exist_ok=True)
+        outcome = os.path.join(self.run_dir, "SESSION-OUTCOME.json")
+        os.symlink(outside, outcome)
+        self.assertEqual(runner._outcome_fingerprints(self.root), {})
+        os.unlink(outcome)
+
         failing = FakeAdapter(start_action=self.write_active, returncode=9)
         with self.assertRaises(runner.RunnerError) as ctx:
             runner.run_task(self.root, "transport fails", adapter=failing)
@@ -216,6 +227,12 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(interrupted["status"], "interrupted")
         self.assertEqual(runner.exit_code(interrupted), 130)
         self.assertEqual(self.read_receipt()["status"], "interrupted")
+        recovery = FakeAdapter(
+            resume_actions=[self.write_active, lambda: self.write_outcome("done")],
+        )
+        recovered = runner.resume_task(self.root, adapter=recovery)
+        self.assertEqual(recovered["status"], "done")
+        self.assertEqual(len(recovery.resumes), 2)
 
 
 if __name__ == "__main__":

@@ -255,6 +255,15 @@ for term in 'Raw map vs. publishable docs' 'Repo-doc publish safety' 'never auto
 done
 
 echo "== hooks wiring (referenced scripts exist, executable, valid) =="
+echo "== optional embedded-first terminal runner =="
+for rel in hooks/kimiflow-runner.sh hooks/install-kimiflow-cli.sh hooks/test-kimiflow-runner.sh hooks/test-install-kimiflow-cli.sh; do
+  if [ -x "$ROOT/$rel" ] && bash -n "$ROOT/$rel" 2>/dev/null; then ok "runner surface ok: $rel"; else bad "runner surface missing/not-exec/bad: $rel"; fi
+done
+PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import runner; assert runner.RECEIPT_RELATIVE == ".kimiflow/session/HEADLESS_RUN.json"' 2>/dev/null \
+  && ok "shared-core runner module imports" || bad "shared-core runner module unavailable"
+grep -q 'embedded plugin remains the default' "$ROOT/README.md" \
+  && grep -q 'same `.kimiflow/` state' "$ROOT/README.md" \
+  && ok "smoke_embedded_first_runner_docs" || bad "embedded-first runner docs missing"
 jq -e '.hooks.SessionStart[0].hooks | any(.command | contains("active-run.sh session-bootstrap"))' "$ROOT/hooks/hooks.json" >/dev/null 2>&1 \
   && ok "Claude SessionStart persists Kimiflow session identity" || bad "Claude SessionStart identity bootstrap missing"
 while IFS= read -r cmd; do

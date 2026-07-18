@@ -64,6 +64,8 @@ loop still runs.
 | Codex subagents (`explorer`, `worker`, `default`) + per-spawn `model`/`reasoning_effort` | Luna bounded support / Terra implementation / Sol plan-review-verify roles | Graceful quality routing — unavailable overrides inherit the active session tier; a non-Sol main session records the fallback and continues without a model-switch prompt |
 | Codex web/search/tool availability | Phase 2 current external research | Graceful — absent → research degrades, codebase/project memory still ground the plan |
 | Optional notes MCP / app connectors | Phase 2 recall and vault memory | Graceful — absent → skip + note in STATE.md |
+| `codex exec --json` + `codex exec resume <SESSION_ID>` (optional) | `hooks/kimiflow_core/runner.py` starts and autonomously continues the optional terminal runner in one owning Codex thread | **Load-bearing only for the optional terminal runner** — missing JSONL `thread.started`, changed resume syntax, or lost thread persistence fails closed with a resumable/error receipt; embedded Codex and Claude flows remain unaffected |
+| `codex exec --sandbox workspace-write` + config `approval_policy="never"` (optional) | bounds terminal-run writes to the project without routine approval prompts | **Load-bearing only for the optional terminal runner** — flag/config drift must fail closed and be updated before advertising autonomous terminal use; Kimiflow never falls back to unrestricted access |
 
 ## Version-bump smoke checklist
 
@@ -88,6 +90,9 @@ Run on every Claude Code or Codex upgrade (and at each kimiflow release):
 7. **One trivial Codex end-to-end** — `$kimiflow <tiny fix>`: the Codex status/plan view and workspace summary appear, the local commit needs no routine second OK, and the opt-in policy holds.
 8. **Re-stamp** — update the "Last verified against" line above with the new `claude --version` and
    `codex --version`.
+9. **Optional terminal controller** — install it into a temporary prefix, run `--check`, then execute
+   `bash hooks/test-kimiflow-runner.sh`; confirm one fake two-turn run resumes the identical thread, material
+   waits return 3, and missing activation fails closed.
 
 Anything that fails here is an upstream-compatibility break — record it in the CHANGELOG and pin or
 work around before release.

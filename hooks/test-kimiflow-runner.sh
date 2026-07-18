@@ -29,6 +29,8 @@ if [ "${FAKE_MODE:-done}" = "noactivate" ]; then
 fi
 if [ "${2:-}" != "resume" ]; then
   head="$(git -C "$FAKE_ROOT" rev-parse HEAD)"
+  awaiting=false
+  [ "${FAKE_MODE:-done}" = "wait" ] && awaiting=true
   cat > "$FAKE_ROOT/.kimiflow/demo/STATE.md" <<STATE
 Flow schema: 4
 Mode: feature
@@ -40,7 +42,7 @@ Phase 0: done
 Phase 1: done
 STATE
   cat > "$FAKE_ROOT/.kimiflow/session/ACTIVE_RUN.json" <<JSON
-{"schema_version":1,"status":"active","run":".kimiflow/demo","mode":"feature","scope":"small","host":"codex","started_head":"$head","last_checked_head":"$head","owner":{"host":"codex","session_id":"$thread"}${FAKE_MODE:+,"awaiting_user":$([ "$FAKE_MODE" = "wait" ] && printf true || printf false)}}
+{"schema_version":1,"status":"active","run":".kimiflow/demo","mode":"feature","scope":"small","host":"codex","started_head":"$head","last_checked_head":"$head","owner":{"host":"codex","session_id":"$thread"},"awaiting_user":$awaiting}
 JSON
   printf '{"type":"thread.started","thread_id":"%s"}\n' "$thread"
   printf '{"type":"turn.completed"}\n'
@@ -75,7 +77,11 @@ set +e
 FAKE_MODE=wait "$ROOT/hooks/kimiflow-runner.sh" run --root "$REPO" "needs choice" > "$WORK/wait.json"
 rc=$?
 set -e
-[ "$rc" -eq 3 ]
+if [ "$rc" -ne 3 ]; then
+  cat "$WORK/wait.json" >&2
+  printf 'runner_material_wait_only: expected exit 3, got %s\n' "$rc" >&2
+  exit 1
+fi
 jq -e '.status == "awaiting_user"' "$WORK/wait.json" >/dev/null
 FAKE_MODE=done "$ROOT/hooks/kimiflow-runner.sh" resume --root "$REPO" --message approved > "$WORK/resumed.json"
 jq -e '.status == "done"' "$WORK/resumed.json" >/dev/null

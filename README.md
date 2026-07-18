@@ -94,6 +94,27 @@ codex plugin marketplace add .
 bash hooks/install-codex-hooks.sh
 ```
 
+### Optional Codex terminal runner
+
+The embedded plugin remains the default. If you want to start a long Kimiflow task from a terminal and let it
+continue without confirming every turn, install the optional thin controller:
+
+```bash
+bash hooks/install-kimiflow-cli.sh
+kimiflow run "implement the requested feature"
+kimiflow status --pretty
+```
+
+It launches the already authenticated Codex CLI with a `workspace-write` sandbox, captures the Codex thread ID,
+and resumes that same thread until the shared Kimiflow active run finishes. It does not add another agent,
+daemon, memory store, provider, or worktree. Both entry points use the same `.kimiflow/` state, gates, and memory.
+
+Only a material Kimiflow wait or park exits with status 3. Answer it with
+`kimiflow resume --message "<decision>"`; interrupted or transport-failed runs can use `kimiflow resume` without
+a message while their active run remains open. The local receipt contains transport metadata only, never the
+task or transcript. `bash hooks/install-kimiflow-cli.sh --check` verifies the managed wrapper, and the installer
+refuses to overwrite an unrelated `kimiflow` executable.
+
 ## Demo
 
 ![Kimiflow launcher and gated feature/fix flow](docs/demo/kimiflow.gif)

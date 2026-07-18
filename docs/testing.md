@@ -8,6 +8,8 @@ Hook-Wiring, Resolver-Verhalten und Smoke-Installationen fuer Claude Code und Co
 ```bash
 bash hooks/smoke-install.sh
 bash hooks/smoke-install-codex.sh
+bash hooks/test-kimiflow-runner.sh
+bash hooks/test-install-kimiflow-cli.sh
 bash hooks/test-project-map-status.sh
 git diff --check
 ```
@@ -32,6 +34,10 @@ laufen.
   Hook-Payloads.
 - `hooks/smoke-install-codex.sh` prueft Codex-Manifeste, Plugin-UI-Metadaten, Hook-Labels, den stabilen
   Hook-Installer und synthetische Codex-Payloads.
+- `hooks/test-kimiflow-runner.sh` prueft den optionalen Codex-Terminalweg ohne Modellaufruf: sicherer Start,
+  autonomes Same-Thread-Resume, materieller Wait und fehlende Kimiflow-Aktivierung.
+- `hooks/test-install-kimiflow-cli.sh` prueft verwaltete Installation/`--check` und verhindert das
+  Ueberschreiben eines fremden Executables.
 
 ## Project-Map-Status
 
