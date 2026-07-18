@@ -7,6 +7,7 @@ propose, records run economics, and writes LEARNING-REVIEW.md + RUN-LIFECYCLE.js
 13/13). Heavy deps already ported (economics Plan 25; propose/curate/index/append_learning_row/
 write_bounded_memory/status_json/classify_text/resolve_run_dir earlier)."""
 import contextlib
+from datetime import date
 import io
 import json
 import os
@@ -73,6 +74,18 @@ _QUALITY_KIND_REASON = {
     "important_decision": "decision_without_decision",
 }
 
+# Durable `learned` rows use one tiny universal context contract. Requiring it
+# for the kind avoids an incomplete ecosystem list or unreliable name guessing.
+_SCOPE_MARKER_RE = re.compile(
+    r"(?:^|;)\s*(?:scope|applies(?:[ \t]+to)?)\s*[:=]\s*([^;]{3,})",
+    re.IGNORECASE,
+)
+_VERIFIED_MARKER_RE = re.compile(
+    r"(?:^|;)\s*(?:verified(?:[ \t]+by)?|basis)\s*[:=]\s*([^;@]{3,}?)"
+    r"[ \t]*@[ \t]*(\d{4}-\d{2}-\d{2})(?=[ \t]*(?:;|$))",
+    re.IGNORECASE,
+)
+
 
 def _jq_or(value, default):
     # jq `value // default`: substitute only when value is null (None) or false.
@@ -114,6 +127,23 @@ def quality_gate_json(kind, summary, evidence):
     kind_re = _QUALITY_KIND_RE.get(kind)
     if kind_re is not None and not kind_re.search(lower):
         reasons.append(_QUALITY_KIND_REASON[kind])
+    if kind == "learned":
+        context_summary = summary
+        structured_prefix = _STRUCT_KIND_RE["learned"].match(lower)
+        if structured_prefix:
+            context_summary = summary[structured_prefix.end():]
+        scope_match = _SCOPE_MARKER_RE.search(context_summary)
+        verification_match = _VERIFIED_MARKER_RE.search(context_summary)
+        if (not scope_match or not scope_match.group(1).strip()
+                or scope_match.group(1).strip().lower() in ("n/a", "none", "unknown")):
+            reasons.append("learning_context_missing_scope")
+        if not verification_match or not verification_match.group(1).strip():
+            reasons.append("learning_context_missing_verification")
+        else:
+            try:
+                date.fromisoformat(verification_match.group(2))
+            except ValueError:
+                reasons.append("learning_context_invalid_date")
     return {
         "ok": len(reasons) == 0,
         "words": words,

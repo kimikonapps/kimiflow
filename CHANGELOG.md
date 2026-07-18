@@ -4,7 +4,12 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Changed
+
+- **Durable learnings stay scoped and revalidatable:** The existing Memory Router quality gate now requires every
+  durable `learned` summary to carry compact applicability and a calendar-valid, non-empty verification basis.
+  This keeps external framework/API lessons project-scoped without ecosystem lists, a schema change, or a new
+  dependency.
 
 ## 0.2.5
 

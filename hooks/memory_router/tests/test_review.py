@@ -32,7 +32,11 @@ class ReviewHelperCase(unittest.TestCase):
 
     # ---- quality_gate_json ----
     def test_quality_ok(self):
-        q = review.quality_gate_json("learned", "the router cache must be flushed after every write", ["RESEARCH.md:3"])
+        q = review.quality_gate_json(
+            "learned",
+            "scope=this project; verified=router regression test @ 2026-07-18; flush the cache after every write",
+            ["RESEARCH.md:3"],
+        )
         self.assertTrue(q["ok"])
         self.assertEqual(q["reasons"], [])
         self.assertGreaterEqual(q["words"], 7)
@@ -57,6 +61,57 @@ class ReviewHelperCase(unittest.TestCase):
         q2 = review.quality_gate_json("project_rule_confirmed",
                                       "every commit must always follow the standard convention here", ["x:1"])
         self.assertNotIn("project_rule_without_rule", q2["reasons"])
+
+    def test_durable_learning_requires_scope_and_dated_basis(self):
+        q = review.quality_gate_json(
+            "learned",
+            "React Query cache invalidation must run after each successful mutation",
+            ["RESEARCH.md:3"],
+        )
+        self.assertIn("learning_context_missing_scope", q["reasons"])
+        self.assertIn("learning_context_missing_verification", q["reasons"])
+        self.assertFalse(q["ok"])
+
+        scoped = review.quality_gate_json(
+            "learned",
+            "scope=React Query v5 in this project; verified=official docs and regression test @ 2026-07-18; invalidate the cache after each successful mutation",
+            ["RESEARCH.md:4"],
+        )
+        self.assertTrue(scoped["ok"])
+        self.assertEqual(scoped["reasons"], [])
+
+    def test_learning_context_is_ecosystem_agnostic(self):
+        for summary in (
+            "AVAudio capture must reject a zero-channel device format before tap installation",
+            "pytest fixtures must use tmp_path to isolate every filesystem mutation",
+            "Memory Router cache entries must refresh after every durable learning write",
+        ):
+            q = review.quality_gate_json("learned", summary, ["RESEARCH.md:5"])
+            self.assertIn("learning_context_missing_scope", q["reasons"])
+            self.assertIn("learning_context_missing_verification", q["reasons"])
+
+    def test_learning_context_rejects_empty_basis_and_invalid_date(self):
+        empty = review.quality_gate_json(
+            "learned",
+            "scope=React Query v5; verified=@ 2026-07-18; invalidate the cache after mutation",
+            ["RESEARCH.md:6"],
+        )
+        self.assertIn("learning_context_missing_verification", empty["reasons"])
+
+        whitespace = review.quality_gate_json(
+            "learned",
+            "scope=   ; verified=   @ 2026-07-18; useful learning with enough words here",
+            ["RESEARCH.md:6"],
+        )
+        self.assertIn("learning_context_missing_scope", whitespace["reasons"])
+        self.assertIn("learning_context_missing_verification", whitespace["reasons"])
+
+        invalid = review.quality_gate_json(
+            "learned",
+            "scope=React Query v5; verified=official docs @ 2026-99-99; invalidate the cache after mutation",
+            ["RESEARCH.md:7"],
+        )
+        self.assertIn("learning_context_invalid_date", invalid["reasons"])
 
     # ---- first_substantive_tsv ----
     def test_first_substantive_skips_heading_fence_empty(self):
@@ -244,7 +299,8 @@ class ReviewParityCase(unittest.TestCase):
         # (important_decision, via fallback) -> the line carries decision keywords
         # (decided/keep/because) so BOTH pass the quality gate -> a clean --write.
         with open(os.path.join(run_dir, "RESEARCH.md"), "w") as fh:
-            fh.write("# Research\n- What was learned: we decided to keep the explicit cache "
+            fh.write("# Research\n- What was learned: scope=this project; "
+                     "verified=regression fixture @ 2026-07-18; we decided to keep the explicit cache "
                      "flush because stale reads after every write were the real trap to avoid\n")
         with open(os.path.join(run_dir, "STATE.md"), "w") as fh:
             fh.write("# Run\n**Mode:** feature\n")
@@ -257,7 +313,8 @@ class ReviewParityCase(unittest.TestCase):
         os.makedirs(run_dir, exist_ok=True)
         os.makedirs(os.path.join(root, ".kimiflow", "project"), exist_ok=True)
         with open(os.path.join(run_dir, "RESEARCH.md"), "w") as fh:
-            fh.write("- What was learned: done\n")   # too_short + too_generic
+            fh.write("- What was learned: scope=this project; "
+                     "verified=regression fixture @ 2026-07-18; various stuff\n")
 
     def _pop_empty(self, root):
         os.makedirs(os.path.join(root, "run"), exist_ok=True)

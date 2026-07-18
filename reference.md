@@ -997,6 +997,13 @@ recomputes them; a row with missing/changed evidence, no fingerprints, or no lon
 (e.g. `reason=evidence_stale`) and blocks marked-done until refreshed or explicitly skipped with a reason. A
 refreshed learning marks the older same-evidence row `superseded`; recall returns only `current` rows.
 
+**Durable learned summaries:** use the compact, project-agnostic form
+`scope=<applicability>; verified=<basis> @ YYYY-MM-DD; <learning>`. Requiring this for every durable `learned` row
+avoids ecosystem lists and unreliable technology-name guessing; framework/API lessons therefore remain lazy,
+project-scoped hypotheses rather than global `ALWAYS` rules. The quality gate rejects missing context, an empty
+basis, or an invalid calendar date; existing `last_verified` and Current-State evidence decide freshness, and the
+current source overrides memory. No new schema is required.
+
 **Memory write security gate:** every active row from `record`/`review-run` is scanned for prompt injection,
 instruction override, credential exfiltration, and hidden Unicode; unsafe current rows fail closed before
 entering always-on memory. Security-sensitive content may be kept only as explicit non-current/local review
