@@ -102,10 +102,10 @@ write_wrapper kimiflow-test-gate.sh test-gate.sh
 write_wrapper kimiflow-active-run.sh active-run.sh
 
 if command -v codex >/dev/null 2>&1; then
-  if codex features list 2>/dev/null | awk '$1 == "codex_hooks" && $3 == "true" { found=1 } END { exit found ? 0 : 1 }'; then
-    printf 'codex_hooks feature is enabled.\n'
+  if codex features list 2>/dev/null | awk '($1 == "hooks" || $1 == "codex_hooks") && $3 == "true" { found=1 } END { exit found ? 0 : 1 }'; then
+    printf 'hooks feature is enabled.\n'
   else
-    printf 'warning: codex_hooks did not appear enabled; enable Codex hooks before relying on these wrappers.\n' >&2
+    printf 'warning: hooks did not appear enabled; enable Codex hooks before relying on these wrappers.\n' >&2
   fi
   if codex features list 2>/dev/null | awk '$1 == "plugin_hooks" && $3 == "true" { found=1 } END { exit found ? 0 : 1 }'; then
     printf 'plugin_hooks feature is enabled; bundled hooks.json may also be used by this Codex build.\n'
