@@ -511,6 +511,7 @@ Prefer official or established implementations with the relevant code path plus 
 ## Reference Strategy Fit
   - Assessment: none (reason), or one precise question + compact strategy cards
   - Decision: selected `adopt|adapt` strategy + invariant; strongest rejected alternative + local evidence
+## Adaptive Architecture Deliberation (conditional marker + bounded note, or off reason)
 ## External findings (standard/API) — sources with URL
   - claim · source_type · source_url · version/date · project relevance · verified/conflicting/stale/unclear
 ## Scope classification
@@ -532,6 +533,66 @@ The classification is a one-way scope gate: only `required` may enlarge the plan
 **Considered alternatives (conditional material-fork dual-plan only).** Scope size alone never adds a second planner. Use two independent planners only when intent + classified research prove at least two viable architectures with material user-visible/operational trade-offs, or an irreversible public API/data/migration contract. Internal-interface novelty, general complexity, and optional robustness do not trigger it. If triggered, `PLAN.md` records the losing real approach + selecting trade-off; otherwise omit the section.
 
 **Decision Triage:** project/code decisions are `project_derived`; current sources may yield `evidence_derived`; reversible low-risk HOW is `safe_default`; missing technical evidence is `needs_research`; only product/business/policy/scope/privacy/cost/lock-in/breaking/irreversible-contract choices are `user_required`. Open technical or user decisions keep Discovery closed. Build risk is required only for scope expansion, breaking/public/data/migration contracts, paid/privacy-sensitive services, hard-to-reverse architecture, or material drift from confirmed intent.
+
+## Adaptive Architecture Deliberation
+
+This is a conditional reasoning branch inside Phases 1–7, not a new phase, service, persona, reviewer, model call,
+Vault dependency, or approval gate. The control plane still owns intent, ACs, tests, review, recovery, commit, and
+learning. The reasoning plane gets extra freedom only when the decision can materially shape architecture.
+
+**Senior Design trigger:** new schema-4 runs declare `Architecture contract: 1` and start with
+`Architecture deliberation: pending`. Phase 2 resolves it:
+
+- `off` — local/reversible fix, review, cleanup, docs/config, or a feature whose verified project pattern and
+  target conditions settle the design. Write exactly
+  `<!-- kimiflow:architecture-deliberation status=off approaches=0 principles=0 critique=0 user_gate=no -->`
+  plus one `Architecture off reason: <short reason>`, no Architecture Note section, and the PLAN line
+  `Architecture fit: off — <reason>`.
+- `active` — material cross-subsystem/data-flow/integration work; migration/security/public contract;
+  concurrency/scale; hard-to-reverse structure; or evidence that the current architecture may be unsuitable.
+  Existing architecture is evidence, never authority. Classify it `fit|evolve|replace` against the requested
+  target, not merely today's implementation.
+
+**Operating envelope:** derive current and target horizon/scale band plus only decision-relevant constraints:
+concurrency/throughput, data growth, latency, availability, consistency, team size, and operational capacity.
+Use measurements and project evidence first. If facts are absent, record a conservative explicit range and prefer
+a reversible evolution path. Ask in Phase 1 only when the missing answer could change an irreversible product or
+architecture outcome; technical sizing and HOW remain autonomous.
+
+**Active artifact:** RESEARCH carries exactly one marker
+`<!-- kimiflow:architecture-deliberation status=active approaches=2 principles=<0..3> critique=1 user_gate=no -->`
+and one `## Adaptive Architecture Deliberation` section of at most 450 words with these exact single-occurrence
+fields: `Problem behind request:`, `Operating envelope:`, `Architecture status: fit|evolve|replace`,
+`Quality drivers:`, `Project principles:`, `Preferred approach:`, `Strongest alternative:`,
+`Trade-off / debt:`, `Reversibility / evolution trigger:`, and `Falsification check:`. Principle rows use:
+
+```text
+- Type: invariant|constraint|preference|heuristic|legacy; Scope: <glob>; Rule: <one line>; Evidence: <ref>
+```
+
+At most three rows may be selected from the path-scoped standards context or current evidence. Do not inject a
+generic SOLID/Clean/DDD library; familiar doctrines stay model knowledge unless the project proves a scoped rule.
+Compare one preferred approach with only the strongest material alternative. Reference Strategy Fit shares its
+existing two/three-source run-total budget; architecture cannot multiply it.
+
+**Plan/gate:** active PLAN records `Architecture fit: active`, one-line decision, the exact research-section
+pointer, and `Architecture check: AC-N -> <named verifier>`. Map the selected invariant/quality driver and
+falsifier to an existing AC or at most one architecture-specific AC. `plan-blocker-gate.sh` activates only when
+STATE declares Contract 1; it derives approach/principle counts from stable content, enforces the note budget,
+requires `user_gate=no`, and keeps older runs compatible.
+
+**Evolutionary counterproof:** Phase-4 lens B challenges the operating envelope, impact/data ownership, simpler
+evolutionary alternative, and falsifier using its existing seat. Phase 6 executes the named check and compares the
+real diff/integration flow to the recorded envelope. Phase-7 standards/integration rechecks the result. A demand to
+change architecture is actionable only with an exact failing scenario/executable check or a named invariant
+violation plus concrete evidence; taste, doctrine recital, and "act as a Principal Engineer" rhetoric are not
+findings. Technical refutation changes strategy and continues autonomously. Only the existing material decision
+boundary may pause.
+
+**Durability:** after verification, record a lasting project principle only with explicit verified
+Scope/Type/Rule/Evidence through `memory-router.sh standards record`; never infer global applicability. Otherwise
+keep it in the run or capture the verified choice in Decisions. A full ADR is optional only when the repository
+already uses ADRs or the decision is a durable public/data/migration contract; Obsidian remains optional.
 
 ---
 
@@ -634,15 +695,16 @@ A third mode (beside feature/fix) to safely shrink over-engineered / dead code i
 
 ## Project memory & standards (Phase 2 read · Phase 7 append)
 
-Lets kimiflow get smarter about a project over time instead of re-deriving it every run. The old
+Lets kimiflow get smarter about a project over time instead of re-deriving it every run. The
 `.kimiflow/STANDARDS.md` and `.kimiflow/DECISIONS.md` files remain short human-readable steering files. The
 new durable project-intelligence memory lives in `.kimiflow/project/` and is routed by
 `hooks/memory-router.sh`. **Verified content only** — the anti-hallucination rule governs what may be written;
 a wrong "standard" must never silently poison future runs.
 
-**Read (Phase 2, always — cheap: native `CLAUDE.md` + two small `.kimiflow` files only if present):**
+**Read (Phase 2, always — cheap and scope-aware):**
 - The project's native **`CLAUDE.md`** (Claude Code loads it anyway) — house rules, stack, conventions.
-- If present: **`.kimiflow/STANDARDS.md`** (accumulated conventions) and **`.kimiflow/DECISIONS.md`** (past decisions/lessons).
+- If present, read **`.kimiflow/DECISIONS.md`**. Do not linearly inject all of `.kimiflow/STANDARDS.md`:
+  once likely affected paths exist, run `memory-router.sh standards select` and read its bounded run-local context.
 - `memory-router.sh status`, then `.kimiflow/project/MEMORY.md` only if present and under budget.
 - Use these as ground truth; the `Explore` agent only fills the gaps they leave.
 
@@ -653,13 +715,21 @@ a wrong "standard" must never silently poison future runs.
   `memory-router.sh curate --write`.
 - `.kimiflow/project/MEMORY.md` — bounded always-on summary; keep it around 500-900 tokens and curate when
   over budget. Do not make it a second README.
-- `.kimiflow/STANDARDS.md` — newly **verified** conventions worth keeping (e.g. "errors use `Result<T>`; tests live in `__tests__/`"). One line each, no speculation.
+- `.kimiflow/STANDARDS.md` — newly **verified**, typed conventions with explicit applicability. Record through
+  `memory-router.sh standards record --scope <glob> --type <type> --rule <line> --evidence <ref> --write`; never
+  guess global scope. Structured form is `[Scope: <glob>]` plus Type/Rule/Evidence. Flat historic bullets remain a
+  bounded compatibility fallback only while the file has no valid structured block.
 - `.kimiflow/DECISIONS.md` — a 3–5 line entry: what we chose, why, what surprised us (source-attributed).
 - Optional `.kimiflow/LEDGER.md` — one line per run: slug · scope · rounds used · gate pass/fail · knobs enabled · **approx. token cost** · **post-commit outcome** (e.g. `regression-in-7d: y/n`). The last two turn the ledger into a cheap **ROI instrument**: over ~10–20 runs the cost/outcome columns show whether a tier earns its spend.
 
 **When is `large` worth it?** (Honest, pending ledger evidence.) `large` multiplies reviewer × round × knob cost; the current expectation is that it rarely beats default **`small` + one cross-family review** — reserve it for the scope-gate's real triggers (auth/money/privacy, migrations, subtle hard-to-reproduce bugs, ≥~5 files). Let the LEDGER's cost/outcome columns confirm or refute this per project instead of bumping to `large` on reflex.
 
-Keep all three **flat markdown and short**. This is the lightweight version of steering/standards files (Kiro/Agent OS/Cursor) and learnings (GSD) — no DB, no schema, no scoring.
+Keep memory and decisions short; keep standards structured but compact. `standards select` validates fields (Rule
+≤500 characters, Evidence ≤300), filters normalized project-relative globs without letting `*` cross a path
+segment (`**` may), ranks applicable types, and enforces both rule-count and total-word budgets. Structured files
+never mix unrelated flat bullets into context; legacy-only files get the bounded fallback. Selection output may
+be written only below `.kimiflow/`; record is atomic, deduplicated, and rejects unsafe scope/type/field shapes.
+This remains local Markdown plus standard-library code — no DB, MCP requirement, subscription, or scoring layer.
 
 ---
 
@@ -943,6 +1013,8 @@ memory-router.sh history [--query <text>|--query-file <path>] [--max <n>] [--wri
 memory-router.sh metrics [--global] [--global-purge]
 memory-router.sh classify --input <path>|--text <text>
 memory-router.sh record --summary <text> --topic <topic> --evidence <ref>...
+memory-router.sh standards select --affected <path>... [--types <csv>] [--max <n>] [--budget <words>] [--write <path>]
+memory-router.sh standards record --scope <glob> --type <type> --rule <line> --evidence <ref> [--write]
 memory-router.sh review-run --run <path> [--write] [--skip <reason>]
 memory-router.sh verify-run --run <path>
 memory-router.sh evaluate-run --run <path> --terminal <done|failed|aborted|parked> [--write]
@@ -1239,14 +1311,14 @@ The vault is an **optional** notes MCP (e.g. Obsidian Local REST API's built-in 
 - **Anti-hallucination:** a false finding is worse than a missed one. Unsure → drop it.
 - **Diverse lenses** (Phase 4 — canonical definitions; SKILL.md carries 1-line summaries):
   - **A — goal/completeness & understanding (goal-backward):** achieves the goal / fixes the verified root cause? criteria measurable, complete, non-contradictory? plan anchored in correct understanding, no invented assumptions?
-  - **B — risk & subtraction:** concrete security, required edge/error behavior, architecture breakage, and over-engineering removal. First try to delete any task/file/abstraction/test without an `AC-N` or `required` constraint. Fix mode: does it address the cause, not the symptom? It never invents future requirements.
+  - **B — risk & subtraction:** concrete security, required edge/error behavior, architecture breakage, and over-engineering removal. First try to delete any task/file/abstraction/test without an `AC-N` or `required` constraint. Fix mode: does it address the cause, not the symptom? Active Architecture Deliberation gets one challenge against the envelope/impact/falsifier in this same seat; architecture change requires an executable failing case or concrete named-invariant violation. It never invents future requirements.
   (Phase 7 has its own code-review ensemble below; the audit-mode refute-the-cut lens is phase-loaded from `phases/phase-4-review-approval.md`.)
 - **Reviewers write findings to their own files — the gate counts them mechanically (closes self-report + silent-drop).** In Phase 4, each reviewer writes this round's findings to an append-only, orchestrator-immutable file `.kimiflow/<slug>/findings/r<N>-<lens>.md` — one canonical line per finding, at column 0, **no newline in the reason**:
   - `FINDING <SEVERITY> <ref> :: <one-line reason>` — `<SEVERITY>` is exactly one of `BLOCKER|HIGH|MEDIUM|LOW`; `<ref>` is `file:line` or `PLAN.md §section`. A reviewer that finds nothing writes the single sentinel line `NONE`.
   - Reviewers do NOT self-report a count; the orchestrator **reads** these files and never edits them — so no finding can be silently dropped or self-resolved.
   - **External cross-family reviewers (the one defined exception, exhaustively):** an external CLI reviewer cannot write repo files itself, so the orchestrator persists its **final-message channel byte-for-byte verbatim** as that lens's findings file — a dumb-pipe transfer: no filtering, no extraction, no edits (the `NONE` sentinel passes as-is; grammar enforcement stays in the fail-closed resolver). Permitted orchestrator operations on findings files are ONLY: (a) that verbatim persist, and (b) after a `malformed` resolver verdict for that specific file: ONE cross-family retry (format contract restated, overwrite), then move the still-bad file aside to `findings/rejected-r<N>-<lens>.md` (audit trail — the `rejected-` prefix never matches the resolver's `r<N>-*.md` globs) and let a same-family replacement subagent take the seat and write its own file normally. Both apply only to grammar-invalid (never-counted) files; a file the resolver has parsed clean is never touched.
-- **Mechanical plan-blocker gate (Phase 4, before reviewers).** Run `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/hooks/plan-blocker-gate.sh .kimiflow/<slug>`. It re-runs Clarify and Discovery, then blocks unresolved markers, unmapped ACs, missing verification/path evidence, and undeclared affected files. `PLAN_BLOCKER_GATE	OPEN	blockers=0	reason=clean` is required before round 1. CLOSED returns to the owning Phase 1/2/3; do not spend reviewer tokens first.
-- **Plan-finding evidence and scope threshold.** Phase-4 BLOCKER/HIGH findings require a cited intent/AC boundary, `required` research constraint, current API/compatibility rule, project standard, or concrete security/data-loss failure with demonstrable impact. "More robust", "might be useful later", an `optional` research item, a hypothetical combination, or a stylistic preference is not blocking. MEDIUM/LOW never causes another plan revision. Research-informed quality is mandatory; research-driven product expansion is forbidden.
+- **Mechanical plan-blocker gate (Phase 4, before reviewers).** Run `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/hooks/plan-blocker-gate.sh .kimiflow/<slug>`. It re-runs Clarify and Discovery, then blocks unresolved markers, unmapped ACs, missing verification/path evidence, undeclared affected files, and malformed Contract-1 Architecture Deliberation shape/budgets/linkage. Runs without that architecture contract remain compatible. `PLAN_BLOCKER_GATE	OPEN	blockers=0	reason=clean` is required before round 1. CLOSED returns to the owning Phase 1/2/3; do not spend reviewer tokens first.
+- **Plan-finding evidence and scope threshold.** Phase-4 BLOCKER/HIGH findings require a cited intent/AC boundary, `required` research constraint, current API/compatibility rule, project standard, or concrete security/data-loss failure with demonstrable impact. An architecture-change demand additionally needs the named executable falsifier/failing scenario or a concrete violation of a named invariant. "More robust", "might be useful later", doctrine/taste, an `optional` research item, a hypothetical combination, or a stylistic preference is not blocking. MEDIUM/LOW never causes another plan revision. Research-informed quality is mandatory; research-driven product expansion is forbidden.
 - **Gate count (mechanical, current round only) — delegated to the tested resolver.** The orchestrator runs `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/hooks/resolve-review-gate.sh .kimiflow/<slug>/findings --round <N> --expect <lensCSV> --gate <plan|code> --epoch-start <S> --cap <C>`, where `S` is the current strategy epoch's first global round and absolute `C=S+B-1` (`B=2` for small/quick, `B=3` for large/audit/release-critical). `PLAN.md` is the canonical strategy basis for both gates. Before each gate's round 1, `RECOVERY.md` gets exactly one `<!-- kimiflow:strategy gate=<plan|code> epoch-start=1 fingerprint=<sha256(PLAN.md)> -->`; explicit gate-aware calls require and recompute it. Calls omitting `--epoch-start` remain legacy-compatible. The script is the **single source of truth**: it validates completeness + canonical grammar, counts open BLOCKER/HIGH, applies anti-oscillation only inside `S..N`, and echoes `VERDICT⇥count⇥reason_code⇥detail`. Only `OPEN/clean` advances. `incomplete|malformed` repairs/substitutes reviewer transport in the same round; `open-findings` permits the next targeted repair inside the epoch; `oscillation|reappeared|cap-reached` keeps the gate CLOSED and starts autonomous strategy recovery—never a continue prompt. It is language-agnostic and unit-tested by `hooks/test-resolve-review-gate.sh`; it never reads `REVIEW.md` or emits `OPEN` for recovery.
 - **Resolution = non-recurrence, re-derived by the reviewer (closes self-attestation).** A finding counts as resolved only because the freshly re-spawned reviewer of the next round, re-reviewing the revised `PLAN.md`/diff, **no longer emits it**. The orchestrator never flips a finding's status by its own judgment and never writes a self-supplied "resolved".
 - **Fixed review basis and source discovery (Phase 7).** Pin one basis per review round and reuse it for every axis in that round. Resolve `review_target_sha` with `git rev-parse HEAD` at the start of every round, so a repair commit is included by the next rerun. Validate a user-supplied base ref; otherwise a schema-4 run with local Red/clean-tree verification checkpoints uses the immutable `started_head` persisted in ACTIVE_RUN and STATE; otherwise use the repository default branch for committed branch work, or `HEAD` for a working-tree-only review. Set `review_base_sha` to `git merge-base <review_base_ref> <review_target_sha>` (or the target SHA for working-tree-only review). Record refs/SHAs, `git diff <review_base_sha>...<review_target_sha>`, `git diff <review_target_sha>`, `git diff --cached`, `git ls-files --others --exclude-standard -- <named paths>`, and `git log <review_base_sha>..<review_target_sha>` in `CODE-REVIEW.md`; append the same named pathspec where supported and include every named new file's contents in the packet. Only an empty combined committed + staged + unstaged + untracked set may skip reviewer calls. No reviewer infers its own base. Discover compact, referenced inputs rather than dumping whole files:
@@ -1255,7 +1327,7 @@ The vault is an **optional** notes MCP (e.g. Obsidian Local REST API's built-in 
 - **Code-review ensemble (Phase 7): candidate-first, orchestrator-verified, axis-preserving.** Phase 7 does not rely on one general reviewer. It builds one compact review packet, then sends focused candidates to multiple fresh-context axes. `quick` uses only `spec-correctness`; `small` uses at least `spec-correctness` + `failure-security` and folds documented standards into R2 only when R3 is not scheduled; add the third for hooks/plugins/memory/launcher/API/contracts/multi-surface/high-risk changes. `large`/release-critical uses all three. This reassigns the existing seats; it does not add reviewer calls. One axis (default: `spec-correctness`) is **cross-family by default** when a different-family CLI is available (→ "Model routing (per-role)"). Standard axes:
   - `spec-correctness`: independently trace cited requirements; find missing/partial/wrong behavior, unrequested scope, logic/edge regressions, and missing or weakened tests.
   - `failure-security`: input validation, secrets/privacy, paths, rollback/failure atomicity, partial writes; on `small` without R3, also apply the documented-standards/smell dimension. *(Routed to a non-Fable family by default when available — a Fable-family classifier can refuse benign security-adjacent work; → "Model routing (per-role)".)*
-  - `standards-integration`: documented project standards, host parity, plugin metadata, installed hooks, launcher/docs wiring, command/API/schema contracts, and the smell baseline below.
+  - `standards-integration`: path-applicable documented project standards, host parity, plugin metadata, installed hooks, launcher/docs wiring, command/API/schema contracts, the active Architecture Deliberation invariant/falsifier when present, and the smell baseline below.
   Each axis writes `.kimiflow/<slug>/code-review-candidates/r<N>-<axis>.md` with one line per issue: `CANDIDATE <SEVERITY> <ref> :: <claim> :: verify=<smallest check>`, or `NONE`. The orchestrator verifies candidates through targeted reads/commands/reproduction, then records source status and accepted/rejected/unverified candidates under separate `Spec / Correctness`, `Failure / Security`, and `Standards / Integration` headings in `CODE-REVIEW.md`. Keep cross-axis duplicates visible and linked there without reranking, but promote an exact underlying defect only once with all applicable axis labels. Promote confirmed findings into `.kimiflow/<slug>/findings/r<N>-code-verified.md` as `FINDING <SEVERITY> <ref> :: [<axis-labels>] <reason>`, using `spec`, `risk`, and/or `standards` joined by `+`. For any BLOCKER/HIGH candidate, verification includes an **active refutation attempt** (execute its `verify=` check, read the full code path — "could this be wrong?"): survives → promote; refuted → record as rejected. On a partial rerun, carry forward still-applicable verified findings from unaffected axes; shared/uncertain changes rerun every scheduled axis. The resolver counts the promoted file, never raw candidates.
 - **Standards smell baseline (heuristic, not law):** Mysterious Name; Duplicated Code; Feature Envy; Data Clumps; Primitive Obsession; Repeated Switches; Shotgun Surgery; Divergent Change; Speculative Generality; Message Chains; Middle Man; Refused Bequest. Repository standards override this list. A smell is never a hard violation by itself: promote only when tied to a documented standard or demonstrable correctness/integration impact; otherwise route a concrete smaller alternative to `ADVISORIES.md` as a non-gating `FLAG`.
 - **Code-review scope (Phase 7): correctness/requirements/security/contracts/documented standards, NOT style-only preference.** Also check: were tests weakened/deleted to go green? This is **mechanized** by `hooks/test-weakening-scan.sh` (deleted test files, added `.skip`/`xit`/`it.only`/`@Disabled`/`@pytest.mark.skip`/`t.Skip`/`assumeTrue(false)`, removed assertions) → `FLAG` advisories in `.kimiflow/<slug>/ADVISORIES.md`. **Advisories are non-gating** — a separate channel, never counted by the gate grep — and are surfaced at the commit boundary, where the orchestrator verifies the evidence and either dismisses with a concrete non-impact reason or promotes to a real finding and returns to implementation/review. Unresolved flags still block the commit; user input is required only when the evidence exposes a material product/authority/risk decision. The scan is a **minimum**: semantic weakening (changed expected values, loosened tolerances) is not detected.
@@ -1331,8 +1403,8 @@ With that file present, the hook runs the command on stop; on failure it blocks 
 
 ## Code mandate (Phase 3 directive · Phase 5 build · Phase 7 review)
 
-- **Minimum-complete simplicity:** build the smallest complete solution for the approved behavior and verified `required` constraints. Every task, file, abstraction, and test maps to an `AC-N`; unsupported structure is deleted. Research chooses current implementation technique but never adds product scope. No speculative abstractions/configurability, optional providers, future-proofing, or error handling for impossible cases. Prefer a flat linear plan and existing architecture: does this need to exist at all? → stdlib → native platform → one line before fifty.
-- **Match the existing architecture** + project standards: adopt the project's patterns, naming, style. State-of-the-art means **fitting**, not **new at any cost**.
+- **Minimum-complete simplicity:** build the smallest complete solution for the approved behavior and verified `required` constraints. Every task, file, abstraction, and test maps to an `AC-N`; unsupported structure is deleted. Research chooses current implementation technique but never adds product scope. No speculative abstractions/configurability, optional providers, future-proofing, or error handling for impossible cases. Prefer a flat linear plan and the smallest architecture that fits the evidenced target: does this need to exist at all? → stdlib → native platform → one line before fifty.
+- **Treat the existing architecture as evidence, not authority.** Normally adopt the project's applicable patterns, naming, and style. When active Architecture Deliberation plus its falsifier proves the target envelope requires `evolve|replace`, change only the necessary boundary and preserve unaffected conventions. State-of-the-art means **fitting**, not **new at any cost**.
 - **Scales with the project:** prototype ≠ enterprise layers; a hot path needs performance awareness.
 - **Efficient & elegant:** readable, no needless recomputation in hot paths, clear single-purpose units.
 - **Surgical:** touch only what the request demands; clean up your own orphans; leave foreign code alone.

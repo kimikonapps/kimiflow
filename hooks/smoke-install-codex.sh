@@ -178,6 +178,26 @@ grep -q 'suggest-affected-sections.sh' "$SKILL" && ok "Codex wrapper maps sugges
 grep -q 'map-staleness-nudge.sh' "$SKILL" && ok "Codex wrapper maps map staleness nudge helper" || bad "Codex wrapper missing map staleness nudge helper"
 grep -q 'current-state-gate.sh' "$ROOT/reference.md" && ok "canonical current-state gate helper documented" || bad "canonical current-state gate helper missing"
 grep -q 'discovery-gate.sh' "$ROOT/reference.md" && ok "canonical discovery gate helper documented" || bad "canonical discovery gate helper missing"
+grep -q 'Architecture contract: 1' "$ROOT/phases/phase-0-setup.md" \
+  && grep -q 'Senior Design trigger' "$ROOT/phases/phase-2-understand.md" \
+  && grep -q 'Architecture deliberation: off|active' "$ROOT/phases/phase-2-understand.md" \
+  && ok "canonical adaptive architecture routing documented" || bad "canonical adaptive architecture routing missing"
+grep -q 'approaches=2 principles=<0..3> critique=1 user_gate=no' "$ROOT/reference.md" \
+  && grep -q 'at most 450 words' "$ROOT/reference.md" \
+  && grep -q 'architecture_note_over_budget' "$ROOT/hooks/plan-blocker-gate.sh" \
+  && ok "canonical adaptive architecture contract bounded" || bad "canonical adaptive architecture contract bounds missing"
+grep -q 'exact failing scenario/executable check' "$ROOT/phases/phase-4-review-approval.md" \
+  && grep -q 'Architecture falsification' "$ROOT/phases/phase-6-verify.md" \
+  && grep -q 'Demand architecture change only' "$ROOT/phases/phase-7-review-commit.md" \
+  && ok "canonical architecture falsifier reaches review and verify" || bad "canonical architecture falsifier wiring missing"
+if [ -f "$ROOT/hooks/memory_router/standards.py" ] \
+  && [ -f "$ROOT/hooks/memory_router/tests/test_standards.py" ] \
+  && grep -q '"standards": _standards.run' "$ROOT/hooks/memory_router/__main__.py" \
+  && grep -q 'standards select --affected' "$ROOT/reference.md"; then
+  ok "canonical scoped standards selector installed"
+else
+  bad "canonical scoped standards selector missing"
+fi
 grep -q 'working-tree-gate.sh' "$ROOT/reference.md" && ok "canonical working-tree gate helper documented" || bad "canonical working-tree gate helper missing"
 grep -q 'clarify-gate.sh' "$ROOT/reference.md" && ok "canonical clarify gate helper documented" || bad "canonical clarify gate helper missing"
 grep -q 'plan-blocker-gate.sh' "$ROOT/reference.md" && ok "canonical plan-blocker gate helper documented" || bad "canonical plan-blocker gate helper missing"

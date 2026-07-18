@@ -86,6 +86,125 @@ out="$(run_gate)"
 assert_field "$out" 2 OPEN "clean_plan_opens"
 assert_contains "$out" "reason=clean" "clean_reason"
 
+# Runs created before Architecture Contract remain resumable.
+assert_field "$out" 2 OPEN "legacy_run_without_architecture_contract_opens"
+
+enable_active_architecture() {
+  cat >> "$RUN/STATE.md" <<'EOF'
+Architecture contract: 1
+Architecture deliberation: active
+EOF
+  cat >> "$RUN/RESEARCH.md" <<'EOF'
+<!-- kimiflow:architecture-deliberation status=active approaches=2 principles=2 critique=1 user_gate=no -->
+## Adaptive Architecture Deliberation
+Problem behind request: The current split may not fit the required data flow.
+Operating envelope: One local process today, bounded growth, reversible storage boundary.
+Architecture status: evolve
+Quality drivers: correctness, reversibility, and local operation.
+Project principles:
+- Type: invariant; Scope: src/**; Rule: Writes use one transaction boundary; Evidence: tests/transaction.test.ts.
+- Type: preference; Scope: src/**; Rule: Prefer the existing module boundary; Evidence: src/feature.ts:12.
+Preferred approach: Evolve the current module boundary.
+Strongest alternative: Replace the module with a service.
+Trade-off / debt: Keep one adapter until the growth trigger is observed.
+Reversibility / evolution trigger: Replace only after measured contention.
+Falsification check: Run architecture_contract_test.
+EOF
+  cat >> "$RUN/PLAN.md" <<'EOF'
+Architecture fit: active
+Architecture decision: Evolve the existing boundary.
+Architecture evidence: RESEARCH.md §Adaptive Architecture Deliberation
+Architecture check: AC-1 -> architecture_contract_test
+EOF
+}
+
+reset_run
+cat >> "$RUN/STATE.md" <<'EOF'
+Architecture contract: 1
+Architecture deliberation: pending
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "architecture_pending_closes"
+assert_contains "$out" "architecture_deliberation_pending" "architecture_pending_detail"
+
+reset_run
+enable_active_architecture
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "valid_active_architecture_contract_opens"
+
+for mutation in 'approaches=2 approaches=3 architecture_approach_count_invalid' \
+                'principles=2 principles=4 architecture_principle_count_invalid' \
+                'critique=1 critique=2 architecture_critique_count_invalid'; do
+  set -- $mutation
+  reset_run
+  enable_active_architecture
+  sed -i.bak "s/$1/$2/" "$RUN/RESEARCH.md" && rm "$RUN/RESEARCH.md.bak"
+  out="$(run_gate)"
+  assert_field "$out" 2 CLOSED "architecture_${3}_closes"
+  assert_contains "$out" "$3" "architecture_${3}_detail"
+done
+
+reset_run
+enable_active_architecture
+printf '%s\n' '<!-- kimiflow:architecture-deliberation status=off approaches=0 principles=0 critique=0 user_gate=no -->' >> "$RUN/RESEARCH.md"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "architecture_duplicate_marker_closes"
+assert_contains "$out" "architecture_marker_count_invalid" "architecture_duplicate_marker_detail"
+
+reset_run
+enable_active_architecture
+sed -i.bak 's/principles=2/principles=3/' "$RUN/RESEARCH.md" && rm "$RUN/RESEARCH.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "architecture_principle_marker_mismatch_closes"
+assert_contains "$out" "architecture_principle_marker_mismatch" "architecture_principle_mismatch_detail"
+
+reset_run
+enable_active_architecture
+sed -i.bak 's/user_gate=no/user_gate=yes/' "$RUN/RESEARCH.md" && rm "$RUN/RESEARCH.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "architecture_user_gate_closes"
+assert_contains "$out" "architecture_user_gate_forbidden" "architecture_user_gate_detail"
+
+reset_run
+enable_active_architecture
+sed -i.bak '/^Architecture check:/d' "$RUN/PLAN.md" && rm "$RUN/PLAN.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "architecture_missing_plan_check_closes"
+assert_contains "$out" "architecture_plan_check_missing" "architecture_missing_plan_check_detail"
+
+reset_run
+enable_active_architecture
+sed -i.bak 's/Architecture check: AC-1/Architecture check: AC-9/' "$RUN/PLAN.md" && rm "$RUN/PLAN.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "architecture_check_requires_acceptance_ac"
+assert_contains "$out" "architecture_check_ac_missing:AC-9" "architecture_check_ac_detail"
+
+reset_run
+enable_active_architecture
+for _ in $(seq 1 460); do printf 'budgetword ' >> "$RUN/RESEARCH.md"; done
+printf '\n' >> "$RUN/RESEARCH.md"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "architecture_note_budget_closes"
+assert_contains "$out" "architecture_note_over_budget" "architecture_note_budget_detail"
+
+reset_run
+cat >> "$RUN/STATE.md" <<'EOF'
+Architecture contract: 1
+Architecture deliberation: off
+EOF
+cat >> "$RUN/RESEARCH.md" <<'EOF'
+<!-- kimiflow:architecture-deliberation status=off approaches=0 principles=0 critique=0 user_gate=no -->
+Architecture off reason: local reversible change.
+EOF
+printf 'Architecture fit: off — local reversible change\n' >> "$RUN/PLAN.md"
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "valid_off_architecture_contract_opens"
+
+printf '%s\n' '## Adaptive Architecture Deliberation' >> "$RUN/RESEARCH.md"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "architecture_off_note_closes"
+assert_contains "$out" "architecture_off_note_forbidden" "architecture_off_note_detail"
+
 reset_run
 sed -i.bak -e 's/Mode: feature/Mode: fix/' -e 's/Discovery required: yes/Discovery required: no/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
 printf 'Flow schema: 3\n' >> "$RUN/STATE.md"

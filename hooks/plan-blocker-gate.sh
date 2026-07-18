@@ -200,6 +200,120 @@ fi
 phase_detail="$(phase_read_blocker)"
 [ -z "$phase_detail" ] || add_blocker "$phase_detail"
 
+# New runs may opt into the bounded Architecture Deliberation contract. A missing
+# contract is legacy-compatible; once the key exists, malformed or incomplete state
+# fails closed before reviewers. This validates observable shape and budgets, not the
+# semantic quality of the architecture decision.
+architecture_contract="$(kimiflow_state_value "$state" "Architecture contract" | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
+if [ -n "$architecture_contract" ]; then
+  if ! printf '%s\n' "$architecture_contract" | grep -Eq '^(1|yes|true)$'; then
+    add_blocker "architecture_contract_version_invalid"
+  else
+    architecture_state="$(kimiflow_state_value "$state" "Architecture deliberation" | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
+    case "$architecture_state" in
+      active|off) ;;
+      pending|'') add_blocker "architecture_deliberation_pending" ;;
+      *) add_blocker "architecture_deliberation_state_invalid" ;;
+    esac
+
+    architecture_marker_count=0
+    architecture_marker=""
+    if [ -n "$understanding" ] && [ -f "$understanding" ]; then
+      architecture_marker_count="$(grep -c '^<!-- kimiflow:architecture-deliberation ' "$understanding" 2>/dev/null || true)"
+      architecture_marker="$(grep -E '^<!-- kimiflow:architecture-deliberation status=(active|off) approaches=[0-9]+ principles=[0-9]+ critique=[0-9]+ user_gate=(yes|no) -->$' "$understanding" 2>/dev/null || true)"
+    fi
+    if [ "$architecture_marker_count" -ne 1 ]; then
+      add_blocker "architecture_marker_count_invalid"
+    elif [ -z "$architecture_marker" ] || [ "$(printf '%s\n' "$architecture_marker" | grep -c .)" -ne 1 ]; then
+      add_blocker "architecture_marker_malformed"
+    else
+      marker_status=""; marker_approaches=""; marker_principles=""; marker_critique=""; marker_user_gate=""
+      marker_body="${architecture_marker#<!-- kimiflow:architecture-deliberation }"
+      marker_body="${marker_body% -->}"
+      OLDIFS="$IFS"; IFS=' '; set -- $marker_body; IFS="$OLDIFS"
+      for field in "$@"; do
+        case "$field" in
+          status=*) marker_status="${field#status=}" ;;
+          approaches=*) marker_approaches="${field#approaches=}" ;;
+          principles=*) marker_principles="${field#principles=}" ;;
+          critique=*) marker_critique="${field#critique=}" ;;
+          user_gate=*) marker_user_gate="${field#user_gate=}" ;;
+        esac
+      done
+      [ "$marker_status" = "$architecture_state" ] || add_blocker "architecture_marker_state_mismatch"
+      [ "$marker_user_gate" = "no" ] || add_blocker "architecture_user_gate_forbidden"
+
+      if [ "$marker_status" = "active" ]; then
+        [ "$marker_approaches" = "2" ] || add_blocker "architecture_approach_count_invalid"
+        [ "$marker_critique" = "1" ] || add_blocker "architecture_critique_count_invalid"
+        case "$marker_principles" in
+          0|1|2|3) ;;
+          *) add_blocker "architecture_principle_count_invalid" ;;
+        esac
+
+        [ "$(grep -c '^## Adaptive Architecture Deliberation[[:space:]]*$' "$understanding" 2>/dev/null || true)" -eq 1 ] \
+          || add_blocker "architecture_section_missing"
+
+        for label in \
+          'Problem behind request:' 'Operating envelope:' 'Architecture status:' \
+          'Quality drivers:' 'Project principles:' 'Preferred approach:' \
+          'Strongest alternative:' 'Trade-off / debt:' \
+          'Reversibility / evolution trigger:' 'Falsification check:'; do
+          [ "$(grep -cF "$label" "$understanding" 2>/dev/null || true)" -eq 1 ] \
+            || add_blocker "architecture_field_missing:$(printf '%s' "$label" | tr '[:upper:] /' '[:lower:]__' | tr -cd '[:alnum:]_:_-')"
+        done
+        grep -Eq '^Architecture status: (fit|evolve|replace)$' "$understanding" 2>/dev/null \
+          || add_blocker "architecture_status_invalid"
+
+        note_words="$(awk '
+          /^## Adaptive Architecture Deliberation[[:space:]]*$/ { in_note=1; next }
+          in_note && /^## / { in_note=0 }
+          in_note { count += NF }
+          END { print count + 0 }
+        ' "$understanding" 2>/dev/null)"
+        [ "$note_words" -le 450 ] || add_blocker "architecture_note_over_budget:${note_words}"
+
+        principle_lines="$(awk '
+          /^Project principles:[[:space:]]*$/ { in_principles=1; next }
+          in_principles && /^Preferred approach:/ { in_principles=0 }
+          in_principles && /^- Type:/ { print }
+        ' "$understanding" 2>/dev/null)"
+        principle_count="$(printf '%s\n' "$principle_lines" | grep -c .)"
+        [ "$principle_count" -eq "$marker_principles" ] \
+          || add_blocker "architecture_principle_marker_mismatch"
+        invalid_principles="$(printf '%s\n' "$principle_lines" \
+          | grep -Ev '^- Type: (invariant|constraint|preference|heuristic|legacy); Scope: [^;]+; Rule: [^;]+; Evidence: .+$' \
+          | grep -c . || true)"
+        [ "$invalid_principles" -eq 0 ] || add_blocker "architecture_principle_shape_invalid"
+
+        [ -f "$plan" ] && [ "$(grep -c '^Architecture fit: active$' "$plan" 2>/dev/null || true)" -eq 1 ] \
+          || add_blocker "architecture_plan_fit_missing"
+        [ -f "$plan" ] && [ "$(grep -c '^Architecture decision: .' "$plan" 2>/dev/null || true)" -eq 1 ] \
+          || add_blocker "architecture_plan_decision_missing"
+        [ -f "$plan" ] && [ "$(grep -cF 'Architecture evidence: RESEARCH.md §Adaptive Architecture Deliberation' "$plan" 2>/dev/null || true)" -eq 1 ] \
+          || add_blocker "architecture_plan_evidence_missing"
+        architecture_check="$(grep -E '^Architecture check: AC-[0-9]+ -> .+' "$plan" 2>/dev/null || true)"
+        if [ "$(printf '%s\n' "$architecture_check" | grep -c .)" -ne 1 ]; then
+          add_blocker "architecture_plan_check_missing"
+        else
+          architecture_ac="$(printf '%s\n' "$architecture_check" | grep -Eo 'AC-[0-9]+' | head -1)"
+          file_has_ac_token "$acceptance" "$architecture_ac" \
+            || add_blocker "architecture_check_ac_missing:${architecture_ac}"
+        fi
+      elif [ "$marker_status" = "off" ]; then
+        [ "$marker_approaches" = "0" ] && [ "$marker_principles" = "0" ] && [ "$marker_critique" = "0" ] \
+          || add_blocker "architecture_off_counts_invalid"
+        [ "$(grep -c '^Architecture off reason: .' "$understanding" 2>/dev/null || true)" -eq 1 ] \
+          || add_blocker "architecture_off_reason_missing"
+        [ "$(grep -c '^## Adaptive Architecture Deliberation[[:space:]]*$' "$understanding" 2>/dev/null || true)" -eq 0 ] \
+          || add_blocker "architecture_off_note_forbidden"
+        [ -f "$plan" ] && grep -Eq '^Architecture fit: off( —|-|:) .+' "$plan" 2>/dev/null \
+          || add_blocker "architecture_plan_off_missing"
+      fi
+    fi
+  fi
+fi
+
 if [ -f "$plan" ]; then
   if grep -Eiq '\b(TBD|TODO|FIXME|NEEDS CLARIFICATION|OPEN QUESTION|NOT VERIFIED|UNKNOWN)\b' "$plan"; then
     add_blocker "plan_contains_unresolved_marker"

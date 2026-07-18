@@ -178,6 +178,26 @@ grep -q -- 'refresh --changed' "$ROOT/SKILL.md" && ok "canonical skill documents
 grep -q 'suggest-affected-sections.sh' "$ROOT/SKILL.md" && ok "canonical skill documents Phase-2 section lookup" || bad "missing Phase-2 section lookup in SKILL.md"
 grep -q 'current-state-gate.sh' "$ROOT/reference.md" && ok "reference documents current-state gate helper" || bad "missing current-state gate helper in reference.md"
 grep -q 'discovery-gate.sh' "$ROOT/reference.md" && ok "reference documents discovery gate helper" || bad "missing discovery gate helper in reference.md"
+grep -q 'Architecture contract: 1' "$ROOT/phases/phase-0-setup.md" \
+  && grep -q 'Senior Design trigger' "$ROOT/phases/phase-2-understand.md" \
+  && grep -q 'Architecture deliberation: off|active' "$ROOT/phases/phase-2-understand.md" \
+  && ok "adaptive architecture routing documented" || bad "adaptive architecture routing missing"
+grep -q 'approaches=2 principles=<0..3> critique=1 user_gate=no' "$ROOT/reference.md" \
+  && grep -q 'at most 450 words' "$ROOT/reference.md" \
+  && grep -q 'architecture_note_over_budget' "$ROOT/hooks/plan-blocker-gate.sh" \
+  && ok "adaptive architecture contract bounded" || bad "adaptive architecture contract bounds missing"
+grep -q 'exact failing scenario/executable check' "$ROOT/phases/phase-4-review-approval.md" \
+  && grep -q 'Architecture falsification' "$ROOT/phases/phase-6-verify.md" \
+  && grep -q 'Demand architecture change only' "$ROOT/phases/phase-7-review-commit.md" \
+  && ok "architecture falsifier reaches review and verify" || bad "architecture falsifier wiring missing"
+if [ -f "$ROOT/hooks/memory_router/standards.py" ] \
+  && [ -f "$ROOT/hooks/memory_router/tests/test_standards.py" ] \
+  && grep -q '"standards": _standards.run' "$ROOT/hooks/memory_router/__main__.py" \
+  && grep -q 'standards select --affected' "$ROOT/reference.md"; then
+  ok "scoped standards selector installed"
+else
+  bad "scoped standards selector missing"
+fi
 grep -q 'working-tree-gate.sh' "$ROOT/reference.md" && ok "reference documents working-tree gate helper" || bad "missing working-tree gate helper in reference.md"
 grep -q 'clarify-gate.sh' "$ROOT/reference.md" && ok "reference documents clarify gate helper" || bad "missing clarify gate helper in reference.md"
 grep -q 'plan-blocker-gate.sh' "$ROOT/reference.md" && ok "reference documents plan-blocker gate helper" || bad "missing plan-blocker gate helper in reference.md"
