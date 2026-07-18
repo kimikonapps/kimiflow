@@ -90,6 +90,135 @@ class TestAffectedPathsHeaders(unittest.TestCase):
 
 
 @unittest.skipUnless(shutil.which("jq"), "jq required by active-run commands")
+class TestOutcomeEvaluation(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.temp, ignore_errors=True)
+        self.repo = os.path.join(self.temp, "repo")
+        os.mkdir(self.repo)
+        self.git("init", "-b", "main")
+        self.git("config", "user.email", "test@example.com")
+        self.git("config", "user.name", "Test User")
+        with open(os.path.join(self.repo, ".gitignore"), "w", encoding="utf-8") as handle:
+            handle.write(".kimiflow/\n")
+        with open(os.path.join(self.repo, "tracked.txt"), "w", encoding="utf-8") as handle:
+            handle.write("base\n")
+        self.git("add", ".gitignore", "tracked.txt")
+        self.git("commit", "-m", "base")
+        self.run_rel = ".kimiflow/demo"
+        self.run_dir = os.path.join(self.repo, self.run_rel)
+        os.makedirs(self.run_dir)
+        self.write_state()
+        self.plugin = os.path.join(self.temp, "plugin")
+        os.mkdir(self.plugin)
+        self.router = os.path.join(self.temp, "memory-router")
+        self.router_log = os.path.join(self.temp, "router.log")
+        self.write_router()
+        self.env = {
+            "KIMIFLOW_PLUGIN_ROOT": self.plugin,
+            "KIMIFLOW_HOST": "codex",
+            "CODEX_THREAD_ID": "owner-session",
+            "KIMIFLOW_MEMORY_ROUTER": self.router,
+            "KIMIFLOW_TEST_ROUTER_LOG": self.router_log,
+        }
+        patcher = mock.patch.dict(os.environ, self.env)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        rc, _ = run_main(["start", "--run", self.run_rel, "--root", self.repo, "--write"])
+        self.assertEqual(rc, 0)
+
+    def git(self, *args):
+        return subprocess.run(
+            ["git", "-C", self.repo] + list(args),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True,
+        )
+
+    def write_state(self):
+        with open(os.path.join(self.run_dir, "STATE.md"), "w", encoding="utf-8") as handle:
+            handle.write(
+                "Flow schema: 4\n"
+                "Status: active\n"
+                "Mode: feature\n"
+                "Scope: small\n"
+                "Affected files: tracked.txt\n"
+                "Phase 0: done\nPhase 1: done\nPhase 2: done\nPhase 3: done\n"
+                "Phase 4: done\nPhase 5: done\nPhase 6: done\nPhase 7: done\n"
+            )
+
+    def write_router(self):
+        with open(self.router, "w", encoding="utf-8") as handle:
+            handle.write(
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$*\" >> \"${KIMIFLOW_TEST_ROUTER_LOG:?}\"\n"
+                "case \"$1\" in\n"
+                "review-run) printf '%s\\n' '{\"status\":\"skipped\",\"written\":true}'; exit 0 ;;\n"
+                "verify-run) printf '%s\\n' 'LEARNING_REVIEW OPEN'; exit 0 ;;\n"
+                "evaluate-run)\n"
+                "  root=; run=; shift\n"
+                "  while [ \"$#\" -gt 0 ]; do case \"$1\" in --root) shift; root=$1 ;; --run) shift; run=$1 ;; esac; shift; done\n"
+                "  if [ \"${KIMIFLOW_TEST_EVALUATE_WRITE:-0}\" = 1 ]; then mkdir -p \"$root/.kimiflow/project\"; printf partial > \"$root/.kimiflow/project/STRATEGY-OUTCOMES.jsonl\"; printf partial > \"$root/$run/OUTCOME-EVALUATION.json\"; fi\n"
+                "  if [ \"${KIMIFLOW_TEST_EVALUATE_FAIL:-0}\" = 1 ]; then exit 23; fi\n"
+                "  printf '%s\\n' '{\"status\":\"evaluated\",\"written\":true,\"evaluation\":{\"id\":\"out_test\",\"classification\":\"verified_success\",\"promotable\":true}}'; exit 0 ;;\n"
+                "*) exit 2 ;;\n"
+                "esac\n"
+            )
+        os.chmod(self.router, 0o700)
+
+    def test_finish_outcome_evaluation_is_transactional(self):
+        project = os.path.join(self.repo, ".kimiflow", "project")
+        os.makedirs(project)
+        existing = os.path.join(project, "EXISTING.json")
+        with open(existing, "w", encoding="utf-8") as handle:
+            handle.write('{"existing":true}\n')
+
+        with mock.patch.dict(os.environ, {
+            "KIMIFLOW_TEST_EVALUATE_WRITE": "1",
+            "KIMIFLOW_TEST_EVALUATE_FAIL": "1",
+        }):
+            rc, _ = run_main(["finish", "--root", self.repo, "--write"])
+        self.assertEqual(rc, 23)
+        self.assertTrue(os.path.isfile(active_run.active_file(self.repo)))
+        self.assertTrue(os.path.isfile(existing))
+        self.assertFalse(os.path.exists(os.path.join(project, "STRATEGY-OUTCOMES.jsonl")))
+        self.assertFalse(os.path.exists(os.path.join(self.run_dir, "OUTCOME-EVALUATION.json")))
+
+        rc, out = run_main(["finish", "--root", self.repo, "--write"])
+        self.assertEqual(rc, 0)
+        result = json.loads(out)
+        self.assertEqual(result["outcome"]["outcome_evaluation"]["classification"], "verified_success")
+        self.assertFalse(os.path.exists(active_run.active_file(self.repo)))
+        with open(self.router_log, "r", encoding="utf-8") as handle:
+            self.assertIn("evaluate-run --root %s --run %s --terminal done --write" % (
+                self.repo, self.run_rel
+            ), handle.read())
+
+    def test_terminal_outcome_evaluation_is_best_effort(self):
+        for command, expected in (("park", "parked"), ("fail", "failed"), ("abort", "aborted")):
+            with self.subTest(command=command):
+                if not os.path.isfile(active_run.active_file(self.repo)):
+                    os.makedirs(self.run_dir, exist_ok=True)
+                    self.write_state()
+                    rc, _ = run_main(["start", "--run", self.run_rel, "--root", self.repo, "--write"])
+                    self.assertEqual(rc, 0)
+                with mock.patch.dict(os.environ, {"KIMIFLOW_TEST_EVALUATE_FAIL": "1"}):
+                    rc, out = run_main([
+                        command,
+                        "--root", self.repo,
+                        "--reason", "terminal fixture",
+                        "--write",
+                    ])
+                self.assertEqual(rc, 0)
+                result = json.loads(out)
+                self.assertEqual(result["status"], expected)
+                self.assertEqual(result["outcome"]["outcome_evaluation"]["status"], "error")
+                self.assertEqual(result["outcome"]["outcome_evaluation"]["exit_code"], 23)
+                self.assertFalse(os.path.exists(active_run.active_file(self.repo)))
+
+
+@unittest.skipUnless(shutil.which("jq"), "jq required by active-run commands")
 class TestAwaitUser(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp()
@@ -1051,6 +1180,7 @@ class TestTerminalWorktreeRetirement(unittest.TestCase):
                 "#!/bin/sh\n"
                 "if [ \"$1\" = review-run ]; then printf '%s\\n' '{\"status\":\"skipped\"}'; exit 0; fi\n"
                 "if [ \"$1\" = verify-run ]; then printf '%s\\n' OPEN; exit 0; fi\n"
+                "if [ \"$1\" = evaluate-run ]; then printf '%s\\n' '{\"status\":\"evaluated\",\"evaluation\":{\"classification\":\"verified_success\"}}'; exit 0; fi\n"
                 "exit 2\n"
             )
         os.chmod(router, 0o700)
@@ -1077,6 +1207,7 @@ class TestTerminalWorktreeRetirement(unittest.TestCase):
                 "#!/bin/sh\n"
                 "if [ \"$1\" = review-run ]; then printf '%s\\n' '{\"status\":\"skipped\"}'; exit 0; fi\n"
                 "if [ \"$1\" = verify-run ]; then printf '%s\\n' OPEN; exit 0; fi\n"
+                "if [ \"$1\" = evaluate-run ]; then printf '%s\\n' '{\"status\":\"evaluated\",\"evaluation\":{\"classification\":\"verified_success\"}}'; exit 0; fi\n"
                 "exit 2\n"
             )
         os.chmod(router, 0o700)

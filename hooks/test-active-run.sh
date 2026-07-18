@@ -61,6 +61,26 @@ case "${1:-}" in
     fi
     printf 'LEARNING_REVIEW\tOPEN\tstatus=recorded\tfreshness=current\tpath=.kimiflow/demo/LEARNING-REVIEW.md\n'
     ;;
+  evaluate-run)
+    root=""; run=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --root) shift; root="${1:-}" ;;
+        --run) shift; run="${1:-}" ;;
+      esac
+      shift || true
+    done
+    if [ "${KIMIFLOW_FAKE_EVALUATE_WRITES:-0}" = "1" ] && [ -n "$root" ] && [ -n "$run" ]; then
+      mkdir -p "$root/.kimiflow/project"
+      printf '{"partial":true}\n' > "$root/.kimiflow/project/STRATEGY-OUTCOMES.jsonl"
+      printf '{"partial":true}\n' > "$root/$run/OUTCOME-EVALUATION.json"
+    fi
+    if [ "${KIMIFLOW_FAKE_EVALUATE_FAIL:-0}" = "1" ]; then
+      printf 'synthetic outcome evaluation failure\n' >&2
+      exit 23
+    fi
+    printf '{"schema_version":1,"status":"evaluated","written":true,"evaluation":{"id":"out_test","classification":"verified_success","promotable":true}}\n'
+    ;;
   *)
     printf 'fake-memory-router: unsupported command %s\n' "${1:-}" >&2
     exit 2
@@ -312,9 +332,9 @@ out="$(run_active refresh-baseline --write)"
 assert_jq "$out" '.stale_risk == "current"' "refresh_baseline_clears_stale_risk"
 
 out="$(run_active finish --write)"
-assert_jq "$out" '.status == "finished" and .outcome.outcome == "done"' "finish_succeeds_after_acceptance_and_revalidation"
+assert_jq "$out" '.status == "finished" and .outcome.outcome == "done" and .outcome.outcome_evaluation.classification == "verified_success"' "finish_succeeds_after_acceptance_and_revalidation"
 [ ! -f "$REPO/.kimiflow/session/ACTIVE_RUN.json" ] && pass "finish_clears_active_session" || fail "finish_clears_active_session"
-grep -q '^review-run ' "$ROUTER_LOG" && grep -q '^verify-run ' "$ROUTER_LOG" && pass "finish_calls_learning_review_and_verify" || fail "finish_calls_learning_review_and_verify"
+grep -q '^review-run ' "$ROUTER_LOG" && grep -q '^verify-run ' "$ROUTER_LOG" && grep -q '^evaluate-run .*--terminal done' "$ROUTER_LOG" && pass "finish_calls_learning_review_verify_and_outcome_evaluation" || fail "finish_calls_learning_review_verify_and_outcome_evaluation"
 grep -q '^Status: done' "$REPO/.kimiflow/demo/STATE.md" && pass "finish_marks_state_done" || fail "finish_marks_state_done"
 
 reset_repo
@@ -389,6 +409,20 @@ if grep -q '^Status: done' "$REPO/.kimiflow/demo/STATE.md"; then
 else
   pass "failed_finish_does_not_mark_state_done"
 fi
+
+reset_repo
+mkdir -p "$REPO/.kimiflow/project"
+printf '{"existing":true}\n' > "$REPO/.kimiflow/project/EXISTING.json"
+run_active start --run .kimiflow/demo --write >/dev/null
+if KIMIFLOW_HOST=codex CODEX_THREAD_ID=owner-session KIMIFLOW_MEMORY_ROUTER="$FAKE_ROUTER" KIMIFLOW_FAKE_ROUTER_LOG="$ROUTER_LOG" KIMIFLOW_FAKE_EVALUATE_WRITES=1 KIMIFLOW_FAKE_EVALUATE_FAIL=1 "$SCRIPT" finish --root "$REPO" --write >/dev/null 2>&1; then
+  fail "finish_fails_when_outcome_evaluation_fails"
+else
+  pass "finish_fails_when_outcome_evaluation_fails"
+fi
+[ -f "$REPO/.kimiflow/session/ACTIVE_RUN.json" ] && pass "outcome_failure_keeps_active_session" || fail "outcome_failure_keeps_active_session"
+[ -f "$REPO/.kimiflow/project/EXISTING.json" ] && pass "outcome_failure_restores_existing_project" || fail "outcome_failure_restores_existing_project"
+[ ! -f "$REPO/.kimiflow/project/STRATEGY-OUTCOMES.jsonl" ] && pass "outcome_failure_rolls_back_strategy_ledger" || fail "outcome_failure_rolls_back_strategy_ledger"
+[ ! -f "$REPO/.kimiflow/demo/OUTCOME-EVALUATION.json" ] && pass "outcome_failure_rolls_back_run_artifact" || fail "outcome_failure_rolls_back_run_artifact"
 
 reset_repo
 run_active start --run .kimiflow/demo --write >/dev/null
@@ -489,20 +523,20 @@ assert_jq "$out" '.status == "finished" and .outcome.outcome == "done"' "legacy_
 reset_repo
 run_active start --run .kimiflow/demo --write >/dev/null
 out="$(run_active park --reason "waiting for user validation" --write)"
-assert_jq "$out" '.status == "parked" and .outcome.learning_review.status == "not_promoted"' "park_clears_without_positive_learning"
-[ ! -s "$ROUTER_LOG" ] && pass "park_does_not_call_memory_router" || fail "park_does_not_call_memory_router"
+assert_jq "$out" '.status == "parked" and .outcome.learning_review.status == "not_promoted" and .outcome.outcome_evaluation.status == "evaluated"' "park_clears_with_best_effort_evaluation"
+grep -q '^evaluate-run .*--terminal parked' "$ROUTER_LOG" && pass "park_calls_outcome_evaluation" || fail "park_calls_outcome_evaluation"
 
 reset_repo
 run_active start --run .kimiflow/demo --write >/dev/null
 out="$(run_active fail --reason "verification failed" --write)"
-assert_jq "$out" '.status == "failed" and .outcome.learning_review.status == "not_promoted"' "fail_clears_without_positive_learning"
-[ ! -s "$ROUTER_LOG" ] && pass "fail_does_not_call_memory_router" || fail "fail_does_not_call_memory_router"
+assert_jq "$out" '.status == "failed" and .outcome.learning_review.status == "not_promoted" and .outcome.outcome_evaluation.status == "evaluated"' "fail_clears_with_best_effort_evaluation"
+grep -q '^evaluate-run .*--terminal failed' "$ROUTER_LOG" && pass "fail_calls_outcome_evaluation" || fail "fail_calls_outcome_evaluation"
 
 reset_repo
 run_active start --run .kimiflow/demo --write >/dev/null
 out="$(run_active abort --reason "user switched workflow" --write)"
-assert_jq "$out" '.status == "aborted" and .outcome.learning_review.status == "not_promoted"' "abort_clears_without_positive_learning"
-[ ! -s "$ROUTER_LOG" ] && pass "abort_does_not_call_memory_router" || fail "abort_does_not_call_memory_router"
+assert_jq "$out" '.status == "aborted" and .outcome.learning_review.status == "not_promoted" and .outcome.outcome_evaluation.status == "evaluated"' "abort_clears_with_best_effort_evaluation"
+grep -q '^evaluate-run .*--terminal aborted' "$ROUTER_LOG" && pass "abort_calls_outcome_evaluation" || fail "abort_calls_outcome_evaluation"
 
 out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" prompt-context)"
 assert_empty "$out" "prompt_context_noops_without_active_session"

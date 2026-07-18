@@ -358,6 +358,31 @@ class RecallRunCase(unittest.TestCase):
         self.assertEqual(obj["sources"]["memory"]["status"], "omitted_targeted")
         self.assertIn("targeted_recall", obj["explanation"]["reason_codes"])
 
+    def test_strategies_flag_reaches_recall_contract(self):
+        strategy_source = {
+            "path": ".kimiflow/project/STRATEGY-OUTCOMES.jsonl",
+            "status": "used",
+            "count": 1,
+            "hits": [{
+                "id": "out_1",
+                "classification": "verified_success",
+                "strategy": "Reuse the verified local strategy",
+            }],
+        }
+        with mock.patch(
+            "memory_router.recall.outcomes.strategy_recall_json",
+            return_value=strategy_source,
+        ) as strategy_recall:
+            code, out, err = self.run_recall([
+                "--query", "auth", "--strategies", "--write", "RECALL.md"
+            ])
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "")
+        obj = json.loads(out)
+        self.assertEqual(obj["sources"]["strategies"], strategy_source)
+        strategy_recall.assert_called_once_with(self.root, obj["query_terms"], mode="")
+        self.assertIn("## Strategy Outcomes", _read(os.path.join(self.root, "RECALL.md")))
+
     def test_write_creates_md_json_and_usage(self):
         with open(os.path.join(self.project, "LEARNINGS.jsonl"), "w", encoding="utf-8") as fh:
             fh.write('{"id":"L1","status":"current","topic":"auth","summary":"auth flow","evidence":["src/a.py"]}\n')

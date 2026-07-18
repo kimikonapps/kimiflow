@@ -1,6 +1,6 @@
 import io, os, shutil, tempfile, unittest, contextlib
 from unittest import mock
-from memory_router.__main__ import main, USAGE
+from memory_router.__main__ import COMMANDS, main, USAGE
 from memory_router import cli
 
 class TestDispatch(unittest.TestCase):
@@ -31,6 +31,10 @@ class TestDispatch(unittest.TestCase):
         # 17 content lines + trailing "" from the final newline
         self.assertEqual(len(lines), 18)
         self.assertEqual(lines[0], "#!/usr/bin/env bash")
+
+    def test_evaluate_run_is_registered_without_expanding_legacy_usage(self):
+        self.assertIn("evaluate-run", COMMANDS)
+        self.assertNotIn("evaluate-run", USAGE)
 
 class ResolveRootCase(unittest.TestCase):
     def test_existing_dir_absolutized(self):
