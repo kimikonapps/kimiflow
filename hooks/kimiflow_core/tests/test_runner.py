@@ -147,6 +147,26 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("next action", adapter.resumes[0][2].lower())
         self.assertEqual(self.read_receipt()["status"], "done")
 
+    def test_continuation_prompt_carries_bounded_execution_decision(self):
+        prompt = runner._continuation_prompt(
+            {
+                "transition": {
+                    "action": "change_build_strategy",
+                    "target_node": "phase_5",
+                    "reason": "event:no_progress",
+                    "execution": {
+                        "profile": "critical",
+                        "strategy_mode": "recovery",
+                        "budget_pressure": "hard",
+                        "directive": "prune_optional_work",
+                    },
+                }
+            }
+        )
+        self.assertIn("profile=critical", prompt)
+        self.assertIn("strategy_mode=recovery", prompt)
+        self.assertIn("directive=prune_optional_work", prompt)
+
     def test_material_wait_requires_message_and_resumes_owner(self):
         first = FakeAdapter(start_action=lambda: self.write_active(awaiting=True))
         waiting = runner.run_task(self.root, "needs a choice", adapter=first)

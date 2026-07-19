@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from kimiflow_core import active_run, workspace_preflight
+from kimiflow_core import active_run, execution_control, workspace_preflight
 
 
 def run_main(args, stdin_text=None):
@@ -88,6 +88,132 @@ class TestAffectedPathsHeaders(unittest.TestCase):
         self.write_state("Status: active\n")
         self.write_plan("Decision: nothing declared here.\n")
         self.assertEqual(active_run.run_affected_paths(self.d), [])
+
+
+class TestExecutionControlIntegration(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.root)
+        subprocess.run(["git", "init", "-q", self.root], check=True)
+        subprocess.run(["git", "-C", self.root, "config", "user.name", "Kimiflow Test"], check=True)
+        subprocess.run(["git", "-C", self.root, "config", "user.email", "kimiflow@example.test"], check=True)
+        with open(os.path.join(self.root, "tracked.txt"), "w", encoding="utf-8") as handle:
+            handle.write("base\n")
+        subprocess.run(["git", "-C", self.root, "add", "tracked.txt"], check=True)
+        subprocess.run(["git", "-C", self.root, "commit", "-qm", "base"], check=True)
+        self.run_rel = ".kimiflow/demo"
+        self.run_dir = os.path.join(self.root, self.run_rel)
+        os.makedirs(self.run_dir)
+        self.write_state()
+        plugin = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+        patcher = mock.patch.dict(
+            os.environ,
+            {
+                "KIMIFLOW_PLUGIN_ROOT": plugin,
+                "KIMIFLOW_HOST": "codex",
+                "CODEX_THREAD_ID": "owner-session",
+            },
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def write_state(self, execution=True):
+        lines = [
+            "Flow schema: 4",
+            "Status: active",
+            "Mode: feature",
+            "Scope: large",
+            "Build risk: none",
+            "Recovery: clean",
+            "Review gate: code",
+            "Review epoch: 1",
+            "Strategy fingerprint: " + ("a" * 64),
+            "Conformance basis: verified",
+            "Affected files: tracked.txt",
+        ]
+        if execution:
+            lines.insert(1, "Execution contract: 1")
+        lines.extend("Phase %s: %s" % (index, "done" if index < 5 else "in-progress" if index == 5 else "open") for index in range(8))
+        with open(os.path.join(self.run_dir, "STATE.md"), "w", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + "\n")
+
+    def start(self):
+        return run_main(["start", "--run", self.run_rel, "--root", self.root, "--scope", "large", "--write"])
+
+    def active(self):
+        with open(active_run.active_file(self.root), "r", encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def hook_payload(self):
+        return json.dumps({"cwd": self.root, "session_id": "owner-session"})
+
+    def test_start_status_stop_and_resume_share_one_controller(self):
+        rc, out = self.start()
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.active()["execution_contract"], "1")
+        status = json.loads(out)
+        self.assertEqual(status["transition"]["execution"]["profile"], "standard")
+        path = execution_control.trace_path(self.run_dir)
+        with open(path, "rb") as handle:
+            before = handle.read()
+
+        rc, _ = run_main(["status", "--root", self.root])
+        self.assertEqual(rc, 0)
+        with open(path, "rb") as handle:
+            self.assertEqual(handle.read(), before)
+
+        for _ in range(2):
+            rc, out = run_main(["stop-gate"], stdin_text=self.hook_payload())
+            self.assertEqual(rc, 0)
+            self.assertEqual(json.loads(out)["decision"], "block")
+        status = active_run.status_json(self.root)
+        self.assertEqual(status["transition"]["action"], "change_build_strategy")
+        self.assertEqual(status["transition"]["execution"]["strategy_mode"], "recovery")
+
+        sequence = status["execution_control"]["work_units"]
+        rc, _ = run_main(["park", "--root", self.root, "--reason", "resume fixture", "--write"])
+        self.assertEqual(rc, 0)
+        rc, _ = self.start()
+        self.assertEqual(rc, 0)
+        self.assertEqual(active_run.status_json(self.root)["execution_control"]["work_units"], sequence)
+
+    def test_observe_hashes_evidence_and_selector_tamper_fails_closed(self):
+        rc, _ = self.start()
+        self.assertEqual(rc, 0)
+        evidence = os.path.join(self.run_dir, "VERIFICATION.md")
+        with open(evidence, "w", encoding="utf-8") as handle:
+            handle.write("private check output\n")
+        rc, out = run_main([
+            "observe",
+            "--root", self.root,
+            "--event", "verification",
+            "--outcome", "passed",
+            "--evidence", os.path.relpath(evidence, self.root),
+            "--model-calls", "1",
+            "--input-tokens", "9000",
+            "--write",
+        ])
+        self.assertEqual(rc, 0)
+        observed = json.loads(out)
+        self.assertEqual(observed["execution"]["usage"]["model_calls"], 1)
+        with open(execution_control.trace_path(self.run_dir), "r", encoding="utf-8") as handle:
+            payload = handle.read()
+        self.assertNotIn("private check output", payload)
+
+        self.write_state(execution=False)
+        status = active_run.status_json(self.root)
+        self.assertEqual(status["transition"]["action"], "repair_execution_control")
+        with self.assertRaises(execution_control.ExecutionControlError):
+            execution_control.require_finishable(self.root, self.run_dir, self.active())
+
+    def test_selector_free_run_keeps_legacy_output_and_artifacts_absent(self):
+        self.write_state(execution=False)
+        rc, out = self.start()
+        self.assertEqual(rc, 0)
+        status = json.loads(out)
+        self.assertNotIn("execution_control", status)
+        self.assertNotIn("execution", status.get("transition", {}))
+        self.assertFalse(os.path.exists(execution_control.trace_path(self.run_dir)))
 
 
 @unittest.skipUnless(shutil.which("jq"), "jq required by active-run commands")

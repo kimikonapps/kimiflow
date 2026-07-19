@@ -53,6 +53,41 @@ def flow_contract():
     }
 
 
+def execution_control_contract():
+    return {
+        "schema_version": 1,
+        "profiles": ["compact", "standard", "critical"],
+        "strategy_modes": ["normal", "recovery"],
+        "budget_pressures": ["normal", "soft", "hard"],
+        "no_progress_limit": 2,
+        "max_trace_entries": 512,
+        "budgets": {
+            "small": {"soft_work_units": 8, "hard_work_units": 14},
+            "medium": {"soft_work_units": 14, "hard_work_units": 24},
+            "large": {"soft_work_units": 22, "hard_work_units": 36},
+        },
+    }
+
+
+def execution_flow_contract():
+    flow = flow_contract()
+    actions = (
+        "reassess_setup_strategy",
+        "reframe_requirements",
+        "broaden_evidence_strategy",
+        "revise_plan_strategy",
+        "change_review_strategy",
+        "change_build_strategy",
+        "change_verification_strategy",
+        "change_commit_strategy",
+    )
+    flow["transitions"].extend(
+        {"from": "phase_%s" % index, "event": "no_progress", "to": "phase_%s" % index, "action": action}
+        for index, action in enumerate(actions)
+    )
+    return flow
+
+
 class TestFlowGraph(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp()
@@ -66,10 +101,12 @@ class TestFlowGraph(unittest.TestCase):
         self.write_manifest()
         self.write_state(current=5)
 
-    def write_manifest(self, flow=None, schema_version=2):
+    def write_manifest(self, flow=None, schema_version=2, execution_control=None):
         manifest = {"schema_version": schema_version, "phases": phase_rows()}
         if flow is not None or schema_version >= 2:
             manifest["flow"] = flow if flow is not None else flow_contract()
+        if execution_control is not None:
+            manifest["execution_control"] = execution_control
         with open(os.path.join(self.root, "phases", "PHASES.json"), "w", encoding="utf-8") as handle:
             json.dump(manifest, handle)
 
@@ -190,6 +227,33 @@ class TestFlowGraph(unittest.TestCase):
         result = self.resolve(counts={"pending": 1, "built": 0, "rejected": 0, "open": 1})
         self.assertEqual(result["graph_status"], "legacy")
         self.assertEqual(result["action"], "resolve_or_accept_items")
+
+    def test_execution_contract_is_bounded_without_changing_selector_free_output(self):
+        before = self.resolve()
+        self.write_manifest(execution_flow_contract(), execution_control=execution_control_contract())
+        graph = flow_graph.load_graph()
+        self.assertEqual(graph["schema_version"], 1)
+        self.assertEqual(graph["execution_control"]["profiles"], ["compact", "standard", "critical"])
+        self.assertEqual(self.resolve(), before)
+
+        recovery = self.resolve(event="no_progress")
+        self.assertEqual((recovery["action"], recovery["target_node"]), ("change_build_strategy", "phase_5"))
+
+        invalid = execution_control_contract()
+        invalid["profiles"].append("recovery")
+        self.write_manifest(execution_flow_contract(), execution_control=invalid)
+        with self.assertRaises(flow_graph.FlowGraphError):
+            flow_graph.load_graph()
+
+        missing_edge = execution_flow_contract()
+        missing_edge["transitions"] = [
+            row
+            for row in missing_edge["transitions"]
+            if not (row["from"] == "phase_5" and row["event"] == "no_progress")
+        ]
+        self.write_manifest(missing_edge, execution_control=execution_control_contract())
+        with self.assertRaises(flow_graph.FlowGraphError):
+            flow_graph.load_graph()
 
 
 if __name__ == "__main__":
