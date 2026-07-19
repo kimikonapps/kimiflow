@@ -428,49 +428,57 @@ run, not an automatic edit.
 
 ## Intent clarification (grill, plain language) (Phase 1)
 
-Goal: shared understanding BEFORE research/plan. kimiflow runs the interview **itself** (embedded, no external skill).
+Goal: establish source-backed product intent BEFORE research/plan. Kimiflow performs this embedded; no external skill or user-selected implementation plan is required.
 
-**Compact clarification:**
-- Ask **one compact batch** containing only the missing material facts; wait once, not after every item.
-- **Offer a recommended default or choices** for each item so the user can react instead of composing from scratch.
-- Order items by **dependency** (the branch before its leaves) inside that batch.
-- **What you can answer from the code/project, do NOT ask — look it up yourself.**
+**Ownership boundary (hard rule):**
+- **User-owned WHAT/WHY:** product goal/value, primary actor, visible behavior and important failure outcomes, included/excluded scope, measurable success, and material product/policy consequences such as offline behavior, privacy/data use, paid cost, compliance, acceptable loss, or an irreversible public promise.
+- **Agent-owned HOW:** architecture, framework/library, dependency choice, data model/schema, internal API, code/file structure, design patterns, test strategy, migration mechanism, performance/concurrency algorithm, operational tooling, and implementation order. A user may state a hard technical constraint, but Kimiflow never asks them to design the solution.
+- Translate technical-looking uncertainty into a product consequence only when that consequence is material: ask "must it work offline and sync across devices?", never "SQLite or PostgreSQL?". Technical uncertainty goes to Phase 2 research and autonomous recovery.
 
-**Questions in plain language (mandatory):**
-- Everyday language. No jargon, no code/framework/tool vocabulary. An unavoidable technical term → explain it in half a sentence.
-- Short items, **one thought per item**. No nested multi-questions.
-- Concrete and with an example ("More like X or like Y?"), not abstract.
-- Ask **WHAT** and **WHY** (goal, value, boundaries) — not **HOW** (implementation).
+**Intent Coverage Scan (Contract 2):** before asking, inspect the current request/conversation, code, project docs/tests, scoped standards, memory, and current sources. Cover exactly six dimensions: `goal`, `actor`, `behavior`, `boundaries`, `success`, `constraints`. Record one provenance per dimension:
+- `user_explicit` — directly stated in the current request/conversation.
+- `user_confirmed` — supplied/selected in this run's single question batch.
+- `project_evidence` — established by current project evidence; cite the path/reference in the relevant INTENT section.
+- `reversible_default` — smallest safe product default; allowed only for actor/boundaries/constraints.
+- `not_applicable` — genuinely irrelevant; allowed only for actor/boundaries/constraints.
+- `unknown_material` — could change visible product behavior or acceptance and must be resolved before the gate.
 
-**Autonomy boundary:** do not ask the user to choose reversible implementation details that research/code can settle without changing product scope. Pick the smallest conservative default and record it. Ask only when the choice changes user-visible scope, creates an irreversible public/data contract or migration, materially changes security/privacy, introduces paid infrastructure, or leaves two meaningfully different product outcomes. The user defines WHAT; the top model owns routine HOW.
+Goal, visible behavior, and success require `user_explicit|user_confirmed|project_evidence`; the agent may not invent them. `inferred` and generic `confirmed` are not Contract-2 provenance. Project evidence can settle a dimension only when it is current and cited, not because the existing implementation happens to do something.
 
-**Feature/audit front-loaded intent evidence:** before research/planning, ask one compact batch only for missing product behavior, scope, UX, or acceptance facts. Then show a short goal/included/excluded/done contract. If the current request explicitly authorizes implementation, continue; otherwise ask once for authority. Never ask technical HOW that evidence/research/a reversible default can settle. Exact `trivial` work is exempt.
+**Selective elicitation:** rank `unknown_material` candidates by **Impact x Uncertainty**. Ask only the highest-value product facts in **one compact batch**: `quick` ≤2, `small` ≤3, `large`/critical ≤5. Order dependencies first, use everyday language, one thought per item, and offer a recommended product default/choices. "I don't know" selects the smallest safe reversible default; paid/privacy/irreversible behavior defaults to excluded rather than silently accepted. Ask zero questions when coverage is sufficient. Never ask to reach a quota, never ask sequentially, and never open a second clarification round.
 
-**Mechanical clarify gate:** `hooks/clarify-gate.sh .kimiflow/<slug>` is the fail-closed Phase-1 check. For
-every nontrivial schema-4 feature/audit, `INTENT.md` or `AUDIT-INTENT.md` includes:
+**Bounded Intent Critic:** `large`/critical runs use one fresh-context critic inside the existing agent budget. Packet: request + compact coverage draft, ≤900 words. Output: only `COVERAGE_OK` or ≤5 missing **user-owned** product facts; no research, code, or HOW. A clean result records `critic=passed`. `small|quick` folds the same adversarial scan into the top orchestrator and records `critic=folded`. If fresh-agent routing is unavailable on a large run, record the routing fallback and let the top orchestrator process the identical isolated packet before recording the pass; availability never becomes a user wait.
+
+**One interaction, then autonomy:** after the optional answer, write the Goal/Included/Excluded/Done contract. The answer itself establishes it; do not ask "Does this match?" or request a second approval. Explicit build authority continues immediately. `grill` writes/shows the contract and stops by mode, not for another confirmation.
+
+**Mechanical clarify gate:** new nontrivial feature runs declare `Intent contract: 2` and `INTENT.md` includes:
 
 ```md
-<!-- kimiflow:clarify-evidence behavior=confirmed scope=confirmed outcome=confirmed authority=explicit|confirmed summary=present source=current-run -->
+<!-- kimiflow:intent-coverage contract=2 goal=user_explicit actor=project_evidence behavior=user_explicit boundaries=reversible_default success=user_explicit constraints=not_applicable unknown_material=0 question_rounds=0 technical_questions=0 critic=folded authority=explicit summary=present source=current-run -->
 ```
 
-Write the marker only when all dimensions and authority are present in the current run; `explicit` may come directly from the build request. The gate ignores question count. Schema-3/count markers stay readable. A normal fix passes with a non-empty `PROBLEM.md` and asks only for diagnosis-blocking input.
+Allowed `question_rounds` are `0|1`; round 1 requires at least one `user_confirmed` dimension. `technical_questions` and `unknown_material` must both be zero. `large` requires `critic=passed`; smaller runs accept `passed|folded`. Actual builds require `authority=explicit|confirmed`; `plan|grill` do not claim future build authority. `hooks/clarify-gate.sh` validates this fail-closed shape. It cannot prove semantic honesty, so the critic, citations, balanced evals, and later goal-backward review remain required.
 
-**Bounded:** stop when behavior, scope, and outcome are confirmed. Ask no question merely to reach a quota. Priority: scope > security/privacy > UX; technical gaps go to Phase 2. **Terminal state:** write INTENT.md → gate → research; do not implement.
+Every dimension marked `project_evidence` also needs one exact body line `Intent evidence: <dimension> :: <repo-path>:<line>` (or a current `https://...` source). Missing citations close the gate; a provenance word alone never substitutes for evidence.
 
-**INTENT.md template** (plain language, NO tech/code):
+Runs without `Intent contract: 2`, audits, fixes, and schema-3/count artifacts keep the prior compatible `kimiflow:clarify-evidence` contract. A normal fix passes Phase 1 with a usable `PROBLEM.md` and asks only for diagnosis-blocking input.
+
+**INTENT.md template** (plain product language):
 ```
-# Intent: <feature in plain words>
-<!-- kimiflow:clarify-evidence behavior=confirmed scope=confirmed outcome=confirmed authority=explicit summary=present source=current-run -->
-## What we're building   (1–3 sentences)
-## Why / goal            (which problem, for whom, what value)
-## Out of scope          (deliberately left out)
-## In scope              (deliberately included)
-## What "done" looks like (from the user's view; concrete examples — basis for acceptance criteria)
-## Assumptions           (until disproven)
-## Open questions        ([NEEDS CLARIFICATION: …] — max 3, only what truly blocks)
+# Intent: <feature>
+<!-- kimiflow:intent-coverage contract=2 goal=<provenance> actor=<provenance> behavior=<provenance> boundaries=<provenance> success=<provenance> constraints=<provenance> unknown_material=0 question_rounds=0|1 technical_questions=0 critic=folded|passed authority=explicit|confirmed summary=present source=current-run -->
+## Goal / value
+## Primary actor
+## Visible behavior
+## In scope
+## Out of scope
+## What done looks like (concrete product examples)
+## Material product constraints / consequences
+## Evidence and reversible defaults
+## Open questions (none when the gate is called)
 ```
 
-**Gate:** show a **≤3-line summary of INTENT.md + its path**. Continue immediately when authority is `explicit`; ask only when authority/material product intent remains unresolved.
+**Gate:** show a ≤3-line Goal/Included/Excluded/Done summary plus the path, then continue immediately under explicit authority. Only unresolved material product intent or missing authority may pause.
 
 ---
 

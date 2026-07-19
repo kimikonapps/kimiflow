@@ -7,8 +7,9 @@
 # Output:
 #   CLARIFY_GATE<TAB>OPEN|CLOSED<TAB>blockers=<n><TAB>reason=<code><TAB>detail=<codes>
 #
-# Feature/audit runs confirm behavior, scope, and outcome without a question
-# quota. Schema 4 also records implementation authority plus a plain summary.
+# Contract-2 feature runs prove product-intent provenance, a single interaction
+# round at most, zero technical questions, and a bounded intent-critic result.
+# Earlier feature/audit runs keep the behavior/scope/outcome contract.
 # Fixes proceed from a problem brief; legacy schema-3 runs keep their Preview.
 # R2 invariant target: hooks/clarify-gate.sh
 set -u
@@ -73,6 +74,39 @@ find_first() {
     [ -f "$run_dir/$p" ] && { printf '%s\n' "$run_dir/$p"; return 0; }
   done
   return 1
+}
+
+marker_attr() {
+  local marker_line="$1" key="$2"
+  printf '%s\n' "$marker_line" | tr ' ' '\n' | awk -F= -v wanted="$key" '
+    $1 == wanted {
+      value=tolower($2)
+      sub(/[^a-z0-9_-].*$/, "", value)
+      print value
+      exit
+    }
+  '
+}
+
+strong_product_source() {
+  case "$1" in
+    user_explicit|user_confirmed|project_evidence) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+bounded_product_source() {
+  case "$1" in
+    user_explicit|user_confirmed|project_evidence|reversible_default|not_applicable) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+require_project_evidence() {
+  local dimension="$1" provenance="$2" evidence_pattern
+  [ "$provenance" = "project_evidence" ] || return 0
+  evidence_pattern="^Intent evidence:[[:space:]]*${dimension}[[:space:]]*::[[:space:]]*(https://[^[:space:]]+|[^[:space:]]+:[0-9]+)([[:space:]].*)?$"
+  grep -Eq "$evidence_pattern" "$artifact" || add_blocker "intent_${dimension}_evidence_missing"
 }
 
 blockers=0
@@ -142,6 +176,7 @@ scope="$(kimiflow_state_value "$state" scope | tr '[:upper:]' '[:lower:]' | awk 
 alias_value="$(kimiflow_state_value "$state" alias | tr '[:upper:]' '[:lower:]')"
 mode_value="$(kimiflow_state_value "$state" mode | tr '[:upper:]' '[:lower:]')"
 flow_schema="$(kimiflow_state_value "$state" "Flow schema" | awk '{print $1}')"
+intent_contract="$(kimiflow_state_value "$state" "Intent contract" | awk '{print $1}')"
 affected_files="$(kimiflow_state_value "$state" "Affected files")"
 build_risk="$(kimiflow_state_value "$state" "Build risk" | tr '[:upper:]' '[:lower:]')"
 state_approval="$(kimiflow_state_value "$state" "Fix approval" | tr '[:upper:]' '[:lower:]')"
@@ -247,6 +282,97 @@ if [ "$mode_value" = "feature" ]; then
   case "$alias_value" in
     plan|grill|review|audit) ;;
     *) requires_implementation_authority=1 ;;
+  esac
+fi
+
+# Intent Contract 2 separates product facts from technical implementation.
+# It is additive: absent/Contract-1 runs retain the established marker path.
+if [ "$mode_value" = "feature" ] && [ "$scope" != "trivial" ]; then
+  case "$intent_contract" in
+    ""|1) ;;
+    2)
+      coverage_marker="$(grep -Eio '<!--[[:space:]]*kimiflow:intent-coverage[^>]*-->|kimiflow:intent-coverage[^[:cntrl:]]*' "$artifact" | head -1 || true)"
+      coverage_marker="$(printf '%s\n' "$coverage_marker" | sed 's/<!--[[:space:]]*//; s/[[:space:]]*-->//')"
+      if [ -z "$coverage_marker" ]; then
+        add_blocker "intent_coverage_missing"
+        emit CLOSED "$blockers" clarify-blockers "$details"
+      fi
+
+      coverage_contract="$(marker_attr "$coverage_marker" contract)"
+      coverage_goal="$(marker_attr "$coverage_marker" goal)"
+      coverage_actor="$(marker_attr "$coverage_marker" actor)"
+      coverage_behavior="$(marker_attr "$coverage_marker" behavior)"
+      coverage_boundaries="$(marker_attr "$coverage_marker" boundaries)"
+      coverage_success="$(marker_attr "$coverage_marker" success)"
+      coverage_constraints="$(marker_attr "$coverage_marker" constraints)"
+      coverage_unknowns="$(marker_attr "$coverage_marker" unknown_material)"
+      coverage_rounds="$(marker_attr "$coverage_marker" question_rounds)"
+      coverage_technical="$(marker_attr "$coverage_marker" technical_questions)"
+      coverage_critic="$(marker_attr "$coverage_marker" critic)"
+      coverage_authority="$(marker_attr "$coverage_marker" authority)"
+      coverage_summary="$(marker_attr "$coverage_marker" summary)"
+      coverage_source="$(marker_attr "$coverage_marker" source)"
+
+      [ "$coverage_contract" = "2" ] || add_blocker "intent_coverage_contract_invalid"
+      case "$flow_schema" in
+        ''|*[!0-9]*) add_blocker "intent_contract_schema_invalid" ;;
+        *) [ "$flow_schema" -ge 4 ] || add_blocker "intent_contract_schema_invalid" ;;
+      esac
+      case "$scope" in small|large) ;; *) add_blocker "intent_scope_tier_invalid" ;; esac
+      strong_product_source "$coverage_goal" || add_blocker "intent_goal_provenance_invalid"
+      bounded_product_source "$coverage_actor" || add_blocker "intent_actor_provenance_invalid"
+      strong_product_source "$coverage_behavior" || add_blocker "intent_behavior_provenance_invalid"
+      bounded_product_source "$coverage_boundaries" || add_blocker "intent_boundaries_provenance_invalid"
+      strong_product_source "$coverage_success" || add_blocker "intent_success_provenance_invalid"
+      bounded_product_source "$coverage_constraints" || add_blocker "intent_constraints_provenance_invalid"
+      require_project_evidence goal "$coverage_goal"
+      require_project_evidence actor "$coverage_actor"
+      require_project_evidence behavior "$coverage_behavior"
+      require_project_evidence boundaries "$coverage_boundaries"
+      require_project_evidence success "$coverage_success"
+      require_project_evidence constraints "$coverage_constraints"
+
+      case "$coverage_unknowns" in
+        0) ;;
+        "") add_blocker "intent_unknown_material_missing" ;;
+        *) add_blocker "intent_material_unknowns_open" ;;
+      esac
+      case "$coverage_rounds" in
+        0|1) ;;
+        "") add_blocker "intent_question_rounds_missing" ;;
+        *) add_blocker "intent_question_rounds_exceeded" ;;
+      esac
+      case "$coverage_technical" in
+        0) ;;
+        "") add_blocker "intent_technical_questions_missing" ;;
+        *) add_blocker "intent_technical_questions_forbidden" ;;
+      esac
+      if [ "$coverage_rounds" = "1" ]; then
+        if ! printf '%s\n' "$coverage_goal" "$coverage_actor" "$coverage_behavior" "$coverage_boundaries" "$coverage_success" "$coverage_constraints" | grep -qx 'user_confirmed'; then
+          add_blocker "intent_question_round_unbound"
+        fi
+      fi
+
+      if [ "$scope" = "large" ]; then
+        [ "$coverage_critic" = "passed" ] || add_blocker "intent_critic_required"
+      else
+        case "$coverage_critic" in passed|folded) ;; *) add_blocker "intent_critic_invalid" ;; esac
+      fi
+      case "$coverage_source" in current-run|current_run) ;; *) add_blocker "intent_coverage_not_current_run" ;; esac
+      if [ "$requires_implementation_authority" -eq 1 ]; then
+        case "$coverage_authority" in explicit|confirmed) ;; *) add_blocker "implementation_authority_missing" ;; esac
+      fi
+      [ "$coverage_summary" = "present" ] || add_blocker "plain_summary_missing"
+
+      if [ "$blockers" -eq 0 ]; then
+        emit_open
+      fi
+      emit CLOSED "$blockers" clarify-blockers "$details"
+      ;;
+    *)
+      add_blocker "intent_contract_invalid"
+      emit CLOSED "$blockers" clarify-blockers "$details"
+      ;;
   esac
 fi
 

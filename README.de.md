@@ -128,16 +128,18 @@ Explizite Formen:
 /kimiflow --project-map quick
 ```
 
-Kimiflow fragt fehlende Produkt-/UX-/Scope-Punkte einmal kompakt ab, fasst den Vertrag einfach zusammen
-und läuft dann autonom. Ein expliziter Bauauftrag braucht keine zweite Bestätigung; technische Lücken
-gehen in begrenzte Discovery. Exakte triviale Arbeit darf den Loop überspringen.
+Kimiflow belegt zuerst, woher Produktziel, Nutzer, sichtbares Verhalten, Grenzen und Erfolgskriterien
+kommen. Fehlende Produktfakten werden einmal kompakt gebündelt; vollständige Aufträge brauchen keine
+Frage. Der User entscheidet WHAT/WHY, der Agent Architektur, Libraries, Datenmodell, Tests und anderes
+technisches HOW. Die Antwort wird direkt zum einfachen Vertrag, danach läuft der Flow ohne zweite
+Bestätigung autonom weiter. Exakte triviale Arbeit darf den Loop überspringen.
 
 ## Acht Phasen
 
 | Phase | Ablauf |
 |---|---|
 | 0 Setup | Alle Worktrees inventarisieren, dauerhaften Run-State anlegen, sichere Aufräumentscheidung einmal bündeln. |
-| 1 Klären | Nur materielle Lücken fragen, einfachen Vertrag zeigen und bei expliziter Bau-Freigabe weiterlaufen. |
+| 1 Klären | Produkt-Intent belegen, höchstens einen Produktfragen-Block stellen, HOW-Fragen verbieten und weiterlaufen. |
 | 2 Verstehen | Projektwissen und Code prüfen; Discovery `none`, `pulse` oder `focused`. Fixes reproduzieren und belegen die Ursache. |
 | 3 Planen | Flachen minimum-complete Plan und testbare Akzeptanzkriterien schreiben. |
 | 4 Review | Plan-Blocker lösen; nur bei Autorität, materiellem Scope/Risiko, Privacy/Kosten oder Irreversibilität pausieren. |
@@ -152,7 +154,7 @@ gehen in begrenzte Discovery. Exakte triviale Arbeit darf den Loop überspringen
 | Gate | Gesicherte Grenze |
 |---|---|
 | Workspace-Preflight | Alle Worktrees und Dirty-Pfade werden klassifiziert; ein eigener Ausnahme-Tree wird vollständig archiviert statt gelöscht. |
-| Clarify-/Discovery-Gates | Nötige Intent-, Quellen-, Scope- und Entscheidungs-Evidence existiert vor dem Plan. |
+| Clarify-/Discovery-Gates | Produkt-Intent hat Provenienz, technische Fragen sind null und Quellen-/Scope-/Entscheidungs-Evidence existiert. |
 | Plan-/Review-Gates | AC-Mapping und belegte BLOCKER/HIGHs werden in begrenzten Reparaturrunden gelöst. |
 | Materielle-Entscheidungs-Gate | Reversible Technik läuft weiter; nur Autorität, Risiko, Zugriff, Privacy/Kosten oder Irreversibilität pausieren. |
 | Red/Green-Gate | Fixes brauchen aufgezeichnete failing/passing Evidence und Regression. |

@@ -1,7 +1,7 @@
 # Scenario 15 — evidence-guided feature Discovery (Phase 1–4)
 
 ## Contract under test
-Feature Discovery is embedded in Phase 2. The top model confirms complete product intent, inspects project
+Feature Discovery is embedded in Phase 2. Contract 2 proves complete product-intent provenance, inspects project
 evidence first, chooses `none|pulse|focused` by decision need rather than size, briefs bounded workers only when
 useful, synthesizes/triages decisions, protects scope, and emits a one-screen Build Preview. Technical gaps are
 researched; only irreducible product/policy choices ask the user.
@@ -10,7 +10,7 @@ researched; only irreducible product/policy choices ask the user.
 
 | # | Feature | Expected Discovery / interaction |
 |---|---|---|
-| 1 | Internal UI spacing using an established component | `none`; no web, no worker, one intent confirmation |
+| 1 | Internal UI spacing using an established component and exact visible outcome | zero questions; `none`; no web or worker |
 | 2 | Feature using a recently changed framework API | `pulse`; one current primary-source check, no worker unless the gap remains |
 | 3 | Semantic search / AI feature with several viable techniques | `focused`; one bounded evidence worker normally; top model chooses project fit |
 | 4 | OAuth login | `focused`; current official/security sources and selective top countercheck; no user HOW question |
@@ -32,7 +32,8 @@ researched; only irreducible product/policy choices ask the user.
 
 ## Pass criteria
 
-All ten cases match the table; zero artificial technical questions; all plan-changing external claims have source
+All ten cases match the table; zero artificial technical questions; fully evidenced intent asks zero questions;
+missing product intent uses at most one batch; all plan-changing external claims have source
 URLs; all open `needs_research`/`user_required` states keep the Discovery Gate closed; zero `optional` findings
 enter ACs/tasks; no default research swarm; Build Preview describes WHAT/not-WHAT/decisions/risks/effort without
 technical task lists.

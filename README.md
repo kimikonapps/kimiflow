@@ -148,16 +148,18 @@ Useful explicit forms:
 /kimiflow --project-map quick
 ```
 
-Kimiflow asks one compact batch only for missing product/UX/scope facts, then shows the contract in
-plain language and runs autonomously. An explicit build request needs no second confirmation;
-technical gaps go to bounded Discovery. Exact trivial work may skip the loop.
+Kimiflow first proves where the product goal, actor, visible behavior, boundaries, and success came
+from. Missing product facts are asked once in one compact batch; complete requests ask nothing. The
+user decides WHAT/WHY, while architecture, libraries, data models, tests, and other technical HOW stay
+with the agent. The answer becomes the plain-language contract and the run continues autonomously
+without a second confirmation. Exact trivial work may skip the loop.
 
 ## Eight Phases
 
 | Phase | What happens |
 |---|---|
 | 0 Setup | Inventory every worktree, create durable run state, then batch any safe-disposition decision once. |
-| 1 Clarify | Ask only material unknowns, show a simple contract, and continue under explicit build authority. |
+| 1 Clarify | Prove product-intent provenance, ask at most one product batch, forbid HOW questions, then continue. |
 | 2 Understand | Inspect project knowledge and code; choose Discovery `none`, `pulse`, or `focused`. Fixes reproduce and prove the cause. |
 | 3 Plan | Write a flat minimum-complete plan and testable acceptance criteria. |
 | 4 Review | Resolve plan blockers and pause only for a material authority, scope, risk, privacy, cost, or irreversible decision. |
@@ -172,7 +174,7 @@ technical gaps go to bounded Discovery. Exact trivial work may skip the loop.
 | Gate | Enforced boundary |
 |---|---|
 | Workspace preflight | Every linked tree and dirty path is classified; cleanup is no-force, ownership-bound, and solo-dev by default. |
-| Clarify and Discovery gates | Required intent, source, scope, and decision evidence exists before planning. |
+| Clarify and Discovery gates | Product-intent provenance is complete, technical questions are zero, and source/scope/decision evidence exists before planning. |
 | Plan-blocker and review gates | Acceptance mappings and evidenced `BLOCKER/HIGH` findings are resolved within a bounded repair budget. |
 | Material-decision gate | Reversible technical work continues; only missing authority, material risk, external access, privacy/cost, or irreversibility pauses. |
 | Red/green gate | Fixes cannot finish without recorded failing and passing evidence plus regression coverage. |

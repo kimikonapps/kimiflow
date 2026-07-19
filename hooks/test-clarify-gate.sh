@@ -40,6 +40,27 @@ Build a small feature after confirming behavior, scope, and outcome.
 EOF
 }
 
+reset_contract2_feature() {
+  rm -rf "$WORK"
+  mkdir -p "$RUN"
+  cat > "$RUN/STATE.md" <<'EOF'
+Flow schema: 4
+Intent contract: 2
+Status: active
+Mode: feature
+Alias: quick
+Scope: small
+Phase 0: done
+Phase 1: done
+EOF
+  cat > "$RUN/INTENT.md" <<'EOF'
+# Intent
+<!-- kimiflow:intent-coverage contract=2 goal=user_explicit actor=project_evidence behavior=user_explicit boundaries=reversible_default success=user_explicit constraints=not_applicable unknown_material=0 question_rounds=0 technical_questions=0 critic=folded authority=explicit summary=present source=current-run -->
+The request and project evidence cover every material product dimension.
+Intent evidence: actor :: docs/product.md:12
+EOF
+}
+
 run_gate() { KIMIFLOW_PLUGIN_ROOT="$WORK" "$SCRIPT" "$RUN"; }
 run_post_diagnosis_gate() { KIMIFLOW_PLUGIN_ROOT="$WORK" "$SCRIPT" "$RUN" --post-diagnosis; }
 record_fix_approval() { KIMIFLOW_PLUGIN_ROOT="$WORK" "$SCRIPT" "$RUN" --record-fix-approval; }
@@ -86,6 +107,101 @@ One compact confirmation covered every required intent dimension.
 EOF
 out="$(run_gate)"
 assert_field "$out" 2 OPEN "no_minimum_question_count"
+
+reset_contract2_feature
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "contract2_complete_zero_round_opens"
+
+reset_contract2_feature
+sed -i.bak 's/ authority=explicit//' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "contract2_feature_requires_build_authority"
+assert_contains "$out" "implementation_authority_missing" "contract2_feature_authority_detail"
+
+reset_contract2_feature
+sed -i.bak 's/summary=present/summary=missing/' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "contract2_requires_plain_summary_receipt"
+assert_contains "$out" "plain_summary_missing" "contract2_plain_summary_detail"
+
+reset_contract2_feature
+sed -i.bak 's/Alias: quick/Alias: plan/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+sed -i.bak 's/ authority=explicit//' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "contract2_plan_does_not_claim_future_build_authority"
+
+reset_contract2_feature
+sed -i.bak '/^Intent evidence: actor/d' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "contract2_project_evidence_needs_reference"
+assert_contains "$out" "intent_actor_evidence_missing" "contract2_project_evidence_detail"
+
+reset_contract2_feature
+cat > "$RUN/INTENT.md" <<'EOF'
+# Intent
+<!-- kimiflow:clarify-evidence behavior=confirmed scope=confirmed outcome=confirmed authority=explicit summary=present source=current-run -->
+Generic confirmation must not satisfy the provenance-aware contract.
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "contract2_generic_confirmation_closes"
+assert_contains "$out" "intent_coverage_missing" "contract2_generic_confirmation_detail"
+
+reset_contract2_feature
+sed -i.bak 's/goal=user_explicit/goal=reversible_default/' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "contract2_goal_cannot_be_invented"
+assert_contains "$out" "intent_goal_provenance_invalid" "contract2_goal_provenance_detail"
+
+reset_contract2_feature
+sed -i.bak 's/unknown_material=0/unknown_material=1/' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "contract2_material_unknown_closes"
+assert_contains "$out" "intent_material_unknowns_open" "contract2_material_unknown_detail"
+
+reset_contract2_feature
+sed -i.bak 's/technical_questions=0/technical_questions=1/' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "contract2_technical_question_closes"
+assert_contains "$out" "intent_technical_questions_forbidden" "contract2_technical_question_detail"
+
+reset_contract2_feature
+sed -i.bak 's/question_rounds=0/question_rounds=2/' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "contract2_multiple_rounds_close"
+assert_contains "$out" "intent_question_rounds_exceeded" "contract2_multiple_rounds_detail"
+
+reset_contract2_feature
+sed -i.bak 's/goal=user_explicit/goal=user_confirmed/' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
+sed -i.bak 's/question_rounds=0/question_rounds=1/' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "contract2_one_product_batch_opens"
+
+reset_contract2_feature
+sed -i.bak 's/question_rounds=0/question_rounds=1/' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "contract2_round_needs_user_answer_provenance"
+assert_contains "$out" "intent_question_round_unbound" "contract2_round_provenance_detail"
+
+reset_contract2_feature
+sed -i.bak 's/Scope: small/Scope: large/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "contract2_large_requires_fresh_critic"
+assert_contains "$out" "intent_critic_required" "contract2_large_critic_detail"
+sed -i.bak 's/critic=folded/critic=passed/' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "contract2_large_passed_critic_opens"
+
+reset_contract2_feature
+sed -i.bak 's/ source=current-run//' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "contract2_missing_source_closes"
+assert_contains "$out" "intent_coverage_not_current_run" "contract2_missing_source_detail"
+
+reset_contract2_feature
+sed -i.bak 's/Intent contract: 2/Intent contract: invalid/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "invalid_intent_contract_closes"
+assert_contains "$out" "intent_contract_invalid" "invalid_intent_contract_detail"
 
 reset_run
 cat > "$RUN/INTENT.md" <<'EOF'
