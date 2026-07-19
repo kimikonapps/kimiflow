@@ -80,7 +80,7 @@ def execution_contract():
         "strategy_modes": ["normal", "recovery"],
         "budget_pressures": ["normal", "soft", "hard"],
         "no_progress_limit": 2,
-        "max_trace_entries": 512,
+        "max_trace_entries": 32,
         "budgets": {
             "small": {"soft_work_units": 3, "hard_work_units": 5},
             "medium": {"soft_work_units": 5, "hard_work_units": 8},
@@ -119,7 +119,7 @@ class TestExecutionControl(unittest.TestCase):
         }
         self.counts = {"total": 1, "pending": 1, "built": 0, "accepted": 0, "rejected": 0, "dropped": 0, "open": 1}
 
-    def write_state(self, extra="", build_risk="none"):
+    def write_state(self, extra="", build_risk="none", current=5):
         lines = [
             "Flow schema: 4",
             "Execution contract: 1",
@@ -131,7 +131,13 @@ class TestExecutionControl(unittest.TestCase):
             "Strategy fingerprint: " + ("a" * 64),
             "Conformance basis: verified",
         ]
-        lines.extend("Phase %s: %s" % (index, "done" if index < 5 else "in-progress" if index == 5 else "open") for index in range(8))
+        lines.extend(
+            "Phase %s: %s" % (
+                index,
+                "done" if index < current else "in-progress" if index == current else "open",
+            )
+            for index in range(8)
+        )
         with open(os.path.join(self.run, "STATE.md"), "w", encoding="utf-8") as handle:
             handle.write("\n".join(lines) + "\n" + extra)
 
@@ -179,6 +185,7 @@ class TestExecutionControl(unittest.TestCase):
         self.assertEqual(second["summary"]["strategy_mode"], "recovery")
         self.assertEqual(second["transition"]["action"], "change_build_strategy")
         self.assertEqual(second["summary"]["profile"], "standard")
+        self.assertEqual(second["summary"]["profile_reason"], "medium_or_large_scope")
 
         evidence = os.path.join(self.run, "VERIFICATION.md")
         with open(evidence, "w", encoding="utf-8") as handle:
@@ -196,8 +203,42 @@ class TestExecutionControl(unittest.TestCase):
         self.assertEqual(latest["summary"]["budget_pressure"], "hard")
         self.assertEqual(latest["summary"]["directive"], "prune_optional_work")
         self.assertEqual(latest["summary"]["profile"], "critical")
+        self.assertEqual(latest["summary"]["profile_reason"], "material_build_risk")
         self.assertEqual(latest["summary"]["strategy_mode"], "recovery")
         self.assertEqual(latest["summary"]["usage"]["tool_calls"], 12)
+
+        self.write_state(build_risk="none")
+        compact = self.observe()
+        self.assertEqual(compact["summary"]["budget_pressure"], "hard")
+        self.assertEqual(compact["summary"]["profile"], "compact")
+        self.assertEqual(compact["summary"]["profile_reason"], "hard_budget_pressure")
+        self.assertEqual(compact["summary"]["strategy_mode"], "normal")
+
+    def test_accepted_evidence_is_new_once_per_run_not_just_different_from_last(self):
+        execution_control.initialize(self.root, self.run, self.active, self.counts, self.transitions()[0], write=True)
+        first_path = os.path.join(self.run, "first.txt")
+        second_path = os.path.join(self.run, "second.txt")
+        with open(first_path, "w", encoding="utf-8") as handle:
+            handle.write("first\n")
+        with open(second_path, "w", encoding="utf-8") as handle:
+            handle.write("second\n")
+        self.observe(evidence=first_path, outcome="passed")
+        self.observe(evidence=second_path, outcome="passed")
+        replay = self.observe(evidence=first_path, outcome="passed")
+        self.assertEqual(replay["summary"]["no_progress_streak"], 1)
+        self.assertEqual(len(replay["summary"]["accepted_evidence_fingerprints"]), 2)
+
+        with open(second_path, "w", encoding="utf-8") as handle:
+            handle.write("  second\n\n")
+        whitespace_replay = self.observe(evidence=second_path, outcome="passed")
+        self.assertEqual(whitespace_replay["summary"]["no_progress_streak"], 2)
+        self.assertEqual(len(whitespace_replay["summary"]["accepted_evidence_fingerprints"]), 2)
+
+        with open(second_path, "w", encoding="utf-8") as handle:
+            handle.write("second\n<!-- formatting only -->\n")
+        comment_replay = self.observe(evidence=second_path, outcome="passed")
+        self.assertEqual(comment_replay["summary"]["no_progress_streak"], 3)
+        self.assertEqual(len(comment_replay["summary"]["accepted_evidence_fingerprints"]), 2)
 
     def test_atomic_private_journal_hashes_evidence_and_reads_are_read_only(self):
         execution_control.initialize(self.root, self.run, self.active, self.counts, self.transitions()[0], write=True)
@@ -224,6 +265,240 @@ class TestExecutionControl(unittest.TestCase):
         with open(path, "rb") as handle:
             self.assertEqual(handle.read(), before)
 
+    def test_post_replace_directory_fsync_failure_does_not_invite_double_counting(self):
+        execution_control.initialize(self.root, self.run, self.active, self.counts, self.transitions()[0], write=True)
+        original_fsync = os.fsync
+        calls = {"count": 0}
+
+        def fail_directory_sync(descriptor):
+            calls["count"] += 1
+            if calls["count"] == 2:
+                raise OSError("directory sync unavailable")
+            return original_fsync(descriptor)
+
+        with mock.patch("kimiflow_core.execution_control.os.fsync", side_effect=fail_directory_sync):
+            result = self.observe(model_calls=1)
+        self.assertEqual(result["summary"]["work_units"], 1)
+        stored = execution_control.inspect(self.root, self.run, self.active)
+        self.assertEqual(stored["summary"]["work_units"], 1)
+        self.assertEqual(stored["summary"]["usage"]["model_calls"], 1)
+
+    def test_summary_directive_tampering_fails_closed(self):
+        execution_control.initialize(self.root, self.run, self.active, self.counts, self.transitions()[0], write=True)
+        path = execution_control.trace_path(self.run)
+        with open(path, "r", encoding="utf-8") as handle:
+            original = json.load(handle)
+
+        injected = json.loads(json.dumps(original))
+        injected["summary"]["directive"] = "INJECTED"
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(injected, handle)
+        with self.assertRaises(execution_control.ExecutionControlError):
+            execution_control.inspect(self.root, self.run, self.active)
+
+        missing = json.loads(json.dumps(original))
+        del missing["summary"]["directive"]
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(missing, handle)
+        with self.assertRaises(execution_control.ExecutionControlError):
+            execution_control.inspect(self.root, self.run, self.active)
+
+    def test_summary_rollups_must_match_latest_entry_and_budget_formula(self):
+        execution_control.initialize(self.root, self.run, self.active, self.counts, self.transitions()[0], write=True)
+        self.observe()
+        self.observe()
+        path = execution_control.trace_path(self.run)
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        payload["summary"].update(
+            {
+                "work_units": 0,
+                "budget_score": 0,
+                "no_progress_streak": 0,
+                "strategy_mode": "normal",
+            }
+        )
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+        with self.assertRaisesRegex(execution_control.ExecutionControlError, "execution_trace_rollup_invalid"):
+            execution_control.inspect(self.root, self.run, self.active)
+
+    def test_cumulative_usage_is_anchored_in_the_latest_entry(self):
+        execution_control.initialize(self.root, self.run, self.active, self.counts, self.transitions()[0], write=True)
+        self.observe(model_calls=1, input_tokens=9000)
+        path = execution_control.trace_path(self.run)
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        payload["summary"]["usage"] = {key: 0 for key in execution_control.USAGE_KEYS}
+        payload["summary"]["budget_score"] = payload["summary"]["work_units"]
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+        with self.assertRaisesRegex(execution_control.ExecutionControlError, "execution_trace_rollup_invalid"):
+            execution_control.inspect(self.root, self.run, self.active)
+
+    def test_unknown_trace_fields_fail_closed_before_the_byte_cap_can_wedge_writes(self):
+        execution_control.initialize(self.root, self.run, self.active, self.counts, self.transitions()[0], write=True)
+        path = execution_control.trace_path(self.run)
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        payload["entries"][-1]["padding"] = "x" * (execution_control.MAX_TRACE_BYTES - 4096)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+        with self.assertRaises(execution_control.ExecutionControlError):
+            execution_control.inspect(self.root, self.run, self.active)
+
+    def test_deep_json_inputs_fail_closed_without_raw_recursion_errors(self):
+        path = execution_control.trace_path(self.run)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("[" * 200000 + "]" * 200000)
+        with self.assertRaises(execution_control.ExecutionControlError):
+            execution_control.inspect(self.root, self.run, self.active)
+
+        os.unlink(path)
+        execution_control.initialize(self.root, self.run, self.active, self.counts, self.transitions()[0], write=True)
+        evidence = os.path.join(self.run, "deep.json")
+        with open(evidence, "w", encoding="utf-8") as handle:
+            handle.write("[" * 200000 + "]" * 200000)
+        with self.assertRaises(execution_control.ExecutionControlError):
+            self.observe(event="verification", evidence=evidence, outcome="passed")
+
+    def test_comment_stripping_is_linear_for_unclosed_comment_prefixes(self):
+        payload = "prefix " + ("<!--" * 200000)
+        self.assertEqual(execution_control._strip_html_comments(payload), "prefix ")
+
+    def test_duplicate_state_keys_fail_closed_instead_of_downgrading_risk(self):
+        self.write_state(
+            extra="Build risk: none\n",
+            build_risk="required — security boundary",
+        )
+        with self.assertRaises(execution_control.ExecutionControlError):
+            execution_control.initialize(
+                self.root,
+                self.run,
+                self.active,
+                self.counts,
+                self.transitions()[0],
+                write=True,
+            )
+
+    def test_finish_requires_an_observation_of_current_semantic_state(self):
+        self.counts = {
+            "total": 1,
+            "pending": 0,
+            "built": 0,
+            "accepted": 1,
+            "rejected": 0,
+            "dropped": 0,
+            "open": 0,
+        }
+        execution_control.initialize(self.root, self.run, self.active, self.counts, self.transitions()[0], write=True)
+        self.write_state(current=7)
+        with self.assertRaisesRegex(
+            execution_control.ExecutionControlError,
+            "execution_control_requires_current_observation",
+        ):
+            execution_control.require_finishable(self.root, self.run, self.active, self.counts)
+
+        self.observe(outcome="progress")
+        result = execution_control.require_finishable(self.root, self.run, self.active, self.counts)
+        self.assertEqual(result["summary"]["last_node"], "phase_7")
+        self.write_state(current=8)
+        terminal_ready = execution_control.require_finishable(self.root, self.run, self.active, self.counts)
+        self.assertEqual(terminal_ready["summary"]["last_node"], "phase_7")
+
+    def test_coalesced_stop_records_later_semantic_progress_without_double_charge(self):
+        execution_control.initialize(self.root, self.run, self.active, self.counts, self.transitions()[0], write=True)
+        evidence = os.path.join(self.run, "VERIFICATION.md")
+        with open(evidence, "w", encoding="utf-8") as handle:
+            handle.write("passed\n")
+        explicit = self.observe(event="verification", evidence=evidence, outcome="passed")
+        self.assertEqual(explicit["summary"]["work_units"], 1)
+
+        self.write_state(current=6)
+        coalesced = self.observe(coalesce_pending_stop=True)
+        self.assertEqual(coalesced["summary"]["work_units"], 1)
+        self.assertEqual(coalesced["summary"]["no_progress_streak"], 0)
+        self.assertEqual(coalesced["summary"]["last_node"], "phase_6")
+        node_entries = [entry for entry in coalesced["entries"] if entry["kind"] == "node_transition"]
+        self.assertEqual(node_entries[-1]["current_node"], "phase_5")
+        self.assertEqual(node_entries[-1]["target_node"], "phase_6")
+
+    def test_finalize_records_the_actual_terminal_graph_edge_without_charging_work(self):
+        self.counts = {
+            "total": 1,
+            "pending": 0,
+            "built": 0,
+            "accepted": 1,
+            "rejected": 0,
+            "dropped": 0,
+            "open": 0,
+        }
+        self.write_state(current=8)
+        execution_control.initialize(self.root, self.run, self.active, self.counts, self.transitions()[0], write=True)
+        result = execution_control.finalize(self.root, self.run, self.active, self.counts, write=True)
+        self.assertEqual(result["summary"]["last_node"], "done")
+        self.assertEqual(result["summary"]["work_units"], 0)
+        terminal = [
+            entry
+            for entry in result["entries"]
+            if entry["kind"] == "node_transition" and entry["target_node"] == "done"
+        ]
+        self.assertEqual(len(terminal), 1)
+        self.assertEqual(terminal[0]["current_node"], "phase_7")
+        self.assertEqual(terminal[0]["action"], "finish_run")
+        self.assertTrue(terminal[0]["executed"])
+        retried = execution_control.finalize(self.root, self.run, self.active, self.counts, write=True)
+        self.assertEqual(retried["summary"]["sequence"], result["summary"]["sequence"])
+        finishable = execution_control.require_finishable(self.root, self.run, self.active, self.counts)
+        self.assertEqual(finishable["summary"]["last_node"], "done")
+
+    def test_durable_phase_change_records_one_executed_node_transition(self):
+        execution_control.initialize(self.root, self.run, self.active, self.counts, self.transitions()[0], write=True)
+        self.write_state(current=6)
+        result = self.observe(outcome="progress")
+        node_entries = [entry for entry in result["entries"] if entry["kind"] == "node_transition"]
+        self.assertEqual(len(node_entries), 1)
+        self.assertEqual(node_entries[0]["from_node"], "phase_5")
+        self.assertEqual(node_entries[0]["current_node"], "phase_5")
+        self.assertEqual(node_entries[0]["action"], "run_phase")
+        self.assertEqual(node_entries[0]["target_node"], "phase_6")
+        self.assertTrue(node_entries[0]["executed"])
+        self.assertFalse(result["entries"][-1]["executed"])
+
+    def test_trace_rolls_forward_without_blocking_autonomous_progress(self):
+        execution_control.initialize(self.root, self.run, self.active, self.counts, self.transitions()[0], write=True)
+        latest = None
+        for _ in range(40):
+            latest = self.observe()
+        self.assertEqual(len(latest["entries"]), 32)
+        self.assertEqual(latest["summary"]["sequence"], 41)
+        self.assertEqual(latest["summary"]["dropped_entries"], 9)
+        self.assertEqual(latest["entries"][0]["sequence"], 10)
+
+        stored = {key: value for key, value in latest.items() if key != "transition"}
+        offset = 2007
+        stored["summary"]["sequence"] += offset
+        stored["summary"]["dropped_entries"] += offset
+        for entry in stored["entries"]:
+            entry["sequence"] += offset
+        with open(execution_control.trace_path(self.run), "w", encoding="utf-8") as handle:
+            json.dump(stored, handle)
+        beyond_old_limit = self.observe()
+        self.assertEqual(beyond_old_limit["summary"]["sequence"], 2049)
+        self.assertEqual(execution_control.inspect(self.root, self.run, self.active)["summary"]["sequence"], 2049)
+
+    def test_evidence_history_has_its_own_bounded_capacity_beyond_trace_window(self):
+        execution_control.initialize(self.root, self.run, self.active, self.counts, self.transitions()[0], write=True)
+        latest = None
+        for index in range(33):
+            evidence = os.path.join(self.run, "evidence-%s.txt" % index)
+            with open(evidence, "w", encoding="utf-8") as handle:
+                handle.write("result %s\n" % index)
+            latest = self.observe(event="verification", evidence=evidence, outcome="passed")
+        self.assertEqual(len(latest["entries"]), 32)
+        self.assertEqual(len(latest["summary"]["accepted_evidence_fingerprints"]), 33)
+        self.assertEqual(latest["summary"]["no_progress_streak"], 0)
+
     def test_evidence_must_be_safe_and_journal_refuses_symlinks(self):
         execution_control.initialize(self.root, self.run, self.active, self.counts, self.transitions()[0], write=True)
         outside = os.path.join(self.root, "..", "outside.txt")
@@ -235,6 +510,12 @@ class TestExecutionControl(unittest.TestCase):
 
         os.unlink(execution_control.trace_path(self.run))
         os.symlink(outside, execution_control.trace_path(self.run))
+        with self.assertRaises(execution_control.ExecutionControlError):
+            execution_control.inspect(self.root, self.run, self.active)
+
+        os.unlink(execution_control.trace_path(self.run))
+        with open(execution_control.trace_path(self.run), "wb") as handle:
+            handle.write(b"{" + (b"x" * execution_control.MAX_TRACE_BYTES))
         with self.assertRaises(execution_control.ExecutionControlError):
             execution_control.inspect(self.root, self.run, self.active)
 

@@ -156,6 +156,7 @@ class RunnerTests(unittest.TestCase):
                     "reason": "event:no_progress",
                     "execution": {
                         "profile": "critical",
+                        "profile_reason": "material_build_risk",
                         "strategy_mode": "recovery",
                         "budget_pressure": "hard",
                         "directive": "prune_optional_work",
@@ -164,6 +165,7 @@ class RunnerTests(unittest.TestCase):
             }
         )
         self.assertIn("profile=critical", prompt)
+        self.assertIn("profile_reason=material_build_risk", prompt)
         self.assertIn("strategy_mode=recovery", prompt)
         self.assertIn("directive=prune_optional_work", prompt)
 

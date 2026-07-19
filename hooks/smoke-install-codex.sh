@@ -100,6 +100,15 @@ if [ -x "$ROOT/hooks/launcher-status.sh" ] && bash -n "$ROOT/hooks/launcher-stat
 if [ -x "$ROOT/hooks/test-launcher-status.sh" ] && bash -n "$ROOT/hooks/test-launcher-status.sh" 2>/dev/null; then ok "launcher status test ok"; else bad "launcher status test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/active-run.sh" ] && bash -n "$ROOT/hooks/active-run.sh" 2>/dev/null; then ok "active session helper ok"; else bad "active session helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-active-run.sh" ] && bash -n "$ROOT/hooks/test-active-run.sh" 2>/dev/null; then ok "active session test ok"; else bad "active session test missing/not-exec/bad"; fi
+if [ -f "$ROOT/hooks/kimiflow_core/execution_control.py" ] \
+  && [ -x "$ROOT/hooks/test-execution-control.sh" ] \
+  && grep -q '"execution_control"' "$ROOT/phases/PHASES.json" \
+  && grep -q 'Execution contract: 1' "$ROOT/phases/phase-0-setup.md" \
+  && grep -q 'Adaptive Execution contracts' "$SKILL"; then
+  ok "Codex adaptive execution controller wiring"
+else
+  bad "Codex adaptive execution controller wiring incomplete"
+fi
 grep -q 'Project Map Bootstrap' "$ROOT/SKILL.md" && ok "canonical Project Map Bootstrap present" || bad "canonical Project Map Bootstrap missing"
 grep -q 'FACTS.jsonl' "$ROOT/reference.md" && ok "project map evidence artifact documented" || bad "project map evidence artifact missing"
 if [ -x "$ROOT/hooks/project-map-status.sh" ] && bash -n "$ROOT/hooks/project-map-status.sh" 2>/dev/null; then ok "project map status helper ok"; else bad "project map status helper missing/not-exec/bad"; fi

@@ -275,6 +275,11 @@ def _continuation_prompt(status):
         value = transition.get(key)
         if isinstance(value, str) and value:
             parts.append("%s=%s" % (key, value[:240]))
+    execution = transition.get("execution") if isinstance(transition.get("execution"), dict) else {}
+    for key in ("profile", "profile_reason", "strategy_mode", "budget_pressure", "directive"):
+        value = execution.get(key)
+        if isinstance(value, str) and value:
+            parts.append("%s=%s" % (key, value[:80]))
     if not parts:
         action = status.get("next_action")
         if isinstance(action, str) and action:

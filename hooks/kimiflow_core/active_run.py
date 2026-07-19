@@ -14,7 +14,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 
-from . import flow_graph, phase_reads, state, workspace_preflight
+from . import execution_control, flow_graph, phase_reads, state, workspace_preflight
 from .atomic import atomic_write
 
 try:
@@ -29,6 +29,7 @@ USAGE = """#!/usr/bin/env bash
 # Orchestrator commands:
 #   active-run.sh status [--root <path>] [--pretty]
 #   active-run.sh next-action [--root <path>] [--event <event>] [--pretty]
+#   active-run.sh observe [--root <path>] [--event <event>] [--outcome <outcome>] [--evidence <run-artifact>] [--model-calls N] [--tool-calls N] [--input-tokens N] [--output-tokens N] [--write] [--pretty]
 #   active-run.sh start --run <path> [--root <path>] [--mode <mode>] [--scope <scope>] [--host <host>] [--write] [--pretty]
 #   active-run.sh conflict-check [--root <path>] [--path <path>]... [--pretty]
 #   active-run.sh append-item --title <text> [--kind <kind>] [--root <path>] [--write] [--pretty]
@@ -72,6 +73,15 @@ RECOVERY_AWAIT_USER_KINDS = {
 }
 AWAIT_USER_KINDS = RECOVERY_AWAIT_USER_KINDS | {"preview", "commit"}
 FINISH_ARTIFACT_LIMIT = 8 * 1024 * 1024
+FINISH_SNAPSHOT_NAMES = (
+    "STATE.md",
+    "LEARNING-REVIEW.md",
+    "RUN-LIFECYCLE.json",
+    "RUN-LIFECYCLE.md",
+    "OUTCOME-EVALUATION.json",
+    "SESSION-OUTCOME.json",
+    execution_control.TRACE_NAME,
+)
 
 
 def usage():
@@ -404,6 +414,44 @@ def status_json(root, event=""):
         item_counts=counts,
         event=event,
     )
+    execution = None
+    execution_error = ""
+    active_selector = str(active.get("execution_contract", "")).strip()
+    state_selector = execution_control.state_contract(run_dir)
+    try:
+        execution_trace_present = execution_control.trace_present(root, run_dir, active)
+    except execution_control.ExecutionControlError as exc:
+        execution_trace_present = True
+        execution_error = str(exc)
+    if active_selector or state_selector or execution_trace_present:
+        if not execution_error and (active_selector != "1" or state_selector != "1"):
+            execution_error = "execution_contract_selector_mismatch"
+        elif not execution_error:
+            try:
+                execution = execution_control.inspect(root, run_dir, active)
+                if execution["summary"]["strategy_mode"] == "recovery" and not event:
+                    transition = flow_graph.resolve_transition(
+                        run_dir,
+                        active=active,
+                        stale=stale,
+                        item_counts=counts,
+                        event="no_progress",
+                    )
+                transition = execution_control.annotate_transition(transition, execution)
+            except execution_control.ExecutionControlError as exc:
+                execution_error = str(exc)
+        if execution_error:
+            transition = dict(transition)
+            transition.update(
+                {
+                    "graph_status": "invalid_execution_control",
+                    "action": "repair_execution_control",
+                    "target_node": transition.get("current_node"),
+                    "target_phase": transition.get("current_phase"),
+                    "target_file": transition.get("current_file"),
+                    "reason": execution_error,
+                }
+            )
     result = {
         "schema_version": 1,
         "present": True,
@@ -429,6 +477,14 @@ def status_json(root, event=""):
     }
     if transition.get("graph_status") != "legacy":
         result["transition"] = transition
+    if execution is not None:
+        result["execution_control"] = {
+            "contract": 1,
+            "trace_path": rel_path(root, execution_control.trace_path(run_dir)),
+            **transition["execution"],
+        }
+    elif execution_error:
+        result["execution_control"] = {"contract": 1, "status": "invalid", "reason": execution_error}
     if phase_required:
         result["phase_reads_required"] = True
     for key in ("workspace_wait_used_at", "workspace_disposition_head", "frontend_quality_start_head"):
@@ -1115,6 +1171,103 @@ def cmd_next_action(args):
     json_print(transition, opts["--pretty"])
 
 
+def _usage_value(value, label):
+    try:
+        parsed = int(value or "0", 10)
+    except (TypeError, ValueError):
+        die("observe: %s must be a non-negative integer" % label, 2)
+    if parsed < 0:
+        die("observe: %s must be a non-negative integer" % label, 2)
+    return parsed
+
+
+def _observe_execution(root, status, event, outcome, evidence, usage, write, coalesce_pending_stop=False):
+    active = load_active(root)
+    run_dir = resolve_run_dir(root, status["run"])
+    if not execution_control.contract_enabled(active):
+        die("observe requires Execution contract: 1", 1)
+    stale = status.get("stale") or {"risk": "unknown"}
+    counts = status.get("item_counts") or {}
+    normal = flow_graph.resolve_transition(
+        run_dir,
+        active=active,
+        stale=stale,
+        item_counts=counts,
+    )
+    recovery = flow_graph.resolve_transition(
+        run_dir,
+        active=active,
+        stale=stale,
+        item_counts=counts,
+        event="no_progress",
+    )
+    try:
+        return execution_control.observe(
+            root,
+            run_dir,
+            active,
+            counts,
+            normal,
+            recovery,
+            event=event,
+            outcome=outcome,
+            evidence=evidence,
+            coalesce_pending_stop=coalesce_pending_stop,
+            write=write,
+            **usage
+        )
+    except execution_control.ExecutionControlError as exc:
+        die("execution control: %s" % exc, 2)
+
+
+def cmd_observe(args):
+    opts = parse_options(
+        args,
+        "observe",
+        {
+            "--root": "",
+            "--event": "observation",
+            "--outcome": "neutral",
+            "--evidence": "",
+            "--model-calls": "0",
+            "--tool-calls": "0",
+            "--input-tokens": "0",
+            "--output-tokens": "0",
+            "--write": False,
+            "--pretty": False,
+        },
+    )
+    need_jq()
+    root = resolve_root(opts["--root"], strict=opts["--write"])
+    bind_owner_for_write(root, opts["--write"])
+    status = require_active(root)
+    usage = {
+        "model_calls": _usage_value(opts["--model-calls"], "--model-calls"),
+        "tool_calls": _usage_value(opts["--tool-calls"], "--tool-calls"),
+        "input_tokens": _usage_value(opts["--input-tokens"], "--input-tokens"),
+        "output_tokens": _usage_value(opts["--output-tokens"], "--output-tokens"),
+    }
+    result = _observe_execution(
+        root,
+        status,
+        opts["--event"],
+        opts["--outcome"],
+        opts["--evidence"] or None,
+        usage,
+        opts["--write"],
+    )
+    json_print(
+        {
+            "status": "observed" if opts["--write"] else "preview",
+            "written": opts["--write"] is True,
+            "run": status["run"],
+            "execution": result["summary"],
+            "transition": result["transition"],
+        },
+        opts["--pretty"],
+    )
+
+
 def cmd_start(args):
     opts = parse_options(args, "start", {"--root": "", "--run": "", "--mode": "feature", "--scope": "small", "--host": os.environ.get("KIMIFLOW_HOST", "unknown"), "--write": False, "--pretty": False})
     need_jq()
@@ -1183,10 +1336,32 @@ def cmd_start(args):
         flow_schema = str(resume_pins["flow_schema"])
     if flow_schema.isdigit():
         status["flow_schema"] = flow_schema
+    state_execution_contract = execution_control.state_contract(run_dir)
+    execution_was_pinned = same_active or bool(resume_pins)
+    raw_execution_contract = (
+        prior_active.get("execution_contract", "") if same_active else resume_pins.get("execution_contract", "")
+    )
+    pinned_execution_contract = "" if raw_execution_contract is None else str(raw_execution_contract).strip()
+    if execution_was_pinned and pinned_execution_contract != state_execution_contract:
+        die("execution contract selector changed during the run", 1)
+    selected_execution_contract = pinned_execution_contract if execution_was_pinned else state_execution_contract
+    if selected_execution_contract:
+        if selected_execution_contract != "1":
+            die("unsupported execution contract: %s" % selected_execution_contract, 1)
+        status["execution_contract"] = "1"
+    existing_execution_trace = False
     if os.path.isdir(run_dir) and not os.path.islink(run_dir):
         run_info = os.lstat(run_dir)
         status["run_device"] = run_info.st_dev
         status["run_inode"] = run_info.st_ino
+        try:
+            existing_execution_trace = execution_control.trace_present(root, run_dir, status)
+        except execution_control.ExecutionControlError as exc:
+            die("cannot inspect execution control: %s" % exc, 2)
+    if existing_execution_trace and selected_execution_contract != "1":
+        die("execution contract selector missing for existing controller evidence", 1)
+    if execution_was_pinned and selected_execution_contract == "1" and not existing_execution_trace:
+        die("execution controller evidence is missing for the pinned run", 1)
     workspace_wait = str(prior_active.get("workspace_wait_used_at", "")).strip() if same_active else state.state_value(
         state_path, "Workspace decision used at"
     ).strip()
@@ -1212,6 +1387,18 @@ def cmd_start(args):
         if phase_required:
             ensure_state_phase_reads_required(run_dir)
         ensure_state_run_started_head(run_dir, started_head)
+        if selected_execution_contract == "1":
+            counts = item_counts(read_items(items_path(run_dir)))
+            transition = flow_graph.resolve_transition(
+                run_dir,
+                active=status,
+                stale=stale_status(root, started_head, run_affected_paths(run_dir)),
+                item_counts=counts,
+            )
+            try:
+                execution_control.initialize(root, run_dir, status, counts, transition, write=True)
+            except execution_control.ExecutionControlError as exc:
+                die("cannot initialize execution control: %s" % exc, 2)
         write_active(root, status)
     json_print(status_json(root), opts["--pretty"])
 
@@ -1485,7 +1672,7 @@ def snapshot_finish(root, run_dir, snapshot, run_descriptor=None):
         write_text(os.path.join(snapshot, "project.present"), "present\n")
     else:
         write_text(os.path.join(snapshot, "project.present"), "absent\n")
-    for name in ("LEARNING-REVIEW.md", "RUN-LIFECYCLE.json", "RUN-LIFECYCLE.md", "OUTCOME-EVALUATION.json", "SESSION-OUTCOME.json"):
+    for name in FINISH_SNAPSHOT_NAMES:
         present = os.path.join(snapshot, "run", "%s.present" % name)
         try:
             if run_descriptor is None:
@@ -1523,7 +1710,7 @@ def restore_finish(root, run_dir, snapshot, run_descriptor=None):
         shutil.copytree(os.path.join(snapshot, "project"), project)
     else:
         shutil.rmtree(project, ignore_errors=True)
-    for name in ("LEARNING-REVIEW.md", "RUN-LIFECYCLE.json", "RUN-LIFECYCLE.md", "OUTCOME-EVALUATION.json", "SESSION-OUTCOME.json"):
+    for name in FINISH_SNAPSHOT_NAMES:
         if read_text(os.path.join(snapshot, "run", "%s.present" % name)).strip() == "present":
             source = os.path.join(snapshot, "run", name)
             if run_descriptor is None:
@@ -1594,6 +1781,8 @@ def session_pins(active):
         "mode", "scope", "host", "started_at", "started_head", "flow_schema",
         "conformance_contract", "frontend_quality_contract", "frontend_quality_start_head",
     )
+    if "execution_contract" in active:
+        keys = keys + ("execution_contract",)
     return {key: active.get(key) for key in keys if key in active}
 
 
@@ -1873,6 +2062,17 @@ def cmd_finish(args):
     run_dir = resolve_run_dir(root, run_rel)
     active = load_active(root)
     ensure_terminal_run_path(run_dir, active)
+    active_selector = str(active.get("execution_contract", "")).strip()
+    state_selector = execution_control.state_contract(run_dir)
+    try:
+        execution_trace_present = execution_control.trace_present(root, run_dir, active)
+    except execution_control.ExecutionControlError as exc:
+        die("finish refused: execution control invalid (%s)" % exc, 1)
+    if active_selector or state_selector or execution_trace_present:
+        try:
+            execution_control.require_finishable(root, run_dir, active, status["item_counts"])
+        except execution_control.ExecutionControlError as exc:
+            die("finish refused: execution control invalid (%s)" % exc, 1)
     if status["item_counts"]["open"] != 0:
         die("finish refused: unresolved active-session items remain", 1)
     if status["stale_risk"] != "current":
@@ -1939,7 +2139,21 @@ def cmd_finish(args):
                         return evaluation_code
                     if not terminal_run_name_matches(pinned):
                         die("terminal run directory changed before final validation", 2)
-                    require_finish_conformance(run_dir, load_active(root))
+                    final_active = load_active(root)
+                    try:
+                        final_trace_present = execution_control.trace_present(root, run_dir, final_active)
+                    except execution_control.ExecutionControlError as exc:
+                        die("finish refused: execution control invalid (%s)" % exc, 1)
+                    if (
+                        str(final_active.get("execution_contract", "")).strip()
+                        or execution_control.state_contract(run_dir)
+                        or final_trace_present
+                    ):
+                        try:
+                            execution_control.require_finishable(root, run_dir, final_active, status["item_counts"])
+                        except execution_control.ExecutionControlError as exc:
+                            die("finish refused: execution control invalid (%s)" % exc, 1)
+                    require_finish_conformance(run_dir, final_active)
                     outcome = write_outcome(
                         run_dir,
                         "done",
@@ -1950,6 +2164,17 @@ def cmd_finish(args):
                         run_descriptor=pinned["run_descriptor"],
                     )
                     update_terminal_state(pinned, "done", phase7_done=True)
+                    if final_trace_present:
+                        try:
+                            execution_control.finalize(
+                                root,
+                                run_dir,
+                                final_active,
+                                status["item_counts"],
+                                write=True,
+                            )
+                        except execution_control.ExecutionControlError as exc:
+                            die("finish refused: execution control invalid (%s)" % exc, 1)
                     terminal_state_committed = True
                     if not terminal_run_name_matches(pinned):
                         die("terminal run directory changed before retirement", 2)
@@ -2171,6 +2396,15 @@ def transition_summary(transition):
     detail = "%s at %s -> %s" % (action, current, target)
     if transition.get("target_file"):
         detail += " (%s)" % transition["target_file"]
+    execution = transition.get("execution")
+    if isinstance(execution, dict):
+        detail += " [profile=%s profile_reason=%s strategy=%s budget=%s directive=%s]" % (
+            execution.get("profile", "unknown"),
+            execution.get("profile_reason", "unknown"),
+            execution.get("strategy_mode", "unknown"),
+            execution.get("budget_pressure", "unknown"),
+            execution.get("directive", "unknown"),
+        )
     return detail
 
 
@@ -2276,6 +2510,26 @@ def cmd_stop_gate():
         # The orchestrator is legitimately waiting on a user answer at an engine gate
         # (set via await-user); let the turn end instead of blocking the question.
         return 0
+    if execution_control.contract_enabled(load_active(root)):
+        try:
+            _observe_execution(
+                root,
+                status,
+                "turn_completed",
+                "neutral",
+                None,
+                {key: 0 for key in execution_control.USAGE_KEYS},
+                True,
+                coalesce_pending_stop=True,
+            )
+            status = status_json(root)
+        except ActiveError as exc:
+            reason = (
+                "kimiflow execution-control gate: %s. Repair the run-local controller "
+                "autonomously before stopping." % exc.message
+            )
+            sys.stdout.write(json_pretty({"decision": "block", "reason": reason}) + "\n")
+            return 0
     if isinstance(status.get("transition"), dict):
         reason = (
             "kimiflow active-session gate: %s is still open. Open items: %s. Exact next action: %s. Continue that action, or close it mechanically with hooks/active-run.sh finish --write, park --write --reason <text>, fail --write --reason <text>, or abort --write --reason <text>."
@@ -2307,6 +2561,8 @@ def main(argv=None):
             cmd_status(args)
         elif command == "next-action":
             cmd_next_action(args)
+        elif command == "observe":
+            cmd_observe(args)
         elif command == "start":
             cmd_start(args)
         elif command == "conflict-check":

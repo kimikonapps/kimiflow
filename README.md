@@ -36,6 +36,7 @@ abilities:
 
 - state and evidence live under `.kimiflow/<slug>/`, so a run can resume safely;
 - plan and code-review findings use tested fail-closed resolvers;
+- repeated work without new durable evidence changes strategy automatically instead of asking for another run;
 - fixes require reproduction, a proven cause, and red/green evidence;
 - material product/authority decisions stop for human approval; verified local commits are automatic, while push and release stay explicit;
 - successful learnings are curated, while failed or parked attempts are not promoted as truth;
@@ -177,6 +178,7 @@ without a second confirmation. Exact trivial work may skip the loop.
 | Clarify and Discovery gates | Product-intent provenance is complete, technical questions are zero, and source/scope/decision evidence exists before planning. |
 | Plan-blocker and review gates | Acceptance mappings and evidenced `BLOCKER/HIGH` findings are resolved within a bounded repair budget. |
 | Implementation-conformance gate | Researched decisions, invariants, affected paths, and exact checks converge in Phase 6; finish additionally proves the committed delivery matches. |
+| Adaptive execution controller | Run-wide no-progress and budget pressure select a bounded recovery action; mandatory quality gates remain intact. |
 | Material-decision gate | Reversible technical work continues; only missing authority, material risk, external access, privacy/cost, or irreversibility pauses. |
 | Red/green gate | Fixes cannot finish without recorded failing and passing evidence plus regression coverage. |
 | Atomic commit gate | Schema-4 runs stage named run-owned paths and commit locally under the original build authority. |
@@ -196,6 +198,7 @@ mechanizes the evidence boundaries without pretending a tool can prove that no b
   and at most two independent lanes.
 - Research may correct implementation choices, but only `required` constraints may expand scope.
 - Conformance records at most five material decisions; `small` adds no model call and `large` reuses its existing independent verifier.
+- Execution uses three fixed quality profiles with an explicit selection reason and one compact local trace; hard pressure removes optional breadth, not verification quality.
 - A second planner appears only for a real architecture or irreversible contract fork, not because a
   task merely looks large.
 - The top model owns orchestration, synthesis, planning, review verdicts, and risky diagnosis.

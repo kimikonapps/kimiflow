@@ -70,7 +70,28 @@
       {"from": "phase_6", "event": "strategy_drift", "to": "phase_2", "action": "recover_plan_strategy"},
       {"from": "phase_6", "event": "architecture_falsified", "to": "phase_2", "action": "recover_plan_strategy"},
       {"from": "phase_6", "event": "research_stale", "to": "phase_2", "action": "recover_plan_strategy"},
-      {"from": "phase_7", "event": "review_failed", "to": "phase_5", "action": "recover_build"}
+      {"from": "phase_7", "event": "review_failed", "to": "phase_5", "action": "recover_build"},
+      {"from": "phase_0", "event": "no_progress", "to": "phase_0", "action": "reassess_setup_strategy"},
+      {"from": "phase_1", "event": "no_progress", "to": "phase_1", "action": "reframe_requirements"},
+      {"from": "phase_2", "event": "no_progress", "to": "phase_2", "action": "broaden_evidence_strategy"},
+      {"from": "phase_3", "event": "no_progress", "to": "phase_3", "action": "revise_plan_strategy"},
+      {"from": "phase_4", "event": "no_progress", "to": "phase_4", "action": "change_review_strategy"},
+      {"from": "phase_5", "event": "no_progress", "to": "phase_5", "action": "change_build_strategy"},
+      {"from": "phase_6", "event": "no_progress", "to": "phase_6", "action": "change_verification_strategy"},
+      {"from": "phase_7", "event": "no_progress", "to": "phase_7", "action": "change_commit_strategy"}
     ]
+  },
+  "execution_control": {
+    "schema_version": 1,
+    "profiles": ["compact", "standard", "critical"],
+    "strategy_modes": ["normal", "recovery"],
+    "budget_pressures": ["normal", "soft", "hard"],
+    "no_progress_limit": 2,
+    "max_trace_entries": 512,
+    "budgets": {
+      "small": {"soft_work_units": 8, "hard_work_units": 14},
+      "medium": {"soft_work_units": 14, "hard_work_units": 24},
+      "large": {"soft_work_units": 22, "hard_work_units": 36}
+    }
   }
 }

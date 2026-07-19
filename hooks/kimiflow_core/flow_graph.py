@@ -39,6 +39,19 @@ _CONFORMANCE_RECOVERY_EVENTS = {
     "architecture_falsified",
     "research_stale",
 }
+_EXECUTION_PROFILES = ["compact", "standard", "critical"]
+_EXECUTION_STRATEGY_MODES = ["normal", "recovery"]
+_EXECUTION_BUDGET_PRESSURES = ["normal", "soft", "hard"]
+_NO_PROGRESS_ACTIONS = (
+    "reassess_setup_strategy",
+    "reframe_requirements",
+    "broaden_evidence_strategy",
+    "revise_plan_strategy",
+    "change_review_strategy",
+    "change_build_strategy",
+    "change_verification_strategy",
+    "change_commit_strategy",
+)
 
 
 def _plugin_root():
@@ -98,6 +111,64 @@ def _phase_entries(manifest):
     if [entry["id"] for entry in entries] != list(range(8)):
         raise FlowGraphError("Kimiflow graph requires phases 0-7")
     return entries
+
+
+def _execution_config(manifest):
+    config = manifest.get("execution_control")
+    if config is None:
+        return None
+    if not isinstance(config, dict) or config.get("schema_version") != 1:
+        raise FlowGraphError("execution_control schema_version must be 1")
+    if config.get("profiles") != _EXECUTION_PROFILES:
+        raise FlowGraphError("execution_control profiles must be compact, standard, critical")
+    if config.get("strategy_modes") != _EXECUTION_STRATEGY_MODES:
+        raise FlowGraphError("execution_control strategy modes must be normal, recovery")
+    if config.get("budget_pressures") != _EXECUTION_BUDGET_PRESSURES:
+        raise FlowGraphError("execution_control budget pressures must be normal, soft, hard")
+    no_progress_limit = config.get("no_progress_limit")
+    max_trace_entries = config.get("max_trace_entries")
+    if (
+        isinstance(no_progress_limit, bool)
+        or not isinstance(no_progress_limit, int)
+        or not 2 <= no_progress_limit <= 8
+    ):
+        raise FlowGraphError("execution_control no_progress_limit must be between 2 and 8")
+    if (
+        isinstance(max_trace_entries, bool)
+        or not isinstance(max_trace_entries, int)
+        or not 32 <= max_trace_entries <= 2048
+    ):
+        raise FlowGraphError("execution_control max_trace_entries must be between 32 and 2048")
+    budgets = config.get("budgets")
+    if not isinstance(budgets, dict) or set(budgets) != {"small", "medium", "large"}:
+        raise FlowGraphError("execution_control budgets must cover small, medium, large")
+    normalized_budgets = {}
+    for scope in ("small", "medium", "large"):
+        budget = budgets.get(scope)
+        if not isinstance(budget, dict) or set(budget) != {"soft_work_units", "hard_work_units"}:
+            raise FlowGraphError("execution_control budget shape invalid")
+        soft = budget.get("soft_work_units")
+        hard = budget.get("hard_work_units")
+        if (
+            isinstance(soft, bool)
+            or isinstance(hard, bool)
+            or not isinstance(soft, int)
+            or not isinstance(hard, int)
+            or soft < 1
+            or hard <= soft
+            or hard > 10000
+        ):
+            raise FlowGraphError("execution_control budget bounds invalid")
+        normalized_budgets[scope] = {"soft_work_units": soft, "hard_work_units": hard}
+    return {
+        "schema_version": 1,
+        "profiles": list(_EXECUTION_PROFILES),
+        "strategy_modes": list(_EXECUTION_STRATEGY_MODES),
+        "budget_pressures": list(_EXECUTION_BUDGET_PRESSURES),
+        "no_progress_limit": no_progress_limit,
+        "max_trace_entries": max_trace_entries,
+        "budgets": normalized_budgets,
+    }
 
 
 def legacy_action(stale, item_counts):
@@ -203,6 +274,14 @@ def load_graph():
     actual = {(row["from"], row["event"], row["to"], row["action"]) for row in normalized_transitions}
     if not required.issubset(actual):
         raise FlowGraphError("required Kimiflow transitions missing")
+    execution_control = _execution_config(manifest)
+    if execution_control is not None:
+        required_no_progress = {
+            ("phase_%s" % index, "no_progress", "phase_%s" % index, action)
+            for index, action in enumerate(_NO_PROGRESS_ACTIONS)
+        }
+        if not required_no_progress.issubset(actual):
+            raise FlowGraphError("execution_control no_progress transitions missing")
     return {
         "graph_status": "ready",
         "manifest_schema_version": manifest_schema,
@@ -212,6 +291,7 @@ def load_graph():
         "guards": normalized_guards,
         "transitions": normalized_transitions,
         "edge_index": edge_index,
+        "execution_control": execution_control,
     }
 
 

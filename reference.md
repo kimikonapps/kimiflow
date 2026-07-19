@@ -240,13 +240,50 @@ fail closed as `repair_transition_graph` or `repair_state`. Schema-1 manifests a
 `graph_status=legacy` and retain the old coarse action. The existing scalar `status.next_action` is unchanged;
 the exact result is additive at `status.transition`.
 
+The schema-2 phase manifest may additionally declare Execution Contract 1 while keeping the existing flow graph
+schema unchanged. New non-trivial schema-4 `feature|fix` runs pin `Execution contract: 1` into both `STATE.md`
+and ACTIVE_RUN; selector-free and older runs retain their exact transition shape and create no execution artifact.
+The contract adds exactly three manifest-validated quality profiles (`compact|standard|critical`) with a returned
+selection reason, an orthogonal
+`normal|recovery` strategy mode, and one explicit `no_progress` self-edge per phase. Recovery never downgrades a
+critical profile or invents agents/nodes.
+
+One mode-0600 `EXECUTION-TRACE.json` is the atomic source of truth for counters, optional usage totals, decisions,
+and the bounded graph trace; `status` and `next-action` only inspect it. Each owner Stop boundary records one work
+unit unless an explicit observation already covered that Stop boundary. Only durable phase/item/gate/recovery
+changes or a run-wide-new accepted run-artifact fingerprint reset the streak;
+Git/source bytes, comments, whitespace, prompts, and repeated reads do not. After two unchanged work units, the
+graph selects that phase's recovery action automatically. A decisive artifact may be recorded explicitly:
+
+```bash
+hooks/active-run.sh observe --event verification --outcome passed \
+  --evidence .kimiflow/<slug>/VERIFICATION.md \
+  --model-calls 1 --input-tokens 12000 --output-tokens 2500 --write
+```
+
+Evidence must be a small regular file directly inside the run directory; only a normalized-content SHA-256 is
+stored, so formatting-only text/JSON rewrites cannot manufacture new progress. Work units
+plus optional model/tool/token deltas produce one cumulative score. `normal|soft|hard` pressure is returned under
+`status.transition.execution`; hard pressure emits `prune_optional_work`, but required clarification, discovery,
+conformance, verification, review, learning, and finish contracts remain unchanged. The trace is entry- and
+size-capped; at the entry cap it retains a contiguous newest-entry window plus a cumulative dropped-entry count
+instead of blocking the loop. The run-wide accepted-evidence index is bounded separately at 2,048 fingerprints,
+so the trace window cannot prematurely exhaust evidence recognition. It is symlink-refusing, tied to the pinned run-directory identity, and replaced
+atomically. Missing,
+malformed, oversized, exchanged, or selector-mismatched state fails closed as `repair_execution_control`; finish
+requires valid controller evidence. No daemon, provider, telemetry, free graph rewriting, extra user gate, or
+paid dependency is introduced.
+
 **Prompt behavior:** the `UserPromptSubmit` hook calls `active-run.sh prompt-context`. In the owner session it
 injects a small reminder to keep the follow-up inside Kimiflow unless the user explicitly exits/parks/fails/
 aborts/switches, plus the same exact action/node returned by `next-action`. Other Codex or Claude sessions are not adopted into the run: they may read, answer, analyze,
 and plan normally, and receive only a compact advisory to run `conflict-check` before shared-checkout edits.
 The hook does not store the raw prompt text.
 
-**Stop behavior:** the `Stop` hook calls `active-run.sh stop-gate`. It blocks completion only when the hook's
+**Stop behavior:** the `Stop` hook calls `active-run.sh stop-gate`. For an owned Execution Contract 1 run, it first
+records one bounded turn observation (or coalesces the explicit observation already made in that turn) and returns
+the resulting profile/reason/strategy/budget directive with the exact
+next action. It blocks completion only when the hook's
 host/session identity owns the non-terminal active run, unless the stop is already a hook continuation. Other
 sessions and legacy ownerless runs always pass Stop so an answer can never be replaced by another run's gate.
 The owner model must continue the Kimiflow loop or close it mechanically with `finish`, `park`, `fail`, or

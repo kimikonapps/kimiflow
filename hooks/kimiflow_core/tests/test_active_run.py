@@ -117,7 +117,7 @@ class TestExecutionControlIntegration(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def write_state(self, execution=True):
+    def write_state(self, execution=True, current=5):
         lines = [
             "Flow schema: 4",
             "Status: active",
@@ -133,7 +133,11 @@ class TestExecutionControlIntegration(unittest.TestCase):
         ]
         if execution:
             lines.insert(1, "Execution contract: 1")
-        lines.extend("Phase %s: %s" % (index, "done" if index < 5 else "in-progress" if index == 5 else "open") for index in range(8))
+        lines.extend(
+            "Phase %s: %s"
+            % (index, "done" if index < current else "in-progress" if index == current else "open")
+            for index in range(8)
+        )
         with open(os.path.join(self.run_dir, "STATE.md"), "w", encoding="utf-8") as handle:
             handle.write("\n".join(lines) + "\n")
 
@@ -177,6 +181,101 @@ class TestExecutionControlIntegration(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(active_run.status_json(self.root)["execution_control"]["work_units"], sequence)
 
+    def test_explicit_failure_event_takes_precedence_over_no_progress_recovery(self):
+        rc, _ = self.start()
+        self.assertEqual(rc, 0)
+        for _ in range(2):
+            rc, _ = run_main(["stop-gate"], stdin_text=self.hook_payload())
+            self.assertEqual(rc, 0)
+        self.assertEqual(active_run.status_json(self.root)["execution_control"]["strategy_mode"], "recovery")
+
+        self.write_state(current=6)
+        transition = active_run.status_json(self.root, event="architecture_falsified")["transition"]
+        self.assertEqual(transition["action"], "recover_plan_strategy")
+        self.assertEqual(transition["target_node"], "phase_2")
+
+    def test_pinned_restart_refuses_missing_controller_history(self):
+        rc, _ = self.start()
+        self.assertEqual(rc, 0)
+        for _ in range(2):
+            rc, _ = run_main(["stop-gate"], stdin_text=self.hook_payload())
+            self.assertEqual(rc, 0)
+        os.unlink(execution_control.trace_path(self.run_dir))
+
+        rc, _ = self.start()
+        self.assertEqual(rc, 1)
+        self.assertFalse(os.path.exists(execution_control.trace_path(self.run_dir)))
+
+    def test_default_explicit_observation_is_coalesced_with_owner_stop(self):
+        rc, _ = self.start()
+        self.assertEqual(rc, 0)
+        evidence = os.path.join(self.run_dir, "VERIFICATION.md")
+        with open(evidence, "w", encoding="utf-8") as handle:
+            handle.write("passed\n")
+        rc, _ = run_main([
+            "observe",
+            "--root", self.root,
+            "--outcome", "passed",
+            "--evidence", os.path.relpath(evidence, self.root),
+            "--write",
+        ])
+        self.assertEqual(rc, 0)
+        rc, _ = run_main(["stop-gate"], stdin_text=self.hook_payload())
+        self.assertEqual(rc, 0)
+        summary = active_run.status_json(self.root)["execution_control"]
+        self.assertEqual(summary["work_units"], 1)
+        self.assertEqual(summary["no_progress_streak"], 0)
+
+    def test_finish_snapshot_restores_state_and_execution_trace_together(self):
+        rc, _ = self.start()
+        self.assertEqual(rc, 0)
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        trace_path = execution_control.trace_path(self.run_dir)
+        with open(state_path, "rb") as handle:
+            state_before = handle.read()
+        with open(trace_path, "rb") as handle:
+            trace_before = handle.read()
+        snapshot = tempfile.mkdtemp(dir=self.root)
+        self.addCleanup(shutil.rmtree, snapshot, ignore_errors=True)
+        active_run.snapshot_finish(self.root, self.run_dir, snapshot)
+
+        with open(state_path, "wb") as handle:
+            handle.write(b"Status: done\n")
+        with open(trace_path, "wb") as handle:
+            handle.write(b"{}\n")
+        active_run.restore_finish(self.root, self.run_dir, snapshot)
+
+        with open(state_path, "rb") as handle:
+            self.assertEqual(handle.read(), state_before)
+        with open(trace_path, "rb") as handle:
+            self.assertEqual(handle.read(), trace_before)
+
+    def test_pending_stop_coverage_does_not_cross_park_resume_boundary(self):
+        rc, _ = self.start()
+        self.assertEqual(rc, 0)
+        evidence = os.path.join(self.run_dir, "VERIFICATION.md")
+        with open(evidence, "w", encoding="utf-8") as handle:
+            handle.write("passed\n")
+        rc, _ = run_main([
+            "observe",
+            "--root", self.root,
+            "--event", "verification",
+            "--outcome", "passed",
+            "--evidence", os.path.relpath(evidence, self.root),
+            "--write",
+        ])
+        self.assertEqual(rc, 0)
+        rc, _ = run_main(["park", "--root", self.root, "--reason", "resume boundary", "--write"])
+        self.assertEqual(rc, 0)
+        rc, _ = self.start()
+        self.assertEqual(rc, 0)
+
+        rc, _ = run_main(["stop-gate"], stdin_text=self.hook_payload())
+        self.assertEqual(rc, 0)
+        summary = active_run.status_json(self.root)["execution_control"]
+        self.assertEqual(summary["work_units"], 2)
+        self.assertEqual(summary["no_progress_streak"], 1)
+
     def test_observe_hashes_evidence_and_selector_tamper_fails_closed(self):
         rc, _ = self.start()
         self.assertEqual(rc, 0)
@@ -196,15 +295,45 @@ class TestExecutionControlIntegration(unittest.TestCase):
         self.assertEqual(rc, 0)
         observed = json.loads(out)
         self.assertEqual(observed["execution"]["usage"]["model_calls"], 1)
+        self.assertEqual(observed["execution"]["work_units"], 1)
+        self.assertEqual(observed["execution"]["no_progress_streak"], 0)
         with open(execution_control.trace_path(self.run_dir), "r", encoding="utf-8") as handle:
             payload = handle.read()
         self.assertNotIn("private check output", payload)
+
+        rc, out = run_main(["stop-gate"], stdin_text=self.hook_payload())
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["decision"], "block")
+        coalesced = active_run.status_json(self.root)["execution_control"]
+        self.assertEqual(coalesced["work_units"], 1)
+        self.assertEqual(coalesced["no_progress_streak"], 0)
+
+        rc, _ = run_main(["stop-gate"], stdin_text=self.hook_payload())
+        self.assertEqual(rc, 0)
+        next_turn = active_run.status_json(self.root)["execution_control"]
+        self.assertEqual(next_turn["work_units"], 2)
+        self.assertEqual(next_turn["no_progress_streak"], 1)
 
         self.write_state(execution=False)
         status = active_run.status_json(self.root)
         self.assertEqual(status["transition"]["action"], "repair_execution_control")
         with self.assertRaises(execution_control.ExecutionControlError):
-            execution_control.require_finishable(self.root, self.run_dir, self.active())
+            execution_control.require_finishable(self.root, self.run_dir, self.active(), status["item_counts"])
+
+    def test_orphaned_execution_journal_cannot_be_downgraded_to_legacy(self):
+        rc, _ = self.start()
+        self.assertEqual(rc, 0)
+        self.write_state(execution=False)
+        active = self.active()
+        active.pop("execution_contract", None)
+        active_run.write_active(self.root, active)
+
+        status = active_run.status_json(self.root)
+        self.assertEqual(status["transition"]["action"], "repair_execution_control")
+        self.assertEqual(status["execution_control"]["reason"], "execution_contract_selector_mismatch")
+        rc, _ = run_main(["finish", "--root", self.root, "--write"])
+        self.assertEqual(rc, 1)
+        self.assertTrue(os.path.isfile(active_run.active_file(self.root)))
 
     def test_selector_free_run_keeps_legacy_output_and_artifacts_absent(self):
         self.write_state(execution=False)

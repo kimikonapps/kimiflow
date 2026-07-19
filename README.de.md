@@ -22,6 +22,7 @@ dauerhaften, wiederaufnehmbaren Qualitätsvertrag:
 
 - State und Evidence liegen unter `.kimiflow/<slug>/`;
 - Plan- und Code-Review-Gates lösen BLOCKER/HIGH mechanisch auf;
+- wiederholte Arbeit ohne neue dauerhafte Evidence wechselt automatisch die Strategie, statt nach einem weiteren Run zu fragen;
 - Bugfixes brauchen Reproduktion, belegte Ursache und Red/Green-Evidence;
 - wesentliche Produkt-/Berechtigungsentscheidungen warten auf menschliche Freigabe; verifizierte lokale Commits laufen automatisch, Push und Release bleiben explizit;
 - nur erfolgreich verifizierte Learnings werden kuratiert;
@@ -157,6 +158,7 @@ Bestätigung autonom weiter. Exakte triviale Arbeit darf den Loop überspringen.
 | Clarify-/Discovery-Gates | Produkt-Intent hat Provenienz, technische Fragen sind null und Quellen-/Scope-/Entscheidungs-Evidence existiert. |
 | Plan-/Review-Gates | AC-Mapping und belegte BLOCKER/HIGHs werden in begrenzten Reparaturrunden gelöst. |
 | Implementation-Conformance-Gate | Rechercheentscheidungen, Invarianten, Pfade und Checks konvergieren in Phase 6; beim Abschluss muss zusätzlich der Commit exakt dem geprüften Stand entsprechen. |
+| Adaptiver Execution-Controller | Run-weites No-Progress und Budgetdruck wählen eine begrenzte Recovery-Aktion; verpflichtende Qualitäts-Gates bleiben erhalten. |
 | Materielle-Entscheidungs-Gate | Reversible Technik läuft weiter; nur Autorität, Risiko, Zugriff, Privacy/Kosten oder Irreversibilität pausieren. |
 | Red/Green-Gate | Fixes brauchen aufgezeichnete failing/passing Evidence und Regression. |
 | Atomic-Commit-Gate | Schema-4-Runs stagen Named Run-Paths und committen lokal unter der ursprünglichen Bau-Freigabe. |
@@ -176,6 +178,7 @@ mechanisiert die Evidence-Grenzen, ohne Allwissenheit vorzutäuschen.
   Evidence-Worker und höchstens zwei unabhängige Lanes.
 - Recherche darf die Umsetzung korrigieren; nur `required` Constraints dürfen Scope hinzufügen.
 - Conformance speichert höchstens fünf materielle Entscheidungen; `small` braucht keinen zusätzlichen Modell-Call, `large` nutzt den bestehenden unabhängigen Verifier mit.
+- Execution nutzt drei feste Qualitätsprofile mit expliziter Auswahlbegründung und einen kompakten lokalen Trace; bei hartem Druck fällt optionale Breite weg, nicht Verifikationsqualität.
 - Ein zweiter Planner erscheint nur bei echter Architektur- oder irreversibler Contract-Gabel.
 - Das Top-Modell behält Orchestrierung, Synthese, Planung, Review-Verdicts und riskante Diagnose.
 
