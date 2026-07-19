@@ -202,6 +202,22 @@ class TestOutcomeEvaluation(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertTrue(os.path.isfile(active_run.active_file(self.repo)))
 
+    def test_finish_refuses_closed_conformance_before_learning(self):
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, "a", encoding="utf-8") as handle:
+            handle.write("Conformance contract: 1\nConformance basis: pending\n")
+        gate = os.path.join(self.temp, "conformance-gate")
+        with open(gate, "w", encoding="utf-8") as handle:
+            handle.write("#!/bin/sh\nprintf 'CONFORMANCE_GATE\\tCLOSED\\tblockers=1\\treason=receipt-missing\\tdetail=conformance_receipt_missing\\n'\n")
+        os.chmod(gate, 0o700)
+
+        with mock.patch.dict(os.environ, {"KIMIFLOW_CONFORMANCE_GATE": gate}):
+            rc, _ = run_main(["finish", "--root", self.repo, "--write"])
+
+        self.assertEqual(rc, 1)
+        self.assertTrue(os.path.isfile(active_run.active_file(self.repo)))
+        self.assertFalse(os.path.exists(self.router_log))
+
     def test_terminal_outcome_evaluation_is_best_effort(self):
         for command, expected in (("park", "parked"), ("fail", "failed"), ("abort", "aborted")):
             with self.subTest(command=command):

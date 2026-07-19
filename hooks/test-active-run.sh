@@ -342,6 +342,20 @@ grep -q '^review-run ' "$ROUTER_LOG" && grep -q '^verify-run ' "$ROUTER_LOG" && 
 grep -q '^Status: done' "$REPO/.kimiflow/demo/STATE.md" && pass "finish_marks_state_done" || fail "finish_marks_state_done"
 
 reset_repo
+cat >> "$REPO/.kimiflow/demo/STATE.md" <<'EOF'
+Flow schema: 4
+Conformance contract: 1
+Conformance basis: pending
+Run started head: NOT VERIFIED
+EOF
+run_active start --run .kimiflow/demo --write >/dev/null
+err="$(run_active finish --write 2>&1 >/dev/null)"; rc=$?
+if [ "$rc" -ne 0 ]; then pass "finish_refuses_closed_conformance_gate"; else fail "finish_refuses_closed_conformance_gate"; fi
+assert_contains "$err" "conformance gate closed" "finish_reports_conformance_gate"
+[ -f "$REPO/.kimiflow/session/ACTIVE_RUN.json" ] && pass "conformance_failure_keeps_active_session" || fail "conformance_failure_keeps_active_session"
+if [ ! -s "$ROUTER_LOG" ]; then pass "conformance_failure_precedes_learning_writes"; else fail "conformance_failure_precedes_learning_writes"; fi
+
+reset_repo
 cat > "$REPO/.kimiflow/demo/STATE.md" <<'EOF'
 - **Status:** active
 - **Mode:** feature

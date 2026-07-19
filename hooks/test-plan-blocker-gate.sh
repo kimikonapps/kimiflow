@@ -432,6 +432,28 @@ EOF
 out="$(run_gate)"
 assert_field "$out" 2 OPEN "extensionless_project_file_path_opens"
 
+reset_run
+cat >> "$RUN/STATE.md" <<'EOF'
+Flow schema: 4
+Conformance contract: 1
+Conformance basis: pending
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "conformance_plan_contract_missing_closes"
+assert_contains "$out" "conformance_plan_gate_closed" "conformance_plan_contract_missing_detail"
+cat >> "$RUN/PLAN.md" <<'EOF'
+<!-- kimiflow:decision-contract contract=1 decisions=1 -->
+Decision D1: Keep the feature behavior complete.
+Evidence D1: RESEARCH.md §Existing implementation
+Invariant D1: The implementation and tests change together.
+Paths D1: src/feature.ts, tests/feature.test.ts
+AC D1: AC-1
+Check D1: command :: test -s src/feature.ts
+Recheck D1: Re-run after feature paths or behavior change.
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "conformance_plan_contract_valid_opens"
+
 # --- Header-set consistency: every Affected header this gate accepts must also be
 # visible to the staleness parser in hooks/kimiflow_core/active_run.py (keep in sync),
 # or a plan passes the gate but finish wedges on stale_risk=unknown -----------------
