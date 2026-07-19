@@ -21,6 +21,20 @@ def resolve_run_dir(root, run):
     if not run:
         die("run path required", 2)
         return ""
+    if run == "." and os.environ.get("KIMIFLOW_PINNED_RUN_CWD") == "1":
+        try:
+            info = os.stat(".", follow_symlinks=False)
+            expected = (
+                int(os.environ.get("KIMIFLOW_PINNED_RUN_DEVICE", "")),
+                int(os.environ.get("KIMIFLOW_PINNED_RUN_INODE", "")),
+            )
+        except (OSError, ValueError):
+            die("pinned run directory is no longer reachable", 2)
+            return ""
+        if not os.path.isdir(".") or (info.st_dev, info.st_ino) != expected:
+            die("pinned run directory identity changed", 2)
+            return ""
+        return "."
     if not run.startswith("/"):
         run = root + "/" + run
     if not os.path.isdir(run):

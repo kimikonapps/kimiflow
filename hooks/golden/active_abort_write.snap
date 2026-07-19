@@ -1,11 +1,11 @@
 @@exit@@
 0
 @@stdout@@
-{"status":"aborted","written":true,"run":".kimiflow/demo","outcome":{"schema_version":1,"outcome":"aborted","reason":"aborted","completed_at":"TIMESTAMP","learning_review":{"status":"not_promoted","reason":"session_not_finished"},"outcome_evaluation":{"status":"evaluated","id":"out_COMMIT365a10381bb0803d20e14b16","terminal":"aborted","classification":"inconclusive","promotable":false,"strategy_recall_hits":0,"strategy_recall_used":false,"first_plan_success":true,"economics_result":null,"net_estimated_tokens_saved":null},"workspace_retirement":{"status":"not-required"}}}
+{"status":"aborted","written":true,"run":".kimiflow/demo","outcome":{"schema_version":1,"outcome":"aborted","reason":"aborted","completed_at":"TIMESTAMP","learning_review":{"status":"not_promoted","reason":"session_not_finished"},"outcome_evaluation":{"status":"evaluated","id":"out_COMMIT365a10381bb0803d20e14b16","terminal":"aborted","classification":"inconclusive","promotable":false,"strategy_recall_hits":0,"strategy_recall_used":false,"first_plan_success":true,"economics_result":null,"net_estimated_tokens_saved":null},"session_pins":{"mode":"feature","scope":"small","host":"codex","started_at":"TIMESTAMP","started_head":"COMMIT"},"workspace_retirement":{"status":"not-required"}}}
 @@stderr@@
 @@files@@
 .kimiflow/demo/OUTCOME-EVALUATION.json	mode=600	hash=sha256:a1e8ab982c941dc739590e8a923553e2ef252148df111864752abc3a5694dcc9
-.kimiflow/demo/SESSION-OUTCOME.json	mode=600	hash=sha256:135e7bc7ee4ef9c58b1a949c2d10c6751472e37f1567dc794a9d4a6ffdc5fc0a
+.kimiflow/demo/SESSION-OUTCOME.json	mode=600	hash=sha256:105756980258eb9b544dcd2f8339b55b595c6793ed339bce21449b28798a223e
 .kimiflow/demo/STATE.md	mode=600	hash=sha256:fa174cd12efa4301682228d09669a777517e1af0ac6f35ff610c8b424682762a
 .kimiflow/project/FINDINGS.md	mode=644	hash=sha256:a2ed99a0a376d3147db54333f62ba30603ac43d8cf558ff240d9a724251cbf82
 .kimiflow/project/STRATEGY-OUTCOMES.jsonl	mode=600	hash=sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855

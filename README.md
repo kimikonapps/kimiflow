@@ -161,11 +161,11 @@ without a second confirmation. Exact trivial work may skip the loop.
 | 0 Setup | Inventory every worktree, create durable run state, then batch any safe-disposition decision once. |
 | 1 Clarify | Prove product-intent provenance, ask at most one product batch, forbid HOW questions, then continue. |
 | 2 Understand | Inspect project knowledge and code; choose Discovery `none`, `pulse`, or `focused`. Fixes reproduce and prove the cause. |
-| 3 Plan | Write a flat minimum-complete plan and testable acceptance criteria. |
+| 3 Plan | Write a flat minimum-complete plan, testable acceptance criteria, and up to five evidence-bound implementation decisions. |
 | 4 Review | Resolve plan blockers and pause only for a material authority, scope, risk, privacy, cost, or irreversible decision. |
 | 5 Implement | Apply the smallest accepted change, normally sequentially; fixes preserve red evidence before production code. |
-| 6 Verify | Check acceptance criteria, regression behavior, red/green evidence, and bounded local diagnostics. |
-| 7 Review and commit | Verify findings, curate learnings, and create a named-path local atomic commit; push/release stay explicit. |
+| 6 Verify | Check acceptance, regression, and whether the delivered diff still matches the researched strategy and invariants. |
+| 7 Review and commit | Revalidate conformance, verify findings, create the named-path atomic commit, then prove commit/index/worktree delivery; push/release stay explicit. |
 
 ## Mechanical Gates
 
@@ -176,6 +176,7 @@ without a second confirmation. Exact trivial work may skip the loop.
 | Workspace preflight | Every linked tree and dirty path is classified; cleanup is no-force, ownership-bound, and solo-dev by default. |
 | Clarify and Discovery gates | Product-intent provenance is complete, technical questions are zero, and source/scope/decision evidence exists before planning. |
 | Plan-blocker and review gates | Acceptance mappings and evidenced `BLOCKER/HIGH` findings are resolved within a bounded repair budget. |
+| Implementation-conformance gate | Researched decisions, invariants, affected paths, and exact checks converge in Phase 6; finish additionally proves the committed delivery matches. |
 | Material-decision gate | Reversible technical work continues; only missing authority, material risk, external access, privacy/cost, or irreversibility pauses. |
 | Red/green gate | Fixes cannot finish without recorded failing and passing evidence plus regression coverage. |
 | Atomic commit gate | Schema-4 runs stage named run-owned paths and commit locally under the original build authority. |
@@ -194,6 +195,7 @@ mechanizes the evidence boundaries without pretending a tool can prove that no b
 - Discovery starts no worker for `none|pulse`, normally one bounded evidence worker for `focused`,
   and at most two independent lanes.
 - Research may correct implementation choices, but only `required` constraints may expand scope.
+- Conformance records at most five material decisions; `small` adds no model call and `large` reuses its existing independent verifier.
 - A second planner appears only for a real architecture or irreversible contract fork, not because a
   task merely looks large.
 - The top model owns orchestration, synthesis, planning, review verdicts, and risky diagnosis.

@@ -25,7 +25,19 @@ _GUARD_CONTRACT = (
 _RECOVERY_TRANSITIONS = {
     ("phase_4", "plan_recovery", "phase_2", "recover_plan_strategy"),
     ("phase_6", "verification_failed", "phase_5", "recover_build"),
+    ("phase_6", "code_gap", "phase_5", "recover_build"),
+    ("phase_6", "scope_drift", "phase_5", "recover_build"),
+    ("phase_6", "strategy_drift", "phase_2", "recover_plan_strategy"),
+    ("phase_6", "architecture_falsified", "phase_2", "recover_plan_strategy"),
+    ("phase_6", "research_stale", "phase_2", "recover_plan_strategy"),
     ("phase_7", "review_failed", "phase_5", "recover_build"),
+}
+_CONFORMANCE_RECOVERY_EVENTS = {
+    "code_gap",
+    "scope_drift",
+    "strategy_drift",
+    "architecture_falsified",
+    "research_stale",
 }
 
 
@@ -323,7 +335,12 @@ def resolve_transition(run_dir, active=None, stale=None, item_counts=None, event
             guard["condition"], active, stale, recovery, review_gate, counts, current["id"]
         )
     ]
-    blocking = [guard for guard in matches if guard["blocks_events"]]
+    blocking = [
+        guard
+        for guard in matches
+        if guard["blocks_events"]
+        and not (guard["condition"] == "stale" and event in _CONFORMANCE_RECOVERY_EVENTS)
+    ]
     selected = blocking[0] if blocking else None
     if selected is None and event:
         edge = graph["edge_index"].get((current_node, event))

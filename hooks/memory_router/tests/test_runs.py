@@ -47,6 +47,27 @@ class ResolveRunDirCase(unittest.TestCase):
         os.makedirs(d)
         self.assertEqual(runs.resolve_run_dir(self.root, d), os.path.abspath(d))
 
+    def test_private_pinned_cwd_does_not_follow_replaced_run_name(self):
+        run_dir = os.path.join(self.root, "run")
+        displaced = os.path.join(self.root, "run.owned")
+        outside = os.path.join(self.root, "outside")
+        os.mkdir(run_dir)
+        os.mkdir(outside)
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(run_dir)
+            info = os.stat(".")
+            os.rename(run_dir, displaced)
+            os.symlink(outside, run_dir)
+            with mock.patch.dict(os.environ, {
+                "KIMIFLOW_PINNED_RUN_CWD": "1",
+                "KIMIFLOW_PINNED_RUN_DEVICE": str(info.st_dev),
+                "KIMIFLOW_PINNED_RUN_INODE": str(info.st_ino),
+            }):
+                self.assertEqual(runs.resolve_run_dir(self.root, "."), ".")
+        finally:
+            os.chdir(original_cwd)
+
 
 class VerifyRunCase(unittest.TestCase):
     def setUp(self):

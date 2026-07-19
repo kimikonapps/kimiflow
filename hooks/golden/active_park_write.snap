@@ -1,11 +1,11 @@
 @@exit@@
 0
 @@stdout@@
-{"status":"parked","written":true,"run":".kimiflow/demo","outcome":{"schema_version":1,"outcome":"parked","reason":"waiting","completed_at":"TIMESTAMP","learning_review":{"status":"not_promoted","reason":"session_not_finished"},"outcome_evaluation":{"status":"evaluated","id":"out_COMMIT365a10381bb0803d20e14b16","terminal":"parked","classification":"inconclusive","promotable":false,"strategy_recall_hits":0,"strategy_recall_used":false,"first_plan_success":true,"economics_result":null,"net_estimated_tokens_saved":null}}}
+{"status":"parked","written":true,"run":".kimiflow/demo","outcome":{"schema_version":1,"outcome":"parked","reason":"waiting","completed_at":"TIMESTAMP","learning_review":{"status":"not_promoted","reason":"session_not_finished"},"outcome_evaluation":{"status":"evaluated","id":"out_COMMIT365a10381bb0803d20e14b16","terminal":"parked","classification":"inconclusive","promotable":false,"strategy_recall_hits":0,"strategy_recall_used":false,"first_plan_success":true,"economics_result":null,"net_estimated_tokens_saved":null},"session_pins":{"mode":"feature","scope":"small","host":"codex","started_at":"TIMESTAMP","started_head":"COMMIT"}}}
 @@stderr@@
 @@files@@
 .kimiflow/demo/OUTCOME-EVALUATION.json	mode=600	hash=sha256:b77445c70f29f5dd864d62ae600bc51d278f2cf1bcb7087e18edeea4b2542c1c
-.kimiflow/demo/SESSION-OUTCOME.json	mode=600	hash=sha256:b29cc39ebbd39b9fe6bda8b41e432ae0d70f1f88f02cfa51027ee16010f456fe
+.kimiflow/demo/SESSION-OUTCOME.json	mode=600	hash=sha256:f92e58695649be01fdf3a8602a13deeeb6a539b53f2cd968d450df5a8d1d0571
 .kimiflow/demo/STATE.md	mode=600	hash=sha256:9e0bfc03e0d038aa60343014311b47a3051cdaf1aab13562485e769770342ed5
 .kimiflow/project/FINDINGS.md	mode=644	hash=sha256:a2ed99a0a376d3147db54333f62ba30603ac43d8cf558ff240d9a724251cbf82
 .kimiflow/project/STRATEGY-OUTCOMES.jsonl	mode=600	hash=sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855

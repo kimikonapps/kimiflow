@@ -46,6 +46,7 @@ EOF
   cat > "$RUN/RESEARCH.md" <<'EOF'
 # Research
 <!-- kimiflow:discovery depth=pulse status=sufficient lanes=complete claims=none technical_gaps=0 user_decisions=0 scope_change=no -->
+## Existing implementation
 Existing implementation lives in src/feature.ts:12 and tests in tests/feature.test.ts:4.
 EOF
   cat > "$RUN/PLAN.md" <<'EOF'
@@ -438,6 +439,7 @@ Flow schema: 4
 Conformance contract: 1
 Conformance basis: pending
 EOF
+sed -i.bak 's/<!-- kimiflow:clarify-evidence .* -->/<!-- kimiflow:clarify-evidence behavior=confirmed scope=confirmed outcome=confirmed authority=explicit summary=present source=current-run -->/' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
 out="$(run_gate)"
 assert_field "$out" 2 CLOSED "conformance_plan_contract_missing_closes"
 assert_contains "$out" "conformance_plan_gate_closed" "conformance_plan_contract_missing_detail"
@@ -453,6 +455,31 @@ Recheck D1: Re-run after feature paths or behavior change.
 EOF
 out="$(run_gate)"
 assert_field "$out" 2 OPEN "conformance_plan_contract_valid_opens"
+
+FAKE_HOOKS="$WORK/fake-hooks-conformance"
+mkdir -p "$FAKE_HOOKS"
+cp "$SCRIPT" "$FAKE_HOOKS/plan-blocker-gate.sh"
+cp "$LIB" "$FAKE_HOOKS/kimiflow-lib.sh"
+cp "$(dirname "$SCRIPT")/clarify-gate.sh" "$FAKE_HOOKS/clarify-gate.sh"
+cp "$(dirname "$SCRIPT")/discovery-gate.sh" "$FAKE_HOOKS/discovery-gate.sh"
+cat > "$FAKE_HOOKS/conformance-gate.sh" <<'EOF'
+#!/usr/bin/env bash
+printf 'NOT_CONFORMANCE\tOPEN\tblockers=0\treason=plan-clean\tdetail=\n'
+EOF
+chmod +x "$FAKE_HOOKS"/*.sh
+out="$(KIMIFLOW_PLUGIN_ROOT="$WORK" "$FAKE_HOOKS/plan-blocker-gate.sh" "$RUN")"
+assert_field "$out" 2 CLOSED "malformed_conformance_open_closes"
+assert_contains "$out" "conformance_plan_gate_malformed" "malformed_conformance_open_detail"
+
+cat > "$FAKE_HOOKS/conformance-gate.sh" <<'EOF'
+#!/usr/bin/env bash
+printf 'CONFORMANCE_GATE\tOPEN\tblockers=0\treason=plan-clean\tdetail=\n'
+exit 23
+EOF
+chmod +x "$FAKE_HOOKS/conformance-gate.sh"
+out="$(KIMIFLOW_PLUGIN_ROOT="$WORK" "$FAKE_HOOKS/plan-blocker-gate.sh" "$RUN")"
+assert_field "$out" 2 CLOSED "crashed_conformance_open_closes"
+assert_contains "$out" "conformance_plan_gate_error" "crashed_conformance_open_detail"
 
 # --- Header-set consistency: every Affected header this gate accepts must also be
 # visible to the staleness parser in hooks/kimiflow_core/active_run.py (keep in sync),

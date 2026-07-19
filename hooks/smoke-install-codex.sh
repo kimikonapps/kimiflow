@@ -144,6 +144,20 @@ else
 fi
 if [ -x "$ROOT/hooks/plan-blocker-gate.sh" ] && bash -n "$ROOT/hooks/plan-blocker-gate.sh" 2>/dev/null; then ok "plan-blocker gate helper ok"; else bad "plan-blocker gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-plan-blocker-gate.sh" ] && bash -n "$ROOT/hooks/test-plan-blocker-gate.sh" 2>/dev/null; then ok "plan-blocker gate test ok"; else bad "plan-blocker gate test missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/conformance-gate.sh" ] && bash -n "$ROOT/hooks/conformance-gate.sh" 2>/dev/null; then ok "implementation conformance gate helper ok"; else bad "implementation conformance gate helper missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/test-conformance-gate.sh" ] && bash -n "$ROOT/hooks/test-conformance-gate.sh" 2>/dev/null; then ok "implementation conformance gate test ok"; else bad "implementation conformance gate test missing/not-exec/bad"; fi
+if grep -q 'Conformance contract: 1' "$ROOT/phases/phase-0-setup.md" \
+  && grep -q 'Implementation decision evidence' "$ROOT/phases/phase-2-understand.md" \
+  && grep -q 'kimiflow:decision-contract contract=1 decisions=<1..5>' "$ROOT/phases/phase-3-plan.md" \
+  && grep -q 'kimiflow:conformance contract=1 status=' "$ROOT/phases/phase-6-verify.md" \
+  && grep -q 'Conformance serialization preflight' "$ROOT/phases/phase-7-review-commit.md" \
+  && grep -q 'conformance gate closed' "$ROOT/hooks/kimiflow_core/active_run.py" \
+  && grep -q 'KIMIFLOW_PLUGIN_ROOT/hooks/conformance-gate.sh' "$SKILL" \
+  && grep -q 'Implementation conformance (adaptive Phase 6)' "$ROOT/reference.md"; then
+  ok "Codex adaptive implementation conformance wiring"
+else
+  bad "Codex adaptive implementation conformance wiring incomplete"
+fi
 if [ -x "$ROOT/hooks/red-green-gate.sh" ] && bash -n "$ROOT/hooks/red-green-gate.sh" 2>/dev/null; then ok "red-green gate helper ok"; else bad "red-green gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-red-green-gate.sh" ] && bash -n "$ROOT/hooks/test-red-green-gate.sh" 2>/dev/null; then ok "red-green gate test ok"; else bad "red-green gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/frontend-quality-gate.sh" ] && bash -n "$ROOT/hooks/frontend-quality-gate.sh" 2>/dev/null; then ok "frontend quality gate helper ok"; else bad "frontend quality gate helper missing/not-exec/bad"; fi

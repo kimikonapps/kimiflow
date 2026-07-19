@@ -29,6 +29,11 @@ def flow_contract():
         [
             {"from": "phase_4", "event": "plan_recovery", "to": "phase_2", "action": "recover_plan_strategy"},
             {"from": "phase_6", "event": "verification_failed", "to": "phase_5", "action": "recover_build"},
+            {"from": "phase_6", "event": "code_gap", "to": "phase_5", "action": "recover_build"},
+            {"from": "phase_6", "event": "scope_drift", "to": "phase_5", "action": "recover_build"},
+            {"from": "phase_6", "event": "strategy_drift", "to": "phase_2", "action": "recover_plan_strategy"},
+            {"from": "phase_6", "event": "architecture_falsified", "to": "phase_2", "action": "recover_plan_strategy"},
+            {"from": "phase_6", "event": "research_stale", "to": "phase_2", "action": "recover_plan_strategy"},
             {"from": "phase_7", "event": "review_failed", "to": "phase_5", "action": "recover_build"},
         ]
     )
@@ -147,12 +152,24 @@ class TestFlowGraph(unittest.TestCase):
         failed = self.resolve(event="verification_failed")
         self.assertEqual((failed["action"], failed["target_node"]), ("recover_build", "phase_5"))
 
+        for event in ("code_gap", "scope_drift"):
+            routed = self.resolve(event=event)
+            self.assertEqual((routed["action"], routed["target_node"]), ("recover_build", "phase_5"))
+            stale_routed = self.resolve(event=event, stale={"risk": "needs_revalidation"})
+            self.assertEqual((stale_routed["action"], stale_routed["target_node"]), ("recover_build", "phase_5"))
+        for event in ("strategy_drift", "architecture_falsified", "research_stale"):
+            routed = self.resolve(event=event)
+            self.assertEqual((routed["action"], routed["target_node"]), ("recover_plan_strategy", "phase_2"))
+            stale_routed = self.resolve(event=event, stale={"risk": "needs_revalidation"})
+            self.assertEqual((stale_routed["action"], stale_routed["target_node"]), ("recover_plan_strategy", "phase_2"))
+
         stale = self.resolve(event="verification_failed", stale={"risk": "needs_revalidation"})
         self.assertEqual(stale["action"], "revalidate_then_refresh_baseline")
 
         waiting = self.resolve(
-            event="verification_failed",
+            event="code_gap",
             active={"status": "active", "awaiting_user": True},
+            stale={"risk": "needs_revalidation"},
         )
         self.assertEqual(waiting["action"], "wait_for_material_decision")
 

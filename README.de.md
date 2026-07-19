@@ -141,11 +141,11 @@ Bestätigung autonom weiter. Exakte triviale Arbeit darf den Loop überspringen.
 | 0 Setup | Alle Worktrees inventarisieren, dauerhaften Run-State anlegen, sichere Aufräumentscheidung einmal bündeln. |
 | 1 Klären | Produkt-Intent belegen, höchstens einen Produktfragen-Block stellen, HOW-Fragen verbieten und weiterlaufen. |
 | 2 Verstehen | Projektwissen und Code prüfen; Discovery `none`, `pulse` oder `focused`. Fixes reproduzieren und belegen die Ursache. |
-| 3 Planen | Flachen minimum-complete Plan und testbare Akzeptanzkriterien schreiben. |
+| 3 Planen | Flachen minimum-complete Plan, testbare Akzeptanzkriterien und höchstens fünf belegte Umsetzungsentscheidungen schreiben. |
 | 4 Review | Plan-Blocker lösen; nur bei Autorität, materiellem Scope/Risiko, Privacy/Kosten oder Irreversibilität pausieren. |
 | 5 Umsetzen | Kleinste akzeptierte Änderung bauen; Fixes sichern Red-Evidence vor Production-Code. |
-| 6 Verifizieren | Akzeptanzkriterien, Regression, Red/Green und begrenzte lokale Diagnostics prüfen. |
-| 7 Review und Commit | Findings verifizieren, Learnings kuratieren und lokalen Named-Path-Commit erstellen; Push/Release bleiben explizit. |
+| 6 Verifizieren | Akzeptanz, Regression und die Übereinstimmung des realen Diffs mit Strategie und Invarianten prüfen. |
+| 7 Review und Commit | Conformance erneut prüfen, Findings verifizieren, den Named-Path-Commit erstellen und danach Commit/Index/Worktree-Gleichheit belegen; Push/Release bleiben explizit. |
 
 ## Mechanische Gates
 
@@ -156,6 +156,7 @@ Bestätigung autonom weiter. Exakte triviale Arbeit darf den Loop überspringen.
 | Workspace-Preflight | Alle Worktrees und Dirty-Pfade werden klassifiziert; ein eigener Ausnahme-Tree wird vollständig archiviert statt gelöscht. |
 | Clarify-/Discovery-Gates | Produkt-Intent hat Provenienz, technische Fragen sind null und Quellen-/Scope-/Entscheidungs-Evidence existiert. |
 | Plan-/Review-Gates | AC-Mapping und belegte BLOCKER/HIGHs werden in begrenzten Reparaturrunden gelöst. |
+| Implementation-Conformance-Gate | Rechercheentscheidungen, Invarianten, Pfade und Checks konvergieren in Phase 6; beim Abschluss muss zusätzlich der Commit exakt dem geprüften Stand entsprechen. |
 | Materielle-Entscheidungs-Gate | Reversible Technik läuft weiter; nur Autorität, Risiko, Zugriff, Privacy/Kosten oder Irreversibilität pausieren. |
 | Red/Green-Gate | Fixes brauchen aufgezeichnete failing/passing Evidence und Regression. |
 | Atomic-Commit-Gate | Schema-4-Runs stagen Named Run-Paths und committen lokal unter der ursprünglichen Bau-Freigabe. |
@@ -174,6 +175,7 @@ mechanisiert die Evidence-Grenzen, ohne Allwissenheit vorzutäuschen.
 - Discovery startet für `none|pulse` keinen Worker, für `focused` normalerweise einen begrenzten
   Evidence-Worker und höchstens zwei unabhängige Lanes.
 - Recherche darf die Umsetzung korrigieren; nur `required` Constraints dürfen Scope hinzufügen.
+- Conformance speichert höchstens fünf materielle Entscheidungen; `small` braucht keinen zusätzlichen Modell-Call, `large` nutzt den bestehenden unabhängigen Verifier mit.
 - Ein zweiter Planner erscheint nur bei echter Architektur- oder irreversibler Contract-Gabel.
 - Das Top-Modell behält Orchestrierung, Synthese, Planung, Review-Verdicts und riskante Diagnose.
 

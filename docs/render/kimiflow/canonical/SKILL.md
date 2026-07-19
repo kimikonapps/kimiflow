@@ -70,8 +70,8 @@ Phase detail is loaded only when entering that phase. For post-R2 runs, `hooks/a
 | 3 Plan | `phases/phase-3-plan.md` | acceptance criteria, conditional Architecture Fit mapping, Red evidence for fix mode, cause proof. |
 | 4 Plan-gate / approval | `phases/phase-4-review-approval.md` | plan/review resolvers; plain-language build summary; material-risk CONTINUE/STOP/PARK. |
 | 5 Implement / fix | `phases/phase-5-build.md` | TDD; Red/clean-tree verification checkpoints; caller-grep; failure escalation. |
-| 6 Verify | `phases/phase-6-verify.md` | goal-backward; red/green; frontend evidence; `lsp-diagnostics.sh`; regression/cold-start. |
-| 7 Review / commit | `phases/phase-7-review-commit.md` | frontend preflight; review; Memory Router & Learning Loop; `refresh --changed`; commit. |
+| 6 Verify | `phases/phase-6-verify.md` | goal-backward; red/green; adaptive implementation conformance; frontend evidence; `lsp-diagnostics.sh`; regression. |
+| 7 Review / commit | `phases/phase-7-review-commit.md` | frontend/conformance preflight; review; Memory Router & Learning Loop; `refresh --changed`; commit. |
 
 ## Always-Loaded Protected Phase Rules
 
@@ -81,8 +81,8 @@ These operative rules stay in the driver until a later approved packet proves an
 - **Phase 3 protected rules:** write one flat minimum-complete, subtracted, AC-mapped plan. Active architecture maps decision/evidence/falsifier to an existing AC or at most one new AC. Dual-plan adoption takes isolated elements only; unresolved blockers never reach review.
 - **Phase 4 held rule:** only evidenced BLOCKER/HIGH revises; architecture change needs an executable failure or concrete named-invariant violation, never taste. Valid findings/rounds never reset. Budgets: small 2, large/audit 3. Oscillation/cap recovers autonomously with matching receipts. Schema 4 pauses only for durable material risk; risk `none` continues. Schema 3 keeps legacy approval.
 - **Phase 5 protected rules:** the Red commit is tests-only. Red and clean-tree checkpoints both inspect named staged paths, isolate foreign staged paths with a path-limited commit, and run weakening plus secret/path scans before committing. Only a demonstrably clean-tree-only decisive verifier permits a named local production checkpoint; it runs immediately and later review stays based on ACTIVE_RUN `started_head`. Deletions require proof. Technical failure changes approach, never asks merely to iterate.
-- **Phase 6 protected rules:** fix runs `red-green-gate.sh`; active architecture runs its falsifier against diff/envelope; active frontend lanes re-attest and load only their QA files. CLOSED/failure changes strategy and returns to Phase 5 without confirmation.
-- **Phase 7 protected rules:** frontend preflight must be OPEN/clean. Review the full named delta from immutable start; pin targets, add R3 for contracts/multiple surfaces, count only verified candidates, refute HIGH. Persist architecture principles only with verified Scope/Type/Rule/Evidence. Triage advisories. Schema 4 commits named paths only; foreign staging stays untouched and push/release explicit. Learning CLOSED blocks completion; finish records outcome and retires safely.
+- **Phase 6 protected rules:** fixes require `red-green-gate.sh`. Contract-1 feature/fix binds 1–5 evidence→invariant→path→AC decisions to exact checks via `conformance-gate.sh`; `small` folds, `large` reuses its independent verifier. Architecture/frontend stay conditional. Code/scope gaps → Phase 5; strategy/architecture/research drift → Phase 2 without confirmation.
+- **Phase 7 protected rules:** frontend and declared conformance preflights must be OPEN/clean. Review the full named delta from immutable start; pin targets, add R3 for contracts/multiple surfaces, count only verified candidates, refute HIGH. Persist architecture principles only with verified Scope/Type/Rule/Evidence. Triage advisories. Schema 4 commits named paths only; foreign staging stays untouched and push/release explicit. Learning CLOSED blocks completion; finish proves committed delivery and revalidates transactionally before retiring.
 
 ## Scaling Knobs
 

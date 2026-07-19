@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import tempfile
 import unittest
@@ -154,7 +155,11 @@ class TestOutcomeEvaluation(unittest.TestCase):
                 "#!/bin/sh\n"
                 "printf '%s\\n' \"$*\" >> \"${KIMIFLOW_TEST_ROUTER_LOG:?}\"\n"
                 "case \"$1\" in\n"
-                "review-run) printf '%s\\n' '{\"status\":\"skipped\",\"written\":true}'; exit 0 ;;\n"
+                "review-run)\n"
+                "  if [ \"${KIMIFLOW_TEST_MUTATE_AFFECTED:-0}\" = 1 ]; then printf 'mutated during learning\\n' > \"$3/tracked.txt\"; fi\n"
+                "  if [ \"${KIMIFLOW_TEST_REVIEW_WRITE:-0}\" = 1 ]; then mkdir -p \"$3/.kimiflow/project\"; printf partial > \"$3/.kimiflow/project/STRATEGIES.jsonl\"; printf partial > \"$3/$5/LEARNING-REVIEW.md\"; fi\n"
+                "  if [ \"${KIMIFLOW_TEST_REVIEW_FAIL:-0}\" = 1 ]; then exit 29; fi\n"
+                "  printf '%s\\n' '{\"status\":\"skipped\",\"written\":true}'; exit 0 ;;\n"
                 "verify-run) printf '%s\\n' 'LEARNING_REVIEW OPEN'; exit 0 ;;\n"
                 "evaluate-run)\n"
                 "  root=; run=; terminal=; shift\n"
@@ -167,6 +172,17 @@ class TestOutcomeEvaluation(unittest.TestCase):
                 "esac\n"
             )
         os.chmod(self.router, 0o700)
+
+    def enable_conformance(self, basis="pending"):
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, "a", encoding="utf-8") as handle:
+            handle.write("Conformance contract: 1\nConformance basis: %s\n" % basis)
+        active_path = active_run.active_file(self.repo)
+        with open(active_path, "r", encoding="utf-8") as handle:
+            value = json.load(handle)
+        value["conformance_contract"] = "1"
+        with open(active_path, "w", encoding="utf-8") as handle:
+            json.dump(value, handle)
 
     def test_finish_outcome_evaluation_is_transactional(self):
         project = os.path.join(self.repo, ".kimiflow", "project")
@@ -192,9 +208,35 @@ class TestOutcomeEvaluation(unittest.TestCase):
         self.assertEqual(result["outcome"]["outcome_evaluation"]["classification"], "verified_success")
         self.assertFalse(os.path.exists(active_run.active_file(self.repo)))
         with open(self.router_log, "r", encoding="utf-8") as handle:
-            self.assertIn("evaluate-run --root %s --run %s --terminal done --write" % (
-                self.repo, self.run_rel
+            self.assertIn("evaluate-run --root %s --run . --terminal done --write" % (
+                self.repo,
             ), handle.read())
+
+    def test_same_run_restart_preserves_immutable_selectors_and_frontend_pin(self):
+        active_path = active_run.active_file(self.repo)
+        with open(active_path, "r", encoding="utf-8") as handle:
+            value = json.load(handle)
+        value["frontend_quality_contract"] = 1
+        value["scope"] = "large"
+        with open(active_path, "w", encoding="utf-8") as handle:
+            json.dump(value, handle)
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, "r", encoding="utf-8") as handle:
+            state_text = handle.read()
+        with open(state_path, "w", encoding="utf-8") as handle:
+            handle.write(state_text.replace("Scope: small", "Scope: large"))
+
+        rc, _ = run_main([
+            "start", "--run", self.run_rel, "--root", self.repo,
+            "--mode", "fix", "--scope", "small", "--write",
+        ])
+
+        self.assertEqual(rc, 0)
+        with open(active_path, "r", encoding="utf-8") as handle:
+            restarted = json.load(handle)
+        self.assertEqual(restarted["frontend_quality_contract"], 1)
+        self.assertEqual(restarted["mode"], "feature")
+        self.assertEqual(restarted["scope"], "large")
 
     def test_finish_rejects_malformed_or_unwritten_evaluation(self):
         with mock.patch.dict(os.environ, {"KIMIFLOW_TEST_EVALUATE_MALFORMED": "1"}):
@@ -203,9 +245,7 @@ class TestOutcomeEvaluation(unittest.TestCase):
         self.assertTrue(os.path.isfile(active_run.active_file(self.repo)))
 
     def test_finish_refuses_closed_conformance_before_learning(self):
-        state_path = os.path.join(self.run_dir, "STATE.md")
-        with open(state_path, "a", encoding="utf-8") as handle:
-            handle.write("Conformance contract: 1\nConformance basis: pending\n")
+        self.enable_conformance()
         gate = os.path.join(self.temp, "conformance-gate")
         with open(gate, "w", encoding="utf-8") as handle:
             handle.write("#!/bin/sh\nprintf 'CONFORMANCE_GATE\\tCLOSED\\tblockers=1\\treason=receipt-missing\\tdetail=conformance_receipt_missing\\n'\n")
@@ -217,6 +257,161 @@ class TestOutcomeEvaluation(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertTrue(os.path.isfile(active_run.active_file(self.repo)))
         self.assertFalse(os.path.exists(self.router_log))
+
+    def test_finish_accepts_open_conformance_before_learning(self):
+        self.enable_conformance("current")
+        gate = os.path.join(self.temp, "conformance-gate-open")
+        with open(gate, "w", encoding="utf-8") as handle:
+            handle.write("#!/bin/sh\nprintf 'CONFORMANCE_GATE\\tOPEN\\tblockers=0\\treason=clean\\tdetail=basis=%064d\\n' 0\n")
+        os.chmod(gate, 0o700)
+
+        with mock.patch.dict(os.environ, {"KIMIFLOW_CONFORMANCE_GATE": gate}):
+            rc, _ = run_main(["finish", "--root", self.repo, "--write"])
+
+        self.assertEqual(rc, 0)
+        self.assertFalse(os.path.exists(active_run.active_file(self.repo)))
+        with open(self.router_log, "r", encoding="utf-8") as handle:
+            self.assertIn("review-run", handle.read())
+
+    def test_finish_refuses_malformed_open_conformance(self):
+        self.enable_conformance()
+        gate = os.path.join(self.temp, "conformance-gate-malformed")
+        with open(gate, "w", encoding="utf-8") as handle:
+            handle.write("#!/bin/sh\nprintf 'CONFORMANCE_GATE\\tOPEN\\n'\n")
+        os.chmod(gate, 0o700)
+
+        with mock.patch.dict(os.environ, {"KIMIFLOW_CONFORMANCE_GATE": gate}):
+            rc, _ = run_main(["finish", "--root", self.repo, "--write"])
+
+        self.assertEqual(rc, 1)
+        self.assertTrue(os.path.isfile(active_run.active_file(self.repo)))
+        self.assertFalse(os.path.exists(self.router_log))
+
+    def test_finish_refuses_state_selector_mismatch(self):
+        self.enable_conformance()
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, "r", encoding="utf-8") as handle:
+            value = handle.read()
+        with open(state_path, "w", encoding="utf-8") as handle:
+            handle.write(value.replace("Scope: small", "Scope: large"))
+        gate = os.path.join(self.temp, "conformance-gate-unused")
+        with open(gate, "w", encoding="utf-8") as handle:
+            handle.write("#!/bin/sh\nexit 99\n")
+        os.chmod(gate, 0o700)
+
+        with mock.patch.dict(os.environ, {"KIMIFLOW_CONFORMANCE_GATE": gate}):
+            rc, _ = run_main(["finish", "--root", self.repo, "--write"])
+
+        self.assertEqual(rc, 1)
+        self.assertTrue(os.path.isfile(active_run.active_file(self.repo)))
+        self.assertFalse(os.path.exists(self.router_log))
+
+    def test_finish_refuses_removed_conformance_selector(self):
+        self.enable_conformance()
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, "r", encoding="utf-8") as handle:
+            lines = handle.readlines()
+        with open(state_path, "w", encoding="utf-8") as handle:
+            handle.writelines(
+                line for line in lines
+                if not line.startswith(("Conformance contract:", "Conformance basis:"))
+            )
+        gate = os.path.join(self.temp, "conformance-gate-unused")
+        with open(gate, "w", encoding="utf-8") as handle:
+            handle.write("#!/bin/sh\nexit 99\n")
+        os.chmod(gate, 0o700)
+
+        with mock.patch.dict(os.environ, {"KIMIFLOW_CONFORMANCE_GATE": gate}):
+            rc, _ = run_main(["finish", "--root", self.repo, "--write"])
+
+        self.assertEqual(rc, 1)
+        self.assertTrue(os.path.isfile(active_run.active_file(self.repo)))
+        self.assertFalse(os.path.exists(self.router_log))
+
+    def test_finish_rechecks_conformance_after_learning_steps(self):
+        self.enable_conformance("current")
+        gate = os.path.join(self.temp, "conformance-gate-recheck")
+        with open(gate, "w", encoding="utf-8") as handle:
+            handle.write(
+                "#!/bin/sh\n"
+                "if grep -q 'mutated during learning' \"${KIMIFLOW_TEST_AFFECTED:?}\"; then\n"
+                "  printf 'CONFORMANCE_GATE\\tCLOSED\\tblockers=1\\treason=stale\\tdetail=conformance_basis_stale\\n'\n"
+                "else\n"
+                "  printf 'CONFORMANCE_GATE\\tOPEN\\tblockers=0\\treason=clean\\tdetail=basis=%064d\\n' 0\n"
+                "fi\n"
+            )
+        os.chmod(gate, 0o700)
+
+        with mock.patch.dict(os.environ, {
+            "KIMIFLOW_CONFORMANCE_GATE": gate,
+            "KIMIFLOW_TEST_MUTATE_AFFECTED": "1",
+            "KIMIFLOW_TEST_AFFECTED": os.path.join(self.repo, "tracked.txt"),
+            "KIMIFLOW_TEST_EVALUATE_WRITE": "1",
+        }):
+            rc, _ = run_main(["finish", "--root", self.repo, "--write"])
+
+        self.assertEqual(rc, 1)
+        self.assertTrue(os.path.isfile(active_run.active_file(self.repo)))
+        with open(os.path.join(self.repo, "tracked.txt"), "r", encoding="utf-8") as handle:
+            self.assertIn("mutated during learning", handle.read())
+        with open(self.router_log, "r", encoding="utf-8") as handle:
+            self.assertIn("review-run", handle.read())
+        self.assertFalse(os.path.exists(os.path.join(
+            self.repo, ".kimiflow", "project", "STRATEGY-OUTCOMES.jsonl"
+        )))
+        self.assertFalse(os.path.exists(os.path.join(self.run_dir, "OUTCOME-EVALUATION.json")))
+
+    def test_failing_review_restores_partial_learning_writes(self):
+        with mock.patch.dict(os.environ, {
+            "KIMIFLOW_TEST_REVIEW_WRITE": "1",
+            "KIMIFLOW_TEST_REVIEW_FAIL": "1",
+        }):
+            rc, _ = run_main(["finish", "--root", self.repo, "--write"])
+
+        self.assertEqual(rc, 29)
+        self.assertTrue(os.path.isfile(active_run.active_file(self.repo)))
+        self.assertFalse(os.path.exists(os.path.join(
+            self.repo, ".kimiflow", "project", "STRATEGIES.jsonl"
+        )))
+        self.assertFalse(os.path.exists(os.path.join(self.run_dir, "LEARNING-REVIEW.md")))
+
+    def test_terminal_serialization_failure_restores_learning_writes(self):
+        with mock.patch.dict(os.environ, {"KIMIFLOW_TEST_EVALUATE_WRITE": "1"}), mock.patch(
+            "kimiflow_core.active_run.write_outcome",
+            side_effect=active_run.ActiveError("serialization failed", 31),
+        ):
+            rc, _ = run_main(["finish", "--root", self.repo, "--write"])
+
+        self.assertEqual(rc, 31)
+        self.assertTrue(os.path.isfile(active_run.active_file(self.repo)))
+        self.assertFalse(os.path.exists(os.path.join(
+            self.repo, ".kimiflow", "project", "STRATEGY-OUTCOMES.jsonl"
+        )))
+        self.assertFalse(os.path.exists(os.path.join(self.run_dir, "OUTCOME-EVALUATION.json")))
+
+    def test_parked_run_preserves_conformance_pin_on_resume(self):
+        self.enable_conformance("current")
+        rc, _ = run_main([
+            "park", "--root", self.repo, "--reason", "resume fixture", "--write",
+        ])
+        self.assertEqual(rc, 0)
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, "r", encoding="utf-8") as handle:
+            lines = handle.readlines()
+        with open(state_path, "w", encoding="utf-8") as handle:
+            handle.writelines(
+                line for line in lines
+                if not line.startswith(("Conformance contract:", "Conformance basis:"))
+            )
+
+        rc, _ = run_main([
+            "start", "--run", self.run_rel, "--root", self.repo, "--write",
+        ])
+
+        self.assertEqual(rc, 0)
+        with open(active_run.active_file(self.repo), "r", encoding="utf-8") as handle:
+            resumed = json.load(handle)
+        self.assertEqual(resumed.get("conformance_contract"), "1")
 
     def test_terminal_outcome_evaluation_is_best_effort(self):
         for command, expected in (("park", "parked"), ("fail", "failed"), ("abort", "aborted")):
@@ -1276,6 +1471,122 @@ class TestTerminalWorktreeRetirement(unittest.TestCase):
             self.assertEqual(handle.read(), '{"sentinel":true}\n')
         self.assertTrue(os.path.isdir(self.linked))
         self.assertEqual(len(workspace_preflight.read_registry(self.repo)["entries"]), 1)
+
+    def test_finish_restore_stays_bound_to_pinned_run_descriptor(self):
+        run_dir = os.path.join(self.repo, self.run_rel)
+        displaced = run_dir + ".owned"
+        outside = os.path.join(self.temp, "restore-outside")
+        snapshot = os.path.join(self.temp, "finish-snapshot")
+        os.mkdir(outside)
+        outside_outcome = os.path.join(outside, "SESSION-OUTCOME.json")
+        with open(outside_outcome, "w", encoding="utf-8") as handle:
+            handle.write('{"sentinel":true}\n')
+        learning = os.path.join(run_dir, "LEARNING-REVIEW.md")
+        with open(learning, "w", encoding="utf-8") as handle:
+            handle.write("Status: existing\n")
+        os.chmod(learning, 0o644)
+
+        active = active_run.load_active(self.repo)
+        with active_run.pinned_terminal_run(run_dir, active) as pinned:
+            active_run.snapshot_finish(
+                self.repo,
+                run_dir,
+                snapshot,
+                run_descriptor=pinned["run_descriptor"],
+            )
+            os.rename(run_dir, displaced)
+            os.symlink(outside, run_dir)
+            active_run.restore_finish(
+                self.repo,
+                run_dir,
+                snapshot,
+                run_descriptor=pinned["run_descriptor"],
+            )
+
+        with open(outside_outcome, "r", encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), '{"sentinel":true}\n')
+        self.assertFalse(os.path.exists(os.path.join(displaced, "SESSION-OUTCOME.json")))
+        self.assertEqual(stat.S_IMODE(os.stat(os.path.join(displaced, "LEARNING-REVIEW.md")).st_mode), 0o644)
+
+    def test_finish_snapshot_rejects_oversized_run_artifact_before_mutation(self):
+        run_dir = os.path.join(self.repo, self.run_rel)
+        learning = os.path.join(run_dir, "LEARNING-REVIEW.md")
+        with open(learning, "wb") as handle:
+            handle.truncate(active_run.FINISH_ARTIFACT_LIMIT + 1)
+        snapshot = os.path.join(self.temp, "oversized-finish-snapshot")
+        active = active_run.load_active(self.repo)
+
+        with active_run.pinned_terminal_run(run_dir, active) as pinned, self.assertRaises(active_run.ActiveError):
+            active_run.snapshot_finish(
+                self.repo,
+                run_dir,
+                snapshot,
+                run_descriptor=pinned["run_descriptor"],
+            )
+
+        self.assertEqual(os.path.getsize(learning), active_run.FINISH_ARTIFACT_LIMIT + 1)
+
+    def test_finish_snapshot_rejects_artifact_that_grows_after_fstat(self):
+        run_dir = os.path.join(self.repo, self.run_rel)
+        learning = os.path.join(run_dir, "LEARNING-REVIEW.md")
+        with open(learning, "wb") as handle:
+            handle.write(b"x")
+        active = active_run.load_active(self.repo)
+        original_fstat = active_run.os.fstat
+        grew = False
+
+        def grow_after_regular_file_stat(descriptor):
+            nonlocal grew
+            info = original_fstat(descriptor)
+            if stat.S_ISREG(info.st_mode) and not grew:
+                with open(learning, "ab") as handle:
+                    handle.truncate(active_run.FINISH_ARTIFACT_LIMIT + 1)
+                grew = True
+            return info
+
+        with active_run.pinned_terminal_run(run_dir, active) as pinned, mock.patch.object(
+            active_run.os,
+            "fstat",
+            side_effect=grow_after_regular_file_stat,
+        ), self.assertRaises(active_run.ActiveError):
+            active_run.read_run_snapshot(pinned["run_descriptor"], "LEARNING-REVIEW.md")
+
+        self.assertTrue(grew)
+
+    def test_finish_router_stays_bound_to_pinned_run_directory(self):
+        router = os.path.abspath(os.path.join(os.path.dirname(active_run.__file__), "..", "memory-router.sh"))
+        run_dir = os.path.join(self.repo, self.run_rel)
+        displaced = run_dir + ".owned-router"
+        outside = os.path.join(self.temp, "router-outside")
+        os.mkdir(outside)
+        original_run_cmd = active_run.run_cmd
+        swapped = False
+
+        def exchange_before_router(command, *args, **kwargs):
+            nonlocal swapped
+            if command and command[0] == router and command[1] == "review-run" and not swapped:
+                swapped = True
+                os.rename(run_dir, displaced)
+                os.symlink(outside, run_dir)
+            return original_run_cmd(command, *args, **kwargs)
+
+        with mock.patch.dict(os.environ, {"KIMIFLOW_MEMORY_ROUTER": router}), mock.patch.object(
+            active_run,
+            "run_cmd",
+            side_effect=exchange_before_router,
+        ):
+            rc, _ = run_main([
+                "finish",
+                "--root",
+                self.repo,
+                "--skip-learning",
+                "test fixture",
+                "--write",
+            ])
+
+        self.assertEqual(rc, 2)
+        for name in ("LEARNING-REVIEW.md", "RUN-LIFECYCLE.json", "RUN-LIFECYCLE.md"):
+            self.assertFalse(os.path.lexists(os.path.join(outside, name)))
 
     def test_park_keeps_registered_tree_and_writes_backlog_state(self):
         rc, out = self.terminal("park")

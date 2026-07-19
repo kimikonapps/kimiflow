@@ -232,8 +232,9 @@ the next boundary that checks it: clarify checks through Phase 1, plan-blocker t
 Phase 7. Legacy runs without the marker stay open on the phase-read gate.
 
 `phases/PHASES.json` schema 2 also carries Kimiflow's bounded transition graph. `next-action` derives one
-read-only transition from the durable run state; `--event phase_done|plan_recovery|verification_failed|review_failed`
-routes an observed gate result through an explicit edge. Awaiting-user and stale guards block event advancement;
+read-only transition from the durable run state; `--event phase_done|plan_recovery|verification_failed|review_failed|code_gap|scope_drift|strategy_drift|architecture_falsified|research_stale`
+routes an observed gate result through an explicit edge. Awaiting-user and stale guards normally block event advancement;
+the five explicit conformance-recovery events bypass only the stale guard because their current Phase-6 verdict already selects the recovery edge, while awaiting-user still wins;
 plan/code recovery and, once build has been reached, rejected/pending/built items route to the owning phase. Invalid graph/state combinations
 fail closed as `repair_transition_graph` or `repair_state`. Schema-1 manifests and runs before Flow schema 4 return
 `graph_status=legacy` and retain the old coarse action. The existing scalar `status.next_action` is unchanged;
@@ -1375,6 +1376,49 @@ AC-1 — When an empty search string is sent, the API shall return HTTP 400.
   Example: POST /search {"q":""} → 400 + {"error":"q required"}
   Check: automated test test_search_empty_query (exit 0 = green)   →  AC-1 → test_search_empty_query
 ```
+
+---
+
+## Implementation conformance (adaptive Phase 6)
+
+`Conformance contract: 1` closes the gap between a technically researched plan and the code that was actually delivered. New non-trivial `feature|fix` runs opt in; trivial, audit, review, and older runs omit the field and remain compatible. This is a graph edge inside the existing Plan→Implement→Verify→Review flow, not another global phase or user gate.
+
+**Bounded decision contract.** Phase 2 keeps only one to five implementation decisions that could materially change the diff. Phase 3 records them after one exact marker:
+
+```text
+<!-- kimiflow:decision-contract contract=1 decisions=1 -->
+Decision D1: <selected mechanism>
+Evidence D1: <RESEARCH.md for feature | DIAGNOSIS.md for fix> §<section>
+Invariant D1: <condition that must remain true>
+Paths D1: src/a.ts, tests/a.test.ts
+AC D1: AC-1
+Check D1: command :: <repository-root command>
+Recheck D1: <named change signal>
+```
+
+`verifier :: <named evidence method>` replaces `command` only when the decision cannot be checked mechanically. Rows for syntax, taste, or behavior already completely covered by an existing row are forbidden. `plan-blocker-gate.sh` calls `conformance-gate.sh <run> --plan`; it checks the versioned shape, cap, evidence source, affected paths, and AC mapping before review. The helper never executes PLAN text.
+
+**Adaptive verification.** Phase 6 runs every declared method, then compares the complete delivered Git delta with the decision evidence, invariant, path scope, and acceptance outcome. A `small` run folds this into the current orchestrator and creates no model call. A `large` run gives the compact contract and decisive evidence to its one already-required independent verifier; it does not add a reviewer or research lane. External research is refreshed only when a named dependency/source changed, a falsifier stopped applying, or local evidence contradicts the chosen mechanism.
+
+`VERIFICATION.md` carries the normal passed receipt, one exact `Decision check Dn: passed :: <PLAN method>` per row, and exactly one compact conformance receipt. This example is a `large` run with active architecture deliberation:
+
+```text
+<!-- kimiflow:conformance contract=1 status=converged diff=passed strategy=passed architecture=passed research=stable scope=passed decisions=1 checks=1 verifier=independent source=current-run -->
+```
+
+The exact selectors are `small → verifier=folded`, `large → verifier=independent`, active architecture → `architecture=passed|failed`, and off/absent architecture → `architecture=not_applicable`. A converged active-architecture receipt requires `architecture=passed`; `failed` is a Phase-2 recovery signal.
+
+Allowed statuses are `converged`, `code_gap`, `strategy_drift`, `architecture_falsified`, `research_stale`, and `scope_drift`. `code_gap|scope_drift` routes to Phase 5. `strategy_drift|architecture_falsified|research_stale` routes to Phase 2, where evidence/strategy changes before implementation resumes. These are technical recovery edges: no routine `await-user` or “continue?” confirmation. Only the existing material product/authority boundary may pause.
+
+For a converged run, execute:
+
+```bash
+hooks/conformance-gate.sh .kimiflow/<slug> --record --write
+hooks/conformance-gate.sh .kimiflow/<slug>
+hooks/conformance-gate.sh .kimiflow/<slug> --finish
+```
+
+The first command records a content basis while Phase 6 is in progress; after Phase 6 becomes done, the second must return `CONFORMANCE_GATE<TAB>OPEN`. The basis binds the original `Run started head`, mode, intent/problem, research/diagnosis, acceptance, plan, verification receipt, and final worktree bytes/modes/symlink targets for the exact affected-path set. It deliberately does not require staging in Phase 6 and is commit-position-independent, so identical reviewed bytes remain valid across the atomic local commit; edits, deletions, extra run-delta paths, or receipt changes make it stale. The third mode is terminal-only: after the named-path commit it additionally requires HEAD, index, and every affected worktree path (including Gitlinks and deletions) to agree. Active-Run pins the present-or-absent selector alongside mode, scope, and original head, persists those pins across park/resume, and `finish --write` checks terminal conformance both before and transactionally after memory/outcome writes.
 
 ---
 

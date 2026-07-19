@@ -201,6 +201,8 @@ normalize() {
     -e 's#WORK/cases/[A-Za-z0-9_.:-]+#REPO#g' \
     -e 's/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z/TIMESTAMP/g' \
     -e 's/"cutoff_date": ?"[0-9]{4}-[0-9]{2}-[0-9]{2}"/"cutoff_date":"DATE"/g' \
+    -e 's/"run_device": ?[0-9]+/"run_device":DEVICE/g' \
+    -e 's/"run_inode": ?[0-9]+/"run_inode":INODE/g' \
     -e 's/[0-9a-f]{40}/COMMIT/g' \
     -e 's/"version": ?"[0-9]+\.[0-9]+\.[0-9]+"/"version": "VERSION"/g'
 }

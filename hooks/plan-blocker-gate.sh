@@ -197,6 +197,40 @@ elif printf '%s\n' "$discovery_required" | grep -Eq '^(yes|true|1|required)$'; t
   add_blocker "discovery_gate_missing"
 fi
 
+# Contracted feature/fix runs must bind every plan-shaping decision to evidence,
+# affected paths, acceptance, and one later falsifier. Legacy runs remain resumable.
+conformance_contract="$(kimiflow_state_value "$state" "Conformance contract" | awk '{print $1}')"
+if [ -n "$conformance_contract" ]; then
+  conformance_gate="$SCRIPT_DIR/conformance-gate.sh"
+  if [ ! -x "$conformance_gate" ]; then
+    add_blocker "conformance_plan_gate_missing"
+  else
+    conformance_out="$("$conformance_gate" "$run_dir" --plan 2>/dev/null)"
+    conformance_rc=$?
+    conformance_lines="$(printf '%s\n' "$conformance_out" | awk 'END { print NR }')"
+    conformance_fields="$(printf '%s\n' "$conformance_out" | awk -F '\t' 'NR == 1 { print NF }')"
+    conformance_tag="$(printf '%s\n' "$conformance_out" | cut -f1)"
+    conformance_status="$(printf '%s\n' "$conformance_out" | cut -f2)"
+    conformance_blockers="$(printf '%s\n' "$conformance_out" | cut -f3)"
+    conformance_reason="$(printf '%s\n' "$conformance_out" | cut -f4)"
+    conformance_detail="$(printf '%s\n' "$conformance_out" | cut -f5 | sed 's/^detail=//')"
+    if [ "$conformance_rc" -ne 0 ]; then
+      add_blocker "conformance_plan_gate_error"
+    elif [ "$conformance_lines" -ne 1 ] || [ "$conformance_fields" -ne 5 ] || [ "$conformance_tag" != "CONFORMANCE_GATE" ]; then
+      add_blocker "conformance_plan_gate_malformed"
+    elif [ "$conformance_status" = "OPEN" ] && [ "$conformance_blockers" = "blockers=0" ] && [ "$conformance_reason" = "reason=plan-clean" ]; then
+      :
+    elif [ "$conformance_status" = "CLOSED" ] \
+      && printf '%s\n' "$conformance_blockers" | grep -Eq '^blockers=[1-9][0-9]*$' \
+      && printf '%s\n' "$conformance_reason" | grep -Eq '^reason=[a-z0-9-]+$' \
+      && printf '%s\n' "$conformance_out" | cut -f5 | grep -Eq '^detail='; then
+      add_blocker "conformance_plan_gate_closed:${conformance_detail:-unknown}"
+    else
+      add_blocker "conformance_plan_gate_malformed"
+    fi
+  fi
+fi
+
 phase_detail="$(phase_read_blocker)"
 [ -z "$phase_detail" ] || add_blocker "$phase_detail"
 

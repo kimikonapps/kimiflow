@@ -154,6 +154,21 @@ def _changed_paths(root, started, source):
 
 
 def _resolve_run(root, run):
+    pinned_rel = os.environ.get("KIMIFLOW_PINNED_RUN_REL", "")
+    if run == "." and os.environ.get("KIMIFLOW_PINNED_RUN_CWD") == "1":
+        try:
+            info = os.stat(".", follow_symlinks=False)
+            expected = (
+                int(os.environ.get("KIMIFLOW_PINNED_RUN_DEVICE", "")),
+                int(os.environ.get("KIMIFLOW_PINNED_RUN_INODE", "")),
+            )
+        except (OSError, ValueError) as exc:
+            raise OutcomeError("pinned run directory is no longer reachable") from exc
+        if not _valid_rel_path(pinned_rel) or not pinned_rel.startswith(".kimiflow/"):
+            raise OutcomeError("unsafe pinned run path")
+        if not stat.S_ISDIR(info.st_mode) or (info.st_dev, info.st_ino) != expected:
+            raise OutcomeError("pinned run directory identity changed")
+        return os.path.realpath(os.path.abspath(root)), ".", pinned_rel
     root_abs = os.path.abspath(root)
     root = os.path.realpath(root_abs)
     if os.path.isabs(run):

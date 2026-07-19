@@ -5,6 +5,6 @@
 @@stderr@@
 @@files@@
 .kimiflow/project/FINDINGS.md	mode=644	hash=sha256:a2ed99a0a376d3147db54333f62ba30603ac43d8cf558ff240d9a724251cbf82
-.kimiflow/session/ACTIVE_RUN.json	mode=600	hash=sha256:b0bc7c4d587fc457cdb113e00c6aa1f8f4997372f52201cf70efda0102bcea3b
+.kimiflow/session/ACTIVE_RUN.json	mode=600	hash=sha256:7fd7b065d48381ab4da0654e298c1046ba146160c280480423fc3cd6d2905025
 README.md	mode=644	hash=sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03
 hooks/a.sh	mode=644	hash=sha256:ab08508fdf5ca4da5c4995987bc41c56c048aaa5eeb046417ae4049b7d40286e

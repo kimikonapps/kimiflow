@@ -189,6 +189,11 @@ write_flow_manifest() {
       {"from": "phase_7", "event": "phase_done", "to": "done", "action": "finish_run"},
       {"from": "phase_4", "event": "plan_recovery", "to": "phase_2", "action": "recover_plan_strategy"},
       {"from": "phase_6", "event": "verification_failed", "to": "phase_5", "action": "recover_build"},
+      {"from": "phase_6", "event": "code_gap", "to": "phase_5", "action": "recover_build"},
+      {"from": "phase_6", "event": "scope_drift", "to": "phase_5", "action": "recover_build"},
+      {"from": "phase_6", "event": "strategy_drift", "to": "phase_2", "action": "recover_plan_strategy"},
+      {"from": "phase_6", "event": "architecture_falsified", "to": "phase_2", "action": "recover_plan_strategy"},
+      {"from": "phase_6", "event": "research_stale", "to": "phase_2", "action": "recover_plan_strategy"},
       {"from": "phase_7", "event": "review_failed", "to": "phase_5", "action": "recover_build"}
     ]
   }

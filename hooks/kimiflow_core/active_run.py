@@ -71,6 +71,7 @@ RECOVERY_AWAIT_USER_KINDS = {
     "workspace",
 }
 AWAIT_USER_KINDS = RECOVERY_AWAIT_USER_KINDS | {"preview", "commit"}
+FINISH_ARTIFACT_LIMIT = 8 * 1024 * 1024
 
 
 def usage():
@@ -90,7 +91,11 @@ def iso_now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def run_cmd(args, cwd=None, env=None, stderr_to_stdout=False):
+def run_cmd(args, cwd=None, env=None, stderr_to_stdout=False, cwd_descriptor=None):
+    process_options = {}
+    if cwd_descriptor is not None:
+        process_options["pass_fds"] = (cwd_descriptor,)
+        process_options["preexec_fn"] = lambda: os.fchdir(cwd_descriptor)
     try:
         return subprocess.run(
             args,
@@ -100,6 +105,7 @@ def run_cmd(args, cwd=None, env=None, stderr_to_stdout=False):
             stderr=subprocess.STDOUT if stderr_to_stdout else subprocess.PIPE,
             text=True,
             check=False,
+            **process_options,
         )
     except OSError as exc:
         return subprocess.CompletedProcess(args, 127, "", str(exc))
@@ -1126,6 +1132,7 @@ def cmd_start(args):
     phase_required = phase_reads.manifest_exists(root)
     same_active = existing.get("present") is True and existing.get("run") == run_rel
     prior_active = load_active(root) if same_active else {}
+    resume_pins = parked_session_pins(run_dir) if not same_active else {}
     state_path = os.path.join(run_dir, "STATE.md")
     persisted_started_head = state.state_value(state_path, "Run started head").strip()
     existing_started_head = str(existing.get("started_head", "")).strip()
@@ -1134,22 +1141,37 @@ def cmd_start(args):
     if not re.fullmatch(r"(?:[0-9a-fA-F]{40,64}|NOT VERIFIED)", existing_started_head):
         existing_started_head = ""
     current_head = git_head(root)
-    # An existing ACTIVE_RUN is the immutable authority for a same-run restart.
-    # STATE is the fallback only after park retired the active file.
-    started_head = existing_started_head or persisted_started_head or current_head
+    # ACTIVE_RUN is authoritative during a restart; a parked outcome preserves
+    # the same immutable selectors while no active-session file exists.
+    started_head = existing_started_head or str(resume_pins.get("started_head") or "") or persisted_started_head or current_head
+    active_mode = prior_active.get("mode") if same_active else resume_pins.get("mode", opts["--mode"])
+    active_scope = prior_active.get("scope") if same_active else resume_pins.get("scope", opts["--scope"])
+    active_host = prior_active.get("host") if same_active else resume_pins.get("host", opts["--host"])
+    active_started_at = prior_active.get("started_at") if same_active else resume_pins.get("started_at", iso_now())
     status = {
         "schema_version": 1,
         "status": "active",
         "run": run_rel,
-        "mode": opts["--mode"],
-        "scope": opts["--scope"],
-        "host": opts["--host"],
-        "started_at": iso_now(),
+        "mode": active_mode,
+        "scope": active_scope,
+        "host": active_host,
+        "started_at": active_started_at,
         "updated_at": iso_now(),
         "started_head": started_head,
         "last_checked_head": current_head,
         "affected_files_at_start": run_affected_paths(run_dir),
     }
+    persisted_conformance = state.state_value(state_path, "Conformance contract").strip()
+    if same_active and "conformance_contract" in prior_active:
+        status["conformance_contract"] = prior_active.get("conformance_contract")
+    elif "conformance_contract" in resume_pins:
+        status["conformance_contract"] = resume_pins.get("conformance_contract")
+    else:
+        status["conformance_contract"] = persisted_conformance or None
+    if same_active and "frontend_quality_contract" in prior_active:
+        status["frontend_quality_contract"] = prior_active.get("frontend_quality_contract")
+    elif "frontend_quality_contract" in resume_pins:
+        status["frontend_quality_contract"] = resume_pins.get("frontend_quality_contract")
     if identity:
         status["owner"] = identity
     if phase_required:
@@ -1157,6 +1179,8 @@ def cmd_start(args):
     flow_schema = state.state_value(os.path.join(run_dir, "STATE.md"), "Flow schema").strip().split(" ", 1)[0]
     if same_active and str(prior_active.get("flow_schema", "")).isdigit():
         flow_schema = str(prior_active["flow_schema"])
+    elif str(resume_pins.get("flow_schema", "")).isdigit():
+        flow_schema = str(resume_pins["flow_schema"])
     if flow_schema.isdigit():
         status["flow_schema"] = flow_schema
     if os.path.isdir(run_dir) and not os.path.islink(run_dir):
@@ -1173,8 +1197,10 @@ def cmd_start(args):
     ).strip()
     if git_commit_ok(root, disposition_head):
         status["workspace_disposition_head"] = disposition_head
-    frontend_start_head = str(prior_active.get("frontend_quality_start_head", "")).strip() if same_active else ""
-    if not same_active:
+    frontend_start_head = str(prior_active.get("frontend_quality_start_head", "")).strip() if same_active else str(
+        resume_pins.get("frontend_quality_start_head", "")
+    ).strip()
+    if not same_active and not frontend_start_head:
         persisted_frontend_start = state.state_value(state_path, "Frontend quality start").strip()
         frontend_match = re.fullmatch(r"clean@([0-9a-fA-F]{40,64})", persisted_frontend_start)
         if frontend_match:
@@ -1426,7 +1452,32 @@ def global_metrics_file():
     return os.path.join(base, "metrics/token-economics.jsonl")
 
 
-def snapshot_finish(root, run_dir, snapshot):
+def read_run_snapshot(run_descriptor, name):
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(name, flags, dir_fd=run_descriptor)
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode):
+            raise OSError("unsafe terminal run file")
+        if info.st_size > FINISH_ARTIFACT_LIMIT:
+            die("terminal run artifact exceeds snapshot limit: %s" % name, 2)
+        chunks = []
+        total = 0
+        while True:
+            chunk = os.read(descriptor, min(65536, FINISH_ARTIFACT_LIMIT - total + 1))
+            if not chunk:
+                return b"".join(chunks), stat.S_IMODE(info.st_mode)
+            total += len(chunk)
+            if total > FINISH_ARTIFACT_LIMIT:
+                die("terminal run artifact exceeds snapshot limit: %s" % name, 2)
+            chunks.append(chunk)
+    finally:
+        os.close(descriptor)
+
+
+def snapshot_finish(root, run_dir, snapshot, run_descriptor=None):
     os.makedirs(os.path.join(snapshot, "run"), exist_ok=True)
     project = os.path.join(root, ".kimiflow/project")
     if os.path.isdir(project):
@@ -1435,13 +1486,26 @@ def snapshot_finish(root, run_dir, snapshot):
     else:
         write_text(os.path.join(snapshot, "project.present"), "absent\n")
     for name in ("LEARNING-REVIEW.md", "RUN-LIFECYCLE.json", "RUN-LIFECYCLE.md", "OUTCOME-EVALUATION.json", "SESSION-OUTCOME.json"):
-        src = os.path.join(run_dir, name)
         present = os.path.join(snapshot, "run", "%s.present" % name)
-        if os.path.isfile(src):
-            shutil.copy2(src, os.path.join(snapshot, "run", name))
-            write_text(present, "present\n")
-        else:
+        try:
+            if run_descriptor is None:
+                src = os.path.join(run_dir, name)
+                if not os.path.isfile(src):
+                    raise FileNotFoundError(src)
+                if os.stat(src, follow_symlinks=False).st_size > FINISH_ARTIFACT_LIMIT:
+                    die("terminal run artifact exceeds snapshot limit: %s" % name, 2)
+                with open(src, "rb") as handle:
+                    payload = handle.read()
+                mode = stat.S_IMODE(os.stat(src, follow_symlinks=False).st_mode)
+            else:
+                payload, mode = read_run_snapshot(run_descriptor, name)
+        except FileNotFoundError:
             write_text(present, "absent\n")
+        else:
+            with open(os.path.join(snapshot, "run", name), "wb") as handle:
+                handle.write(payload)
+            write_text(os.path.join(snapshot, "run", "%s.mode" % name), "%04o\n" % mode)
+            write_text(present, "present\n")
     metrics = global_metrics_file()
     if metrics and os.path.isfile(metrics):
         os.makedirs(os.path.join(snapshot, "global-metrics"), exist_ok=True)
@@ -1451,7 +1515,7 @@ def snapshot_finish(root, run_dir, snapshot):
         write_text(os.path.join(snapshot, "global-metrics.present"), "absent\n")
 
 
-def restore_finish(root, run_dir, snapshot):
+def restore_finish(root, run_dir, snapshot, run_descriptor=None):
     project = os.path.join(root, ".kimiflow/project")
     if read_text(os.path.join(snapshot, "project.present")).strip() == "present":
         shutil.rmtree(project, ignore_errors=True)
@@ -1460,12 +1524,28 @@ def restore_finish(root, run_dir, snapshot):
     else:
         shutil.rmtree(project, ignore_errors=True)
     for name in ("LEARNING-REVIEW.md", "RUN-LIFECYCLE.json", "RUN-LIFECYCLE.md", "OUTCOME-EVALUATION.json", "SESSION-OUTCOME.json"):
-        dest = os.path.join(run_dir, name)
         if read_text(os.path.join(snapshot, "run", "%s.present" % name)).strip() == "present":
-            shutil.copy2(os.path.join(snapshot, "run", name), dest)
+            source = os.path.join(snapshot, "run", name)
+            if run_descriptor is None:
+                shutil.copy2(source, os.path.join(run_dir, name))
+            else:
+                with open(source, "rb") as handle:
+                    workspace_preflight.atomic_directory_write(run_descriptor, name, handle.read())
+                restored_mode = int(read_text(os.path.join(snapshot, "run", "%s.mode" % name)).strip(), 8)
+                flags = os.O_RDONLY
+                if hasattr(os, "O_NOFOLLOW"):
+                    flags |= os.O_NOFOLLOW
+                descriptor = os.open(name, flags, dir_fd=run_descriptor)
+                try:
+                    os.fchmod(descriptor, restored_mode)
+                finally:
+                    os.close(descriptor)
         else:
             try:
-                os.unlink(dest)
+                if run_descriptor is None:
+                    os.unlink(os.path.join(run_dir, name))
+                else:
+                    os.unlink(name, dir_fd=run_descriptor)
             except OSError:
                 pass
     metrics = global_metrics_file()
@@ -1478,8 +1558,6 @@ def restore_finish(root, run_dir, snapshot):
                 os.unlink(metrics)
             except OSError:
                 pass
-
-
 def write_text(path, text):
     atomic_write(path, text, mode=0o600, refuse_symlink=True)
 
@@ -1497,6 +1575,26 @@ def read_text(path):
             return handle.read()
     except OSError:
         return ""
+
+
+def parked_session_pins(run_dir):
+    raw = read_text(os.path.join(run_dir, "SESSION-OUTCOME.json"))
+    try:
+        payload = json.loads(raw) if raw else None
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(payload, dict) or payload.get("outcome") != "parked":
+        return {}
+    pins = payload.get("session_pins")
+    return pins if isinstance(pins, dict) else {}
+
+
+def session_pins(active):
+    keys = (
+        "mode", "scope", "host", "started_at", "started_head", "flow_schema",
+        "conformance_contract", "frontend_quality_contract", "frontend_quality_start_head",
+    )
+    return {key: active.get(key) for key in keys if key in active}
 
 
 def write_outcome(run_dir, outcome, reason, review, verify_line, outcome_evaluation=None, run_descriptor=None):
@@ -1524,17 +1622,74 @@ def memory_router_path():
     )
 
 
-def evaluate_terminal_outcome(router, root, run_rel, terminal):
+def conformance_gate_path():
+    return os.environ.get("KIMIFLOW_CONFORMANCE_GATE") or os.path.join(
+        os.path.abspath(os.path.dirname(__file__) + "/.."),
+        "conformance-gate.sh",
+    )
+
+
+def require_finish_conformance(run_dir, active):
+    state_path = os.path.join(run_dir, "STATE.md")
+    current_contract = state.state_value(state_path, "Conformance contract").strip()
+    if "conformance_contract" in active:
+        pinned_contract = str(active.get("conformance_contract") or "").strip()
+        if current_contract != pinned_contract:
+            die("finish refused: conformance gate closed (active_conformance_contract_mismatch)", 1)
+    if not current_contract:
+        return
+    selectors = {
+        "mode": state.state_value(state_path, "Mode").strip().lower().split(" ", 1)[0],
+        "scope": state.state_value(state_path, "Scope").strip().lower().split(" ", 1)[0],
+        "started_head": state.state_value(state_path, "Run started head").strip(),
+    }
+    for key, current in selectors.items():
+        if str(active.get(key, "")) != current:
+            die("finish refused: conformance gate closed (active_%s_mismatch)" % key, 1)
+    gate = conformance_gate_path()
+    if not (os.path.isfile(gate) and os.access(gate, os.X_OK)):
+        die("finish refused: conformance gate closed (gate_missing)", 1)
+    proc = run_cmd([gate, run_dir, "--finish"], stderr_to_stdout=True)
+    output = proc.stdout.strip()
+    lines = output.splitlines() if output else []
+    fields = lines[0].split("\t") if len(lines) == 1 else []
+    valid_open = (
+        proc.returncode == 0
+        and len(fields) == 5
+        and fields[:4] == ["CONFORMANCE_GATE", "OPEN", "blockers=0", "reason=clean"]
+        and re.fullmatch(r"detail=basis=[0-9a-f]{64}", fields[4]) is not None
+    )
+    if not valid_open:
+        detail = "gate_error"
+        if len(fields) >= 5 and fields[4].startswith("detail="):
+            detail = fields[4][len("detail="):] or detail
+        elif output:
+            detail = output.replace("\n", " ")[:240]
+        die("finish refused: conformance gate closed (%s)" % detail, 1)
+
+
+def pinned_router_environment(run_descriptor, run_rel):
+    environment = os.environ.copy()
+    run_info = os.fstat(run_descriptor)
+    environment["KIMIFLOW_PINNED_RUN_CWD"] = "1"
+    environment["KIMIFLOW_PINNED_RUN_REL"] = run_rel
+    environment["KIMIFLOW_PINNED_RUN_DEVICE"] = str(run_info.st_dev)
+    environment["KIMIFLOW_PINNED_RUN_INODE"] = str(run_info.st_ino)
+    return environment
+
+
+def evaluate_terminal_outcome(router, root, run_rel, terminal, run_descriptor=None):
     if not (os.path.exists(router) and os.access(router, os.X_OK)):
         return {"status": "error", "exit_code": 1, "reason": "memory_router_unavailable"}, 1, ""
+    pinned = run_descriptor is not None
     proc = run_cmd([
         router,
         "evaluate-run",
         "--root", root,
-        "--run", run_rel,
+        "--run", "." if pinned else run_rel,
         "--terminal", terminal,
         "--write",
-    ])
+    ], env=pinned_router_environment(run_descriptor, run_rel) if pinned else None, cwd_descriptor=run_descriptor)
     if proc.returncode != 0:
         return {
             "status": "error",
@@ -1716,76 +1871,101 @@ def cmd_finish(args):
     status = require_active(root)
     run_rel = status["run"]
     run_dir = resolve_run_dir(root, run_rel)
-    ensure_terminal_run_path(run_dir, load_active(root))
+    active = load_active(root)
+    ensure_terminal_run_path(run_dir, active)
     if status["item_counts"]["open"] != 0:
         die("finish refused: unresolved active-session items remain", 1)
     if status["stale_risk"] != "current":
         die("finish refused: active session requires revalidation (%s)" % status["stale_risk"], 1)
-    phase_gate = phase_reads.gate(root, run_dir, 7, active=load_active(root))
+    phase_gate = phase_reads.gate(root, run_dir, 7, active=active)
     if phase_gate.get("status") == "CLOSED":
         die("finish refused: phase-read gate closed (%s)" % phase_gate.get("detail", "unknown"), 1)
+    require_finish_conformance(run_dir, active)
     router = memory_router_path()
     if not (os.path.exists(router) and os.access(router, os.X_OK)):
         die("memory router missing or not executable: %s" % router, 1)
     if opts["--write"]:
         snapshot = tempfile.mkdtemp(prefix="kimiflow-finish.", dir=os.environ.get("TMPDIR") or "/tmp")
+        terminal_state_committed = False
+        snapshot_complete = False
         try:
-            snapshot_finish(root, run_dir, snapshot)
-            review_args = [router, "review-run", "--root", root, "--run", run_rel, "--write"]
-            if opts["--skip-learning"]:
-                review_args.extend(["--skip", opts["--skip-learning"]])
-            review_proc = run_cmd(review_args)
-            if review_proc.returncode != 0:
-                if review_proc.stderr:
-                    sys.stderr.write(review_proc.stderr)
-                    if not review_proc.stderr.endswith("\n"):
-                        sys.stderr.write("\n")
-                return review_proc.returncode or 1
-            try:
-                review = json.loads(review_proc.stdout)
-            except json.JSONDecodeError:
-                review = {"status": "unknown", "raw": review_proc.stdout}
-            verify_proc = run_cmd([router, "verify-run", "--root", root, "--run", run_rel], stderr_to_stdout=True)
-            verify = verify_proc.stdout.rstrip("\n")
-            if verify_proc.returncode != 0:
-                restore_finish(root, run_dir, snapshot)
-                sys.stderr.write(verify + ("\n" if verify else ""))
-                return verify_proc.returncode
-            outcome_evaluation, evaluation_code, evaluation_stderr = evaluate_terminal_outcome(
-                router,
-                root,
-                run_rel,
-                "done",
-            )
-            if evaluation_code != 0:
-                restore_finish(root, run_dir, snapshot)
-                if evaluation_stderr:
-                    sys.stderr.write(evaluation_stderr)
-                    if not evaluation_stderr.endswith("\n"):
-                        sys.stderr.write("\n")
-                return evaluation_code
+            with pinned_terminal_run(run_dir, active) as pinned:
+                try:
+                    snapshot_finish(root, run_dir, snapshot, run_descriptor=pinned["run_descriptor"])
+                    snapshot_complete = True
+                    review_args = [router, "review-run", "--root", root, "--run", ".", "--write"]
+                    if opts["--skip-learning"]:
+                        review_args.extend(["--skip", opts["--skip-learning"]])
+                    review_proc = run_cmd(
+                        review_args,
+                        env=pinned_router_environment(pinned["run_descriptor"], run_rel),
+                        cwd_descriptor=pinned["run_descriptor"],
+                    )
+                    if review_proc.returncode != 0:
+                        restore_finish(root, run_dir, snapshot, run_descriptor=pinned["run_descriptor"])
+                        if review_proc.stderr:
+                            sys.stderr.write(review_proc.stderr)
+                            if not review_proc.stderr.endswith("\n"):
+                                sys.stderr.write("\n")
+                        return review_proc.returncode or 1
+                    try:
+                        review = json.loads(review_proc.stdout)
+                    except json.JSONDecodeError:
+                        review = {"status": "unknown", "raw": review_proc.stdout}
+                    verify_proc = run_cmd(
+                        [router, "verify-run", "--root", root, "--run", "."],
+                        env=pinned_router_environment(pinned["run_descriptor"], run_rel),
+                        stderr_to_stdout=True,
+                        cwd_descriptor=pinned["run_descriptor"],
+                    )
+                    verify = verify_proc.stdout.rstrip("\n")
+                    if verify_proc.returncode != 0:
+                        restore_finish(root, run_dir, snapshot, run_descriptor=pinned["run_descriptor"])
+                        sys.stderr.write(verify + ("\n" if verify else ""))
+                        return verify_proc.returncode
+                    outcome_evaluation, evaluation_code, evaluation_stderr = evaluate_terminal_outcome(
+                        router,
+                        root,
+                        run_rel,
+                        "done",
+                        run_descriptor=pinned["run_descriptor"],
+                    )
+                    if evaluation_code != 0:
+                        restore_finish(root, run_dir, snapshot, run_descriptor=pinned["run_descriptor"])
+                        if evaluation_stderr:
+                            sys.stderr.write(evaluation_stderr)
+                            if not evaluation_stderr.endswith("\n"):
+                                sys.stderr.write("\n")
+                        return evaluation_code
+                    if not terminal_run_name_matches(pinned):
+                        die("terminal run directory changed before final validation", 2)
+                    require_finish_conformance(run_dir, load_active(root))
+                    outcome = write_outcome(
+                        run_dir,
+                        "done",
+                        "",
+                        review,
+                        verify,
+                        outcome_evaluation,
+                        run_descriptor=pinned["run_descriptor"],
+                    )
+                    update_terminal_state(pinned, "done", phase7_done=True)
+                    terminal_state_committed = True
+                    if not terminal_run_name_matches(pinned):
+                        die("terminal run directory changed before retirement", 2)
+                    outcome["workspace_retirement"] = retire_terminal_worktree(
+                        root,
+                        run_rel,
+                        run_descriptor=pinned["run_descriptor"],
+                    )
+                    write_run_text(pinned["run_descriptor"], "SESSION-OUTCOME.json", json_pretty(outcome) + "\n")
+                    retire_active_session(root, pinned, "done", run_rel)
+                except ActiveError:
+                    if snapshot_complete and not terminal_state_committed:
+                        restore_finish(root, run_dir, snapshot, run_descriptor=pinned["run_descriptor"])
+                    raise
         finally:
             shutil.rmtree(snapshot, ignore_errors=True)
-        with pinned_terminal_run(run_dir, load_active(root)) as pinned:
-            outcome = write_outcome(
-                run_dir,
-                "done",
-                "",
-                review,
-                verify,
-                outcome_evaluation,
-                run_descriptor=pinned["run_descriptor"],
-            )
-            update_terminal_state(pinned, "done", phase7_done=True)
-            if not terminal_run_name_matches(pinned):
-                die("terminal run directory changed before retirement", 2)
-            outcome["workspace_retirement"] = retire_terminal_worktree(
-                root,
-                run_rel,
-                run_descriptor=pinned["run_descriptor"],
-            )
-            write_run_text(pinned["run_descriptor"], "SESSION-OUTCOME.json", json_pretty(outcome) + "\n")
-            retire_active_session(root, pinned, "done", run_rel)
         result_status = "finished"
     else:
         outcome = {
@@ -1813,7 +1993,8 @@ def cmd_terminal(command, args):
     status = require_active(root)
     run_rel = status["run"]
     run_dir = resolve_run_dir(root, run_rel)
-    ensure_terminal_run_path(run_dir, load_active(root))
+    terminal_active = load_active(root)
+    ensure_terminal_run_path(run_dir, terminal_active)
     if opts["--write"]:
         outcome_evaluation, _, _ = evaluate_terminal_outcome(
             memory_router_path(),
@@ -1830,9 +2011,10 @@ def cmd_terminal(command, args):
         "completed_at": iso_now(),
         "learning_review": {"status": "not_promoted", "reason": "session_not_finished"},
         "outcome_evaluation": outcome_evaluation,
+        "session_pins": session_pins(terminal_active),
     }
     if opts["--write"]:
-        with pinned_terminal_run(run_dir, load_active(root)) as pinned:
+        with pinned_terminal_run(run_dir, terminal_active) as pinned:
             write_run_text(pinned["run_descriptor"], "SESSION-OUTCOME.json", json_pretty(outcome_json) + "\n")
             update_terminal_state(pinned, state_status)
             if not terminal_run_name_matches(pinned):
