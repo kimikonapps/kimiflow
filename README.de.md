@@ -182,8 +182,10 @@ mechanisiert die Evidence-Grenzen, ohne Allwissenheit vorzutäuschen.
 - Ein zweiter Planner erscheint nur bei echter Architektur- oder irreversibler Contract-Gabel.
 - Das Top-Modell behält Orchestrierung, Synthese, Planung, Review-Verdicts und riskante Diagnose.
 
-`small` und `quick` überspringen breiten Memory-Recall und den **Vault Pulse**; beides läuft nur bei
-`scope=large`. Current-State-Checks und Learning-Review bleiben bei jedem nicht-trivialen Run erhalten.
+`small` und `quick` überspringen breiten Memory-Recall und den **Vault Pulse** standardmäßig. Ein
+ausdrücklicher Hinweis, dass ein ähnlicher Bug oder Fix schon existierte, löst stattdessen bei jedem
+Scope genau einen gezielten lokalen Recall mit höchstens fünf Treffern und ohne Provider-Suche aus.
+Current-State-Checks und Learning-Review bleiben bei jedem nicht-trivialen Run erhalten.
 
 ## Projektwissen und Memory
 
@@ -194,6 +196,9 @@ stale Abschnitte. Die Map ist optional, lokal und blockiert normale Arbeit nicht
 Der Memory Router speichert begrenzte Projektfakten, Entscheidungen, Standards, Run-Historie und
 evidence-basierte Learnings. Promotion erfolgt erst nach erfolgreicher Verifikation und
 Source-Freshness-Prüfung. Geänderte Evidence ersetzt alte Learnings.
+Abgeschlossene Runs erhalten außerdem eine automatische lokale Outcome-Evaluation. Künftige passende
+Runs sehen höchstens eine verifizierte Erfolgsstrategie und eine belegte Fehlstrategie; beide werden
+gegen den aktuellen Code erneut geprüft.
 
 Ein Obsidian Vault ist optional. Ohne ihn funktionieren lokales Memory und alle Gates weiter. Mit
 authentifizierten Vault-MCP-Tools kann Kimiflow kuratierte, nicht-private projektübergreifende
