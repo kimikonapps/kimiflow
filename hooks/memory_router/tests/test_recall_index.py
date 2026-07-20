@@ -63,13 +63,13 @@ class FtsEngineCase(unittest.TestCase):
 
     def test_init_stamps_updated_at(self):
         con = sqlite3.connect(self.db)
-        recall_index.init_recall_db(con)
+        recall_index.init_recall_db(con, "sha256:test-corpus")
         con.commit()
-        value = con.execute(
-            "SELECT value FROM recall_meta WHERE key = 'updated_at'"
-        ).fetchone()[0]
+        meta = dict(con.execute("SELECT key, value FROM recall_meta").fetchall())
         con.close()
-        self.assertEqual(value, ISO)
+        self.assertEqual(meta["updated_at"], ISO)
+        self.assertEqual(meta["schema_version"], str(recall_index.INDEX_SCHEMA_VERSION))
+        self.assertEqual(meta["corpus_fingerprint"], "sha256:test-corpus")
 
     def test_query_roundtrip_returns_hit_shape(self):
         self.build([
@@ -215,7 +215,9 @@ class BuildRecallIndexCase(unittest.TestCase):
         self.assertEqual(con.execute("SELECT count(*) FROM recall_fts").fetchone()[0], 0)
         meta = con.execute("SELECT key, value FROM recall_meta").fetchall()
         con.close()
-        self.assertEqual(meta, [("updated_at", ISO)])
+        self.assertEqual(dict(meta)["updated_at"], ISO)
+        self.assertEqual(dict(meta)["schema_version"], str(recall_index.INDEX_SCHEMA_VERSION))
+        self.assertTrue(dict(meta)["corpus_fingerprint"].startswith("sha256:"))
 
     def test_rebuild_drops_previous_rows(self):
         self.write(".kimiflow/project/MEMORY.md", "one\n")
@@ -223,6 +225,27 @@ class BuildRecallIndexCase(unittest.TestCase):
         # Rebuild after removing the source -> the old row must be gone.
         os.remove(os.path.join(self.project, "MEMORY.md"))
         self.assertEqual(len(self.by_kind("memory")), 0)
+
+    def test_index_state_detects_corpus_drift(self):
+        self.write(".kimiflow/project/MEMORY.md", "first\n")
+        self.assertEqual(recall_index.build_recall_index(self.root, self.db), 0)
+        self.assertEqual(recall_index.index_state(self.root)["status"], "fresh")
+        self.write(".kimiflow/project/MEMORY.md", "second\n")
+        state = recall_index.index_state(self.root)
+        self.assertEqual(state["status"], "stale")
+        self.assertEqual(state["reason"], "corpus_fingerprint_mismatch")
+        self.assertEqual(recall_index.fts_hits_json(self.root, ["first"], 5), [])
+
+    def test_failed_rebuild_preserves_previous_database(self):
+        self.write(".kimiflow/project/MEMORY.md", "stable content\n")
+        self.assertEqual(recall_index.build_recall_index(self.root, self.db), 0)
+        with open(self.db, "rb") as fh:
+            before = fh.read()
+        with mock.patch("memory_router.recall_index.insert_fts_row",
+                        side_effect=sqlite3.OperationalError("boom")):
+            self.assertEqual(recall_index.build_recall_index(self.root, self.db), 1)
+        with open(self.db, "rb") as fh:
+            self.assertEqual(fh.read(), before)
 
     def test_memory_and_user_md_first_180_lines(self):
         self.write(".kimiflow/project/MEMORY.md",

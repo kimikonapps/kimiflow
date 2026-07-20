@@ -294,6 +294,89 @@ class RecallJsonCase(unittest.TestCase):
             {"MEMORY.md", "USER.md", "FACTS.jsonl", "RECALL.sqlite"},
         )
 
+    def test_global_packer_respects_budget_hit_cap_and_deduplicates(self):
+        self.write("MEMORY.md", "small always on context\n")
+        self.write("USER.md", "concise local answers\n")
+        self.write(
+            "FACTS.jsonl",
+            json.dumps({"kind": "module", "area": "core", "path": "src/primary.py",
+                        "line": 1, "summary": "auth token rotation"}) + "\n"
+        )
+        self.write(
+            "LEARNINGS.jsonl",
+            "".join([
+                json.dumps({"id": "dup", "status": "current", "summary": "auth token rotation",
+                            "evidence": ["src/primary.py:1"]}) + "\n",
+                json.dumps({"id": "extra1", "status": "current", "summary": "auth token helper",
+                            "evidence": ["src/extra1.py:2"]}) + "\n",
+                json.dumps({"id": "extra2", "status": "current", "summary": "auth token fallback",
+                            "evidence": ["src/extra2.py:3"]}) + "\n",
+            ])
+        )
+        with mock.patch.dict(os.environ, {"KIMIFLOW_RECALL_BUDGET": "30"}):
+            o = self.obj("auth token", max_hits=3)
+
+        hits = []
+        for source in ("facts", "learnings", "index", "history"):
+            hits.extend(o["sources"][source]["hits"])
+        refs = [recall.hit_ref(hit) for hit in hits]
+        self.assertEqual(o["schema_version"], 2)
+        self.assertLessEqual(o["budget"]["used"], o["budget"]["limit"])
+        self.assertLessEqual(o["explanation"]["hit_counts"]["total"], 3)
+        self.assertIn("src/primary.py:1", refs)
+        self.assertEqual(len(refs), len(set(refs)))
+        self.assertGreaterEqual(o["budget"]["duplicates_removed"], 1)
+
+    def test_current_source_rule_and_direct_fact_dedup(self):
+        self.write(
+            "FACTS.jsonl",
+            json.dumps({"kind": "module", "area": "storage", "path": "src/store.py",
+                        "line": 12, "summary": "transaction manager invariant"}) + "\n"
+        )
+        self.write(
+            "LEARNINGS.jsonl",
+            json.dumps({"id": "old", "status": "current", "summary": "transaction manager invariant",
+                        "evidence": ["src/store.py:12"]}) + "\n"
+        )
+        o = self.obj("transaction manager", max_hits=5)
+        self.assertEqual(o["authority"]["rule"], "current_project_sources_override_recall")
+        self.assertEqual(o["authority"]["recall_status"], "advisory")
+        self.assertEqual(o["sources"]["facts"]["count"], 1)
+        self.assertEqual(o["sources"]["learnings"]["count"], 0)
+        self.assertEqual(o["sources"]["facts"]["hits"][0]["path"], "src/store.py")
+
+    def test_stale_index_is_bypassed_then_rebuilt_on_write(self):
+        self.write(
+            "LEARNINGS.jsonl",
+            json.dumps({"id": "strategy", "status": "current", "summary": "old auth strategy"}) + "\n"
+        )
+        db = recall_index.recall_db_path(self.root)
+        self.assertEqual(recall_index.build_recall_index(self.root, db), 0)
+        self.write(
+            "LEARNINGS.jsonl",
+            json.dumps({"id": "strategy", "status": "current", "summary": "new auth strategy"}) + "\n"
+        )
+
+        stale = self.obj("old auth", max_hits=5)
+        self.assertEqual(stale["sources"]["index"]["freshness"], "stale")
+        self.assertEqual(stale["sources"]["index"]["status"], "stale_bypassed")
+        self.assertEqual(stale["sources"]["index"]["hits"], [])
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = recall.run([
+                "--root", self.root, "--query", "new auth", "--write", "RECALL.md"
+            ])
+        self.assertEqual(code, 0)
+        refreshed = json.loads(out.getvalue())
+        self.assertEqual(refreshed["sources"]["index"]["freshness"], "fresh")
+        self.assertEqual(refreshed["sources"]["index"]["refresh"], "rebuilt")
+        self.assertEqual(recall_index.index_state(self.root)["status"], "fresh")
+        self.assertEqual(
+            [hit["summary"] for hit in recall_index.fts_hits_json(self.root, ["new", "auth"], 5)],
+            ["new auth strategy"],
+        )
+
 
 class RecallRunCase(unittest.TestCase):
     def setUp(self):

@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "frozen_at": "2026-07-20",
+  "cases": [
+    {
+      "id": "de_direct_fact_dedup",
+      "query": "transaktion race condition",
+      "budget": 90,
+      "max_hits": 4,
+      "facts": [
+        {"kind": "invariant", "area": "storage", "path": "src/storage.py", "line": 18, "summary": "transaktion verhindert race condition"}
+      ],
+      "learnings": [
+        {"id": "duplicate", "status": "current", "summary": "transaktion verhindert race condition", "evidence": ["src/storage.py:18"]},
+        {"id": "stale", "status": "stale", "summary": "race condition mit globalem lock", "evidence": ["src/old.py:4"]}
+      ],
+      "run_artifacts": [],
+      "expected_refs": ["src/storage.py:18"],
+      "forbidden_refs": ["src/old.py:4"]
+    },
+    {
+      "id": "en_relevant_learning",
+      "query": "release hook cache",
+      "budget": 70,
+      "max_hits": 3,
+      "facts": [],
+      "learnings": [
+        {"id": "release", "status": "current", "summary": "release hook refreshes the installed cache", "evidence": ["hooks/install.sh:40"]},
+        {"id": "noise", "status": "current", "summary": "release naming convention", "evidence": ["docs/release.md:2"]}
+      ],
+      "run_artifacts": [
+        {"path": ".kimiflow/old-run/PLAN.md", "content": "cache hook experiment without release verification\n"}
+      ],
+      "expected_refs": ["hooks/install.sh:40"],
+      "forbidden_refs": []
+    },
+    {
+      "id": "budget_excludes_low_coverage_history",
+      "query": "offline sync conflict resolution",
+      "budget": 38,
+      "max_hits": 2,
+      "facts": [
+        {"kind": "flow", "area": "sync", "path": "src/sync.py", "line": 7, "summary": "offline sync conflict resolution"}
+      ],
+      "learnings": [
+        {"id": "partial", "status": "current", "summary": "sync helper", "evidence": ["src/helper.py:3"]}
+      ],
+      "run_artifacts": [
+        {"path": ".kimiflow/old-sync/PLAN.md", "content": "offline notes and unrelated migration details repeated repeatedly\n"}
+      ],
+      "expected_refs": ["src/sync.py:7"],
+      "forbidden_refs": []
+    }
+  ]
+}
