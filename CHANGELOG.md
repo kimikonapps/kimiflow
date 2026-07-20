@@ -6,6 +6,25 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.9
+
+The bounded-recall integrity release: Kimiflow retrieves useful prior evidence within one shared context budget,
+keeps current project sources authoritative, and rejects stale or corrupted derived indexes safely.
+
+### Added
+
+- **Recall now has one global budget across every source:** Cross-source deduplication, provenance merging, a global
+  hit cap, and a frozen holdout evaluation prevent duplicated memory from crowding current evidence out of context.
+- **Semantic indexes are verifiably derived artifacts:** Exact source snapshots and a semantic seal cover postings,
+  document statistics, configuration, and schema so hidden index drift is detected before retrieval.
+
+### Changed
+
+- **Current code, tests, and specifications remain authoritative:** Memory is treated as bounded supporting evidence;
+  stale, corrupt, or unavailable indexes fall back safely instead of overriding the working tree.
+- **Index refresh preserves the last known-good state atomically:** Failed or incomplete rebuilds roll back without
+  exposing a partial corpus, while unavailable optional capabilities degrade without blocking the implementation loop.
+
 ## 0.2.8
 
 The autonomous execution release: Kimiflow clarifies product intent up front, proves implementation conformance,
