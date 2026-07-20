@@ -32,7 +32,7 @@ def _bullet_evidence(row):
     # jq: (.evidence // []) | .[0] // "NOT VERIFIED". Evidence is the sanitized
     # list[str] from rows.sanitize_evidence_json; empty -> NOT VERIFIED.
     evidence = row.get("evidence", [])
-    return str(evidence[0]) if evidence else "NOT VERIFIED"
+    return str(evidence[0]) if isinstance(evidence, list) and evidence else "NOT VERIFIED"
 
 
 def write_bounded_memory(root):
@@ -61,9 +61,11 @@ def write_bounded_memory(root):
     rows = store.read_jsonl(learnings)
     # jq to_entries + {_row_index, _usage_count}: index each row, look up its usage.
     entries = []
-    for index, row in enumerate(rows):
+    for index, row in enumerate(row for row in rows if isinstance(row, dict)):
         usage_entry = usage.get("learning:" + str(row.get("id", "")))
         use_count = usage_entry.get("use_count", 0) if isinstance(usage_entry, dict) else 0
+        if isinstance(use_count, bool) or not isinstance(use_count, (int, float)):
+            use_count = 0
         entries.append((index, use_count, row))
 
     iso = clock.iso_now()
@@ -123,7 +125,7 @@ def write_bounded_user_memory(root):
     iso = clock.iso_now()
     while True:
         selected = [
-            row for row in rows
+            row for row in rows if isinstance(row, dict)
             if row.get("status", "current") == "current"
             and row.get("sensitivity", "normal") != "security"
         ]

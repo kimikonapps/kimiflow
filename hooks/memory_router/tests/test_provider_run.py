@@ -266,9 +266,14 @@ class ProviderParityCase(unittest.TestCase):
         bc, bo, be = self._bash(rb, "sync", ["--write"])
         pc, po, pe = self._py(rp, "sync", ["--write"])
         self.assertEqual(bc, pc)
-        self.assertEqual(_norm(bo), _norm(po), "sync --write stdout")
-        for rel in (".kimiflow/project/VAULT-SYNC.md", ".kimiflow/project/VAULT-PROVIDER.json"):
-            self.assertEqual(_norm(self._read(rb, rel)), _norm(self._read(rp, rel)), rel)
+        bash_obj, python_obj = json.loads(_norm(bo)), json.loads(_norm(po))
+        self.assertEqual(python_obj["candidates"]["reason_counts"], {})
+        del python_obj["candidates"]["reason_counts"]
+        self.assertEqual(bash_obj, python_obj, "sync --write stdout except privacy metadata")
+        self.assertIn("six-field portable Capsule projection",
+                      self._read(rp, ".kimiflow/project/VAULT-SYNC.md"))
+        self.assertEqual(_norm(self._read(rb, ".kimiflow/project/VAULT-PROVIDER.json")),
+                         _norm(self._read(rp, ".kimiflow/project/VAULT-PROVIDER.json")))
 
     # markdown writers grounded directly via the dispatch-free lib (controlled handoff JSON),
     # so the non-empty candidates branch is exercised without candidate-survival fixtures.
@@ -284,25 +289,34 @@ class ProviderParityCase(unittest.TestCase):
             os.unlink(sp)
 
     def test_sync_markdown_writer_candidates(self):
+        long_summary = "bounded " * 40
         handoff = {
             "provider": {"type": "obsidian", "available": True,
                          "health": {"status": "connected_local_only"},
                          "auth": {"status": "unconfigured"}},
             "direct_write_ready": False,
             "candidates": {"count": 3, "exported_count": 2, "omitted_count": 1,
-                           "ids": ["learn_a", "learn_b"],
+                           "ids": ["cap_a", "cap_b"],
                            "rows": [
-                               {"topic": "router", "kind": "learning", "id": "learn_a",
-                                "summary": "line one\nline two", "evidence": ["RESEARCH.md:3"]},
-                               {"topic": None, "kind": None, "id": "learn_b",
-                                "summary": "x", "evidence": []}]},
+                               {"topic": "router", "kind": "learning", "capsule_id": "cap_a",
+                                "summary": long_summary, "confidence": "high",
+                                "last_verified": "2026-07-20"},
+                               {"topic": "general", "kind": "learned", "capsule_id": "cap_b",
+                                "summary": "x", "confidence": "medium",
+                                "last_verified": "2026-07-20"}]},
         }
-        rb, rp = self._fresh(), self._fresh()
-        bpath = os.path.join(rb, "SYNC.md")
+        rp = self._fresh()
         ppath = os.path.join(rp, "SYNC.md")
-        self._bash_writer("write_provider_sync_markdown", bpath, handoff)
         provider.write_provider_sync_markdown(ppath, handoff)
-        self.assertEqual(_norm(self._read(rb, "SYNC.md")), _norm(self._read(rp, "SYNC.md")))
+        rendered = self._read(rp, "SYNC.md")
+        self.assertIn("six-field portable Capsule projection", rendered)
+        self.assertIn("router · learning · cap_a", rendered)
+        self.assertIn("general · learned · cap_b", rendered)
+        self.assertIn(long_summary, rendered)
+        self.assertIn("confidence: high; last_verified: 2026-07-20", rendered)
+        self.assertIn("confidence: medium; last_verified: 2026-07-20", rendered)
+        self.assertNotIn("(evidence:", rendered.casefold())
+        self.assertNotIn("learn_a", rendered)
 
     def test_prefetch_markdown_writer(self):
         handoff = {

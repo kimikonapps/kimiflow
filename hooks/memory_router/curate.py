@@ -40,7 +40,8 @@ def repo_id(root):
 
 
 def _topic_key(row):
-    return _jq_or(row.get("topic"), "uncategorized")
+    topic = _jq_or(row.get("topic"), "uncategorized")
+    return topic if isinstance(topic, str) else "uncategorized"
 
 
 def _topics(learnings):
@@ -48,14 +49,15 @@ def _topics(learnings):
     # (sorted), value = the list of `.id` (null when missing). Missing file -> {}.
     if not os.path.isfile(learnings):
         return {}
-    current = [r for r in store.read_jsonl(learnings) if _jq_or(r.get("status"), "current") == "current"]
+    current = [r for r in store.read_jsonl(learnings)
+               if isinstance(r, dict) and _jq_or(r.get("status"), "current") == "current"]
     topics = {}
     for row in sorted(current, key=_topic_key):   # sort_by + group_by (stable, codepoint)
         topics.setdefault(_topic_key(row), []).append(row.get("id"))
     return topics
 
 
-def curate_json(root):
+def curate_json(root, allow_network=True):
     project = root + "/.kimiflow/project"
     memory = project + "/MEMORY.md"
     learnings = project + "/LEARNINGS.jsonl"
@@ -63,7 +65,7 @@ def curate_json(root):
     usage_file = project + "/MEMORY-USAGE.json"
     economics_file = project + "/MEMORY-ECONOMICS.jsonl"
 
-    status = status_mod.status_json(root)
+    status = status_mod.status_json(root, allow_network=allow_network)
     return {
         "schema_version": 1,
         "updated_at": clock.iso_now(),
@@ -80,6 +82,24 @@ def curate_json(root):
         "topics": _topics(learnings),
         "curation": status["curation"],
     }
+
+
+def _write_derivatives(root, out):
+    project = root + "/.kimiflow/project"
+    os.makedirs(project, exist_ok=True)
+    store.atomic_write(project + "/MEMORY-INDEX.json", contracts.dumps(out, pretty=True) + "\n")
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        try:
+            index_mod.run(["--root", root, "--write"])
+        except Exception:
+            pass
+
+
+def refresh(root, allow_network=True):
+    """Write local curated derivatives; callers may explicitly prohibit provider probes."""
+    out = curate_json(root, allow_network=allow_network)
+    _write_derivatives(root, out)
+    return out
 
 
 def run(argv):
@@ -107,16 +127,9 @@ def run(argv):
     out = curate_json(root)
 
     if write:
-        project = root + "/.kimiflow/project"
-        os.makedirs(project, exist_ok=True)
-        # Bash `jq . > index` writes the pretty form with a trailing newline.
-        store.atomic_write(project + "/MEMORY-INDEX.json", contracts.dumps(out, pretty=True) + "\n")
-        # Bash `cmd_index --write >/dev/null 2>&1 || true`: rebuild RECALL.sqlite, ignore output/errors.
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            try:
-                index_mod.run(["--root", root, "--write"])
-            except Exception:
-                pass
+        # Keep the public command byte-compatible; the internal lifecycle caller uses
+        # refresh(..., allow_network=False) to preserve its strict offline boundary.
+        _write_derivatives(root, out)
 
     contracts.json_print(out, pretty)
     return 0

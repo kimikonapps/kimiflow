@@ -186,8 +186,17 @@ grep -q 'frontend-quality-gate.sh' "$SKILL" && ok "Codex wrapper maps frontend q
 if [ -x "$ROOT/hooks/lsp-diagnostics.sh" ] && bash -n "$ROOT/hooks/lsp-diagnostics.sh" 2>/dev/null; then ok "local diagnostics helper ok"; else bad "local diagnostics helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-lsp-diagnostics.sh" ] && bash -n "$ROOT/hooks/test-lsp-diagnostics.sh" 2>/dev/null; then ok "local diagnostics test ok"; else bad "local diagnostics test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/memory-router.sh" ] && bash -n "$ROOT/hooks/memory-router.sh" 2>/dev/null; then ok "memory router helper ok"; else bad "memory router helper missing/not-exec/bad"; fi
+if grep -q 'renamex_np(RENAME_SWAP)' "$ROOT/COMPATIBILITY.md" \
+  && grep -q 'renameat2(RENAME_EXCHANGE)' "$ROOT/COMPATIBILITY.md" \
+  && grep -q 'bounded exchanges' "$ROOT/COMPATIBILITY.md"; then
+  ok "memory lifecycle native compatibility declared"
+else
+  bad "memory lifecycle native compatibility missing"
+fi
 if [ -f "$ROOT/hooks/memory_router/outcomes.py" ] \
   && [ -f "$ROOT/hooks/memory_router/attribution.py" ] \
+  && [ -f "$ROOT/hooks/memory_router/lifecycle.py" ] \
+  && [ -f "$ROOT/hooks/memory_router/capsule.py" ] \
   && "$ROOT/hooks/memory-router.sh" evaluate-run --help >/dev/null 2>&1 \
   && grep -q -- '--strategies' "$ROOT/phases/phase-2-understand.md" \
   && grep -q 'Strategy evidence:' "$ROOT/phases/phase-3-plan.md" \
@@ -196,10 +205,13 @@ if [ -f "$ROOT/hooks/memory_router/outcomes.py" ] \
   && grep -q 'Recall contradiction <rec_id>' "$ROOT/phases/phase-6-verify.md" \
   && grep -q 'recall_attribution' "$ROOT/hooks/memory_router/outcomes.py" \
   && grep -q 'test_end_to_end_recall_plan_verification_outcome_contract' "$ROOT/hooks/memory_router/tests/test_attribution.py" \
+  && grep -q '"lifecycle": _lifecycle.run' "$ROOT/hooks/memory_router/__main__.py" \
+  && grep -q '"capsule": _capsule.run' "$ROOT/hooks/memory_router/__main__.py" \
+  && grep -q 'portable_entry' "$ROOT/hooks/memory_router/provider.py" \
   && grep -q 'OUTCOME-EVALUATION.json' "$ROOT/phases/phase-7-review-commit.md"; then
-  ok "automatic strategy and verified recall outcome contract"
+  ok "automatic strategy, verified recall, and memory lifecycle contract"
 else
-  bad "automatic strategy or verified recall outcome contract incomplete"
+  bad "automatic strategy, verified recall, or memory lifecycle contract incomplete"
 fi
 if [ -x "$ROOT/hooks/test-memory-router-parity.sh" ] && bash -n "$ROOT/hooks/test-memory-router-parity.sh" 2>/dev/null; then ok "memory router test ok"; else bad "memory router test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/vault-mcp-setup.sh" ] && bash -n "$ROOT/hooks/vault-mcp-setup.sh" 2>/dev/null; then ok "vault MCP setup helper ok"; else bad "vault MCP setup helper missing/not-exec/bad"; fi
@@ -243,6 +255,9 @@ grep -q 'red-green-gate.sh' "$ROOT/reference.md" && ok "canonical red-green gate
 grep -q 'BUG-REPRO.md' "$ROOT/reference.md" && ok "canonical BUG-REPRO evidence documented" || bad "canonical BUG-REPRO evidence missing"
 grep -q 'lsp-diagnostics.sh' "$ROOT/reference.md" && ok "canonical local diagnostics helper documented" || bad "canonical local diagnostics helper missing"
 grep -q 'memory-router.sh' "$ROOT/reference.md" && ok "canonical memory router helper documented" || bad "canonical memory router helper missing"
+for term in PRIVACY-CAPSULE.json 'lifecycle --write' 'lifecycle --restore' 'capsule --write' 'six-field Privacy Capsule'; do
+  grep -q -- "$term" "$ROOT/reference.md" && ok "canonical memory lifecycle documented: $term" || bad "canonical memory lifecycle missing: $term"
+done
 grep -q 'active-run.sh' "$ROOT/reference.md" && ok "canonical active session helper documented" || bad "canonical active session helper missing"
 grep -q 'current-state-gate.sh' "$SKILL" && ok "Codex wrapper maps current-state gate helper" || bad "Codex wrapper missing current-state gate helper"
 grep -q 'discovery-gate.sh' "$SKILL" && ok "Codex wrapper maps discovery gate helper" || bad "Codex wrapper missing discovery gate helper"

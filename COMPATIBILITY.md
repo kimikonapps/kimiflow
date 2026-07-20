@@ -67,6 +67,12 @@ loop still runs.
 | `codex exec --json` + `codex exec resume <SESSION_ID>` (optional) | `hooks/kimiflow_core/runner.py` starts and autonomously continues the optional terminal runner in one owning Codex thread | **Load-bearing only for the optional terminal runner** — missing JSONL `thread.started`, changed resume syntax, or lost thread persistence fails closed with a resumable/error receipt; embedded Codex and Claude flows remain unaffected |
 | `codex exec --sandbox workspace-write` + config `approval_policy="never"` (optional) | bounds terminal-run writes to the project without routine approval prompts | **Load-bearing only for the optional terminal runner** — flag/config drift must fail closed and be updated before advertising autonomous terminal use; Kimiflow never falls back to unrestricted access |
 
+## Shared local runtime primitives
+
+| Primitive | Where kimiflow uses it | If it changes |
+|-----------|------------------------|---------------|
+| Same-filesystem atomic path exchange (`renamex_np(RENAME_SWAP)` on macOS or `renameat2(RENAME_EXCHANGE)` on Linux) | Reversible Memory Lifecycle compare/publish/restore for `LEARNINGS.jsonl` | **Load-bearing only for `lifecycle --write` / `--restore --write`** — an unavailable primitive returns a bounded nonzero refusal before mutation; preview, recall, record, Capsule export, and the rest of Kimiflow remain available. Conflict recovery uses only bounded exchanges, so the canonical path is never removed; a persistently racing or failing filesystem keeps the extra version as an explicit local recovery copy. The release smokes assert that this compatibility boundary stays declared. |
+
 ## Version-bump smoke checklist
 
 Run on every Claude Code or Codex upgrade (and at each kimiflow release):

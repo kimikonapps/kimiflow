@@ -1,12 +1,16 @@
+import contextlib
+import io
 import itertools
+import json
 import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
-from memory_router import contracts, store, writes
+from memory_router import contracts, lifecycle, store, writes
 
 
 def _rows(path):
@@ -254,6 +258,63 @@ class WriteCase(unittest.TestCase):
         self.assertEqual(rows[0]["status"], "superseded")
         self.assertEqual(rows[0]["superseded_by"], second)
         self.assertEqual(rows[1]["status"], "current")
+
+    def test_learning_writer_and_lifecycle_share_complete_transaction_lock(self):
+        path = self.learnings()
+        self.write_raw(path, json.dumps({
+            "id": "old", "kind": "pattern", "scope": "project", "topic": "old",
+            "summary": "old", "status": "current", "confidence": "low",
+            "last_verified": "2000-01-01", "evidence_fingerprints": [],
+        }) + "\n")
+        usage = os.path.join(self.root, ".kimiflow", "project", "MEMORY-USAGE.json")
+        self.write_raw(usage, '{"items":{}}\n')
+        entered = threading.Event()
+        release = threading.Event()
+        writer_errors = []
+        real_read = store.read_jsonl_with_lines
+
+        def paused_read(target):
+            result = real_read(target)
+            if target == path:
+                entered.set()
+                release.wait(2)
+            return result
+
+        def writer():
+            try:
+                writes.append_learning_row(
+                    self.root, "pattern", "project", "new", "new", [],
+                    "high", "normal", "current",
+                )
+            except Exception as exc:  # pragma: no cover - asserted below.
+                writer_errors.append(exc)
+
+        lifecycle_done = threading.Event()
+
+        def quarantine():
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()), \
+                    mock.patch("memory_router.lifecycle._refresh_derivatives"):
+                lifecycle.run(["--root", self.root, "--write"])
+            lifecycle_done.set()
+
+        with mock.patch("memory_router.writes.store.read_jsonl_with_lines",
+                        side_effect=paused_read):
+            writer_thread = threading.Thread(target=writer)
+            writer_thread.start()
+            self.assertTrue(entered.wait(1))
+            lifecycle_thread = threading.Thread(target=quarantine)
+            lifecycle_thread.start()
+            self.assertFalse(lifecycle_done.wait(0.1))
+            release.set()
+            writer_thread.join(2)
+            lifecycle_thread.join(2)
+
+        self.assertEqual(writer_errors, [])
+        self.assertTrue(lifecycle_done.is_set())
+        self.assertEqual([(row["id"], row["status"]) for row in _rows(path)], [
+            ("old", "quarantined"), ("learn_20260629_new_1000", "current"),
+        ])
 
 
 class SourceCommitCase(unittest.TestCase):

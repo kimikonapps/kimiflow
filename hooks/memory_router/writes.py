@@ -45,6 +45,16 @@ def _identity_match(row, kind, scope, topic, summary, evidence):
 
 def append_learning_row(root, kind, scope, topic, summary, evidence,
                         confidence, sensitivity, status):
+    learnings = paths.rows_path_for_scope(root, scope)
+    with store.path_lock(learnings):
+        return _append_learning_row_locked(
+            root, kind, scope, topic, summary, evidence,
+            confidence, sensitivity, status,
+        )
+
+
+def _append_learning_row_locked(root, kind, scope, topic, summary, evidence,
+                                confidence, sensitivity, status):
     project = os.path.join(root, ".kimiflow", "project")
     learnings = paths.rows_path_for_scope(root, scope)
     os.makedirs(project, exist_ok=True)

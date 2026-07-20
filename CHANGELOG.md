@@ -9,6 +9,15 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 - **Recall utility is now mechanically attributable:** Final bounded Recall hits receive deterministic,
   source- and content-sealed IDs. Plans declare only IDs that actually shaped a Decision, and terminal outcome
   evaluation classifies each applied hit as `helpful`, `neutral`, or `contradicted` without copying Recall text.
+- **Memory lifecycle is explainable and reversible:** A preview-first 0–5 utility view can quarantine only strictly
+  parsed, stale, provably unused, uniquely identified learnings; ambiguous usage and concurrent appends or atomic
+  replacements fail closed through an identity/mode-checked path exchange and bounded conflict re-exchange that
+  never removes the canonical path; unresolved filesystem races retain a recovery copy, unsupported exchange refuses
+  before mutation, and exact-evidence restore provides a fail-closed undo path.
+- **Cross-project handoff has one privacy boundary:** A local mode-0600 capsule and provider sync share the same
+  bounded six-field allowlist, omitting Unicode-equivalent local provenance, paths, evidence references, common
+  credential and JWT shapes (including common GitHub token prefixes), dotted/dotless e-mails, secrets, outside-tree
+  symlink evidence, and unsafe content.
 
 ### Changed
 
@@ -16,6 +25,8 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
   substring mentions; marker-free historical runs retain their previous heuristic.
 - **Attribution preserves autonomous safe closure:** Damaged contracts fail closed, while structurally valid
   `parked`, `aborted`, and `failed` runs remain neutral/inconclusive when Verification is incomplete.
+- **Low-value memory can leave active recall without deletion:** Quarantine preserves original JSONL structure and
+  refreshes local derived views; no autonomous delete, import, network transfer, or new persistence system is added.
 
 ## 0.2.9
 

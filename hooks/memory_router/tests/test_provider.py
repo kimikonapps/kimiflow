@@ -225,16 +225,26 @@ class SyncStatusCase(_RootCase):
         with _clean_env(), mock.patch.object(provider, "_http_probe", return_value=probe):
             return provider.sync_status_json(self.root, learnings, manifest_file)
 
+    def safe(self, rid, fp, **overrides):
+        row = {
+            "id": rid, "status": "current", "kind": "learned", "topic": "portable-memory",
+            "summary": "Prefer a bounded portable handoff.", "confidence": "high",
+            "sensitivity": "normal", "last_verified": "2026-07-20",
+            "evidence": ["src/a.py"], "evidence_fingerprints": fp,
+        }
+        row.update(overrides)
+        return row
+
     def test_pending_and_exclusions(self):
         fp = self.evidence("src/a.py")
         stale = [dict(fp[0], sha256="deadbeef", digest="deadbeef")]
         learnings = self.learnings([
-            {"id": "L1", "status": "current", "sensitivity": "normal", "evidence": ["src/a.py"], "evidence_fingerprints": fp},
-            {"id": "Lpriv", "status": "current", "sensitivity": "private", "evidence": ["src/a.py"], "evidence_fingerprints": fp},
-            {"id": "Lnoev", "status": "current", "evidence": []},
-            {"id": "Lnv", "status": "current", "evidence": ["NOT VERIFIED"], "evidence_fingerprints": fp},
-            {"id": "Lstale", "status": "current", "evidence": ["src/a.py"], "evidence_fingerprints": stale},
-            {"id": "Larch", "status": "archived", "evidence": ["src/a.py"], "evidence_fingerprints": fp},
+            self.safe("L1", fp),
+            self.safe("Lpriv", fp, sensitivity="private"),
+            self.safe("Lnoev", fp, evidence=[]),
+            self.safe("Lnv", fp, evidence=["NOT VERIFIED"]),
+            self.safe("Lstale", stale),
+            self.safe("Larch", fp, status="archived"),
         ])
         manifest = self.manifest(self.AVAIL)
         s = self.sync(learnings, manifest)
@@ -243,18 +253,28 @@ class SyncStatusCase(_RootCase):
 
     def test_synced_id_excluded_current(self):
         fp = self.evidence("src/a.py")
-        learnings = self.learnings([{"id": "L1", "status": "current", "evidence": ["src/a.py"], "evidence_fingerprints": fp}])
+        learnings = self.learnings([self.safe("L1", fp)])
         manifest = self.manifest(dict(self.AVAIL, synced_learning_ids=["L1"]))
         self.assertEqual(self.sync(learnings, manifest)["status"], "current")
 
     def test_unavailable_still_counts_exportable(self):
         fp = self.evidence("src/a.py")
-        learnings = self.learnings([{"id": "L1", "status": "current", "evidence": ["src/a.py"], "evidence_fingerprints": fp}])
+        learnings = self.learnings([self.safe("L1", fp)])
         s = self.sync(learnings, self.missing("nope.json"))   # no manifest -> detection probes -> None -> unavailable
         self.assertEqual((s["status"], s["available"], s["pending_count"], s["exportable_count"]), ("provider_unavailable", False, 0, 1))
 
     def test_provider_sync_uses_portable_capsule_rows(self):
         fp = self.evidence("src/a.py")
+        outside = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
+        outside_path = os.path.join(outside, "proof.py")
+        with open(outside_path, "w", encoding="utf-8") as handle:
+            handle.write("outside\n")
+        linked_ref = "src/linked.py"
+        os.symlink(outside_path, os.path.join(self.root, linked_ref))
+        from memory_router import rows
+        linked_fp = rows.evidence_fingerprints_json(self.root, [linked_ref])
+        linked_fp_line = rows.evidence_fingerprints_json(self.root, [linked_ref + ":1"])
         safe = {
             "id": "local-source-id", "status": "current", "kind": "learned",
             "topic": "portable-memory", "summary": "Prefer a bounded portable handoff.",
@@ -262,7 +282,50 @@ class SyncStatusCase(_RootCase):
             "evidence": ["src/a.py"], "evidence_fingerprints": fp,
         }
         unsafe = dict(safe, id="unsafe-local-id", summary="Use %s metadata." % os.path.basename(self.root))
-        self.learnings([safe, unsafe])
+        unicode_domains = [
+            dict(safe, id="unicode-domain-%d" % index, summary="See %s for details." % domain)
+            for index, domain in enumerate((
+                "example。com", "example．com", "example｡com",
+                "例子。测试。", "例子．测试．", "例子｡测试｡", "例子.测试…",
+            ))
+        ]
+        unicode_emails = [
+            dict(safe, id="unicode-email-%d" % index, summary="Contact dev@%s" % domain)
+            for index, domain in enumerate((
+                "example。com", "example．com", "example｡com",
+                "例子。测试。", "例子．测试．", "例子｡测试｡", "例子.测试…",
+            ))
+        ]
+        privacy_rows = [
+            dict(safe, id="dotless-email", summary="Contact alice@corp"),
+            dict(safe, id="fullwidth-email", summary="Contact alice＠corp"),
+            dict(safe, id="unicode-dotless-email", summary="Contact dev@公司"),
+            dict(safe, id="fullwidth-url", summary="Open http：／／localhost：3000"),
+            dict(safe, id="unicode-path", summary="Read src/私密.py before deciding."),
+            dict(safe, id="bearer-secret", summary="Bearer " + "B" * 40),
+            dict(safe, id="github-oauth", summary="gho_" + "A" * 36),
+            dict(safe, id="github-user", summary="ghu_" + "A" * 36),
+            dict(safe, id="github-server", summary="ghs_" + "A" * 36),
+            dict(safe, id="github-refresh", summary="ghr_" + "A" * 36),
+            dict(safe, id="jwt-secret", summary=(
+                "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+                "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkFsaWNlIiwiaWF0IjoxNTE2MjM5MDIyfQ."
+                "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+            )),
+            dict(safe, id="jwt-short-payload", summary=(
+                "Token eyJhbGciOiJIUzI1NiJ9.e30."
+                "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+            )),
+            dict(safe, id="split-secret", topic="sk-proj-AAAAAAAAAAAA", summary="A" * 40),
+            dict(safe, id="split-domain", topic="example", summary=".com reference"),
+            dict(safe, id="linked-evidence", evidence=[linked_ref],
+                 evidence_fingerprints=linked_fp),
+            dict(safe, id="linked-evidence-line", evidence=[linked_ref + ":1"],
+                 evidence_fingerprints=linked_fp_line),
+            dict(safe, id="unicode-provenance", summary="Reuse cafe\u0301 safely."),
+        ]
+        privacy_rows[-1]["id"] = "café"
+        self.learnings([safe, unsafe] + unicode_domains + unicode_emails + privacy_rows)
         self.manifest(self.AVAIL)
         output = io.StringIO()
         with _clean_env(), mock.patch.object(provider, "_http_probe", return_value=(None, "")), \
@@ -273,12 +336,59 @@ class SyncStatusCase(_RootCase):
             handoff = handle.read()
         self.assertIn("Prefer a bounded portable handoff.", handoff)
         self.assertIn("cap_", handoff)
+        self.assertIn("confidence: high", handoff)
+        self.assertIn("last_verified: 2026-07-20", handoff)
         self.assertNotIn("local-source-id", handoff)
         self.assertNotIn("unsafe-local-id", handoff)
+        self.assertNotIn("unicode-domain-", handoff)
+        self.assertNotIn("unicode-email-", handoff)
+        self.assertNotIn("alice@corp", handoff)
+        self.assertNotIn("alice＠corp", handoff)
+        self.assertNotIn("dev@公司", handoff)
+        self.assertNotIn("src/私密.py", handoff)
+        self.assertNotIn("Bearer", handoff)
+        self.assertNotIn("gho_", handoff)
+        self.assertNotIn("ghu_", handoff)
+        self.assertNotIn("ghs_", handoff)
+        self.assertNotIn("ghr_", handoff)
+        self.assertNotIn("eyJhbGciOiJIUzI1NiI", handoff)
+        self.assertNotIn("eyJhbGciOiJIUzI1NiJ9.e30", handoff)
+        self.assertNotIn("cafe\u0301", handoff)
         self.assertNotIn("src/a.py", handoff)
         manifest = provider.manifest_json(os.path.join(self.project, "VAULT-PROVIDER.json"))
         self.assertEqual(manifest["synced_learning_ids"], ["local-source-id"])
         self.assertEqual(result["candidates"]["exported_count"], 1)
+
+    def test_provider_sync_rejects_duplicate_key_source_row(self):
+        fp = self.evidence("src/a.py")
+        row = self.safe("ambiguous", fp, sensitivity="private")
+        raw = json.dumps(row)[:-1] + ',"sensitivity":"normal"}'
+        with open(os.path.join(self.project, "LEARNINGS.jsonl"), "w", encoding="utf-8") as handle:
+            handle.write(raw + "\n")
+        self.manifest(self.AVAIL)
+        output = io.StringIO()
+        with _clean_env(), mock.patch.object(provider, "_http_probe", return_value=(None, "")), \
+                contextlib.redirect_stdout(output):
+            self.assertEqual(provider.run(["sync", "--root", self.root, "--write"]), 0)
+        result = json.loads(output.getvalue())
+        manifest = provider.manifest_json(os.path.join(self.project, "VAULT-PROVIDER.json"))
+        self.assertEqual(result["candidates"]["exported_count"], 0)
+        self.assertEqual(manifest.get("synced_learning_ids", []), [])
+
+    def test_provider_sync_refuses_symlinked_project_parent(self):
+        fp = self.evidence("src/a.py")
+        outside = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
+        shutil.rmtree(self.project)
+        os.symlink(outside, self.project)
+        with open(os.path.join(outside, "LEARNINGS.jsonl"), "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(self.safe("outside", fp)) + "\n")
+        with open(os.path.join(outside, "VAULT-PROVIDER.json"), "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(self.AVAIL))
+        with _clean_env(), contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(provider.run(["sync", "--root", self.root, "--write"]), 1)
+        self.assertFalse(os.path.exists(os.path.join(outside, "VAULT-SYNC.md")))
 
 
 class VaultStatusCase(_RootCase):

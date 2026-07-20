@@ -227,6 +227,16 @@ Final hits also receive stable local IDs. Kimiflow records an ID as used only wh
 plan decision, then links it to verification and classifies it `helpful`, `neutral`, or `contradicted` in
 the existing outcome artifact. This adds no external telemetry, copied recall text, or user confirmation.
 
+Memory maintenance is preview-first and reversible. `memory-router.sh lifecycle` explains a bounded
+0–5 utility score; `lifecycle --write` quarantines only strictly parsed stale rows that are provably unused with
+a unique ID. An atomic path exchange verifies displaced source identity/mode and the installed candidate; bounded
+re-exchanges promote a later writer without ever removing the canonical path, while an unresolved race retains an
+explicit local recovery copy. Unsupported native exchange fails closed before mutation. Then
+`lifecycle --restore <id> --write` restores one row only while its evidence is still exact. For optional
+cross-project handoff, `capsule --write` creates a mode-0600 local privacy capsule containing at most 20
+fresh, allowlisted six-field projections. Vault sync uses the same projection and never exports source IDs,
+paths, evidence references, credential or JWT shapes, dotted/dotless emails, private/security rows, or unsafe content.
+
 An Obsidian Vault is optional. Without it, project-local memory and every quality gate continue to
 work. With authenticated Vault MCP tools, Kimiflow can recall and export curated, non-private
 cross-project learning. API keys are never stored in `.kimiflow/`.

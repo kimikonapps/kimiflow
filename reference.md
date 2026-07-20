@@ -1067,6 +1067,8 @@ memory-router.sh review-run --run <path> [--write] [--skip <reason>]
 memory-router.sh verify-run --run <path>
 memory-router.sh evaluate-run --run <path> --terminal <done|failed|aborted|parked> [--write]
 memory-router.sh curate [--write]
+memory-router.sh lifecycle [--write] [--restore <learning-id>]
+memory-router.sh capsule [--write]
 memory-router.sh index [--write]
 memory-router.sh consolidate [--write]
 memory-router.sh propose [--write] [--approve <id>] [--reject <id>] [--reason <why>] [--apply]
@@ -1177,6 +1179,35 @@ file paths, Vault contents, or raw identifiers. `metrics --global` prints only t
 `metrics --global-purge` deletes the local global JSONL. `curate --write` folds these into `MEMORY-INDEX.json`
 with lifecycle data (stale/cold rows, the `KIMIFLOW_LEARNING_STALE_AFTER_DAYS` window).
 
+**Explainable memory lifecycle:** `lifecycle` is a bounded preview of current learning utility. Each row receives
+0–5 points: up to two for observed use, one for freshness, one for stored-current evidence, and one for
+medium/high confidence. `lifecycle --write` changes only strictly parsed current rows that are both stale and
+provably unused and whose
+non-empty ID is unique in the complete JSONL file; it marks them `quarantined`, keeps every unrelated byte-line
+and line terminator intact, refuses when Usage state is ambiguous/corrupt, and accepts a rewrite only when an
+atomic path exchange both displaces the exact source identity, mode and bytes and leaves the pinned Candidate installed.
+On conflict it performs bounded identity-checked re-exchanges: a later writer is promoted, the canonical path always
+exists, and persistent races or filesystem errors retain the extra version as an explicit local recovery copy.
+Unavailable exchange support refuses before publication rather than falling back to a weaker rewrite,
+then refreshes local derivatives without provider/network probes. It processes every eligible row while returning at
+most 20 rows/IDs per result array plus total/omitted counts. It never deletes or archives data. `lifecycle --restore <id>` previews one restoration;
+adding `--write` restores exactly one quarantined row only when its evidence fingerprints still match current
+repo evidence. Missing, duplicated, non-quarantined, or drifted IDs fail closed without mutation.
+
+**Privacy Capsule / cross-project boundary:** `capsule` previews, and `capsule --write` atomically writes mode-0600
+`.kimiflow/project/PRIVACY-CAPSULE.json`. The export is capped at 20 rows and each portable row contains exactly
+`capsule_id`, `kind`, `topic`, `summary`, `confidence`, and `last_verified`. `capsule_id` is a deterministic
+content-only SHA-256 identity. Rows must be current, normal/public, medium/high-confidence, freshly evidenced,
+have a non-empty local source ID and valid calendar date, and pass strict field and content allowlists.
+Controls/hidden Unicode, prompt injection (including cross-field splits), secrets, common bearer/provider
+credential shapes (including common GitHub token prefixes) and three-segment JWT shapes, URLs, dotted or dotless-domain emails,
+paths, source learning IDs, the workspace basename, evidence references, and private/security material are
+rejected; provenance comparisons use Unicode normalization plus case-folding. Output reports aggregate omission
+reasons only. This command performs no network or external write.
+Provider sync consumes the same portable projection; its local manifest may retain source IDs solely to avoid
+resending, while `VAULT-SYNC.md` exposes only capsule IDs and portable fields. Export remains an explicit,
+reviewable handoff rather than an automatic cross-project import.
+
 **Local FTS5 recall:** `memory-router.sh index --write` builds `.kimiflow/project/RECALL.sqlite` when SQLite
 FTS5 is present; `curate --write`/`review-run --write` refresh it. The database is a derived cache carrying an
 application schema version and a SHA-256 fingerprint of every indexed local source. Read-only recall fails
@@ -1204,9 +1235,9 @@ fails; a missing optional index remains optional.
   `VAULT-PROVIDER.json` (local URL + detection metadata, **never a key or auth material**). `provider configure
   --type obsidian --available true --path <vault>` is the manual fallback.
 - `provider prefetch --query "<task>" --write` → bounded `VAULT-PREFETCH.md` before research. `provider sync
-  --write` → `VAULT-SYNC.md`, a bounded handoff of **only current, non-private, non-security** learnings with
-  freshly verified repo-relative evidence; exports at most `${KIMIFLOW_PROVIDER_SYNC_MAX:-20}` candidates per
-  run, records only exported IDs, leaves the rest pending.
+  --write` → `VAULT-SYNC.md`, a bounded handoff using the same fail-closed six-field Privacy Capsule projection;
+  exports at most `${KIMIFLOW_PROVIDER_SYNC_MAX:-20}` candidates per run, records only source IDs locally after
+  export, and leaves the rest pending.
 
 The router **never writes external Vault notes directly** — sync/write is an explicit handoff — and does not
 patch skills.

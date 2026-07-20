@@ -17,7 +17,7 @@ def _budget(env_name, default):
     return json.loads(os.environ.get(env_name) or default)
 
 
-def status_json(root):
+def status_json(root, allow_network=True):
     project = root + "/.kimiflow/project"
     memory = project + "/MEMORY.md"
     learnings = project + "/LEARNINGS.jsonl"
@@ -62,9 +62,11 @@ def status_json(root):
     global_efficiency_json = summaries.global_efficiency_summary_json()
     lifecycle_json = summaries.learning_lifecycle_json(learnings, usage_file)
     usefulness_json = summaries.learning_usefulness_json(learnings, usage_file)
-    provider_json = provider.status_json(provider_manifest)
-    provider_sync_json = provider.sync_status_json(root, learnings, provider_manifest)
-    vault_json = provider.vault_status_json(index, provider_manifest)
+    provider_json = provider.status_json(provider_manifest, allow_network=allow_network)
+    provider_sync_json = provider.sync_status_json(
+        root, learnings, provider_manifest, allow_network=allow_network)
+    vault_json = provider.vault_status_json(
+        index, provider_manifest, allow_network=allow_network)
 
     health = provider_json.get("health", {})
     reasons = []

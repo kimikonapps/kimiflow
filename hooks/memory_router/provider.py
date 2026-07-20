@@ -11,7 +11,7 @@ import ssl
 import urllib.error
 import urllib.request
 
-from . import clock, contracts, rows, store
+from . import capsule, clock, contracts, rows, store
 from .cli import die, resolve_root, usage
 
 _PROVIDER_PATH = ".kimiflow/project/VAULT-PROVIDER.json"
@@ -165,13 +165,25 @@ def _detection_urls():
     return (raw if raw != "" else _DEFAULT_URLS).split()
 
 
-def detection_json():
+def detection_json(allow_network=True):
     # Bash provider_detection_json (733-803): probes the local Obsidian Local REST API.
     # The Bash `command -v curl` guard is unreachable here (urllib is always available),
     # so the port always probes (spec 12, generalizing the jq/sqlite stdlib rows).
     timeout = _detect_timeout()
     raw_urls = _detection_urls()
     checked = [_strip_trailing_slash(u) for u in raw_urls]
+
+    if not allow_network:
+        return {
+            "status": "not_checked",
+            "available": False,
+            "type": "obsidian",
+            "url": "",
+            "checked_urls": [],
+            "reason": "offline",
+            "direct_write_requires_token": True,
+            "manifest": None,
+        }
 
     for url in raw_urls:
         normalized = _strip_trailing_slash(url)
@@ -245,7 +257,7 @@ def _auth_override(url, authenticated, hint):
     }
 
 
-def auth_json(manifest, detection, available, configured):
+def auth_json(manifest, detection, available, configured, allow_network=True):
     # Bash provider_auth_json (1000-1196): env override -> MCP -> env API token (loopback
     # HTTP probe) -> unauthenticated. The token probe targets only a normalized loopback
     # origin so the bearer token is never sent off-host.
@@ -302,6 +314,9 @@ def auth_json(manifest, detection, available, configured):
             status = "token_unverified"
             probe_blocked_reason = "non_loopback_url"
             url = ""
+        elif not allow_network:
+            status = "token_unverified"
+            probe_blocked_reason = "offline"
         else:
             url = normalized   # normalize succeeded -> canonical loopback origin
             if "\n" in token or "\r" in token:
@@ -324,6 +339,8 @@ def auth_json(manifest, detection, available, configured):
             hint = "API key is present, but no local Obsidian URL is configured or detected."
         elif probe_blocked_reason == "multiline_token":
             hint = "API key is present but was not probed because multiline tokens are rejected."
+        elif probe_blocked_reason == "offline":
+            hint = "API key is present but was not probed during an offline local refresh."
         elif authenticated:
             hint = "API key is available via environment and validated against the local Obsidian API."
         elif status == "auth_failed":
@@ -377,7 +394,7 @@ def direct_search_ready(auth):
     return auth.get("source") == "mcp"
 
 
-def status_json(manifest_file):
+def status_json(manifest_file, allow_network=True):
     # Bash provider_status_json (1197-1292): composes manifest + detection + auth into the
     # provider capability/health view consumed by status_json and provider_sync_status_json.
     manifest = manifest_json(manifest_file)
@@ -397,13 +414,13 @@ def status_json(manifest_file):
                 "manifest": None,
             }
     else:
-        detection = detection_json()
+        detection = detection_json(allow_network=allow_network)
 
     available = manifest.get("available") is True
     if (os.environ.get("KIMIFLOW_VAULT_AVAILABLE") or "") in _TRUTHY:
         available = True
 
-    auth = auth_json(manifest, detection, available, configured)
+    auth = auth_json(manifest, detection, available, configured, allow_network=allow_network)
     search_ready = direct_search_ready(auth)
     write_ready = direct_search_ready(auth)  # Bash uses the identical `.source == "mcp"`.
 
@@ -484,7 +501,7 @@ def _sync_base_candidates(learnings, manifest):
     if not isinstance(synced, list):
         synced = []
     out = []
-    for row in store.read_jsonl(learnings):
+    for row in store.read_jsonl_objects_strict(learnings):
         if _jq_or(row.get("status"), "current") != "current":
             continue
         sensitivity = _jq_or(row.get("sensitivity"), "normal")
@@ -520,15 +537,16 @@ def _sync_candidates(root, learnings, manifest_file):
         current = rows.evidence_fingerprints_json(root, evidence)
         # Bash compares the two `jq -c` strings; contracts.dumps is the order-preserving
         # compact equivalent.
-        if contracts.dumps(stored) == contracts.dumps(current):
+        if contracts.dumps(stored) == contracts.dumps(current) \
+                and capsule.portable_entry(root, row)[0] is not None:
             fresh.append(row)
     return fresh
 
 
-def sync_status_json(root, learnings, manifest_file):
+def sync_status_json(root, learnings, manifest_file, allow_network=True):
     # Bash provider_sync_status_json (1325-1351): provider status + the count/ids of
     # learnings that are exportable to the vault and not yet synced.
-    provider = status_json(manifest_file)
+    provider = status_json(manifest_file, allow_network=allow_network)
     candidates = _sync_candidates(root, learnings, manifest_file)
     available = provider.get("available") is True
     detection_available = isinstance(provider.get("detection"), dict) and provider["detection"].get("available") is True
@@ -558,7 +576,7 @@ def sync_status_json(root, learnings, manifest_file):
     }
 
 
-def vault_status_json(index, provider_manifest=""):
+def vault_status_json(index, provider_manifest="", allow_network=True):
     # Bash vault_status_json (1353-1397): merges env / provider / MEMORY-INDEX.json vault
     # availability and the last recall/write timestamps (provider wins, index fills nulls).
     available = (os.environ.get("KIMIFLOW_VAULT_AVAILABLE") or "") in _TRUTHY
@@ -567,7 +585,7 @@ def vault_status_json(index, provider_manifest=""):
     provider = None
 
     if provider_manifest:
-        provider = status_json(provider_manifest)
+        provider = status_json(provider_manifest, allow_network=allow_network)
         if provider.get("available") is True:
             available = True
         last_recall = _jq_or(provider.get("last_prefetch_at"), None)
@@ -758,8 +776,8 @@ def write_provider_sync_markdown(path, obj):
     parts.append("Policy: review this bounded handoff before writing to the Vault. Direct "
                  "external writes require an authenticated MCP write tool in the current "
                  "session; a local API key may validate auth but does not by itself provide a "
-                 "write tool. This handoff includes only current, non-private, non-security "
-                 "learnings with verified repo-relative evidence. Remaining candidates stay "
+                 "write tool. This handoff includes only the six-field portable Capsule "
+                 "projection after fresh-evidence and local-provenance filtering. Remaining candidates stay "
                  "pending for a later sync.\n\n")
     if exported == 0:
         parts.append("No new publish-safe learning candidates are pending for Vault sync.\n")
@@ -768,14 +786,12 @@ def write_provider_sync_markdown(path, obj):
         rows_list = _nav(obj, "candidates", "rows")
         rows_list = rows_list if isinstance(rows_list, list) else []
         for row in rows_list:
-            evidence = row.get("evidence")
-            evidence = evidence if isinstance(evidence, list) else []
-            first_evidence = _jq_or(evidence[0] if evidence else None, "NOT VERIFIED")
-            summary = str(_jq_or(row.get("summary"), "")).replace("\n", " ")[:260]
+            summary = str(_jq_or(row.get("summary"), "")).replace("\n", " ")
             parts.append("- [" + _jq_or(row.get("topic"), "uncategorized") + " \u00b7 "
                          + _jq_or(row.get("kind"), "learning") + " \u00b7 "
-                         + _jq_or(row.get("id"), "") + "] " + summary
-                         + " (evidence: " + str(first_evidence) + ")\n")
+                         + _jq_or(row.get("capsule_id"), "") + "] " + summary
+                         + " (confidence: " + _jq_or(row.get("confidence"), "")
+                         + "; last_verified: " + _jq_or(row.get("last_verified"), "") + ")\n")
     store.atomic_write(path, "".join(parts))
 
 
@@ -840,6 +856,13 @@ def run(argv):
     project = root + "/.kimiflow/project"
     manifest = project + "/VAULT-PROVIDER.json"
     now = clock.iso_now()
+
+    if write or action in ("connect", "configure"):
+        try:
+            store.require_local_path(root, project)
+            store.require_local_path(root, manifest)
+        except ValueError as exc:
+            return die("provider: %s" % exc, 1)
 
     if action == "status":
         out = status_json(manifest)
@@ -967,8 +990,19 @@ def run(argv):
         else:
             sync_max = _sync_max()
             candidates = _sync_candidates(root, project + "/LEARNINGS.jsonl", manifest)
-            export_candidates = candidates[:sync_max]
-            omitted = len(candidates) - len(export_candidates)
+            portable = []
+            exported_sources = []
+            reason_counts = {}
+            for source in candidates:
+                entry, reason = capsule.portable_entry(root, source)
+                if reason is not None:
+                    reason_counts[reason] = reason_counts.get(reason, 0) + 1
+                elif len(portable) >= sync_max:
+                    reason_counts["limit"] = reason_counts.get("limit", 0) + 1
+                else:
+                    portable.append(entry)
+                    exported_sources.append(source)
+            omitted = len(candidates) - len(portable)
             out = {
                 "schema_version": 1,
                 "status": "sync_handoff",
@@ -978,18 +1012,19 @@ def run(argv):
                 "review_required": True,
                 "candidates": {
                     "count": len(candidates),
-                    "exported_count": len(export_candidates),
+                    "exported_count": len(portable),
                     "omitted_count": omitted,
-                    "ids": [c.get("id") for c in export_candidates],
+                    "ids": [c.get("capsule_id") for c in portable],
+                    "reason_counts": reason_counts,
                 },
                 "written": False,
             }
             if write:
                 os.makedirs(project, exist_ok=True)
                 handoff = dict(out)
-                handoff["candidates"] = dict(out["candidates"], rows=export_candidates)
+                handoff["candidates"] = dict(out["candidates"], rows=portable)
                 write_provider_sync_markdown(sync_path, handoff)
-                new_ids = [c.get("id") for c in export_candidates]
+                new_ids = [c.get("id") for c in exported_sources]
                 updated = manifest_json(manifest)
                 existing_ids = _jq_or(updated.get("synced_learning_ids"), [])
                 existing_ids = existing_ids if isinstance(existing_ids, list) else []

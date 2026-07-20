@@ -80,6 +80,14 @@ class CurateRunCase(unittest.TestCase):
         self.assertIn('  "schema_version": 1', text)     # pretty 2-space indent
         self.assertEqual(json.loads(text)["topics"], {"a": ["L1"]})
 
+    def test_write_composes_once_and_persists_the_stdout_snapshot(self):
+        with mock.patch.object(curate, "curate_json", wraps=curate.curate_json) as compose:
+            code, output = self.run_curate(["--write"])
+        self.assertEqual(code, 0)
+        self.assertEqual(compose.call_count, 1)
+        with open(os.path.join(self.project, "MEMORY-INDEX.json"), encoding="utf-8") as handle:
+            self.assertEqual(json.loads(output), json.load(handle))
+
     def test_unknown_arg_exit_2(self):
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):

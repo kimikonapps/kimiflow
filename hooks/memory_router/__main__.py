@@ -23,10 +23,12 @@ def main(argv):
 
 
 from . import classify as _classify
+from . import capsule as _capsule
 from . import consolidate as _consolidate
 from . import curate as _curate
 from . import history as _history
 from . import index as _index
+from . import lifecycle as _lifecycle
 from . import metrics as _metrics
 from . import outcomes as _outcomes
 from . import propose as _propose
@@ -39,11 +41,13 @@ from . import status as _status
 from . import standards as _standards
 
 COMMANDS = {
+    "capsule": _capsule.run,
     "classify": _classify.run,
     "consolidate": _consolidate.run,
     "curate": _curate.run,
     "history": _history.run,
     "index": _index.run,
+    "lifecycle": _lifecycle.run,
     "metrics": _metrics.run,
     "evaluate-run": _outcomes.run,
     "propose": _propose.run,

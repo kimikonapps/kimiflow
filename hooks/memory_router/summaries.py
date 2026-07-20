@@ -6,6 +6,7 @@ summary dict; serialization stays at the contracts.dumps boundary in the calling
 subcommand."""
 import math
 import os
+from datetime import date
 
 from . import clock, global_metrics, store
 
@@ -13,6 +14,7 @@ _PROPOSALS_PATH = ".kimiflow/project/PROPOSALS.jsonl"
 _USAGE_PATH = ".kimiflow/project/MEMORY-USAGE.json"
 _ECONOMICS_PATH = ".kimiflow/project/MEMORY-ECONOMICS.jsonl"
 _DEFAULT_AVOIDED_PER_HIT = 1200
+_MAX_UTILITY_USE_COUNT = 999999999
 _GLOBAL_EFFICIENCY_FILE = "token-economics.jsonl"
 
 
@@ -54,11 +56,13 @@ def read_jsonl_summary(path):
     if not os.path.isfile(path):
         rows = []
     else:
-        rows = store.read_jsonl(path)
+        rows = [row for row in store.read_jsonl(path) if isinstance(row, dict)]
 
     counts = {}
     for row in rows:
         topic = _jq_or(row.get("topic"), "uncategorized")
+        if not isinstance(topic, str):
+            topic = "uncategorized"
         counts[topic] = counts.get(topic, 0) + 1
     by_topic = {key: counts[key] for key in sorted(counts)}  # jq sort_by + group_by
 
@@ -98,10 +102,12 @@ def proposal_summary_json(path):
             "by_type": {},
         }
 
-    rows = store.read_jsonl(path)
+    rows = [row for row in store.read_jsonl(path) if isinstance(row, dict)]
     by_type = {}
     for row in rows:
         kind = _jq_or(row.get("type"), "unknown")
+        if not isinstance(kind, str):
+            kind = "unknown"
         by_type[kind] = by_type.get(kind, 0) + 1
 
     def status_is(value, default=""):
@@ -554,15 +560,50 @@ def _usage_items(usage_file):
     return items if isinstance(items, dict) else {}
 
 
+def _strict_usage_items(usage_file):
+    if not os.path.exists(usage_file):
+        return {}, True
+    try:
+        with open(usage_file, "r", encoding="utf-8") as handle:
+            data = store.parse_json_object_strict(handle.read())
+    except (OSError, UnicodeDecodeError):
+        return {}, False
+    if data is None:
+        return {}, False
+    items = data.get("items", {})
+    return (items, True) if isinstance(items, dict) else ({}, False)
+
+
+def _utility_use_count(entry, present):
+    if not present:
+        return 0, False, True
+    if not isinstance(entry, dict) or "use_count" not in entry:
+        return 0, False, False
+    value = entry.get("use_count")
+    if isinstance(value, bool):
+        return 0, False, False
+    if isinstance(value, int) and value >= 0:
+        return min(value, _MAX_UTILITY_USE_COUNT), value > _MAX_UTILITY_USE_COUNT, True
+    if isinstance(value, str):
+        digits = value.strip()
+        if digits and all(char in "0123456789" for char in digits):
+            limit = str(_MAX_UTILITY_USE_COUNT)
+            if len(digits) > len(limit) or (len(digits) == len(limit) and digits > limit):
+                return _MAX_UTILITY_USE_COUNT, True, True
+            return int(digits), False, True
+    return 0, False, False
+
+
 def _current_rows(learnings):
     # jq: split lines | fromjson?//empty | select((.status // "current") == "current").
     return [r for r in store.read_jsonl(learnings)
-            if _jq_or(r.get("status"), "current") == "current"]
+            if isinstance(r, dict) and _jq_or(r.get("status"), "current") == "current"]
 
 
 def _learning_id(row):
     # jq `.id // ""` (null/false/missing -> "").
-    return _jq_or(row.get("id"), "")
+    value = _jq_or(row.get("id"), "")
+    return value if isinstance(value, str) else ""
 
 
 def _last_verified_is_stale(row, cutoff):
@@ -578,6 +619,21 @@ def _last_verified_is_stale(row, cutoff):
     if isinstance(value, bool) or isinstance(value, (int, float)):
         return True
     return False
+
+
+def _verified_date_valid(row):
+    value = row.get("last_verified")
+    if not isinstance(value, str) or len(value) != 10:
+        return False
+    try:
+        return date.fromisoformat(value).isoformat() == value
+    except ValueError:
+        return False
+
+
+def learning_is_stale(row):
+    """Return the shared lifecycle-staleness decision for one learning row."""
+    return _last_verified_is_stale(row, clock.date_days_ago(_learning_stale_after()))
 
 
 def learning_lifecycle_json(learnings, usage_file):
@@ -689,3 +745,62 @@ def learning_usefulness_json(learnings, usage_file):
         "compress_candidates": tier(compress),
         "basis": "exclusive_tiers_current_rows; stale rows are never promote candidates",
     }
+
+
+def learning_utility_rows(learnings, usage_file, max_rows=20):
+    """Return a bounded, explainable utility view of current learning rows.
+
+    The five points are intentionally simple: up to two for observed use, and one
+    each for freshness, current stored evidence, and medium/high confidence.
+    """
+    cutoff = clock.date_days_ago(_learning_stale_after())
+    usage, usage_file_valid = _strict_usage_items(usage_file)
+    result = []
+    for row in store.read_jsonl_objects_strict(learnings):
+        if _jq_or(row.get("status"), "current") != "current":
+            continue
+        rid = _learning_id(row)
+        if len(rid) > 128:
+            rid = ""
+        key = "learning:" + rid
+        present = key in usage
+        use_count, use_count_capped, entry_valid = _utility_use_count(
+            usage.get(key), present
+        )
+        usage_valid = usage_file_valid and entry_valid
+        use_points = 2 if use_count >= 2 else (1 if use_count >= 1 else 0)
+        verified_valid = _verified_date_valid(row)
+        stale = verified_valid and _last_verified_is_stale(row, cutoff)
+        fingerprints = _jq_or(row.get("evidence_fingerprints"), [])
+        evidence_current = (
+            isinstance(fingerprints, list) and bool(fingerprints)
+            and all(isinstance(fp, dict) and fp.get("status") == "current"
+                    for fp in fingerprints)
+        )
+        confidence = _jq_or(row.get("confidence"), "medium")
+        if not isinstance(confidence, str) or len(confidence) > 32:
+            confidence = "invalid"
+        confidence_point = confidence in ("medium", "high")
+        points = min(5, use_points + (verified_valid and not stale)
+                     + evidence_current + confidence_point)
+        reasons = ["uses:%s%s" % (use_count, "+" if use_count_capped else "")]
+        if not usage_valid:
+            reasons.append("usage_invalid")
+        reasons.append("stale" if stale else ("fresh" if verified_valid else "last_verified_invalid"))
+        reasons.append("evidence_current" if evidence_current else "evidence_not_current")
+        reasons.append("confidence:%s" % confidence)
+        result.append({
+            "id": rid,
+            "utility_points": int(points),
+            "use_count": use_count,
+            "stale": stale,
+            "last_verified_valid": verified_valid,
+            "evidence_current": evidence_current,
+            "confidence": confidence,
+            "usage_valid": usage_valid,
+            "quarantine_eligible": stale and use_count == 0 and usage_valid and verified_valid,
+            "reasons": reasons,
+        })
+        if max_rows is not None and len(result) >= max_rows:
+            break
+    return result

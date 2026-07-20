@@ -209,6 +209,18 @@ sie tatsächlich eine Plan-Entscheidung prägt, verbindet sie mit der Verifikati
 bestehenden Outcome-Artefakt als `helpful`, `neutral` oder `contradicted`. Dafür entstehen weder externe
 Telemetrie noch kopierte Recall-Texte oder eine neue User-Bestätigung.
 
+Memory-Pflege ist Preview-first und reversibel. `memory-router.sh lifecycle` erklärt einen begrenzten
+Utility-Score von 0–5; `lifecycle --write` quarantänisiert nur strikt gelesene stale Zeilen, die nachweislich nie
+verwendet wurden und eine eindeutige ID haben. Der atomare Pfad-Exchange prüft Identität/Mode der verdrängten Quelle
+und den installierten Candidate; begrenzte Re-Exchanges befördern spätere Writer, ohne den kanonischen Pfad zu
+entfernen. Ein ungelöster Race behält eine lokale Recovery-Kopie. Nicht verfügbare native Exchange-Unterstützung
+sperrt den Write vor der Mutation. `lifecycle --restore <id> --write` stellt genau eine Zeile nur
+bei weiterhin exakter Evidence wieder her.
+Für optionale projektübergreifende Übergaben erzeugt `capsule --write` eine lokale Mode-0600-Privacy-Capsule
+mit höchstens 20 frischen, erlaubten Sechs-Feld-Projektionen. Vault-Sync nutzt dieselbe Projektion und
+exportiert weder Source-IDs, Pfade, Evidence-Referenzen, Credential-/JWT-Formen, E-Mails, private/security Zeilen noch
+unsichere Inhalte.
+
 Ein Obsidian Vault ist optional. Ohne ihn funktionieren lokales Memory und alle Gates weiter. Mit
 authentifizierten Vault-MCP-Tools kann Kimiflow kuratierte, nicht-private projektübergreifende
 Learnings abrufen oder exportieren. API-Keys landen nie in `.kimiflow/`.

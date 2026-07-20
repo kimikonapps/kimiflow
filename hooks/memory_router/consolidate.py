@@ -63,24 +63,28 @@ def run(argv):
     rows = store.read_jsonl(learnings)
     superseded, current, duplicates = consolidate_json(rows)
 
-    if write and os.path.isfile(learnings):
-        os.makedirs(project, exist_ok=True)
-        if superseded:
-            # Bash `... | jq -c '.[]' >> "$archive"` (append, follows a symlink).
-            store.append_line(archive, "".join(contracts.dumps(r) + "\n" for r in superseded))
-        # Bash mktemp + mv: rewrite LEARNINGS.jsonl to the non-superseded rows (drops the
-        # superseded ones, and -- like the writer -- any malformed/blank lines).
-        kept = [r for r in rows if not (isinstance(r, dict) and _jq_or(r.get("status"), "") == "superseded")]
-        store.atomic_write(learnings, "".join(contracts.dumps(r) + "\n" for r in kept), refuse_symlink=False)
-        memory_md.write_bounded_memory(root)
-        memory_md.write_bounded_user_memory(root)
-        with contextlib.redirect_stdout(io.StringIO()):
-            curate.run(["--root", root, "--write"])
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            try:
-                index_mod.run(["--root", root, "--write"])
-            except Exception:
-                pass
+    if write:
+        with store.path_lock(learnings):
+            rows = store.read_jsonl(learnings)
+            superseded, current, duplicates = consolidate_json(rows)
+            if os.path.isfile(learnings):
+                os.makedirs(project, exist_ok=True)
+                if superseded:
+                    # Bash `... | jq -c '.[]' >> "$archive"` (append, follows a symlink).
+                    store.append_line(archive, "".join(contracts.dumps(r) + "\n" for r in superseded))
+                # Bash mktemp + mv: rewrite LEARNINGS.jsonl to the non-superseded rows (drops the
+                # superseded ones, and -- like the writer -- any malformed/blank lines).
+                kept = [r for r in rows if not (isinstance(r, dict) and _jq_or(r.get("status"), "") == "superseded")]
+                store.atomic_write(learnings, "".join(contracts.dumps(r) + "\n" for r in kept), refuse_symlink=False)
+                memory_md.write_bounded_memory(root)
+                memory_md.write_bounded_user_memory(root)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    curate.run(["--root", root, "--write"])
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    try:
+                        index_mod.run(["--root", root, "--write"])
+                    except Exception:
+                        pass
 
     out = {
         "schema_version": 1,
