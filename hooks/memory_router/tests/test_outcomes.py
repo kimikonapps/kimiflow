@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import shutil
 import stat
@@ -136,8 +137,7 @@ class OutcomeEvaluationCase(OutcomeFixture):
         self.assertTrue(evaluation["evidence_fingerprints"])
         self.assertTrue(all(row["status"] == "current" for row in evaluation["evidence_fingerprints"]))
         self.assertNotIn("x" * 32, evaluation["terms"])
-        self.assertEqual(evaluation["recall_attribution"]["contract"], 0)
-        self.assertEqual(evaluation["recall_attribution"]["classification"], "neutral")
+        self.assertNotIn("recall_attribution", evaluation)
 
         result = outcomes.persist_evaluation(self.root, self.run_dir, evaluation)
         self.assertIs(result["written"], True)
@@ -263,6 +263,120 @@ class OutcomeEvaluationCase(OutcomeFixture):
         self.assertEqual(receipt["applied_ids"], [identifier])
         self.assertNotIn("SECRET_RECALL_TEXT", json.dumps(receipt))
         self.assertIn(self.run_rel + "/RECALL.json", evaluation["evidence"])
+
+    def test_contradiction_fingerprint_is_sealed_before_post_validation_swap(self):
+        hit = {"id": "learn_active", "summary": "old route", "evidence": ["app.py:1"]}
+        identifier = attribution.recall_id("learnings", "app.py:1", hit)
+        hit["recall_id"] = identifier
+        self.write(
+            "RECALL.json",
+            json.dumps({"schema_version": 2, "attribution": {"contract": 1}, "sources": {
+                "learnings": {"count": 1, "hits": [hit]},
+            }}) + "\n",
+        )
+        self.write(
+            "PLAN.md",
+            "Strategy: Use current evidence.\n"
+            "Strategy evidence: none\n"
+            "<!-- kimiflow:recall-attribution contract=1 -->\n"
+            "Applied recall IDs: %s\n"
+            "Decision D1: reject stale recall\n"
+            "Recall D1: none\n" % identifier,
+        )
+        self.write(
+            "VERIFICATION.md",
+            "<!-- kimiflow:verification outcome=passed criteria=passed regression=passed -->\n"
+            "Decision check D1: passed :: focused test\n"
+            "Recall contradiction %s: app.py:1\n" % identifier,
+        )
+        original = _read_bytes(os.path.join(self.root, "app.py"))
+        outside_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, outside_dir, ignore_errors=True)
+        outside = os.path.join(outside_dir, "outside.py")
+        _write(outside, "OUTSIDE = True\n")
+        app = os.path.join(self.root, "app.py")
+        moved = os.path.join(self.root, "app-original.py")
+        real_evaluate = attribution.evaluate_json
+        swapped = []
+
+        def evaluate_then_swap(*args, **kwargs):
+            receipt = real_evaluate(*args, **kwargs)
+            swapped.append(True)
+            os.rename(app, moved)
+            os.symlink(outside, app)
+            return receipt
+
+        with mock.patch.object(outcomes.attribution, "evaluate_json", side_effect=evaluate_then_swap):
+            evaluation = self.evaluate()
+        self.assertTrue(swapped)
+        fingerprint = next(
+            row for row in evaluation["evidence_fingerprints"] if row["ref"] == "app.py:1"
+        )
+        self.assertEqual(fingerprint["status"], "current")
+        self.assertEqual(fingerprint["sha256"], hashlib.sha256(original).hexdigest())
+        self.assertNotEqual(fingerprint["sha256"], hashlib.sha256(_read_bytes(outside)).hexdigest())
+
+    def test_attribution_artifact_fingerprints_are_sealed_before_replacement(self):
+        hit = {"id": "learn_active", "summary": "old route", "evidence": ["app.py:1"]}
+        identifier = attribution.recall_id("learnings", "app.py:1", hit)
+        hit["recall_id"] = identifier
+        strategy_id = "out_" + ("b" * 64)
+        strategy_hit = {
+            "id": strategy_id,
+            "classification": "verified_success",
+            "strategy": "Use the sealed current recall snapshot.",
+        }
+        strategy_hit["recall_id"] = attribution.recall_id(
+            "strategies", strategy_id, strategy_hit,
+        )
+        self.write(
+            "RECALL.json",
+            json.dumps({"schema_version": 2, "attribution": {"contract": 1}, "sources": {
+                "learnings": {"count": 1, "hits": [hit]},
+                "strategies": {"count": 1, "hits": [strategy_hit]},
+            }}) + "\n",
+        )
+        self.write(
+            "PLAN.md",
+            "Strategy: Use the sealed current recall snapshot.\n"
+            "Strategy evidence: %s\n"
+            "<!-- kimiflow:recall-attribution contract=1 -->\n"
+            "Applied recall IDs: %s\n"
+            "Decision D1: use current evidence\n"
+            "Recall D1: %s\n" % (strategy_id, identifier, identifier),
+        )
+        self.write(
+            "VERIFICATION.md",
+            "<!-- kimiflow:verification outcome=passed criteria=passed regression=passed -->\n"
+            "Decision check D1: passed :: focused test\n",
+        )
+        recall_path = os.path.join(self.run_dir, "RECALL.json")
+        original = _read_bytes(recall_path)
+        replacement = json.dumps({"schema_version": 2, "replacement": True}).encode() + b"\n"
+        real_evaluate = attribution.evaluate_json
+        replaced = []
+
+        def evaluate_then_replace(*args, **kwargs):
+            receipt = real_evaluate(*args, **kwargs)
+            candidate = recall_path + ".replacement"
+            with open(candidate, "wb") as handle:
+                handle.write(replacement)
+            os.replace(candidate, recall_path)
+            replaced.append(True)
+            return receipt
+
+        with mock.patch.object(outcomes.attribution, "evaluate_json", side_effect=evaluate_then_replace):
+            evaluation = self.evaluate()
+        self.assertTrue(replaced)
+        self.assertEqual(evaluation["recall_attribution"]["applied_ids"], [identifier])
+        self.assertEqual(evaluation["signals"]["strategy_recall_hits"], 1)
+        self.assertIs(evaluation["signals"]["strategy_recall_used"], True)
+        recall_ref = self.run_rel + "/RECALL.json"
+        fingerprint = next(
+            row for row in evaluation["evidence_fingerprints"] if row["ref"] == recall_ref
+        )
+        self.assertEqual(fingerprint["sha256"], hashlib.sha256(original).hexdigest())
+        self.assertNotEqual(fingerprint["sha256"], hashlib.sha256(replacement).hexdigest())
 
 
 class StrategyRecallCase(OutcomeFixture):

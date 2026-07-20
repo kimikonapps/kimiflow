@@ -97,6 +97,7 @@ location (Judging), and run each eval subagent in an environment without the use
 | 21 | product-intent ownership and single-batch autonomy | 1 |
 | 22 | adaptive implementation conformance and autonomous routing | 3-7 |
 | 23 | adaptive execution control, no-progress recovery, and bounded trace | 0-7 |
+| 24 | verified recall attribution without textual false positives or babysitting | 2-7 |
 
 **Reviewer-calibration** — a second dimension (does the *reviewer* judge cleanly under pressure, not
 just hold a gate?): [`reviewer-calibration.md`](reviewer-calibration.md) +

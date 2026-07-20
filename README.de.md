@@ -204,6 +204,10 @@ Context-Budget und ein globales Trefferlimit und entfernt quellenübergreifende 
 immer ein Hinweis: aktueller Code, Tests, Specs und Primär-Evidence gewinnen. Der optionale SQLite-Index
 wird nur mit aktuellem Source-Fingerprint verwendet; stale Indizes werden ignoriert und bei einem
 persistierten Recall atomar neu gebaut.
+Finale Treffer erhalten außerdem stabile lokale IDs. Kimiflow zählt eine ID nur dann als verwendet, wenn
+sie tatsächlich eine Plan-Entscheidung prägt, verbindet sie mit der Verifikation und bewertet sie im
+bestehenden Outcome-Artefakt als `helpful`, `neutral` oder `contradicted`. Dafür entstehen weder externe
+Telemetrie noch kopierte Recall-Texte oder eine neue User-Bestätigung.
 
 Ein Obsidian Vault ist optional. Ohne ihn funktionieren lokales Memory und alle Gates weiter. Mit
 authentifizierten Vault-MCP-Tools kann Kimiflow kuratierte, nicht-private projektübergreifende

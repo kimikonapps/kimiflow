@@ -1091,6 +1091,23 @@ Inspect the cited current evidence before relying on a hit. The frozen, determin
 `evals/fixtures/recall-quality-holdout.json` and runs with
 `PYTHONPATH=hooks python3 -m unittest memory_router.tests.test_recall_quality`.
 
+**Verified recall utility (Contract 1):** after global packing, every selected hit copy receives a deterministic
+`rec_<64 lowercase hex>` over its source, evidence identity, and canonical content. IDs do not participate in
+candidate ranking, deduplication, or the token envelope. A new plan with persisted Recall declares exactly one
+`kimiflow:recall-attribution contract=1` marker, one `Applied recall IDs:` set, and one `Recall Dn:` set per
+Decision. Legacy applies only when the marker token is entirely absent; malformed, duplicated, unsupported,
+unknown, or unlinked declarations fail closed. Retrieval and textual citation do not count as use.
+
+At terminal evaluation, `hooks/memory_router/attribution.py` joins those IDs to exact Decision checks and writes a
+small `recall_attribution` object inside the existing `OUTCOME-EVALUATION.json`. It contains IDs, source/status,
+and local evidence references only—never recall summaries, prompts, or secrets. `helpful` requires `done`, a fully
+green Verification receipt, and passed linked checks. A failed linked check or exact current
+`Recall contradiction <rec_id>: <repo-relative-path>:<positive-line>` is `contradicted`; the referenced regular,
+non-symlink file and non-empty in-range line are fingerprinted, and contradiction deterministically overrides a
+simultaneous helpful signal. Otherwise attribution is `neutral`. Structurally valid `parked|aborted|failed` runs
+with incomplete Verification remain `neutral/inconclusive`, so safe closure stays autonomous. Economics uses the
+declared valid ID count under Contract 1; marker-free old runs retain the previous substring heuristic.
+
 **Post-run learning loop (required before `Status: done`):** after verify/review and before closing `STATE.md`,
 run `memory-router.sh review-run --run .kimiflow/<slug> --write` — writes `LEARNING-REVIEW.md`, appends durable
 rows to `LEARNINGS.jsonl`, refreshes bounded `MEMORY.md`+`MEMORY-INDEX.json`+optional

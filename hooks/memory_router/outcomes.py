@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 import unicodedata
 
-from . import clock, contracts, rows, runs, store, text
+from . import attribution, clock, contracts, rows, runs, store, text
 from .cli import die, resolve_root, usage
 
 
@@ -199,8 +199,7 @@ def _resolve_run(root, run):
     return root, candidate, os.path.relpath(candidate, root).replace(os.sep, "/")
 
 
-def _verification(run_dir):
-    content = _safe_read(os.path.join(run_dir, "VERIFICATION.md"))
+def _verification_content(content):
     matches = []
     for line in content.split("\n"):
         found = _VERIFY_RE.fullmatch(line)
@@ -210,6 +209,10 @@ def _verification(run_dir):
         return {"outcome": "missing", "criteria": "missing", "regression": "missing"}
     outcome, criteria, regression = matches[0]
     return {"outcome": outcome, "criteria": criteria, "regression": regression}
+
+
+def _verification(run_dir):
+    return _verification_content(_safe_read(os.path.join(run_dir, "VERIFICATION.md")))
 
 
 def _latest_review(run_dir):
@@ -288,8 +291,7 @@ def _economics(run_dir):
     return result
 
 
-def _recall_signals(run_dir, evidence_id):
-    recall = store.read_json(os.path.join(run_dir, "RECALL.json"), {})
+def _recall_signals_value(recall, evidence_id):
     sources = recall.get("sources", {}) if isinstance(recall, dict) else {}
     strategies = sources.get("strategies", {}) if isinstance(sources, dict) else {}
     hits = strategies.get("hits", []) if isinstance(strategies, dict) else []
@@ -298,11 +300,33 @@ def _recall_signals(run_dir, evidence_id):
     return len(hits), evidence_id is not None and evidence_id in ids
 
 
+def _recall_signals(run_dir, evidence_id):
+    return _recall_signals_value(
+        store.read_json(os.path.join(run_dir, "RECALL.json"), {}), evidence_id,
+    )
+
+
 def evaluate_json(root, run, terminal):
     if terminal not in ("done", "failed", "aborted", "parked"):
         raise OutcomeError("terminal must be done|failed|aborted|parked")
     root, run_dir, run_rel = _resolve_run(root, run)
-    plan = _safe_read(os.path.join(run_dir, "PLAN.md"))
+    try:
+        recall_attribution = attribution.evaluate_json(
+            root, run_dir, terminal, include_context=True,
+        )
+    except attribution.AttributionError as exc:
+        raise OutcomeError("recall attribution: %s" % exc) from exc
+    attribution_context = recall_attribution.pop("_context", None)
+    if recall_attribution["contract"] == 1:
+        if not isinstance(attribution_context, dict):
+            raise OutcomeError("recall attribution context is missing")
+        plan = attribution_context["plan"]
+        recall_value = attribution_context["recall"]
+        verify = _verification_content(attribution_context["verification"])
+    else:
+        plan = _safe_read(os.path.join(run_dir, "PLAN.md"))
+        recall_value = None
+        verify = _verification(run_dir)
     state = _safe_read(os.path.join(run_dir, "STATE.md"))
     strategy, strategy_error = _safe_strategy(plan)
     evidence_raw = _exact_plan_value(plan, "Strategy evidence")
@@ -310,7 +334,6 @@ def evaluate_json(root, run, terminal):
     source_head = _head(root)
     started_head = _state_value(state, "Run started head").lower()
     affected_paths = _changed_paths(root, started_head, source_head)
-    verify = _verification(run_dir)
     review = _latest_review(run_dir)
     open_items = _items_open(run_dir)
     learning = _learning_review(root, run_rel)
@@ -318,8 +341,11 @@ def evaluate_json(root, run, terminal):
     phase6 = _state_value(state, "Phase 6").lower()
     recovery_text = _safe_read(os.path.join(run_dir, "RECOVERY.md"))
     first_plan_success = "kimiflow:recovery" not in recovery_text
-    recall_hits, recall_used = _recall_signals(run_dir, evidence_id)
-
+    recall_hits, recall_used = (
+        _recall_signals_value(recall_value, evidence_id)
+        if recall_attribution["contract"] == 1
+        else _recall_signals(run_dir, evidence_id)
+    )
     positive = all((
         terminal == "done",
         bool(strategy),
@@ -357,6 +383,19 @@ def evaluate_json(root, run, terminal):
             evidence.append(run_rel + "/" + relative)
     if review.get("path"):
         evidence.append(run_rel + "/" + review["path"])
+    if recall_attribution["contract"] == 1:
+        evidence.append(run_rel + "/RECALL.json")
+        evidence.extend(recall_attribution["contradiction_evidence"])
+    sealed_fingerprints = (
+        recall_attribution.get("artifact_fingerprints", [])
+        + recall_attribution.get("contradiction_fingerprints", [])
+    )
+    sealed_refs = {item["ref"] for item in sealed_fingerprints}
+    evidence_fingerprints = rows.evidence_fingerprints_json(
+        root, [ref for ref in evidence if ref not in sealed_refs],
+    )
+    by_ref = {item["ref"]: item for item in sealed_fingerprints}
+    evidence_fingerprints.extend(by_ref[ref] for ref in evidence if ref in by_ref)
 
     identifier_basis = (run_rel + "\0" + strategy).encode("utf-8")
     identifier = "out_" + hashlib.sha256(identifier_basis).hexdigest()
@@ -391,10 +430,14 @@ def evaluate_json(root, run, terminal):
             "first_plan_success": first_plan_success,
             "strategy_recall_hits": recall_hits,
             "strategy_recall_used": recall_used,
+            **({"recall_attribution": recall_attribution["classification"]}
+               if recall_attribution["contract"] == 1 else {}),
         },
+        **({"recall_attribution": recall_attribution}
+           if recall_attribution["contract"] == 1 else {}),
         "economics": _economics(run_dir),
         "evidence": evidence,
-        "evidence_fingerprints": rows.evidence_fingerprints_json(root, evidence),
+        "evidence_fingerprints": evidence_fingerprints,
         "reasons": reasons,
     }
 

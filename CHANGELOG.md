@@ -4,7 +4,18 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Added
+
+- **Recall utility is now mechanically attributable:** Final bounded Recall hits receive deterministic,
+  source- and content-sealed IDs. Plans declare only IDs that actually shaped a Decision, and terminal outcome
+  evaluation classifies each applied hit as `helpful`, `neutral`, or `contradicted` without copying Recall text.
+
+### Changed
+
+- **Token economics counts explicit use for new runs:** Contract-1 runs use validated applied IDs instead of
+  substring mentions; marker-free historical runs retain their previous heuristic.
+- **Attribution preserves autonomous safe closure:** Damaged contracts fail closed, while structurally valid
+  `parked`, `aborted`, and `failed` runs remain neutral/inconclusive when Verification is incomplete.
 
 ## 0.2.9
 

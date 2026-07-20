@@ -78,6 +78,12 @@ class EconomicsHelperCase(unittest.TestCase):
         hits = economics.recall_hits_for_economics_json(recall)
         self.assertEqual([(h["id"], h["_economics_source"]) for h in hits],
                          [("L1", "learning"), ("F1", "fact"), ("I1", "index"),
+                          ("H1", "history")])
+        contract_hits = economics.recall_hits_for_economics_json(
+            recall, include_strategies=True,
+        )
+        self.assertEqual([(h["id"], h["_economics_source"]) for h in contract_hits],
+                         [("L1", "learning"), ("F1", "fact"), ("I1", "index"),
                           ("H1", "history"), ("S1", "strategy")])
 
     def test_recall_hits_missing_file_and_non_dict(self):
@@ -139,6 +145,19 @@ class EconomicsHelperCase(unittest.TestCase):
 
         self._write("PLAN.md", "Legacy plan mentions learn_abc.\n")
         self.assertEqual(economics.run_economics_row_json(self.root, self.run)["used_hit_count"], 1)
+
+    def test_legacy_economics_ignores_strategy_only_hits(self):
+        self._write("RECALL.json", json.dumps({
+            "sources": {"strategies": {"hits": [{
+                "id": "S1", "title": "legacy strategy", "summary": "must stay invisible",
+            }]}},
+        }))
+        self._write("PLAN.md", "Legacy plan mentions S1 and legacy strategy.\n")
+        row = economics.run_economics_row_json(self.root, self.run)
+        self.assertEqual(row["recall_hit_count"], 0)
+        self.assertEqual(row["used_hit_count"], 0)
+        self.assertEqual(row["recall_tokens"], 0)
+        self.assertEqual(row["result"], "unknown")
 
     # ---- run_type_from_state ----
     def test_run_type_mode_variants(self):

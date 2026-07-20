@@ -3,6 +3,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 from memory_router import attribution, recall
 
@@ -66,6 +67,8 @@ class AttributionContractCase(unittest.TestCase):
         hit = {"id": "native", "summary": "same content", "evidence": ["src/a.py:1"]}
         first = attribution.recall_id("learnings", "src/a.py:1", hit)
         self.assertEqual(first, attribution.recall_id("learnings", "src/a.py:1", dict(hit)))
+        reordered = {"evidence": ["src/a.py:1"], "summary": "same content", "id": "native"}
+        self.assertEqual(first, attribution.recall_id("learnings", "src/a.py:1", reordered))
         self.assertRegex(first, r"^rec_[0-9a-f]{64}$")
         self.assertNotEqual(
             first,
@@ -109,6 +112,99 @@ class AttributionContractCase(unittest.TestCase):
         with self.assertRaises(attribution.AttributionError):
             attribution.usage_json(self.root, self.run_dir)
 
+    def test_run_artifact_read_rejects_leaf_symlink_swap(self):
+        plan = self.write_run("PLAN.md", "SAFE\n")
+        outside_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, outside_dir, ignore_errors=True)
+        outside = os.path.join(outside_dir, "outside.md")
+        with open(outside, "w", encoding="utf-8") as handle:
+            handle.write("OUTSIDE\n")
+        real_open = os.open
+        swapped = []
+
+        def racing_open(path, flags, mode=0o777, *, dir_fd=None):
+            if path == "PLAN.md" and not swapped:
+                swapped.append(True)
+                os.unlink(plan)
+                os.symlink(outside, plan)
+            kwargs = {"dir_fd": dir_fd} if dir_fd is not None else {}
+            return real_open(path, flags, mode, **kwargs)
+
+        with mock.patch.object(attribution.os, "open", side_effect=racing_open):
+            with self.assertRaises(attribution.AttributionError):
+                attribution._read_regular(os.path.realpath(plan), required=True)
+        self.assertTrue(swapped)
+
+    def test_run_artifact_read_rejects_intermediate_directory_symlink_swap(self):
+        plan = self.write_run("PLAN.md", "SAFE\n")
+        outside_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, outside_dir, ignore_errors=True)
+        with open(os.path.join(outside_dir, "PLAN.md"), "w", encoding="utf-8") as handle:
+            handle.write("OUTSIDE\n")
+        moved = self.run_dir + "-original"
+        real_open = os.open
+        swapped = []
+
+        def racing_open(path, flags, mode=0o777, *, dir_fd=None):
+            if path == "demo" and not swapped:
+                swapped.append(True)
+                os.rename(self.run_dir, moved)
+                os.symlink(outside_dir, self.run_dir)
+            kwargs = {"dir_fd": dir_fd} if dir_fd is not None else {}
+            return real_open(path, flags, mode, **kwargs)
+
+        with mock.patch.object(attribution.os, "open", side_effect=racing_open):
+            with self.assertRaises(attribution.AttributionError):
+                attribution._read_regular(os.path.realpath(plan), required=True)
+        self.assertTrue(swapped)
+
+    def test_contradiction_evidence_rejects_open_time_symlink_swap(self):
+        target = self.write_root("leaf/current.py", "CURRENT = True\n")
+        outside_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, outside_dir, ignore_errors=True)
+        outside = os.path.join(outside_dir, "outside.py")
+        with open(outside, "w", encoding="utf-8") as handle:
+            handle.write("OUTSIDE = True\n")
+        real_open = os.open
+        swapped = []
+
+        def racing_open(path, flags, mode=0o777, *, dir_fd=None):
+            if path == "current.py" and not swapped:
+                swapped.append(True)
+                os.unlink(target)
+                os.symlink(outside, target)
+            kwargs = {"dir_fd": dir_fd} if dir_fd is not None else {}
+            return real_open(path, flags, mode, **kwargs)
+
+        with mock.patch.object(attribution.os, "open", side_effect=racing_open):
+            with self.assertRaises(attribution.AttributionError):
+                attribution._validate_evidence_path(self.root, "leaf/current.py", 1)
+        self.assertTrue(swapped)
+
+    def test_contradiction_evidence_rejects_intermediate_directory_symlink_swap(self):
+        self.write_root("branch/current.py", "CURRENT = True\n")
+        outside_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, outside_dir, ignore_errors=True)
+        with open(os.path.join(outside_dir, "current.py"), "w", encoding="utf-8") as handle:
+            handle.write("OUTSIDE = True\n")
+        branch = os.path.join(self.root, "branch")
+        moved = os.path.join(self.root, "branch-original")
+        real_open = os.open
+        swapped = []
+
+        def racing_open(path, flags, mode=0o777, *, dir_fd=None):
+            if path == "branch" and not swapped:
+                swapped.append(True)
+                os.rename(branch, moved)
+                os.symlink(outside_dir, branch)
+            kwargs = {"dir_fd": dir_fd} if dir_fd is not None else {}
+            return real_open(path, flags, mode, **kwargs)
+
+        with mock.patch.object(attribution.os, "open", side_effect=racing_open):
+            with self.assertRaises(attribution.AttributionError):
+                attribution._validate_evidence_path(self.root, "branch/current.py", 1)
+        self.assertTrue(swapped)
+
     def test_receipt_classifies_helpful_neutral_and_contradicted_without_content(self):
         helpful_hit = self.hit(summary="SECRET_RECALL_CONTENT")
         neutral_hit = self.hit(source="history", summary="another secret")
@@ -135,8 +231,27 @@ class AttributionContractCase(unittest.TestCase):
         self.assertNotIn("another secret", serialized)
 
         self.write_run("PLAN.md", self.plan([], [(1, [])]))
+        self.write_run(
+            "VERIFICATION.md",
+            "<!-- kimiflow:verification outcome=passed criteria=passed regression=passed -->\n",
+        )
         neutral_receipt = attribution.evaluate_json(self.root, self.run_dir, "done")
         self.assertEqual(neutral_receipt["classification"], "neutral")
+
+    def test_failed_unlinked_decision_prevents_false_helpful_receipt(self):
+        hit = self.hit()
+        identifier = hit["recall_id"]
+        self.recall_snapshot(("learnings", hit))
+        self.write_run("PLAN.md", self.plan([identifier], [(1, [identifier]), (2, [])]))
+        self.write_run(
+            "VERIFICATION.md",
+            "<!-- kimiflow:verification outcome=passed criteria=passed regression=passed -->\n"
+            "Decision check D1: passed :: focused test\n"
+            "Decision check D2: failed :: unrelated decision failed\n",
+        )
+        receipt = attribution.evaluate_json(self.root, self.run_dir, "done")
+        self.assertEqual(receipt["classification"], "neutral")
+        self.assertEqual(receipt["status"], "inconclusive")
 
     def test_non_success_terminals_remain_mechanically_closable_with_incomplete_verification(self):
         hit = self.hit()

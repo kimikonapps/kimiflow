@@ -187,14 +187,19 @@ if [ -x "$ROOT/hooks/lsp-diagnostics.sh" ] && bash -n "$ROOT/hooks/lsp-diagnosti
 if [ -x "$ROOT/hooks/test-lsp-diagnostics.sh" ] && bash -n "$ROOT/hooks/test-lsp-diagnostics.sh" 2>/dev/null; then ok "local diagnostics test ok"; else bad "local diagnostics test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/memory-router.sh" ] && bash -n "$ROOT/hooks/memory-router.sh" 2>/dev/null; then ok "memory router helper ok"; else bad "memory router helper missing/not-exec/bad"; fi
 if [ -f "$ROOT/hooks/memory_router/outcomes.py" ] \
+  && [ -f "$ROOT/hooks/memory_router/attribution.py" ] \
   && "$ROOT/hooks/memory-router.sh" evaluate-run --help >/dev/null 2>&1 \
   && grep -q -- '--strategies' "$ROOT/phases/phase-2-understand.md" \
   && grep -q 'Strategy evidence:' "$ROOT/phases/phase-3-plan.md" \
+  && grep -q 'kimiflow:recall-attribution contract=1' "$ROOT/phases/phase-3-plan.md" \
   && grep -q 'kimiflow:verification outcome=' "$ROOT/phases/phase-6-verify.md" \
+  && grep -q 'Recall contradiction <rec_id>' "$ROOT/phases/phase-6-verify.md" \
+  && grep -q 'recall_attribution' "$ROOT/hooks/memory_router/outcomes.py" \
+  && grep -q 'test_end_to_end_recall_plan_verification_outcome_contract' "$ROOT/hooks/memory_router/tests/test_attribution.py" \
   && grep -q 'OUTCOME-EVALUATION.json' "$ROOT/phases/phase-7-review-commit.md"; then
-  ok "automatic strategy outcome contract"
+  ok "automatic strategy and verified recall outcome contract"
 else
-  bad "automatic strategy outcome contract incomplete"
+  bad "automatic strategy or verified recall outcome contract incomplete"
 fi
 if [ -x "$ROOT/hooks/test-memory-router-parity.sh" ] && bash -n "$ROOT/hooks/test-memory-router-parity.sh" 2>/dev/null; then ok "memory router test ok"; else bad "memory router test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/vault-mcp-setup.sh" ] && bash -n "$ROOT/hooks/vault-mcp-setup.sh" 2>/dev/null; then ok "vault MCP setup helper ok"; else bad "vault MCP setup helper missing/not-exec/bad"; fi

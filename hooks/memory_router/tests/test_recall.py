@@ -821,7 +821,11 @@ class RecallRunCase(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(err, "")
         obj = json.loads(out)
-        self.assertEqual(obj["sources"]["strategies"], strategy_source)
+        selected = obj["sources"]["strategies"]
+        self.assertEqual({key: selected[key] for key in ("path", "status", "count")},
+                         {key: strategy_source[key] for key in ("path", "status", "count")})
+        self.assertRegex(selected["hits"][0].pop("recall_id"), r"^rec_[0-9a-f]{64}$")
+        self.assertEqual(selected["hits"], strategy_source["hits"])
         strategy_recall.assert_called_once_with(self.root, obj["query_terms"], mode="")
         self.assertIn("## Strategy Outcomes", _read(os.path.join(self.root, "RECALL.md")))
 

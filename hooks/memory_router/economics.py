@@ -12,7 +12,7 @@ import os
 import re
 import subprocess
 
-from . import clock, contracts, global_metrics, paths, store, summaries, text
+from . import attribution, clock, contracts, global_metrics, paths, store, summaries, text
 
 _CORPUS_FILES = (
     "RESEARCH.md", "DIAGNOSIS.md", "PLAN.md", "ACCEPTANCE.md",
@@ -79,7 +79,7 @@ def run_artifact_corpus(run_dir):
     return "".join(parts)
 
 
-def recall_hits_for_economics_json(recall_json):
+def recall_hits_for_economics_json(recall_json, include_strategies=False):
     # Bash recall_hits_for_economics_json (2903-2917): gated on `jq -e .` (fails for
     # top-level null/false), so guard with isinstance(dict). Concatenate, in order,
     # learnings/facts/index/history hits, each tagged with _economics_source.
@@ -90,8 +90,11 @@ def recall_hits_for_economics_json(recall_json):
     if not isinstance(sources, dict):
         sources = {}
     out = []
-    for key, tag in (("learnings", "learning"), ("facts", "fact"),
-                     ("index", "index"), ("history", "history")):
+    source_tags = [("learnings", "learning"), ("facts", "fact"),
+                   ("index", "index"), ("history", "history")]
+    if include_strategies:
+        source_tags.append(("strategies", "strategy"))
+    for key, tag in source_tags:
         section = sources.get(key)
         hits = section.get("hits") if isinstance(section, dict) else None
         if not isinstance(hits, list):
@@ -234,11 +237,18 @@ def run_economics_row_json(root, run_dir):
         always_tokens = text.word_count_file(memory)
         user_tokens = text.word_count_file(user_memory)
 
-    hits = recall_hits_for_economics_json(recall_json)
+    usage = attribution.usage_json(root, run_dir)
+    hits = recall_hits_for_economics_json(
+        recall_json, include_strategies=usage["contract"] == 1,
+    )
     corpus = run_artifact_corpus(run_dir)
     recall_tokens = economics_hits_tokens(hits)
     hit_count = len(hits)
-    used_hits = economics_used_hits_count(hits, corpus)
+    used_hits = (
+        len(usage["applied_ids"])
+        if usage["contract"] == 1
+        else economics_used_hits_count(hits, corpus)
+    )
     avoided_per_hit = summaries._avoided_per_hit()
     avoided = used_hits * avoided_per_hit
     net = avoided - always_tokens - user_tokens - recall_tokens
@@ -259,6 +269,12 @@ def run_economics_row_json(root, run_dir):
     else:
         confidence = "low"
 
+    basis = {
+        "recall_json": paths.rel_path(root, recall_json),
+        "heuristic": _HEURISTIC,
+    }
+    if usage["contract"] == 1:
+        basis["usage_method"] = usage["method"]
     return {
         "schema_version": 1,
         "run": run_rel,
@@ -272,10 +288,7 @@ def run_economics_row_json(root, run_dir):
         "net_estimated_tokens_saved": net,
         "result": result,
         "confidence": confidence,
-        "basis": {
-            "recall_json": paths.rel_path(root, recall_json),
-            "heuristic": _HEURISTIC,
-        },
+        "basis": basis,
     }
 
 

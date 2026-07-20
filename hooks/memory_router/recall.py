@@ -9,7 +9,7 @@ import heapq
 import os
 import re
 
-from . import clock, contracts, outcomes, recall_index, store, text, usage_metrics
+from . import attribution, clock, contracts, outcomes, recall_index, store, text, usage_metrics
 from .cli import die, resolve_root, usage
 
 # terms_json_from_query (Bash 1576-1580): split on runs of chars outside [:alnum:]_-
@@ -580,6 +580,7 @@ def recall_json(root, query, max_hits, targeted=False, strategies=False, mode=""
     selected, hit_tokens, duplicates, hits_omitted = _pack_hits(
         raw_hits, terms, max(0, max_hits), available, initial_refs=initial_refs,
         initial_summaries=initial_summaries)
+    selected = attribution.attach_ids(selected)
     fact_hits = selected["facts"]
     learning_hits = selected["learnings"]
     history_hits = selected["history"]
@@ -739,6 +740,11 @@ def recall_json(root, query, max_hits, targeted=False, strategies=False, mode=""
             "rule": "current_project_sources_override_recall",
             "selection_order": ["facts", "learnings", "strategies", "history", "index"],
         },
+        "attribution": {
+            "contract": 1,
+            "id_algorithm": "sha256-source-reference-content",
+            "hit_count": total,
+        },
         "sources": sources,
         "explanation": {
             "reason_codes": reason_codes,
@@ -777,8 +783,17 @@ def write_recall_markdown(path, obj):
         "- Total hits: %s\n" % total,
         "- Global hit limit: %s\n" % budget["global_hit_limit"],
         "- Duplicates removed: %s\n" % budget["duplicates_removed"],
-        "\n## Omitted\n\n",
     ]
+    if total:
+        parts.append("\n## Recall attribution\n\n")
+        for source in attribution.SOURCE_ORDER:
+            section = sources.get(source)
+            hits = section.get("hits", []) if isinstance(section, dict) else []
+            for hit in hits:
+                parts.append("- %s [%s] %s\n" % (
+                    hit["recall_id"], source, attribution.hit_reference(hit),
+                ))
+    parts.append("\n## Omitted\n\n")
     for item in _jq_or(obj.get("omitted"), []):
         parts.append("- %s\n" % item)
     strategy_source = sources.get("strategies")
