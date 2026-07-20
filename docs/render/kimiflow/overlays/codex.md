@@ -11,7 +11,7 @@ This Codex skill is the host-native entrypoint for the same Kimiflow engine used
 
 ## Routing
 
-Invoke Kimiflow automatically only when the current request authorizes implementation and the work is substantial under the frontmatter criteria. Discussion, ideation, recommendations, explanations, status requests, and wish formulations do not authorize implementation; keep them direct and read-only. Use the current request as the target and do not ask a routing question. A raw file count is not sufficient; if no material trigger is clear, work directly. Never auto-invoke for a bug fix, review, refactor, cleanup, docs/config task, or small low-risk feature. Explicit `direct` or `direkt` bypasses Kimiflow; explicit Kimiflow invocation always wins.
+Apply the frontmatter routing boundary: implementation authority and a material trigger are required. Use the current target without a routing question; raw file count is insufficient. If no trigger is clear, work directly. Explicit overrides win.
 
 ## Invocation
 

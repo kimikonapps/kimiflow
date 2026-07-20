@@ -6,6 +6,26 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.8
+
+The autonomous execution release: Kimiflow clarifies product intent up front, proves implementation conformance,
+and changes strategy on its own when a run stops making semantic progress.
+
+### Added
+
+- **Adaptive execution control closes the loop without babysitting:** A bounded private run journal tracks semantic
+  progress, optional usage, budget pressure, quality profile, and recovery strategy. Two counted observations without
+  progress select an explicit graph recovery edge instead of waiting for another user-confirmed run.
+- **Implementation conformance is mechanically verified:** Architecture-relevant plans bind decisions, invariants,
+  affected paths, acceptance criteria, and executable checks to the delivered Git delta before completion.
+
+### Changed
+
+- **Clarification asks only for product facts the model cannot infer:** Feature runs batch material intent questions,
+  explain the resulting contract in plain language, and leave technical design choices to evidence-backed planning.
+- **Budget pressure prunes optional depth without weakening quality gates:** Compact, standard, and critical profiles
+  remain separate from recovery strategy; Clarify, Discovery, Verify, Review, Learning, and Finish stay mandatory.
+
 ## 0.2.7
 
 The adaptive-architecture release: Kimiflow spends architecture tokens only when change risk warrants them,
