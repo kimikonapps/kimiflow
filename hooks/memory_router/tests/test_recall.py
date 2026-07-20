@@ -271,6 +271,73 @@ class RecallJsonCase(unittest.TestCase):
         self.assertIn("local_recall_hits", o["explanation"]["reason_codes"])
         self.assertIn("project_map_fact_hits", o["explanation"]["reason_codes"])
 
+    def test_workspace_scope_keeps_local_and_global_and_omits_foreign_unit(self):
+        for unit in ("api", "web"):
+            directory = os.path.join(self.root, "packages", unit)
+            os.makedirs(os.path.join(directory, "src"))
+            with open(os.path.join(directory, "package.json"), "w", encoding="utf-8") as handle:
+                handle.write('{"name":"%s"}\n' % unit)
+        rows = [
+            {"kind": "module", "path": "packages/web/src/f%d.py" % index,
+             "summary": "auth token foreign %d" % index}
+            for index in range(25)
+        ]
+        rows.extend([
+            {"kind": "module", "path": "packages/api/src/local.py", "summary": "auth local"},
+            {"kind": "docs", "path": "README.md", "summary": "auth global"},
+        ])
+        self.write("FACTS.jsonl", "".join(json.dumps(row) + "\n" for row in rows))
+        result = recall.recall_json(
+            self.root, "auth token", 2, scope_paths=["packages/api/src/main.py"]
+        )
+        paths = [row["path"] for row in result["sources"]["facts"]["hits"]]
+        self.assertEqual(paths[0], "packages/api/src/local.py")
+        self.assertIn("README.md", paths)
+        self.assertFalse(any(path.startswith("packages/web/") for path in paths))
+        self.assertEqual(result["workspace_scope"]["status"], "active")
+        self.assertGreaterEqual(result["workspace_scope"]["foreign_hits_omitted"], 25)
+
+    def test_workspace_scope_preserves_multi_evidence_and_removes_fts_shadow(self):
+        for unit in ("api", "web"):
+            directory = os.path.join(self.root, "packages", unit)
+            os.makedirs(os.path.join(directory, "src"))
+            with open(os.path.join(directory, "package.json"), "w", encoding="utf-8") as handle:
+                handle.write('{"name":"%s"}\n' % unit)
+        self.write(
+            "LEARNINGS.jsonl",
+            json.dumps({"id": "mixed", "status": "current", "scope": "project",
+                        "summary": "auth mixed evidence",
+                        "evidence": ["packages/web/src/a.py", "packages/api/src/b.py"]}) + "\n" +
+            json.dumps({"id": "foreign", "status": "current", "scope": "project",
+                        "summary": "auth foreign evidence",
+                        "evidence": ["packages/web/src/a.py"]}) + "\n",
+        )
+        recall_index.build_recall_index(self.root, recall_index.recall_db_path(self.root))
+        result = recall.recall_json(
+            self.root, "auth evidence", 5, scope_paths=["packages/api/src/main.py"]
+        )
+        self.assertEqual(
+            [row["id"] for row in result["sources"]["learnings"]["hits"]], ["mixed"]
+        )
+        all_index = json.dumps(result["sources"]["index"]["hits"])
+        self.assertNotIn("foreign", all_index)
+
+    def test_scope_overflow_falls_back_without_partial_filtering(self):
+        os.makedirs(os.path.join(self.root, "packages", "api", "src"))
+        with open(os.path.join(self.root, "packages", "api", "package.json"), "w") as handle:
+            handle.write("{}\n")
+        self.write("FACTS.jsonl", '{"path":"packages/api/src/a.py","summary":"auth"}\n')
+        legacy = self.obj("auth")
+        overflow = recall.recall_json(
+            self.root,
+            "auth",
+            5,
+            scope_paths=["packages/api/src/f%d.py" % index for index in range(33)],
+        )
+        self.assertEqual(overflow["workspace_scope"]["status"], "fallback")
+        self.assertEqual(overflow["workspace_scope"]["reason"], "too_many_paths")
+        self.assertEqual(overflow["sources"], legacy["sources"])
+
     def test_no_recall_hits_reason(self):
         self.assertIn("no_recall_hits", self.obj("nomatchxyz")["explanation"]["reason_codes"])
 
@@ -847,6 +914,43 @@ class RecallRunCase(unittest.TestCase):
             self.root,
             ["authentication", "strategy"],
             mode="feature",
+        )
+
+    def test_query_file_infers_state_scope_and_explicit_paths_win(self):
+        for unit in ("api", "web"):
+            directory = os.path.join(self.root, "packages", unit)
+            os.makedirs(os.path.join(directory, "src"))
+            with open(os.path.join(directory, "package.json"), "w") as handle:
+                handle.write("{}\n")
+        with open(os.path.join(self.project, "FACTS.jsonl"), "w") as handle:
+            handle.write('{"path":"packages/api/src/a.py","summary":"auth api"}\n')
+            handle.write('{"path":"packages/web/src/a.py","summary":"auth web"}\n')
+        run = os.path.join(self.root, ".kimiflow", "demo")
+        os.makedirs(run)
+        query = os.path.join(run, "INTENT.md")
+        with open(query, "w") as handle:
+            handle.write("auth\n")
+        with open(os.path.join(run, "STATE.md"), "w") as handle:
+            handle.write("Affected files:\n- packages/api/src/main.py\nPhase 1: done\n")
+
+        code, out, err = self.run_recall(["--query-file", query, "--max", "5"])
+        self.assertEqual((code, err), (0, ""))
+        inferred = json.loads(out)
+        self.assertEqual(inferred["workspace_scope"]["units"][0]["path"], "packages/api")
+        self.assertEqual(
+            [row["path"] for row in inferred["sources"]["facts"]["hits"]],
+            ["packages/api/src/a.py"],
+        )
+
+        code, out, err = self.run_recall([
+            "--query-file", query, "--scope-path", "packages/web/src/main.py", "--max", "5"
+        ])
+        self.assertEqual((code, err), (0, ""))
+        explicit = json.loads(out)
+        self.assertEqual(explicit["workspace_scope"]["units"][0]["path"], "packages/web")
+        self.assertEqual(
+            [row["path"] for row in explicit["sources"]["facts"]["hits"]],
+            ["packages/web/src/a.py"],
         )
 
     def test_write_creates_md_json_and_usage(self):
