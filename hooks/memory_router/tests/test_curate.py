@@ -94,6 +94,14 @@ class CurateRunCase(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn('"schema_version":1', out.getvalue())
 
+    def test_quarantined_rows_leave_existing_curated_derivatives(self):
+        self.write("LEARNINGS.jsonl",
+                   '{"id":"current","status":"current","topic":"a"}\n'
+                   '{"id":"hidden","status":"quarantined","topic":"a"}\n')
+        obj = self.obj()
+        self.assertEqual(obj["topics"], {"a": ["current"]})
+        self.assertEqual(obj["lifecycle"]["current"], 1)
+
 
 def _tools_present():
     if not all(shutil.which(t) for t in ("bash", "jq", "sqlite3", "git")):

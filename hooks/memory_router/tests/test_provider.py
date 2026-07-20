@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -250,6 +252,33 @@ class SyncStatusCase(_RootCase):
         learnings = self.learnings([{"id": "L1", "status": "current", "evidence": ["src/a.py"], "evidence_fingerprints": fp}])
         s = self.sync(learnings, self.missing("nope.json"))   # no manifest -> detection probes -> None -> unavailable
         self.assertEqual((s["status"], s["available"], s["pending_count"], s["exportable_count"]), ("provider_unavailable", False, 0, 1))
+
+    def test_provider_sync_uses_portable_capsule_rows(self):
+        fp = self.evidence("src/a.py")
+        safe = {
+            "id": "local-source-id", "status": "current", "kind": "learned",
+            "topic": "portable-memory", "summary": "Prefer a bounded portable handoff.",
+            "confidence": "high", "sensitivity": "normal", "last_verified": "2026-07-20",
+            "evidence": ["src/a.py"], "evidence_fingerprints": fp,
+        }
+        unsafe = dict(safe, id="unsafe-local-id", summary="Use %s metadata." % os.path.basename(self.root))
+        self.learnings([safe, unsafe])
+        self.manifest(self.AVAIL)
+        output = io.StringIO()
+        with _clean_env(), mock.patch.object(provider, "_http_probe", return_value=(None, "")), \
+                contextlib.redirect_stdout(output):
+            self.assertEqual(provider.run(["sync", "--root", self.root, "--write"]), 0)
+        result = json.loads(output.getvalue())
+        with open(os.path.join(self.project, "VAULT-SYNC.md"), encoding="utf-8") as handle:
+            handoff = handle.read()
+        self.assertIn("Prefer a bounded portable handoff.", handoff)
+        self.assertIn("cap_", handoff)
+        self.assertNotIn("local-source-id", handoff)
+        self.assertNotIn("unsafe-local-id", handoff)
+        self.assertNotIn("src/a.py", handoff)
+        manifest = provider.manifest_json(os.path.join(self.project, "VAULT-PROVIDER.json"))
+        self.assertEqual(manifest["synced_learning_ids"], ["local-source-id"])
+        self.assertEqual(result["candidates"]["exported_count"], 1)
 
 
 class VaultStatusCase(_RootCase):

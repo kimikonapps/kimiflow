@@ -583,6 +583,23 @@ class LearningUsefulnessCase(_LearningCase):
         self.assertEqual(r["stale"]["ids"], ["num"])
         self.assertEqual(r["hot"]["ids"], [])
 
+    def test_utility_rows_are_explainable_bounded_and_max_five(self):
+        L = self.learnings([
+            '{"id":"hot","status":"current","last_verified":"%s","confidence":"high",'
+            '"evidence_fingerprints":[{"status":"current"}]}' % _FRESH,
+            '{"id":"stale","status":"current","last_verified":"2000-01-01","confidence":"low",'
+            '"evidence_fingerprints":[{"status":"missing"}]}',
+        ])
+        U = self.usage({"learning:hot": {"use_count": 4}})
+        result = summaries.learning_utility_rows(L, U)
+        self.assertEqual([row["id"] for row in result], ["hot", "stale"])
+        self.assertEqual(result[0]["utility_points"], 5)
+        self.assertEqual(result[1]["utility_points"], 0)
+        self.assertEqual(result[1]["reasons"], [
+            "uses:0", "stale", "evidence_not_current", "confidence:low",
+        ])
+        self.assertLessEqual(len(result), 20)
+
 
 if __name__ == "__main__":
     unittest.main()
