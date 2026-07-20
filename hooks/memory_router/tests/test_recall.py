@@ -170,7 +170,7 @@ class RecallJsonCase(unittest.TestCase):
         o = self.obj()
         self.assertEqual(list(o.keys()),
                          ["schema_version", "query", "query_terms", "token_budget",
-                          "budget", "authority", "sources", "explanation", "omitted"])
+                          "budget", "authority", "attribution", "sources", "explanation", "omitted"])
         self.assertEqual(list(o["sources"].keys()),
                          ["memory", "user_profile", "learnings", "facts", "index", "history"])
         self.assertEqual(list(o["explanation"].keys()),
@@ -259,6 +259,12 @@ class RecallJsonCase(unittest.TestCase):
         o = self.obj("auth")
         self.assertEqual(o["sources"]["learnings"]["count"], 1)
         self.assertEqual(o["sources"]["facts"]["count"], 1)
+        learning_id = o["sources"]["learnings"]["hits"][0]["recall_id"]
+        fact_id = o["sources"]["facts"]["hits"][0]["recall_id"]
+        self.assertRegex(learning_id, r"^rec_[0-9a-f]{64}$")
+        self.assertRegex(fact_id, r"^rec_[0-9a-f]{64}$")
+        self.assertNotEqual(learning_id, fact_id)
+        self.assertEqual(o["attribution"]["hit_count"], 2)
         self.assertEqual(o["explanation"]["hit_counts"]["total"],
                          o["sources"]["learnings"]["count"] + o["sources"]["facts"]["count"]
                          + o["sources"]["index"]["count"] + o["sources"]["history"]["count"])

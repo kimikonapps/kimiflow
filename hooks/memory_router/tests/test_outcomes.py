@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from memory_router import outcomes, rows, store
+from memory_router import attribution, outcomes, rows, store
 
 
 def _write(path, text):
@@ -136,6 +136,8 @@ class OutcomeEvaluationCase(OutcomeFixture):
         self.assertTrue(evaluation["evidence_fingerprints"])
         self.assertTrue(all(row["status"] == "current" for row in evaluation["evidence_fingerprints"]))
         self.assertNotIn("x" * 32, evaluation["terms"])
+        self.assertEqual(evaluation["recall_attribution"]["contract"], 0)
+        self.assertEqual(evaluation["recall_attribution"]["classification"], "neutral")
 
         result = outcomes.persist_evaluation(self.root, self.run_dir, evaluation)
         self.assertIs(result["written"], True)
@@ -229,6 +231,38 @@ class OutcomeEvaluationCase(OutcomeFixture):
             outcomes.persist_evaluation(self.root, self.run_dir, evaluation)
         self.assertEqual(_read_text(outside), "sentinel\n")
         self.assertEqual(_read_bytes(artifact_path), before_artifact)
+
+    def test_active_contract_receipt_is_embedded_and_evidence_fingerprinted(self):
+        hit = {"id": "learn_active", "summary": "do not copy SECRET_RECALL_TEXT", "evidence": ["app.py:1"]}
+        identifier = attribution.recall_id("learnings", "app.py:1", hit)
+        hit["recall_id"] = identifier
+        self.write(
+            "RECALL.json",
+            json.dumps({"schema_version": 2, "attribution": {"contract": 1}, "sources": {
+                "learnings": {"count": 1, "hits": [hit]},
+            }}) + "\n",
+        )
+        self.write(
+            "PLAN.md",
+            "# Plan\n\n"
+            "Strategy: Reuse the verified local evidence gate.\n"
+            "Strategy evidence: none\n"
+            "<!-- kimiflow:recall-attribution contract=1 -->\n"
+            "Applied recall IDs: %s\n"
+            "Decision D1: use current evidence\n"
+            "Recall D1: %s\n" % (identifier, identifier),
+        )
+        self.write(
+            "VERIFICATION.md",
+            "<!-- kimiflow:verification outcome=passed criteria=passed regression=passed -->\n"
+            "Decision check D1: passed :: unit test\n",
+        )
+        evaluation = self.evaluate()
+        receipt = evaluation["recall_attribution"]
+        self.assertEqual(receipt["classification"], "helpful")
+        self.assertEqual(receipt["applied_ids"], [identifier])
+        self.assertNotIn("SECRET_RECALL_TEXT", json.dumps(receipt))
+        self.assertIn(self.run_rel + "/RECALL.json", evaluation["evidence"])
 
 
 class StrategyRecallCase(OutcomeFixture):

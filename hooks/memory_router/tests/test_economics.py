@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from memory_router import contracts, economics, global_metrics, paths
+from memory_router import attribution, contracts, economics, global_metrics, paths
 
 TAG = "kimiflow--v0.1.50"
 _FIXED_SALT = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -73,10 +73,12 @@ class EconomicsHelperCase(unittest.TestCase):
             "facts": {"hits": [{"id": "F1"}]},
             "index": {"hits": [{"id": "I1"}]},
             "history": {"hits": [{"id": "H1"}]},
+            "strategies": {"hits": [{"id": "S1"}]},
         }}))
         hits = economics.recall_hits_for_economics_json(recall)
         self.assertEqual([(h["id"], h["_economics_source"]) for h in hits],
-                         [("L1", "learning"), ("F1", "fact"), ("I1", "index"), ("H1", "history")])
+                         [("L1", "learning"), ("F1", "fact"), ("I1", "index"),
+                          ("H1", "history"), ("S1", "strategy")])
 
     def test_recall_hits_missing_file_and_non_dict(self):
         self.assertEqual(economics.recall_hits_for_economics_json(self.run + "/none.json"), [])
@@ -104,6 +106,39 @@ class EconomicsHelperCase(unittest.TestCase):
         corpus = "ref RESEARCH.md:12 here"
         hits = [{"evidence": ["RESEARCH.md:12"]}, {"evidence": []}, {}]
         self.assertEqual(economics.economics_used_hits_count(hits, corpus), 1)
+
+    def test_contract_uses_applied_ids_and_legacy_keeps_heuristic(self):
+        project = os.path.join(self.root, ".kimiflow", "project")
+        os.makedirs(project)
+        hit = {"id": "learn_abc", "title": "cached route", "summary": "avoid broad scan"}
+        identifier = attribution.recall_id("learnings", "learn_abc", hit)
+        hit["recall_id"] = identifier
+        self._write("RECALL.json", json.dumps({
+            "schema_version": 2,
+            "attribution": {"contract": 1},
+            "sources": {"learnings": {"hits": [hit]}},
+        }))
+        self._write("RESEARCH.md", "The old learn_abc path is mentioned but not applied.\n")
+        self._write(
+            "PLAN.md",
+            "<!-- kimiflow:recall-attribution contract=1 -->\n"
+            "Applied recall IDs: none\n"
+            "Decision D1: choose route\n"
+            "Recall D1: none\n",
+        )
+        self.assertEqual(economics.run_economics_row_json(self.root, self.run)["used_hit_count"], 0)
+
+        self._write(
+            "PLAN.md",
+            "<!-- kimiflow:recall-attribution contract=1 -->\n"
+            "Applied recall IDs: %s\n"
+            "Decision D1: choose route\n"
+            "Recall D1: %s\n" % (identifier, identifier),
+        )
+        self.assertEqual(economics.run_economics_row_json(self.root, self.run)["used_hit_count"], 1)
+
+        self._write("PLAN.md", "Legacy plan mentions learn_abc.\n")
+        self.assertEqual(economics.run_economics_row_json(self.root, self.run)["used_hit_count"], 1)
 
     # ---- run_type_from_state ----
     def test_run_type_mode_variants(self):
