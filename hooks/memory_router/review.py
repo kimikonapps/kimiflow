@@ -16,7 +16,7 @@ import string
 import sys
 
 from . import (classify, clock, contracts, economics, index as index_mod, memory_md,
-               paths, propose, rows, status as status_mod, store, text, writes)
+               paths, propose, recall_index, rows, status as status_mod, store, text, writes)
 from .cli import die, resolve_root, usage
 from .curate import run as curate_run
 from .runs import resolve_run_dir
@@ -393,6 +393,25 @@ def _capture_propose(root):
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _warn_if_index_not_fresh(root, result=0):
+    state = recall_index.index_state(root)
+    if result == 0 and state["status"] in ("fresh", "unavailable"):
+        return
+    sys.stderr.write(
+        "memory-router: review-run recall index refresh failed: %s\n"
+        % state["status"]
+    )
+
+
+def _refresh_index_once(root):
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        try:
+            result = index_mod.run(["--root", root, "--write"])
+        except Exception:
+            result = 1
+    _warn_if_index_not_fresh(root, result)
+
+
 def run(argv):
     root = ""
     run_arg = ""
@@ -435,6 +454,7 @@ def run(argv):
     if skip_reason:
         if write:
             write_learning_review_markdown(review, run_rel, "skipped", [], skip_reason)
+            _refresh_index_once(root)
             economics_update = economics.record_run_economics_json(root, run_dir)
             lifecycle_update = run_lifecycle_json(root, run_dir, "skipped", review, 0, False,
                                                   economics_update, {})
@@ -490,17 +510,13 @@ def run(argv):
         entries = recorded
         memory_md.write_bounded_memory(root)
         memory_updated = True
+        write_learning_review_markdown(review, run_rel, "recorded", entries, "")
         with contextlib.redirect_stdout(io.StringIO()):
             curate_run(["--root", root, "--write"])
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            try:
-                index_mod.run(["--root", root, "--write"])
-            except Exception:
-                pass
+        _warn_if_index_not_fresh(root)
         proposal_update = _capture_propose(root)
         notification = _jq_or(proposal_update.get("notification"), {})
         economics_update = economics.record_run_economics_json(root, run_dir)
-        write_learning_review_markdown(review, run_rel, "recorded", entries, "")
         lifecycle_update = run_lifecycle_json(root, run_dir, "recorded", review, count, True,
                                               economics_update, notification)
         write_run_lifecycle_json(run_dir + "/RUN-LIFECYCLE.json", lifecycle_update)

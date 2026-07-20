@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import tempfile
 import unittest
@@ -169,7 +170,7 @@ class RecallJsonCase(unittest.TestCase):
         o = self.obj()
         self.assertEqual(list(o.keys()),
                          ["schema_version", "query", "query_terms", "token_budget",
-                          "sources", "explanation", "omitted"])
+                          "budget", "authority", "sources", "explanation", "omitted"])
         self.assertEqual(list(o["sources"].keys()),
                          ["memory", "user_profile", "learnings", "facts", "index", "history"])
         self.assertEqual(list(o["explanation"].keys()),
@@ -188,8 +189,24 @@ class RecallJsonCase(unittest.TestCase):
         o = self.obj()
         self.assertEqual(o["sources"]["memory"]["status"], "included")
         self.assertEqual(o["sources"]["memory"]["content"], "alpha beta")
-        self.assertEqual(o["token_budget"], 900)
+        self.assertEqual(o["token_budget"], 1800)
+        self.assertEqual(o["sources"]["memory"]["budget"], 900)
         self.assertIn("always_on_included", o["explanation"]["reason_codes"])
+
+    def test_unreadable_memory_and_user_are_omitted_explicitly(self):
+        for name in ("MEMORY.md", "USER.md"):
+            with open(os.path.join(self.project, name), "wb") as handle:
+                handle.write(b"\xff\xfe")
+        o = self.obj()
+        self.assertEqual(o["sources"]["memory"]["status"], "unreadable")
+        self.assertEqual(o["sources"]["user_profile"]["status"], "unreadable")
+        self.assertIn("memory_unreadable", o["explanation"]["reason_codes"])
+        self.assertIn("user_profile_unreadable", o["explanation"]["reason_codes"])
+        self.assertIn(
+            {"source": "MEMORY.md", "reason": "unreadable"},
+            o["explanation"]["omitted_sources"],
+        )
+        self.assertIn("MEMORY.md omitted: unreadable", o["omitted"])
 
     def test_memory_over_budget(self):
         self.write("MEMORY.md", "alpha beta gamma\n")
@@ -197,7 +214,8 @@ class RecallJsonCase(unittest.TestCase):
             o = self.obj()
         self.assertEqual(o["sources"]["memory"]["status"], "omitted_over_budget")
         self.assertEqual(o["sources"]["memory"]["content"], "")
-        self.assertEqual(o["token_budget"], 2)
+        self.assertEqual(o["token_budget"], 1800)
+        self.assertEqual(o["sources"]["memory"]["budget"], 2)
         self.assertIn("MEMORY.md omitted: over budget", o["omitted"])
 
     def test_user_budget_default_500(self):
@@ -229,9 +247,9 @@ class RecallJsonCase(unittest.TestCase):
         self.write("LEARNINGS.jsonl", '{"id":"L1","status":"current","topic":"auth","summary":"auth flow"}\n')
         recall_index.build_recall_index(self.root, recall_index.recall_db_path(self.root))
         o = self.obj("auth")
-        self.assertEqual(o["sources"]["index"]["status"], "used")
-        self.assertGreater(o["sources"]["index"]["count"], 0)
-        self.assertIn("fts_index_hits", o["explanation"]["reason_codes"])
+        self.assertEqual(o["sources"]["index"]["status"], "available_no_hits")
+        self.assertEqual(o["sources"]["index"]["count"], 0)
+        self.assertGreaterEqual(o["budget"]["duplicates_removed"], 1)
 
     def test_learning_and_fact_hits_and_counts(self):
         self.write("LEARNINGS.jsonl",
@@ -285,8 +303,8 @@ class RecallJsonCase(unittest.TestCase):
         self.assertEqual(o["sources"]["facts"]["count"], 0)
         self.assertEqual(o["sources"]["index"]["status"], "skipped_targeted")
         self.assertEqual(o["sources"]["index"]["count"], 0)
-        self.assertEqual(o["sources"]["learnings"]["count"], 4)
-        self.assertEqual(o["sources"]["history"]["count"], 1)
+        self.assertEqual(o["sources"]["learnings"]["count"], 1)
+        self.assertEqual(o["sources"]["history"]["count"], 4)
         self.assertEqual(o["explanation"]["hit_counts"]["total"], 5)
         self.assertIn("targeted_recall", o["explanation"]["reason_codes"])
         self.assertEqual(
@@ -313,7 +331,7 @@ class RecallJsonCase(unittest.TestCase):
                             "evidence": ["src/extra2.py:3"]}) + "\n",
             ])
         )
-        with mock.patch.dict(os.environ, {"KIMIFLOW_RECALL_BUDGET": "30"}):
+        with mock.patch.dict(os.environ, {"KIMIFLOW_RECALL_BUDGET": "100"}):
             o = self.obj("auth token", max_hits=3)
 
         hits = []
@@ -344,6 +362,243 @@ class RecallJsonCase(unittest.TestCase):
         self.assertEqual(o["sources"]["facts"]["count"], 1)
         self.assertEqual(o["sources"]["learnings"]["count"], 0)
         self.assertEqual(o["sources"]["facts"]["hits"][0]["path"], "src/store.py")
+
+    def test_same_source_summaries_are_deduplicated(self):
+        self.write(
+            "FACTS.jsonl",
+            "".join(
+                json.dumps({"kind": "module", "path": "src/%s.py" % name,
+                            "summary": "auth token invariant"}) + "\n"
+                for name in ("one", "two")
+            ),
+        )
+        o = self.obj("auth token", max_hits=5)
+        self.assertEqual(o["sources"]["facts"]["count"], 1)
+        self.assertEqual(o["budget"]["duplicates_removed"], 1)
+
+    def test_included_memory_is_not_repeated_by_index(self):
+        self.write("MEMORY.md", "personal auth preference\n")
+        db = recall_index.recall_db_path(self.root)
+        self.assertEqual(recall_index.build_recall_index(self.root, db), 0)
+        o = self.obj("personal auth", max_hits=5)
+        self.assertEqual(o["sources"]["memory"]["status"], "included")
+        self.assertEqual(o["sources"]["index"]["count"], 0)
+        self.assertGreaterEqual(o["budget"]["duplicates_removed"], 1)
+
+    def test_included_memory_content_is_not_repeated_by_learning(self):
+        self.write("MEMORY.md", "personal auth preference\n")
+        self.write(
+            "LEARNINGS.jsonl",
+            json.dumps({"id": "old", "status": "current",
+                        "summary": "personal auth preference",
+                        "evidence": ["src/profile.py:7"]}) + "\n",
+        )
+        o = self.obj("personal auth", max_hits=5)
+        self.assertEqual(o["sources"]["memory"]["status"], "included")
+        self.assertEqual(o["sources"]["learnings"]["count"], 0)
+        self.assertGreaterEqual(o["budget"]["duplicates_removed"], 1)
+
+    def test_direct_fact_wins_duplicate_before_coverage_ranking(self):
+        self.write(
+            "FACTS.jsonl",
+            json.dumps({"kind": "module", "path": "src/x.py", "line": 1,
+                        "summary": "alpha invariant"}) + "\n",
+        )
+        self.write(
+            "LEARNINGS.jsonl",
+            json.dumps({"id": "old", "status": "current", "topic": "beta",
+                        "summary": "alpha invariant", "evidence": ["src/x.py:1"]}) + "\n",
+        )
+        o = self.obj("alpha beta", max_hits=1)
+        self.assertEqual(o["sources"]["facts"]["count"], 1)
+        self.assertEqual(o["sources"]["learnings"]["count"], 0)
+
+    def test_direct_fact_outside_window_inherits_duplicate_group_relevance(self):
+        facts = [
+            {"kind": "module", "path": "src/other%02d.py" % i, "line": 1,
+             "summary": "alpha beta helper %02d" % i}
+            for i in range(20)
+        ]
+        facts.append({"kind": "module", "path": "src/target.py", "line": 7,
+                      "summary": "alpha invariant"})
+        self.write("FACTS.jsonl", "".join(json.dumps(row) + "\n" for row in facts))
+        self.write(
+            "LEARNINGS.jsonl",
+            json.dumps({"id": "old", "status": "current", "topic": "beta gamma",
+                        "summary": "alpha invariant",
+                        "evidence": ["src/target.py:7"]}) + "\n",
+        )
+        o = self.obj("alpha beta gamma", max_hits=1)
+        self.assertEqual(o["sources"]["facts"]["count"], 1)
+        self.assertEqual(o["sources"]["facts"]["hits"][0]["path"], "src/target.py")
+        self.assertEqual(o["sources"]["learnings"]["count"], 0)
+
+    def test_transitive_duplicate_identity_group_emits_one_representative(self):
+        selected, _, duplicates, _ = recall._pack_hits(
+            {
+                "facts": [
+                    {"ref": "src/a.py:1", "summary": "first identity"},
+                    {"ref": "src/b.py:1", "summary": "second identity"},
+                ],
+                "learnings": [
+                    {"ref": "src/a.py:1", "summary": "second identity"},
+                ],
+            },
+            ["identity"], 10, 1000,
+        )
+        self.assertEqual(selected["facts"], [
+            {"ref": "src/a.py:1", "summary": "first identity"},
+        ])
+        self.assertEqual(selected["learnings"], [])
+        self.assertEqual(duplicates, 2)
+
+    def test_out_of_window_bridge_closes_transitive_duplicate_group(self):
+        facts = [
+            {"kind": "module", "area": "beta", "path": "src/shared.py", "line": 1,
+             "summary": "alpha primary"},
+        ]
+        facts.extend(
+            {"kind": "module", "path": "src/filler%02d.py" % i,
+             "summary": "alpha filler %02d" % i}
+            for i in range(19)
+        )
+        facts.append(
+            {"kind": "module", "path": "src/shared.py", "line": 1,
+             "summary": "alpha bridge"}
+        )
+        self.write("FACTS.jsonl", "".join(json.dumps(row) + "\n" for row in facts))
+        self.write(
+            "LEARNINGS.jsonl",
+            json.dumps({"id": "endpoint", "status": "current", "topic": "beta",
+                        "summary": "alpha bridge",
+                        "evidence": ["src/endpoint.py:1"]}) + "\n",
+        )
+        o = self.obj("alpha beta", max_hits=3)
+        self.assertEqual(o["sources"]["facts"]["hits"][0]["path"], "src/shared.py")
+        self.assertEqual(o["sources"]["learnings"]["count"], 0)
+        self.assertGreaterEqual(o["budget"]["duplicates_removed"], 2)
+
+    def test_out_of_window_multi_bridge_closes_to_fixpoint(self):
+        facts = [
+            {"kind": "module", "area": "beta", "path": "src/a.py", "line": 1,
+             "summary": "alpha primary"},
+        ]
+        facts.extend(
+            {"kind": "module", "path": "src/filler%02d.py" % i,
+             "summary": "alpha filler %02d" % i}
+            for i in range(39)
+        )
+        facts.extend([
+            {"kind": "module", "path": "src/a.py", "line": 1,
+             "summary": "alpha middle"},
+            {"kind": "module", "path": "src/b.py", "line": 1,
+             "summary": "alpha middle"},
+        ])
+        self.write("FACTS.jsonl", "".join(json.dumps(row) + "\n" for row in facts))
+        self.write(
+            "LEARNINGS.jsonl",
+            json.dumps({"id": "endpoint", "status": "current", "topic": "beta",
+                        "summary": "alpha endpoint", "evidence": ["src/b.py:1"]}) + "\n",
+        )
+        o = self.obj("alpha beta", max_hits=10)
+        self.assertEqual(o["sources"]["facts"]["hits"][0]["path"], "src/a.py")
+        self.assertEqual(o["sources"]["learnings"]["count"], 0)
+        self.assertGreaterEqual(o["budget"]["duplicates_removed"], 3)
+
+    def test_over_limit_duplicate_chain_fails_closed(self):
+        facts = [
+            {"kind": "module", "area": "beta", "path": "src/r0.py", "line": 1,
+             "summary": "alpha s0"},
+        ]
+        facts.extend(
+            {"kind": "module", "path": "src/filler%02d.py" % i,
+             "summary": "alpha filler %02d" % i}
+            for i in range(19)
+        )
+        for i in range(11):
+            facts.extend([
+                {"kind": "module", "path": "src/r%d.py" % i, "line": 1,
+                 "summary": "alpha s%d" % (i + 1)},
+                {"kind": "module", "path": "src/r%d.py" % (i + 1), "line": 1,
+                 "summary": "alpha s%d" % (i + 1)},
+            ])
+        self.write("FACTS.jsonl", "".join(json.dumps(row) + "\n" for row in facts))
+        self.write(
+            "LEARNINGS.jsonl",
+            json.dumps({"id": "endpoint", "status": "current", "topic": "beta",
+                        "summary": "alpha endpoint", "evidence": ["src/r11.py:1"]}) + "\n",
+        )
+        o = self.obj("alpha beta", max_hits=5)
+        self.assertEqual(o["sources"]["facts"]["hits"][0]["path"], "src/r0.py")
+        self.assertEqual(o["sources"]["learnings"]["count"], 0)
+        self.assertIn("duplicate_closure_truncated", o["explanation"]["reason_codes"])
+
+    def test_source_candidates_rank_before_bounded_window(self):
+        rows = [
+            {"kind": "module", "area": "core", "path": "src/partial%02d.py" % i,
+             "summary": "offline helper"}
+            for i in range(20)
+        ]
+        rows.append({"kind": "module", "area": "core", "path": "src/best.py",
+                     "summary": "offline sync conflict resolution"})
+        self.write("FACTS.jsonl", "".join(json.dumps(row) + "\n" for row in rows))
+        o = self.obj("offline sync conflict resolution", max_hits=1)
+        self.assertEqual(o["sources"]["facts"]["hits"][0]["path"], "src/best.py")
+
+    def test_emitted_mapping_keys_count_toward_global_budget(self):
+        row = {"kind": "module", "path": "src/auth.py", "summary": "auth token"}
+        row.update({("very_long_untrusted_key_%04d_" % i) + ("x" * 40): None
+                    for i in range(100)})
+        self.write("FACTS.jsonl", json.dumps(row) + "\n")
+        with mock.patch.dict(os.environ, {"KIMIFLOW_RECALL_BUDGET": "20"}):
+            o = self.obj("auth token", max_hits=1)
+        self.assertEqual(o["sources"]["facts"]["count"], 0)
+        self.assertEqual(o["budget"]["hits_omitted"], 1)
+
+    def test_nested_container_shape_counts_toward_global_budget(self):
+        payload = "leaf"
+        for _ in range(250):
+            payload = [payload]
+        row = {"kind": "module", "path": "src/auth.py", "summary": "auth token",
+               "payload": payload}
+        self.write("FACTS.jsonl", json.dumps(row) + "\n")
+        with mock.patch.dict(os.environ, {"KIMIFLOW_RECALL_BUDGET": "20"}):
+            o = self.obj("auth token", max_hits=1)
+        self.assertEqual(o["sources"]["facts"]["count"], 0)
+        self.assertEqual(o["budget"]["hits_omitted"], 1)
+
+    def test_bounded_read_stops_oversized_first_line(self):
+        path = os.path.join(self.project, "oversized.md")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("x" * 1000000)
+        content, overflow = recall._bounded_read(path, 160, 80)
+        self.assertTrue(overflow)
+        self.assertLessEqual(len(content), 80)
+
+    def test_direct_candidate_window_is_bounded_after_relevance_ranking(self):
+        rows = [
+            {"id": "partial-%04d" % i, "status": "current",
+             "summary": "offline helper", "evidence": ["src/%04d.py:1" % i]}
+            for i in range(1000)
+        ]
+        rows.append({"id": "best", "status": "current",
+                     "summary": "offline sync conflict resolution",
+                     "evidence": ["src/best.py:1"]})
+        self.write("LEARNINGS.jsonl", "".join(json.dumps(row) + "\n" for row in rows))
+        real_packer = recall._pack_hits
+        with mock.patch("memory_router.recall._pack_hits", wraps=real_packer) as packer:
+            o = self.obj("offline sync conflict resolution", max_hits=1)
+        candidates = packer.call_args.args[0]["learnings"]
+        self.assertLessEqual(len(candidates), 64)
+        self.assertEqual(o["sources"]["learnings"]["hits"][0]["id"], "best")
+
+    def test_candidate_window_is_bounded_when_user_max_is_huge(self):
+        real_rank = recall._ranked_jsonl_hits
+        with mock.patch("memory_router.recall._ranked_jsonl_hits",
+                        wraps=real_rank) as ranked:
+            self.obj("auth", max_hits=1000000000)
+        self.assertTrue(ranked.call_args_list)
+        self.assertTrue(all(call.args[2] <= 1800 for call in ranked.call_args_list))
 
     def test_stale_index_is_bypassed_then_rebuilt_on_write(self):
         self.write(
@@ -376,6 +631,104 @@ class RecallJsonCase(unittest.TestCase):
             [hit["summary"] for hit in recall_index.fts_hits_json(self.root, ["new", "auth"], 5)],
             ["new auth strategy"],
         )
+
+    def test_corrupt_index_is_bypassed_then_rebuilt_on_write(self):
+        self.write(
+            "LEARNINGS.jsonl",
+            json.dumps({"id": "strategy", "status": "current",
+                        "summary": "current auth strategy"}) + "\n",
+        )
+        db = recall_index.recall_db_path(self.root)
+        self.assertEqual(recall_index.build_recall_index(self.root, db), 0)
+        con = sqlite3.connect(db)
+        con.execute("DROP TABLE recall_fts")
+        con.commit()
+        con.close()
+
+        self.assertEqual(recall_index.index_state(self.root)["status"], "corrupt")
+        refreshed = recall.recall_json(
+            self.root, "current auth", 5, refresh_index=True
+        )
+        self.assertEqual(refreshed["sources"]["index"]["freshness"], "fresh")
+        self.assertEqual(refreshed["sources"]["index"]["refresh"], "rebuilt")
+
+    def test_write_rechecks_and_rebuilds_after_fresh_snapshot_drifts(self):
+        self.write(
+            "LEARNINGS.jsonl",
+            json.dumps({"id": "old", "status": "current",
+                        "summary": "old auth strategy"}) + "\n",
+        )
+        db = recall_index.recall_db_path(self.root)
+        self.assertEqual(recall_index.build_recall_index(self.root, db), 0)
+        real_fingerprint = recall_index.corpus_fingerprint
+        mutated = False
+
+        def drift_after_snapshot(root):
+            nonlocal mutated
+            fingerprint = real_fingerprint(root)
+            if not mutated:
+                mutated = True
+                self.write(
+                    "LEARNINGS.jsonl",
+                    json.dumps({"id": "new", "status": "current",
+                                "summary": "new auth strategy"}) + "\n",
+                )
+            return fingerprint
+
+        with mock.patch("memory_router.recall_index.corpus_fingerprint",
+                        side_effect=drift_after_snapshot):
+            refreshed = recall.recall_json(
+                self.root, "new auth", 5, refresh_index=True
+            )
+        self.assertEqual(refreshed["sources"]["index"]["freshness"], "fresh")
+        self.assertEqual(refreshed["sources"]["index"]["refresh"], "rebuilt")
+        self.assertEqual(recall_index.index_state(self.root)["status"], "fresh")
+
+    def test_read_only_final_stale_state_clears_previously_fetched_index_hits(self):
+        self.write(
+            "USER.jsonl",
+            json.dumps({"id": "u1", "status": "current",
+                        "summary": "old auth strategy"}) + "\n",
+        )
+        db = recall_index.recall_db_path(self.root)
+        self.assertEqual(recall_index.build_recall_index(self.root, db), 0)
+        real_fingerprint = recall_index.corpus_fingerprint
+        mutated = False
+
+        def drift_before_final_state(root):
+            nonlocal mutated
+            fingerprint = real_fingerprint(root)
+            if not mutated:
+                mutated = True
+                self.write(
+                    "USER.jsonl",
+                    json.dumps({"id": "u2", "status": "current",
+                                "summary": "new auth strategy"}) + "\n",
+                )
+            return fingerprint
+
+        with mock.patch("memory_router.recall_index.corpus_fingerprint",
+                        side_effect=drift_before_final_state):
+            result = self.obj("old auth", max_hits=5)
+        self.assertEqual(result["sources"]["index"]["freshness"], "stale")
+        self.assertEqual(result["sources"]["index"]["status"], "stale_bypassed")
+        self.assertEqual(result["sources"]["index"]["hits"], [])
+
+    def test_fresh_read_only_index_validation_uses_bounded_full_scans(self):
+        self.write("USER.jsonl", json.dumps({
+            "id": "u1", "status": "current", "summary": "auth strategy",
+        }) + "\n")
+        db = recall_index.recall_db_path(self.root)
+        self.assertEqual(recall_index.build_recall_index(self.root, db), 0)
+        with mock.patch(
+                "memory_router.recall_index.corpus_fingerprint",
+                wraps=recall_index.corpus_fingerprint) as corpus_scan, mock.patch(
+                "memory_router.recall_index._fts_content_fingerprint",
+                wraps=recall_index._fts_content_fingerprint) as content_scan:
+            result = self.obj("auth", max_hits=1)
+        self.assertEqual(result["sources"]["index"]["freshness"], "fresh")
+        self.assertLessEqual(corpus_scan.call_count, 2)
+        self.assertLessEqual(content_scan.call_count, 1)
 
 
 class RecallRunCase(unittest.TestCase):
@@ -508,9 +861,9 @@ class RecallRunCase(unittest.TestCase):
 
     def test_usage_hits_exclude_facts(self):
         with open(os.path.join(self.project, "LEARNINGS.jsonl"), "w", encoding="utf-8") as fh:
-            fh.write('{"id":"L1","status":"current","summary":"auth"}\n')
+            fh.write('{"id":"L1","status":"current","summary":"auth learned behavior"}\n')
         with open(os.path.join(self.project, "FACTS.jsonl"), "w", encoding="utf-8") as fh:
-            fh.write('{"kind":"module","area":"core","path":"auth.py","summary":"auth"}\n')
+            fh.write('{"kind":"module","area":"core","path":"auth.py","summary":"auth project map"}\n')
         self.run_recall(["--query", "auth", "--write", "RECALL.md"])
         usage_obj = json.loads(_read(os.path.join(self.project, "MEMORY-USAGE.json")))
         # facts hit produces key "fact:auth.py:..." would appear ONLY if facts were included.
@@ -527,7 +880,7 @@ class RecallRunCase(unittest.TestCase):
         with mock.patch.dict(os.environ, _env(), clear=True), contextlib.redirect_stdout(out):
             code = main(["recall", "--root", self.root, "--query", "auth"])
         self.assertEqual(code, 0)
-        self.assertIn('"schema_version":1', out.getvalue())
+        self.assertIn('"schema_version":2', out.getvalue())
 
 
 class UpdateUsageMetricsCase(unittest.TestCase):
@@ -630,11 +983,12 @@ def _strip_usage_ts(text):
 
 @unittest.skipUnless(_tools_present(), "bash/jq/git or pinned tag unavailable")
 class RecallParityCase(unittest.TestCase):
-    """Grounds `recall` stdout + the written RECALL.md / RECALL.json / MEMORY-USAGE.json
-    byte-for-byte vs the pinned bash, normalizing only timestamps. Deliberately builds NO
-    RECALL.sqlite so both sides report index_status=missing/hits=[] - FTS index parity is
-    owned by the recall_index harness (Plans 6-7), avoiding the bash-vs-stdlib build
-    row-count difference."""
+    """Keep the unchanged recall surface compatible with the pinned Bash contract.
+
+    Schema v2 intentionally changes packing, budget, authority, and Markdown fields, so
+    byte parity is no longer valid. This projection still catches accidental drift in
+    query parsing and always-on source inclusion while v2-specific tests own the delta.
+    """
 
     @classmethod
     def setUpClass(cls):
@@ -693,11 +1047,30 @@ class RecallParityCase(unittest.TestCase):
         self._populate(rp)
         return rb, rp
 
+    def _compat(self, raw):
+        obj = json.loads(raw)
+        memory = obj["sources"]["memory"]
+        user = obj["sources"]["user_profile"]
+        return {
+            "query": obj["query"],
+            "query_terms": obj["query_terms"],
+            "memory": {key: memory[key] for key in (
+                "path", "status", "tokens_estimate", "content"
+            )},
+            "user_profile": {key: user[key] for key in (
+                "path", "status", "tokens_estimate", "budget", "content"
+            )},
+        }
+
     def test_stdout_parity(self):
         for argv in (["--query", "auth"], ["--query", "auth", "--pretty"],
                      ["--query", "auth", "--max", "1"], ["--query", "nomatchzzz"]):
             rb, rp = self._roots()
-            self.assertEqual(self._bash(rb, argv), self._py(rp, argv), "argv=%r" % argv)
+            self.assertEqual(
+                self._compat(self._bash(rb, argv)),
+                self._compat(self._py(rp, argv)),
+                "argv=%r" % argv,
+            )
 
     def test_over_budget_parity(self):
         rb, rp = self._roots()
@@ -708,18 +1081,22 @@ class RecallParityCase(unittest.TestCase):
         out = io.StringIO()
         with mock.patch.dict(os.environ, env, clear=True), contextlib.redirect_stdout(out):
             recall.run(["--root", rp] + argv)
-        self.assertEqual(b, out.getvalue())
+        self.assertEqual(self._compat(b), self._compat(out.getvalue()))
 
     def test_written_files_parity(self):
         rb, rp = self._roots()
         self._bash(rb, ["--query", "auth", "--write", "RECALL.md"])
         self._py(rp, ["--query", "auth", "--write", "RECALL.md"])
-        # RECALL.md (normalize Generated:)
-        self.assertEqual(_strip_md_ts(_read(os.path.join(rb, "RECALL.md"))),
-                         _strip_md_ts(_read(os.path.join(rp, "RECALL.md"))))
-        # RECALL.json (timestamp-free)
-        self.assertEqual(_read(os.path.join(rb, "RECALL.json")),
-                         _read(os.path.join(rp, "RECALL.json")))
+        # The v2 Markdown adds authority/budget/freshness but keeps the request legible.
+        for root in (rb, rp):
+            markdown = _strip_md_ts(_read(os.path.join(root, "RECALL.md")))
+            self.assertIn("Query: auth", markdown)
+            self.assertIn("Terms: auth", markdown)
+        # RECALL.json keeps the unchanged source projection compatible.
+        self.assertEqual(
+            self._compat(_read(os.path.join(rb, "RECALL.json"))),
+            self._compat(_read(os.path.join(rp, "RECALL.json"))),
+        )
         # MEMORY-USAGE.json (normalize timestamps)
         usage_rel = os.path.join(".kimiflow", "project", "MEMORY-USAGE.json")
         self.assertEqual(_strip_usage_ts(_read(os.path.join(rb, usage_rel))),

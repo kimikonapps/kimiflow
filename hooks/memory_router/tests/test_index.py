@@ -59,11 +59,48 @@ class IndexRunCase(unittest.TestCase):
         self.assertTrue(obj["written"])
         self.assertTrue(os.path.isfile(recall_index.recall_db_path(self.root)))
 
+    def test_failed_write_is_reported(self):
+        with mock.patch("memory_router.recall_index.build_recall_index", return_value=1):
+            code, out, err = _capture(["--root", self.root, "--write"])
+        self.assertEqual(err, "")
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(out)["status"], "failed")
+        self.assertFalse(json.loads(out)["written"])
+
+    def test_restore_failure_reports_recovery_backup(self):
+        project = os.path.join(self.root, ".kimiflow", "project")
+        os.makedirs(project)
+        backup = os.path.join(project, ".RECALL.sqlite.backup.test")
+        with open(backup, "wb") as handle:
+            handle.write(b"last-good")
+        with mock.patch("memory_router.recall_index.build_recall_index", return_value=4):
+            code, out, err = _capture(["--root", self.root, "--write"])
+        self.assertEqual((code, err), (1, ""))
+        obj = json.loads(out)
+        self.assertEqual(obj["reason"], "restore_failed")
+        self.assertEqual(
+            obj["recovery_backup"],
+            ".kimiflow/project/.RECALL.sqlite.backup.test",
+        )
+
     def test_available_when_db_exists_no_write(self):
         self.out(["--write"])
         obj = json.loads(self.out([]))
         self.assertEqual(obj["status"], "available")
         self.assertFalse(obj["written"])
+
+    def test_stale_database_is_not_reported_available(self):
+        project = os.path.join(self.root, ".kimiflow", "project")
+        os.makedirs(project)
+        memory = os.path.join(project, "MEMORY.md")
+        with open(memory, "w", encoding="utf-8") as handle:
+            handle.write("alpha\n")
+        self.out(["--write"])
+        with open(memory, "w", encoding="utf-8") as handle:
+            handle.write("beta\n")
+        obj = json.loads(self.out([]))
+        self.assertEqual(obj["status"], "stale")
+        self.assertEqual(obj["documents"], 0)
 
     def test_documents_counts_rows(self):
         os.makedirs(os.path.join(self.root, ".kimiflow", "project"))

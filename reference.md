@@ -752,7 +752,9 @@ a wrong "standard" must never silently poison future runs.
 - If present, read **`.kimiflow/DECISIONS.md`**. Do not linearly inject all of `.kimiflow/STANDARDS.md`:
   once likely affected paths exist, run `memory-router.sh standards select` and read its bounded run-local context.
 - `memory-router.sh status`, then `.kimiflow/project/MEMORY.md` only if present and under budget.
-- Use these as ground truth; the `Explore` agent only fills the gaps they leave.
+- Native project instructions and selected scoped standards remain constraints. Recalled memory, map facts,
+  old runs, and outcome strategies are advisory leads only: resolve their evidence against current code,
+  tests, specifications, and current primary sources before a material decision; current sources win.
 
 **Append/record (Phase 7, after verification):**
 - `.kimiflow/project/LEARNINGS.jsonl` — durable, machine-readable learnings written through
@@ -1076,6 +1078,19 @@ wholesale, offer/run curation) → `recall --query-file <INTENT|PROBLEM|AUDIT-IN
 .kimiflow/<slug>/RECALL.md` before fresh exploration → use hits to decide which facts, map sections, old runs,
 Vault notes, or web sources are still needed. Missing memory never blocks the run.
 
+**Bounded recall contract:** schema-v2 recall uses one global `KIMIFLOW_RECALL_BUDGET` (default 1800
+estimated tokens) across included `MEMORY.md`/`USER.md` content and all selected hits. The existing
+`KIMIFLOW_MEMORY_BUDGET` (900) and `KIMIFLOW_USER_MEMORY_BUDGET` (500) remain source sub-caps; `--max` is one
+global hit cap, not a per-source allowance. Each direct source first contributes a small relevance-ranked
+candidate window. Candidates are then deduplicated by evidence reference or normalized content in compact
+source-preference order (`facts`, `learnings`, `strategies`, `history`, `index`) before the remaining unique
+hits are ranked globally by query-term coverage and stable source order. This order saves tokens and keeps the
+direct-source representative of a duplicate group; it grants no authority.
+`RECALL.json` marks the whole result `advisory` and requires current project sources to override recall.
+Inspect the cited current evidence before relying on a hit. The frozen, deterministic quality holdout lives in
+`evals/fixtures/recall-quality-holdout.json` and runs with
+`PYTHONPATH=hooks python3 -m unittest memory_router.tests.test_recall_quality`.
+
 **Post-run learning loop (required before `Status: done`):** after verify/review and before closing `STATE.md`,
 run `memory-router.sh review-run --run .kimiflow/<slug> --write` — writes `LEARNING-REVIEW.md`, appends durable
 rows to `LEARNINGS.jsonl`, refreshes bounded `MEMORY.md`+`MEMORY-INDEX.json`+optional
@@ -1145,9 +1160,12 @@ file paths, Vault contents, or raw identifiers. `metrics --global` prints only t
 `metrics --global-purge` deletes the local global JSONL. `curate --write` folds these into `MEMORY-INDEX.json`
 with lifecycle data (stale/cold rows, the `KIMIFLOW_LEARNING_STALE_AFTER_DAYS` window).
 
-**Local FTS5 recall:** `memory-router.sh index --write` builds `.kimiflow/project/RECALL.sqlite` when `sqlite3`
-is present; `curate --write`/`review-run --write` refresh it. `recall` reports index hits without requiring it —
-missing SQLite falls back to JSONL + run-history.
+**Local FTS5 recall:** `memory-router.sh index --write` builds `.kimiflow/project/RECALL.sqlite` when SQLite
+FTS5 is present; `curate --write`/`review-run --write` refresh it. The database is a derived cache carrying an
+application schema version and a SHA-256 fingerprint of every indexed local source. Read-only recall fails
+closed on missing, corrupt, or stale metadata and falls back to JSONL + run history. A persisted `recall
+--write` atomically rebuilds an existing stale/corrupt index and keeps the last good database if rebuilding
+fails; a missing optional index remains optional.
 
 **Optional Vault provider** (`memory-router.sh provider <sub>`):
 - `provider status` — local manifest; auto-detects Obsidian Local REST API on `https://127.0.0.1:27124` /
@@ -1222,9 +1240,9 @@ loop (Phase 7 `review-run`) still runs at every scope.
 
 **Explicit prior-work cue override (all scopes):** if the current user says the same/similar bug or fix existed
 before, or supplies an old commit, issue, run, or strategy, preserve that cue in `PROBLEM.md` and run exactly one
-bounded local `memory-router.sh recall --targeted --query-file <PROBLEM.md> --max 5 --write
+bounded local `memory-router.sh recall --targeted --strategies --query-file <PROBLEM.md> --max 5 --write
 .kimiflow/<slug>/RECALL.md`. The targeted flag excludes always-on/user memory, facts, and the FTS index, then caps
-the combined current-learning and run-history hits at five. This path replaces the default broad recall at every
+the globally packed current-learning, run-history, and strategy hits at five. This path replaces the default broad recall at every
 scope: do not run router status, a second recall, provider health, Vault Pulse, Vault/claude-mem search, or a
 repeated query. Read only decisive hits and verify any old cause/strategy against current code, a fresh Red
 reproduction, and root-cause evidence; history is a hypothesis, never proof. A miss is recorded and the run

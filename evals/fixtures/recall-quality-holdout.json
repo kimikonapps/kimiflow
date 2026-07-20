@@ -46,10 +46,10 @@
         {"id": "partial", "status": "current", "summary": "sync helper", "evidence": ["src/helper.py:3"]}
       ],
       "run_artifacts": [
-        {"path": ".kimiflow/old-sync/PLAN.md", "content": "offline notes and unrelated migration details repeated repeatedly\n"}
+        {"path": ".kimiflow/old-run/PLAN.md", "content": "offline notes and unrelated migration details repeated repeatedly\n"}
       ],
       "expected_refs": ["src/sync.py:7"],
-      "forbidden_refs": []
+      "forbidden_refs": [".kimiflow/old-run/PLAN.md"]
     }
   ]
 }

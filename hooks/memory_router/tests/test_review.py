@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from memory_router import review
+from memory_router import recall_index, review
 
 TAG = "kimiflow--v0.1.50"
 _FIXED_SALT = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -195,6 +195,76 @@ class ReviewHelperCase(unittest.TestCase):
         self.assertEqual(obj["next_actions"],
                          ["alpha", "provider_sync_pending", "review_learning_proposals", "zeta"])
         self.assertEqual(obj["proposals"], {"notification": {"pending": 3}})
+
+
+class ReviewIndexFreshnessCase(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.khome = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, self.khome, ignore_errors=True)
+        self.run_dir = os.path.join(self.root, ".kimiflow", "review-fixture")
+        os.makedirs(self.run_dir)
+        os.makedirs(os.path.join(self.root, ".kimiflow", "project"))
+        with open(os.path.join(self.run_dir, "RESEARCH.md"), "w", encoding="utf-8") as fh:
+            fh.write("# Research\n- What was learned: scope=this project; "
+                     "verified=regression fixture @ 2026-07-20; we decided to keep the "
+                     "explicit cache refresh because stale reads after writes must be avoided\n")
+        with open(os.path.join(self.run_dir, "STATE.md"), "w", encoding="utf-8") as fh:
+            fh.write("# Run\n**Mode:** feature\n")
+        with open(os.path.join(self.run_dir, "RECALL.json"), "w", encoding="utf-8") as fh:
+            json.dump({"sources": {"memory": {"tokens_estimate": 0},
+                                    "user_profile": {"tokens_estimate": 0}}}, fh)
+
+    def run_review(self, tail):
+        env = {"HOME": "/tmp", "KIMIFLOW_HOME": self.khome,
+               "KIMIFLOW_OBSIDIAN_URL": "http://127.0.0.1:9/",
+               "PATH": os.environ.get("PATH", "")}
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.dict(os.environ, env, clear=True), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = review.run([
+                "--root", self.root, "--run", self.run_dir
+            ] + tail)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_recorded_review_finishes_with_fresh_index(self):
+        code, _, _ = self.run_review(["--write"])
+        self.assertEqual(code, 0)
+        self.assertEqual(recall_index.index_state(self.root)["status"], "fresh")
+
+    def test_recorded_review_builds_index_once(self):
+        real_run = review.index_mod.run
+        with mock.patch("memory_router.index.run", wraps=real_run) as index_run:
+            code, _, _ = self.run_review(["--write"])
+        self.assertEqual(code, 0)
+        self.assertEqual(index_run.call_count, 1)
+
+    def test_skipped_review_finishes_with_fresh_index(self):
+        self.assertEqual(recall_index.build_recall_index(
+            self.root, recall_index.recall_db_path(self.root)), 0)
+        code, _, _ = self.run_review(["--skip", "trivial", "--write"])
+        self.assertEqual(code, 0)
+        self.assertEqual(recall_index.index_state(self.root)["status"], "fresh")
+
+    def test_skipped_review_lifecycle_reflects_post_refresh_state(self):
+        with open(os.path.join(self.root, ".kimiflow", "project", "LEARNINGS.jsonl"),
+                  "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"id": "existing", "status": "current",
+                                 "summary": "existing learning"}) + "\n")
+        code, _, _ = self.run_review(["--skip", "trivial", "--write"])
+        self.assertEqual(code, 0)
+        with open(os.path.join(self.run_dir, "RUN-LIFECYCLE.json"),
+                  "r", encoding="utf-8") as fh:
+            lifecycle = json.load(fh)
+        self.assertNotIn("recall_index_missing", lifecycle["curation"]["reasons"])
+        self.assertNotIn("recall_index_missing", lifecycle["next_actions"])
+
+    def test_skipped_review_warns_when_index_refresh_fails(self):
+        with mock.patch("memory_router.index.run", return_value=1):
+            code, _, err = self.run_review(["--skip", "trivial", "--write"])
+        self.assertEqual(code, 0)
+        self.assertIn("recall index refresh failed", err)
 
 
 def _tools_present():

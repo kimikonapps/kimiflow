@@ -199,6 +199,11 @@ Source-Freshness-Prüfung. Geänderte Evidence ersetzt alte Learnings.
 Abgeschlossene Runs erhalten außerdem eine automatische lokale Outcome-Evaluation. Künftige passende
 Runs sehen höchstens eine verifizierte Erfolgsstrategie und eine belegte Fehlstrategie; beide werden
 gegen den aktuellen Code erneut geprüft.
+Recall packt Memory, Fakten, Learnings, Strategien und Historie nun in ein einziges globales
+Context-Budget und ein globales Trefferlimit und entfernt quellenübergreifende Duplikate. Recall bleibt
+immer ein Hinweis: aktueller Code, Tests, Specs und Primär-Evidence gewinnen. Der optionale SQLite-Index
+wird nur mit aktuellem Source-Fingerprint verwendet; stale Indizes werden ignoriert und bei einem
+persistierten Recall atomar neu gebaut.
 
 Ein Obsidian Vault ist optional. Ohne ihn funktionieren lokales Memory und alle Gates weiter. Mit
 authentifizierten Vault-MCP-Tools kann Kimiflow kuratierte, nicht-private projektübergreifende

@@ -219,6 +219,10 @@ evidence-backed learnings. Promotion happens only after successful verification 
 checks. Changed evidence supersedes stale learning instead of silently keeping it active.
 Completed runs also receive a local automatic outcome evaluation. Future matching runs see at most
 one verified success strategy and one evidenced failure strategy, both rechecked against current code.
+Recall now packs memory, facts, learnings, strategies, and history into one global context budget and
+one global hit limit, removing cross-source duplicates. Every recalled item remains advisory: current
+code, tests, specifications, and primary evidence win. The optional SQLite index is used only while its
+source fingerprint is current; stale indexes are bypassed and atomically rebuilt on a persisted recall.
 
 An Obsidian Vault is optional. Without it, project-local memory and every quality gate continue to
 work. With authenticated Vault MCP tools, Kimiflow can recall and export curated, non-private

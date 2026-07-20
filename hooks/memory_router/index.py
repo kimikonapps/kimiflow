@@ -60,20 +60,31 @@ def run(argv):
         return 0
 
     status = "preview"
+    result = 0
     if write:
-        recall_index.build_recall_index(root, db)
-        status = "indexed"
+        result = recall_index.build_recall_index(root, db)
+        if result == 0 and recall_index.index_state(root)["status"] != "fresh":
+            result = 3
+        status = "indexed" if result == 0 else "failed"
     elif os.path.isfile(db):
-        status = "available"
+        freshness = recall_index.index_state(root)["status"]
+        status = "available" if freshness == "fresh" else freshness
 
-    documents = _document_count(db) if os.path.isfile(db) else 0
+    documents = (_document_count(db)
+                 if os.path.isfile(db) and status in ("available", "indexed") else 0)
 
-    contracts.json_print({
+    payload = {
         "schema_version": 1,
         "status": status,
         "path": _PATH,
-        "written": write,
+        "written": write and result == 0,
         "sqlite_available": True,
         "documents": documents,
-    }, pretty)
-    return 0
+    }
+    if result == 4:
+        payload["reason"] = "restore_failed"
+        backup = recall_index.last_recall_backup(root)
+        if backup:
+            payload["recovery_backup"] = os.path.relpath(backup, root).replace(os.sep, "/")
+    contracts.json_print(payload, pretty)
+    return 0 if result == 0 else 1
