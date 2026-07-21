@@ -537,6 +537,7 @@ def global_efficiency_summary_json():
 
 
 _LEARNINGS_DEFAULT_STALE_AFTER = 90
+_UTILITY_SNAPSHOT_UNSET = object()
 
 
 def _learning_stale_after():
@@ -567,6 +568,19 @@ def _strict_usage_items(usage_file):
         with open(usage_file, "r", encoding="utf-8") as handle:
             data = store.parse_json_object_strict(handle.read())
     except (OSError, UnicodeDecodeError):
+        return {}, False
+    if data is None:
+        return {}, False
+    items = data.get("items", {})
+    return (items, True) if isinstance(items, dict) else ({}, False)
+
+
+def _strict_usage_items_snapshot(snapshot):
+    if snapshot is None:
+        return {}, True
+    try:
+        data = store.parse_json_object_strict(snapshot[1].decode("utf-8"))
+    except (UnicodeDecodeError, IndexError, TypeError):
         return {}, False
     if data is None:
         return {}, False
@@ -747,16 +761,22 @@ def learning_usefulness_json(learnings, usage_file):
     }
 
 
-def learning_utility_rows(learnings, usage_file, max_rows=20):
+def learning_utility_rows(learnings, usage_file, max_rows=20, learning_rows=None,
+                          usage_snapshot=_UTILITY_SNAPSHOT_UNSET):
     """Return a bounded, explainable utility view of current learning rows.
 
     The five points are intentionally simple: up to two for observed use, and one
     each for freshness, current stored evidence, and medium/high confidence.
     """
     cutoff = clock.date_days_ago(_learning_stale_after())
-    usage, usage_file_valid = _strict_usage_items(usage_file)
+    if usage_snapshot is _UTILITY_SNAPSHOT_UNSET:
+        usage, usage_file_valid = _strict_usage_items(usage_file)
+    else:
+        usage, usage_file_valid = _strict_usage_items_snapshot(usage_snapshot)
     result = []
-    for row in store.read_jsonl_objects_strict(learnings):
+    source_rows = (store.read_jsonl_objects_strict(learnings)
+                   if learning_rows is None else learning_rows)
+    for row in source_rows:
         if _jq_or(row.get("status"), "current") != "current":
             continue
         rid = _learning_id(row)

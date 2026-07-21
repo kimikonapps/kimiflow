@@ -8,15 +8,11 @@ from . import contracts, curate, memory_md, rows, store, summaries
 from .cli import die, resolve_root, usage
 
 _MAX_ROWS = 20
+_NO_USAGE_SNAPSHOT = object()
 
 
-def _segments(path):
-    """Read JSONL by its LF delimiter while retaining every original terminator."""
-    try:
-        with open(path, "r", encoding="utf-8", newline="") as handle:
-            text = handle.read()
-    except (OSError, UnicodeDecodeError):
-        return []
+def _segments_text(text):
+    """Split JSONL by LF while retaining every original terminator."""
     result = []
     start = 0
     while True:
@@ -32,6 +28,22 @@ def _segments(path):
             result.append((raw, "\n"))
         start = end + 1
     return result
+
+
+def _segments_snapshot(snapshot):
+    if snapshot is None:
+        return []
+    try:
+        return _segments_text(snapshot[1].decode("utf-8"))
+    except UnicodeDecodeError as exc:
+        raise ValueError("LEARNINGS.jsonl is not valid UTF-8") from exc
+
+
+def _segments(path, allow_detached=False):
+    snapshot = store.stable_file_snapshot(
+        path, missing_ok=True, allow_detached=allow_detached
+    )
+    return _segments_snapshot(snapshot)
 
 
 def _parsed(segment):
@@ -78,21 +90,31 @@ def _file_mode(path):
         return 0o644
 
 
-def _write_and_refresh(root, path, original_entries, output_entries):
+def _write_and_refresh(root, path, original_entries, output_entries, source_snapshot,
+                       usage_file=None, usage_snapshot=_NO_USAGE_SNAPSHOT):
     original = "".join(raw + ending for raw, ending, _row in original_entries)
-    mode = _file_mode(path)
+    mode = source_snapshot[2] if source_snapshot is not None else _file_mode(path)
     content = "".join(
         (contracts.dumps(row) if changed else raw) + ending
         for raw, ending, row, changed in output_entries
     )
-    store.atomic_write(path, content, mode=mode, expected=original)
+    if usage_snapshot is not _NO_USAGE_SNAPSHOT:
+        current_usage = store.stable_file_snapshot(usage_file, missing_ok=True)
+        if current_usage != usage_snapshot:
+            raise store.ConcurrentWriteError("usage state changed during lifecycle evaluation")
+    store.atomic_write(
+        path, content, mode=mode, expected=original, expected_snapshot=source_snapshot
+    )
     try:
         _refresh_derivatives(root)
     except Exception as refresh_error:
         try:
-            store.atomic_write(path, original, mode=mode, expected=content)
+            store.atomic_write(
+                path, original, mode=mode, expected=content, allow_detached=True
+            )
         except store.ConcurrentWriteError:
-            latest = [(raw, ending, _parsed(raw)) for raw, ending in _segments(path)]
+            latest = [(raw, ending, _parsed(raw))
+                      for raw, ending in _segments(path, allow_detached=True)]
             rollback_rows = {}
             for (original_raw, _original_ending, original_row), (_raw, _ending, changed_row, changed) in zip(
                     original_entries, output_entries):
@@ -105,7 +127,10 @@ def _write_and_refresh(root, path, original_entries, output_entries):
                 if replacement is not None and row == replacement[0]:
                     raw = replacement[1]
                 merged.append(raw + ending)
-            store.atomic_write(path, "".join(merged), mode=mode, expected=latest_text)
+            store.atomic_write(
+                path, "".join(merged), mode=mode, expected=latest_text,
+                allow_detached=True,
+            )
         try:
             _refresh_derivatives(root)
         except Exception:
@@ -113,8 +138,7 @@ def _write_and_refresh(root, path, original_entries, output_entries):
         raise refresh_error
 
 
-def _restore(root, learnings, requested, write, pretty):
-    entries = [(raw, ending, _parsed(raw)) for raw, ending in _segments(learnings)]
+def _restore(root, learnings, entries, source_snapshot, requested, write, pretty):
     counts = _id_counts(entries)
     matches = [row for _raw, _ending, row in entries
                if isinstance(row, dict) and row.get("id") == requested]
@@ -147,7 +171,9 @@ def _restore(root, learnings, requested, write, pretty):
                 row["status"] = "current"
             output.append((raw, ending, row, changed))
         try:
-            _write_and_refresh(root, learnings, entries, output)
+            _write_and_refresh(
+                root, learnings, entries, output, source_snapshot
+            )
         except (store.ConcurrentWriteError, OSError) as exc:
             return die("lifecycle: %s; retry" % exc, 1)
     contracts.json_print({
@@ -160,15 +186,24 @@ def _restore(root, learnings, requested, write, pretty):
     return 0
 
 
-def _operate(root, learnings, usage_file, restore, write, pretty):
+def _operate(root, learnings, usage_file, entries, source_snapshot, usage_snapshot,
+             restore, write, pretty):
     if restore is not None:
         if not restore:
             return die("lifecycle: --restore requires a nonempty id", 2)
-        return _restore(root, learnings, restore, write, pretty)
+        return _restore(
+            root, learnings, entries, source_snapshot, restore, write, pretty
+        )
 
-    raw_entries = [(raw, ending, _parsed(raw)) for raw, ending in _segments(learnings)]
+    raw_entries = entries
     counts = _id_counts(raw_entries)
-    utility = summaries.learning_utility_rows(learnings, usage_file, max_rows=None)
+    utility = summaries.learning_utility_rows(
+        learnings,
+        usage_file,
+        max_rows=None,
+        learning_rows=[row for _raw, _ending, row in raw_entries if isinstance(row, dict)],
+        usage_snapshot=usage_snapshot,
+    )
     eligible = [item["id"] for item in utility
                 if item["quarantine_eligible"]
                 and isinstance(item["id"], str) and item["id"]
@@ -190,7 +225,10 @@ def _operate(root, learnings, usage_file, restore, write, pretty):
                 quarantined.append(row["id"])
             output.append((raw, ending, row, changed))
         try:
-            _write_and_refresh(root, learnings, raw_entries, output)
+            _write_and_refresh(
+                root, learnings, raw_entries, output, source_snapshot,
+                usage_file=usage_file, usage_snapshot=usage_snapshot,
+            )
         except (store.ConcurrentWriteError, OSError) as exc:
             return die("lifecycle: %s; retry" % exc, 1)
     elif write:
@@ -245,7 +283,22 @@ def run(argv):
     try:
         store.require_local_path(root, learnings)
         store.require_local_path(root, usage_file)
-    except ValueError as exc:
-        return die("lifecycle: %s" % exc, 1)
-    with store.path_lock(learnings):
-        return _operate(root, learnings, usage_file, restore, write, pretty)
+        if not os.path.exists(project) and not write:
+            return _operate(
+                root, learnings, usage_file, [], None, None,
+                restore, write, pretty,
+            )
+        store.ensure_local_directory(root, project)
+        with store.local_path_guard(root, project), store.path_lock(learnings):
+            source_snapshot = store.stable_file_snapshot(learnings, missing_ok=True)
+            usage_snapshot = store.stable_file_snapshot(usage_file, missing_ok=True)
+            entries = [
+                (raw, ending, _parsed(raw))
+                for raw, ending in _segments_snapshot(source_snapshot)
+            ]
+            return _operate(
+                root, learnings, usage_file, entries, source_snapshot, usage_snapshot,
+                restore, write, pretty,
+            )
+    except (ValueError, store.ConcurrentWriteError) as exc:
+        return die("lifecycle: %s; retry" % exc, 1)

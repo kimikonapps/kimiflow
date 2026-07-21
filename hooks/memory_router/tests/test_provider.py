@@ -375,6 +375,26 @@ class SyncStatusCase(_RootCase):
         self.assertEqual(result["candidates"]["exported_count"], 0)
         self.assertEqual(manifest.get("synced_learning_ids", []), [])
 
+    def test_provider_sync_refuses_symlinked_learning_source(self):
+        fp = self.evidence("src/a.py")
+        local = self.learnings([])
+        outside = tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False)
+        self.addCleanup(lambda: os.path.exists(outside.name) and os.unlink(outside.name))
+        with outside:
+            outside.write(json.dumps(self.safe("foreign-source", fp)) + "\n")
+        os.unlink(local)
+        os.symlink(outside.name, local)
+        manifest_path = self.manifest(self.AVAIL)
+        with _clean_env(), contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(
+                provider.run(["sync", "--root", self.root, "--write"]), 1
+            )
+        self.assertFalse(os.path.exists(os.path.join(self.project, "VAULT-SYNC.md")))
+        self.assertEqual(
+            provider.manifest_json(manifest_path).get("synced_learning_ids", []), []
+        )
+
     def test_provider_sync_refuses_symlinked_project_parent(self):
         fp = self.evidence("src/a.py")
         outside = tempfile.mkdtemp()

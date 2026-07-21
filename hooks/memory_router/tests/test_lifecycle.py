@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from memory_router import lifecycle, memory_md, provider, rows, store
+from memory_router import lifecycle, memory_md, provider, rows, store, summaries
 from memory_router.__main__ import main
 
 
@@ -280,6 +280,63 @@ class LifecycleCase(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual([row["id"] for row in store.read_jsonl(self.learnings)],
                          ["concurrent"])
+
+    def test_aba_replacement_with_identical_bytes_is_refused(self):
+        self.write_rows([self.row("target", "2000-01-01")])
+        self.write_usage({})
+        with open(self.learnings, "r", encoding="utf-8", newline="") as handle:
+            original = handle.read()
+        alternate = json.dumps(self.row("target", "2999-01-01")) + "\n"
+        real_utility = summaries.learning_utility_rows
+
+        def replace(content):
+            descriptor, replacement = tempfile.mkstemp(dir=self.project)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                handle.write(content)
+            os.replace(replacement, self.learnings)
+
+        def aba_during_utility(*args, **kwargs):
+            replace(alternate)
+            replace(original)
+            return real_utility(*args, **kwargs)
+
+        with mock.patch.object(
+            summaries, "learning_utility_rows", side_effect=aba_during_utility
+        ):
+            code, _result = self.run_lifecycle("--write")
+        self.assertEqual(code, 1)
+        final = store.read_jsonl(self.learnings)[0]
+        self.assertEqual((final["id"], final["status"], final["last_verified"]),
+                         ("target", "current", "2000-01-01"))
+
+    def test_parent_swap_after_validation_never_writes_outside_repo(self):
+        self.write_rows([self.row("target", "2000-01-01")])
+        self.write_usage({})
+        outside = tempfile.mkdtemp(prefix="kimiflow-lifecycle-outside-")
+        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
+        outside_file = os.path.join(outside, "LEARNINGS.jsonl")
+        with open(outside_file, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(self.row("outside", "2000-01-01")) + "\n")
+        original_project = self.project + "-original"
+        real_require = store.require_local_path
+        calls = [0]
+
+        def validate_then_swap(root, path):
+            result = real_require(root, path)
+            calls[0] += 1
+            if calls[0] == 2:
+                os.rename(self.project, original_project)
+                os.symlink(outside, self.project)
+            return result
+
+        with mock.patch.object(
+            store, "require_local_path", side_effect=validate_then_swap
+        ):
+            code, _result = self.run_lifecycle("--write")
+        self.assertEqual(code, 1)
+        self.assertEqual(store.read_jsonl(outside_file)[0]["status"], "current")
+        original_file = os.path.join(original_project, "LEARNINGS.jsonl")
+        self.assertEqual(store.read_jsonl(original_file)[0]["status"], "current")
 
     def test_post_exchange_replacement_is_preserved_and_refused(self):
         self.write_rows([self.row("target", "2000-01-01")])

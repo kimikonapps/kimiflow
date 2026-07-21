@@ -5,6 +5,7 @@ import errno
 import hashlib
 import json
 import os
+import secrets
 import stat
 import tempfile
 import threading
@@ -26,8 +27,88 @@ class ConcurrentWriteError(RuntimeError):
 _LOCK_STATE = threading.local()
 
 
+def _active_anchor(path):
+    directory = os.path.abspath(os.path.dirname(path) or ".")
+    for anchor in reversed(getattr(_LOCK_STATE, "local_anchors", ())):
+        if anchor["path"] == directory:
+            return anchor
+    return None
+
+
+def _anchor_current(anchor):
+    try:
+        pinned = os.fstat(anchor["descriptor"])
+        current = os.stat(anchor["path"], follow_symlinks=False)
+    except OSError:
+        return False
+    return (stat.S_ISDIR(current.st_mode)
+            and (pinned.st_dev, pinned.st_ino) == (current.st_dev, current.st_ino))
+
+
+def _file_snapshot_at(directory_descriptor, name):
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(name, flags, dir_fd=directory_descriptor)
+    except OSError:
+        return None
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode):
+            return None
+        chunks = []
+        while True:
+            chunk = os.read(descriptor, 65536)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        after = os.fstat(descriptor)
+        anchored = os.stat(name, dir_fd=directory_descriptor, follow_symlinks=False)
+    except OSError:
+        return None
+    finally:
+        os.close(descriptor)
+    identity = (before.st_dev, before.st_ino)
+    stable = (
+        identity == (after.st_dev, after.st_ino)
+        and identity == (anchored.st_dev, anchored.st_ino)
+        and (before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+        == (after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+        == (anchored.st_size, anchored.st_mtime_ns, anchored.st_ctime_ns)
+    )
+    return (identity, b"".join(chunks), stat.S_IMODE(anchored.st_mode)) if stable else None
+
+
+def _native_exchange_at(directory_descriptor, source, target):
+    libc = ctypes.CDLL(None, use_errno=True)
+    if hasattr(libc, "renameatx_np"):
+        exchange = libc.renameatx_np
+        exchange.argtypes = [ctypes.c_int, ctypes.c_char_p,
+                             ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+        exchange.restype = ctypes.c_int
+        result = exchange(directory_descriptor, os.fsencode(source),
+                          directory_descriptor, os.fsencode(target), 0x00000002)
+    elif hasattr(libc, "renameat2"):
+        exchange = libc.renameat2
+        exchange.argtypes = [ctypes.c_int, ctypes.c_char_p,
+                             ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+        exchange.restype = ctypes.c_int
+        result = exchange(directory_descriptor, os.fsencode(source),
+                          directory_descriptor, os.fsencode(target), 0x00000002)
+    else:
+        raise OSError(errno.ENOTSUP, "atomic path exchange unavailable")
+    if result != 0:
+        number = ctypes.get_errno()
+        raise OSError(number, os.strerror(number), target)
+
+
 def _exchange_paths(source, target):
     """Atomically swap two existing paths or fail closed when unsupported."""
+    source_anchor = _active_anchor(source)
+    target_anchor = _active_anchor(target)
+    if source_anchor is not None and source_anchor is target_anchor:
+        return _native_exchange_at(
+            source_anchor["descriptor"], os.path.basename(source), os.path.basename(target)
+        )
     libc = ctypes.CDLL(None, use_errno=True)
     if hasattr(libc, "renamex_np"):
         exchange = libc.renamex_np
@@ -49,6 +130,9 @@ def _exchange_paths(source, target):
 
 def _file_snapshot(path):
     """Read one stable path identity and payload without following a symlink."""
+    anchor = _active_anchor(path)
+    if anchor is not None:
+        return _file_snapshot_at(anchor["descriptor"], os.path.basename(path))
     flags = os.O_RDONLY
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
@@ -159,13 +243,97 @@ def _same_snapshot(left, right):
     return left is not None and right is not None and left == right
 
 
+def stable_file_snapshot(path, missing_ok=False, allow_detached=False):
+    """Return a stable regular-file snapshot, distinguishing missing from unsafe."""
+    anchor = _active_anchor(path)
+    if anchor is not None:
+        if not allow_detached and not _anchor_current(anchor):
+            raise ConcurrentWriteError("local path parent changed")
+        try:
+            info = os.stat(os.path.basename(path), dir_fd=anchor["descriptor"],
+                           follow_symlinks=False)
+        except FileNotFoundError:
+            if missing_ok:
+                return None
+            raise ValueError("required local file is missing: %s" % path)
+        except OSError as exc:
+            raise ValueError("unsafe local file: %s" % path) from exc
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("unsafe local file: %s" % path)
+    else:
+        try:
+            info = os.lstat(path)
+        except FileNotFoundError:
+            if missing_ok:
+                return None
+            raise ValueError("required local file is missing: %s" % path)
+        except OSError as exc:
+            raise ValueError("unsafe local file: %s" % path) from exc
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("unsafe local file: %s" % path)
+    snapshot = _file_snapshot(path)
+    if snapshot is None:
+        raise ConcurrentWriteError("local file changed while reading: %s" % path)
+    return snapshot
+
+
+def stable_local_file_bytes(root, path, missing_ok=False):
+    """Read one workspace-local regular file without following any path symlink."""
+    snapshot = local_file_snapshot(root, path)
+    if snapshot is not None:
+        return snapshot[1]
+    if missing_ok and not os.path.lexists(path):
+        return None
+    raise ValueError("unsafe local file: %s" % path)
+
+
 def _retain_conflict_copy(path):
     recovery = path + ".recovery"
     try:
-        os.rename(path, recovery)
+        anchor = _active_anchor(path)
+        if anchor is not None:
+            os.rename(os.path.basename(path), os.path.basename(recovery),
+                      src_dir_fd=anchor["descriptor"], dst_dir_fd=anchor["descriptor"])
+        else:
+            os.rename(path, recovery)
     except OSError:
         return path
     return recovery
+
+
+def _unlink_path(path):
+    anchor = _active_anchor(path)
+    if anchor is not None:
+        os.unlink(os.path.basename(path), dir_fd=anchor["descriptor"])
+    else:
+        os.unlink(path)
+
+
+def _replace_path(source, target):
+    source_anchor = _active_anchor(source)
+    target_anchor = _active_anchor(target)
+    if source_anchor is not None and source_anchor is target_anchor:
+        os.replace(os.path.basename(source), os.path.basename(target),
+                   src_dir_fd=source_anchor["descriptor"],
+                   dst_dir_fd=source_anchor["descriptor"])
+    else:
+        os.replace(source, target)
+
+
+def _temporary_file(path):
+    anchor = _active_anchor(path)
+    if anchor is None:
+        return tempfile.mkstemp(prefix=os.path.basename(path) + ".tmp.",
+                                dir=os.path.dirname(path) or ".")
+    flags = os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    for _attempt in range(32):
+        name = os.path.basename(path) + ".tmp." + secrets.token_hex(8)
+        try:
+            descriptor = os.open(name, flags, 0o600, dir_fd=anchor["descriptor"])
+            return descriptor, os.path.join(anchor["path"], name)
+        except FileExistsError:
+            continue
+    raise OSError(errno.EEXIST, "cannot allocate atomic temporary file", path)
 
 
 def _restore_exchange_conflict(tmp, path, candidate_snapshot, max_rounds=4):
@@ -180,7 +348,7 @@ def _restore_exchange_conflict(tmp, path, candidate_snapshot, max_rounds=4):
     if not _same_snapshot(current, candidate_snapshot):
         # A post-publication writer already owns the canonical path and wins.
         try:
-            os.unlink(tmp)
+            _unlink_path(tmp)
         except OSError:
             pass
         return
@@ -195,7 +363,7 @@ def _restore_exchange_conflict(tmp, path, candidate_snapshot, max_rounds=4):
             # A writer between recovery rounds already owns the canonical path and
             # is newer than the version waiting at `tmp`.
             try:
-                os.unlink(tmp)
+                _unlink_path(tmp)
             except OSError:
                 pass
             return
@@ -209,14 +377,14 @@ def _restore_exchange_conflict(tmp, path, candidate_snapshot, max_rounds=4):
             break
         if _same_snapshot(installed, desired) and _same_snapshot(displaced, target_before):
             try:
-                os.unlink(tmp)
+                _unlink_path(tmp)
             except OSError:
                 pass
             return
         if not _same_snapshot(installed, desired):
             # A writer after the exchange owns the canonical path and wins.
             try:
-                os.unlink(tmp)
+                _unlink_path(tmp)
             except OSError:
                 pass
             return
@@ -257,6 +425,56 @@ def path_lock(path):
         try:
             fcntl.flock(descriptor, fcntl.LOCK_UN)
         finally:
+            os.close(descriptor)
+
+
+@contextlib.contextmanager
+def local_path_guard(root, directory):
+    """Pin one workspace directory and route writes through its descriptor."""
+    if not hasattr(os, "O_NOFOLLOW") or os.open not in os.supports_dir_fd:
+        raise ValueError("descriptor-anchored local paths are unavailable")
+    lexical_root = os.path.abspath(root)
+    directory = os.path.abspath(directory)
+    try:
+        if os.path.commonpath((lexical_root, directory)) != lexical_root:
+            raise ValueError("path escapes root")
+    except ValueError:
+        raise ValueError("path escapes root")
+    relative = os.path.relpath(directory, lexical_root)
+    parts = [] if relative == os.curdir else relative.split(os.sep)
+    if any(part in ("", os.curdir, os.pardir) for part in parts):
+        raise ValueError("unsafe local directory")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    descriptors = []
+    try:
+        current = os.open(os.path.realpath(lexical_root), flags)
+        descriptors.append(current)
+        for part in parts:
+            current = os.open(part, flags, dir_fd=current)
+            descriptors.append(current)
+        info = os.fstat(current)
+        anchor = {
+            "path": directory,
+            "descriptor": current,
+            "identity": (info.st_dev, info.st_ino),
+        }
+        if not _anchor_current(anchor):
+            raise ConcurrentWriteError("local path parent changed")
+    except ConcurrentWriteError:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+        raise
+    except OSError as exc:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+        raise ValueError("unsafe local directory: %s" % directory) from exc
+    previous = getattr(_LOCK_STATE, "local_anchors", ())
+    _LOCK_STATE.local_anchors = previous + (anchor,)
+    try:
+        yield anchor
+    finally:
+        _LOCK_STATE.local_anchors = previous
+        for descriptor in reversed(descriptors):
             os.close(descriptor)
 
 
@@ -305,24 +523,79 @@ def require_local_path(root, path):
     return path
 
 
-def atomic_write(path, data, mode=0o644, refuse_symlink=True, expected=None):
+def ensure_local_directory(root, directory, mode=0o700):
+    """Create a workspace-local directory chain without following symlinks."""
+    if not hasattr(os, "O_NOFOLLOW") or os.open not in os.supports_dir_fd:
+        raise ValueError("descriptor-anchored local paths are unavailable")
+    lexical_root = os.path.abspath(root)
+    directory = os.path.abspath(directory)
+    try:
+        if os.path.commonpath((lexical_root, directory)) != lexical_root:
+            raise ValueError("path escapes root")
+    except ValueError:
+        raise ValueError("path escapes root")
+    relative = os.path.relpath(directory, lexical_root)
+    parts = [] if relative == os.curdir else relative.split(os.sep)
+    if any(part in ("", os.curdir, os.pardir) for part in parts):
+        raise ValueError("unsafe local directory")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    descriptors = []
+    try:
+        current = os.open(os.path.realpath(lexical_root), flags)
+        descriptors.append(current)
+        for part in parts:
+            try:
+                child = os.open(part, flags, dir_fd=current)
+            except FileNotFoundError:
+                os.mkdir(part, mode, dir_fd=current)
+                child = os.open(part, flags, dir_fd=current)
+            descriptors.append(child)
+            current = child
+    except OSError as exc:
+        raise ValueError("unsafe local directory: %s" % directory) from exc
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+    return directory
+
+
+def atomic_write(path, data, mode=0o644, refuse_symlink=True, expected=None,
+                 expected_snapshot=None, allow_detached=False):
     with path_lock(path):
-        if refuse_symlink and os.path.islink(path):
-            raise ValueError("refusing to write through symlink: %s" % path)
-        directory = os.path.dirname(path) or "."
-        expected_snapshot = None
+        anchor = _active_anchor(path)
+        if anchor is not None and not allow_detached and not _anchor_current(anchor):
+            raise ConcurrentWriteError("local path parent changed")
+        if refuse_symlink:
+            if anchor is not None:
+                try:
+                    target_info = os.stat(os.path.basename(path), dir_fd=anchor["descriptor"],
+                                          follow_symlinks=False)
+                except FileNotFoundError:
+                    target_info = None
+                if target_info is not None and stat.S_ISLNK(target_info.st_mode):
+                    raise ValueError("refusing to write through symlink: %s" % path)
+            elif os.path.islink(path):
+                raise ValueError("refusing to write through symlink: %s" % path)
+        initial_snapshot = None
         if expected is not None:
-            expected_snapshot = _file_snapshot(path)
-            if expected_snapshot is None or expected_snapshot[1] != expected.encode("utf-8"):
+            initial_snapshot = _file_snapshot(path)
+            if (initial_snapshot is None
+                    or initial_snapshot[1] != expected.encode("utf-8")
+                    or (expected_snapshot is not None
+                        and initial_snapshot[:2] != expected_snapshot[:2])):
                 raise ConcurrentWriteError("source changed during rewrite")
-            mode = expected_snapshot[2]
-        fd, tmp = tempfile.mkstemp(prefix=os.path.basename(path) + ".tmp.", dir=directory)
+            mode = initial_snapshot[2]
+        fd, tmp = _temporary_file(path)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 handle.write(data)
-            os.chmod(tmp, mode)
+            tmp_anchor = _active_anchor(tmp)
+            if tmp_anchor is not None:
+                os.chmod(os.path.basename(tmp), mode, dir_fd=tmp_anchor["descriptor"])
+            else:
+                os.chmod(tmp, mode)
             if expected is None:
-                os.replace(tmp, path)
+                _replace_path(tmp, path)
                 tmp = ""
             else:
                 candidate_snapshot = _file_snapshot(tmp)
@@ -333,7 +606,7 @@ def atomic_write(path, data, mode=0o644, refuse_symlink=True, expected=None):
                 installed_snapshot = _file_snapshot(path)
                 if (
                     displaced_snapshot is None
-                    or not _same_snapshot(displaced_snapshot, expected_snapshot)
+                    or not _same_snapshot(displaced_snapshot, initial_snapshot)
                     or not _same_snapshot(installed_snapshot, candidate_snapshot)
                 ):
                     conflict_tmp = tmp
@@ -342,15 +615,32 @@ def atomic_write(path, data, mode=0o644, refuse_symlink=True, expected=None):
                         conflict_tmp, path, candidate_snapshot
                     )
                     raise ConcurrentWriteError("source changed during rewrite")
+                if (anchor is not None and not allow_detached
+                        and not _anchor_current(anchor)):
+                    _exchange_paths(tmp, path)
+                    restored = _file_snapshot(path)
+                    try:
+                        _unlink_path(tmp)
+                    except OSError:
+                        pass
+                    tmp = ""
+                    if not _same_snapshot(restored, initial_snapshot):
+                        raise ConcurrentWriteError(
+                            "local path parent changed; recovery could not be verified"
+                        )
+                    raise ConcurrentWriteError("local path parent changed")
                 try:
-                    os.unlink(tmp)
+                    _unlink_path(tmp)
                 except OSError:
                     pass
                 tmp = ""
+            if (anchor is not None and not allow_detached
+                    and not _anchor_current(anchor)):
+                raise ConcurrentWriteError("local path parent changed")
         finally:
             if tmp:
                 try:
-                    os.unlink(tmp)
+                    _unlink_path(tmp)
                 except OSError:
                     pass
 
@@ -401,13 +691,18 @@ def read_jsonl(path):
 
 def read_jsonl_objects_strict(path):
     """Read only duplicate-free JSON objects from an LF-delimited JSONL file."""
-    rows = []
     try:
         with open(path, "r", encoding="utf-8", newline="") as handle:
-            raw_lines = handle.read().split("\n")
+            content = handle.read()
     except (OSError, UnicodeDecodeError):
-        return rows
-    for raw in raw_lines:
+        return []
+    return jsonl_objects_strict_text(content)
+
+
+def jsonl_objects_strict_text(content):
+    """Parse duplicate-free JSON objects from already trusted LF-delimited text."""
+    rows = []
+    for raw in content.split("\n"):
         stripped = raw.strip()
         if not stripped:
             continue
@@ -415,6 +710,18 @@ def read_jsonl_objects_strict(path):
         if row is not None:
             rows.append(row)
     return rows
+
+
+def read_local_jsonl_objects_strict(root, path, missing_ok=False):
+    """Read strict JSONL from one descriptor-anchored workspace-local source."""
+    data = stable_local_file_bytes(root, path, missing_ok=missing_ok)
+    if data is None:
+        return []
+    try:
+        content = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("unsafe local JSONL encoding: %s" % path) from exc
+    return jsonl_objects_strict_text(content)
 
 
 def read_jsonl_with_lines(path):

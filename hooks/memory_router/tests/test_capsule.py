@@ -194,6 +194,19 @@ class CapsuleCase(unittest.TestCase):
             self.assertEqual(main(["capsule", "--root", self.root, "--write"]), 1)
         self.assertFalse(os.path.exists(os.path.join(outside, "PRIVACY-CAPSULE.json")))
 
+    def test_symlinked_learning_source_is_refused(self):
+        outside = tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False)
+        self.addCleanup(lambda: os.path.exists(outside.name) and os.unlink(outside.name))
+        with outside:
+            outside.write(json.dumps(self.row("foreign-source")) + "\n")
+        local = os.path.join(self.project, "LEARNINGS.jsonl")
+        os.symlink(outside.name, local)
+        with self.assertRaises(ValueError):
+            capsule.capsule_json(self.root)
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(main(["capsule", "--root", self.root, "--write"]), 1)
+        self.assertFalse(os.path.exists(os.path.join(self.project, "PRIVACY-CAPSULE.json")))
+
     def test_symlinked_evidence_outside_workspace_is_not_portable(self):
         outside = tempfile.mkdtemp(prefix="kimiflow-evidence-outside-")
         self.addCleanup(shutil.rmtree, outside, ignore_errors=True)

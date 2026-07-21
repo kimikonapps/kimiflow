@@ -493,7 +493,7 @@ def status_json(manifest_file, allow_network=True):
 _SYNC_PATH = ".kimiflow/project/VAULT-SYNC.md"
 
 
-def _sync_base_candidates(learnings, manifest):
+def _sync_base_candidates(source_rows, manifest):
     # Bash provider_sync_base_candidates_json (1294-1307): current, non-private/security
     # learnings that have evidence + all-current evidence_fingerprints, an id, and are not
     # already in manifest.synced_learning_ids.
@@ -501,7 +501,7 @@ def _sync_base_candidates(learnings, manifest):
     if not isinstance(synced, list):
         synced = []
     out = []
-    for row in store.read_jsonl_objects_strict(learnings):
+    for row in source_rows:
         if _jq_or(row.get("status"), "current") != "current":
             continue
         sensitivity = _jq_or(row.get("sensitivity"), "normal")
@@ -528,8 +528,11 @@ def _sync_candidates(root, learnings, manifest_file):
     # Bash provider_sync_candidates_json (1309-1323): keep base candidates whose STORED
     # evidence_fingerprints still match a fresh recompute (evidence unchanged on disk).
     manifest = manifest_json(manifest_file)
+    source_rows = store.read_local_jsonl_objects_strict(
+        root, learnings, missing_ok=True
+    )
     fresh = []
-    for row in _sync_base_candidates(learnings, manifest):
+    for row in _sync_base_candidates(source_rows, manifest):
         evidence = _jq_or(row.get("evidence"), [])
         if not isinstance(evidence, list):
             evidence = []
@@ -547,7 +550,10 @@ def sync_status_json(root, learnings, manifest_file, allow_network=True):
     # Bash provider_sync_status_json (1325-1351): provider status + the count/ids of
     # learnings that are exportable to the vault and not yet synced.
     provider = status_json(manifest_file, allow_network=allow_network)
-    candidates = _sync_candidates(root, learnings, manifest_file)
+    try:
+        candidates = _sync_candidates(root, learnings, manifest_file)
+    except (ValueError, store.ConcurrentWriteError):
+        candidates = []
     available = provider.get("available") is True
     detection_available = isinstance(provider.get("detection"), dict) and provider["detection"].get("available") is True
     health = provider.get("health") if isinstance(provider.get("health"), dict) else {}
@@ -896,23 +902,27 @@ def run(argv):
             if action == "connect":
                 write = True
             if write:
-                existing = manifest_json(manifest)
-                sids = _jq_or(existing.get("synced_learning_ids"), [])
-                sids = sids if isinstance(sids, list) else []
-                out = {
-                    "schema_version": 1,
-                    "type": "obsidian",
-                    "available": True,
-                    "mode": _jq_or(existing.get("mode"), "local-first"),
-                    "vault_path": detection.get("url"),
-                    "last_prefetch_at": _jq_or(existing.get("last_prefetch_at"), None),
-                    "last_write_at": _jq_or(existing.get("last_write_at"), None),
-                    "synced_learning_ids": sids,
-                    "detection": detection,
-                    "updated_at": now,
-                }
-                os.makedirs(project, exist_ok=True)
-                _write_manifest(manifest, out)
+                try:
+                    store.ensure_local_directory(root, project)
+                    with store.local_path_guard(root, project):
+                        existing = manifest_json(manifest)
+                        sids = _jq_or(existing.get("synced_learning_ids"), [])
+                        sids = sids if isinstance(sids, list) else []
+                        out = {
+                            "schema_version": 1,
+                            "type": "obsidian",
+                            "available": True,
+                            "mode": _jq_or(existing.get("mode"), "local-first"),
+                            "vault_path": detection.get("url"),
+                            "last_prefetch_at": _jq_or(existing.get("last_prefetch_at"), None),
+                            "last_write_at": _jq_or(existing.get("last_write_at"), None),
+                            "synced_learning_ids": sids,
+                            "detection": detection,
+                            "updated_at": now,
+                        }
+                        _write_manifest(manifest, out)
+                except (ValueError, store.ConcurrentWriteError) as exc:
+                    return die("provider: %s; retry" % exc, 1)
             provider = status_json(manifest)
             out = {
                 "schema_version": 1,
@@ -940,8 +950,12 @@ def run(argv):
             "synced_learning_ids": [],
             "updated_at": now,
         }
-        os.makedirs(project, exist_ok=True)
-        _write_manifest(manifest, out)
+        try:
+            store.ensure_local_directory(root, project)
+            with store.local_path_guard(root, project):
+                _write_manifest(manifest, out)
+        except (ValueError, store.ConcurrentWriteError) as exc:
+            return die("provider: %s; retry" % exc, 1)
         out = status_json(manifest)
     elif action == "prefetch":
         provider = status_json(manifest)
@@ -967,13 +981,17 @@ def run(argv):
                 "review_required": True,
             }
             if write:
-                os.makedirs(project, exist_ok=True)
-                write_provider_prefetch_markdown(prefetch_path, out)
-                updated = manifest_json(manifest)
-                updated["last_prefetch_at"] = now
-                updated["updated_at"] = now
-                updated["available"] = True
-                _write_manifest(manifest, updated)
+                try:
+                    store.ensure_local_directory(root, project)
+                    with store.local_path_guard(root, project):
+                        write_provider_prefetch_markdown(prefetch_path, out)
+                        updated = manifest_json(manifest)
+                        updated["last_prefetch_at"] = now
+                        updated["updated_at"] = now
+                        updated["available"] = True
+                        _write_manifest(manifest, updated)
+                except (ValueError, store.ConcurrentWriteError) as exc:
+                    return die("provider: %s; retry" % exc, 1)
                 out["written"] = True
     elif action == "sync":
         provider = status_json(manifest)
@@ -989,7 +1007,12 @@ def run(argv):
             }
         else:
             sync_max = _sync_max()
-            candidates = _sync_candidates(root, project + "/LEARNINGS.jsonl", manifest)
+            try:
+                candidates = _sync_candidates(
+                    root, project + "/LEARNINGS.jsonl", manifest
+                )
+            except (ValueError, store.ConcurrentWriteError) as exc:
+                return die("provider: %s; retry" % exc, 1)
             portable = []
             exported_sources = []
             reason_counts = {}
@@ -1020,19 +1043,25 @@ def run(argv):
                 "written": False,
             }
             if write:
-                os.makedirs(project, exist_ok=True)
-                handoff = dict(out)
-                handoff["candidates"] = dict(out["candidates"], rows=portable)
-                write_provider_sync_markdown(sync_path, handoff)
-                new_ids = [c.get("id") for c in exported_sources]
-                updated = manifest_json(manifest)
-                existing_ids = _jq_or(updated.get("synced_learning_ids"), [])
-                existing_ids = existing_ids if isinstance(existing_ids, list) else []
-                updated["last_write_at"] = now
-                updated["updated_at"] = now
-                updated["available"] = True
-                updated["synced_learning_ids"] = sorted(set(existing_ids + new_ids))
-                _write_manifest(manifest, updated)
+                try:
+                    store.ensure_local_directory(root, project)
+                    with store.local_path_guard(root, project):
+                        handoff = dict(out)
+                        handoff["candidates"] = dict(out["candidates"], rows=portable)
+                        write_provider_sync_markdown(sync_path, handoff)
+                        new_ids = [c.get("id") for c in exported_sources]
+                        updated = manifest_json(manifest)
+                        existing_ids = _jq_or(updated.get("synced_learning_ids"), [])
+                        existing_ids = existing_ids if isinstance(existing_ids, list) else []
+                        updated["last_write_at"] = now
+                        updated["updated_at"] = now
+                        updated["available"] = True
+                        updated["synced_learning_ids"] = sorted(
+                            set(existing_ids + new_ids)
+                        )
+                        _write_manifest(manifest, updated)
+                except (ValueError, store.ConcurrentWriteError) as exc:
+                    return die("provider: %s; retry" % exc, 1)
                 provider = status_json(manifest)
                 out["written"] = True
                 out["provider"] = provider

@@ -249,15 +249,14 @@ def portable_entry(root, row):
 
 def capsule_json(root):
     learnings = os.path.join(root, ".kimiflow", "project", "LEARNINGS.jsonl")
-    store.require_local_path(root, learnings)
     exported = []
     reason_counts = {}
     omitted = 0
     try:
-        with open(learnings, "r", encoding="utf-8", newline="") as handle:
-            raw_lines = handle.read().split("\n")
-    except (OSError, UnicodeDecodeError):
-        raw_lines = []
+        source = store.stable_local_file_bytes(root, learnings, missing_ok=True)
+        raw_lines = [] if source is None else source.decode("utf-8").split("\n")
+    except UnicodeDecodeError as exc:
+        raise ValueError("unsafe local JSONL encoding: %s" % learnings) from exc
     for raw in raw_lines:
         if not raw.strip():
             continue
@@ -314,12 +313,18 @@ def run(argv):
         return die("capsule: %s" % exc, 1)
     if write:
         path = os.path.join(root, ".kimiflow", "project", "PRIVACY-CAPSULE.json")
+        project = os.path.dirname(path)
         try:
             store.require_local_path(root, path)
+            store.ensure_local_directory(root, project)
+            with store.local_path_guard(root, project):
+                store.atomic_write(
+                    path, contracts.dumps(payload, pretty=True) + "\n", mode=0o600
+                )
         except ValueError as exc:
             return die("capsule: %s" % exc, 1)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        store.atomic_write(path, contracts.dumps(payload, pretty=True) + "\n", mode=0o600)
+        except store.ConcurrentWriteError as exc:
+            return die("capsule: %s; retry" % exc, 1)
     out = dict(payload)
     out["status"] = "written" if write else "preview"
     out["written"] = write

@@ -28,6 +28,28 @@ class TestStore(unittest.TestCase):
         with open(real) as f:
             self.assertEqual(f.read(), "orig")  # untouched
 
+    def test_local_guard_refuses_parent_swap_without_external_write(self):
+        project = os.path.join(self.d, "project")
+        outside = os.path.join(self.d, "outside")
+        os.makedirs(project)
+        os.makedirs(outside)
+        target = os.path.join(project, "state.json")
+        outside_target = os.path.join(outside, "state.json")
+        with open(target, "w", encoding="utf-8") as handle:
+            handle.write("original")
+        with open(outside_target, "w", encoding="utf-8") as handle:
+            handle.write("outside")
+        original_project = project + "-original"
+        with store.local_path_guard(self.d, project):
+            os.rename(project, original_project)
+            os.symlink(outside, project)
+            with self.assertRaises(store.ConcurrentWriteError):
+                store.atomic_write(target, "changed")
+        with open(outside_target, encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), "outside")
+        with open(os.path.join(original_project, "state.json"), encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), "original")
+
     def test_read_text_missing_returns_default(self):
         self.assertEqual(store.read_text(os.path.join(self.d, "nope"), "d"), "d")
 
