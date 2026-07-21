@@ -1,7 +1,7 @@
 {
   "name": "kimiflow",
   "description": "Active-session feature & bug-fix loop for Claude Code with full/grill/plan/build/quick/review/audit/fix modes, compact intent clarification, adaptive discovery, autonomous verified local commits, code-review ensembles, project intelligence, repo docs, local findings, memory, Obsidian, and Vault support. Replies in your language.",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "license": "MIT",
   "author": {
     "name": "kimikon"

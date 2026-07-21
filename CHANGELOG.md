@@ -4,6 +4,13 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.10
+
+The verified memory-intelligence release: Kimiflow measures which recalled evidence actually helped,
+safely curates low-value learnings, and narrows large-repository context without losing project authority.
+
 ### Added
 
 - **Recall utility is now mechanically attributable:** Final bounded Recall hits receive deterministic,
