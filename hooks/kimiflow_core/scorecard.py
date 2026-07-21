@@ -75,6 +75,54 @@ def _evidence_bool(value):
     return value if isinstance(value, bool) else "inconclusive"
 
 
+def _inconclusive_scorecard(terminal):
+    return {
+        "schema_version": 1,
+        "status": "inconclusive",
+        "derived_only": True,
+        "terminal": _enum(terminal, {"done", "parked", "failed", "aborted"}),
+        "derivation": {"status": "invalid", "reason": "invalid_evidence"},
+        "dimensions": {
+            "outcome": {"classification": "inconclusive", "promotable": "inconclusive"},
+            "quality": {
+                "verification": "inconclusive",
+                "criteria": "inconclusive",
+                "regression": "inconclusive",
+                "code_review": "inconclusive",
+                "recovery": "inconclusive",
+                "learning": "inconclusive",
+            },
+            "efficiency": {
+                "economics_result": "inconclusive",
+                "economics_confidence": "inconclusive",
+                "net_estimated_tokens_saved": None,
+                "work_units": None,
+                "model_calls": None,
+                "tool_calls": None,
+            },
+            "autonomy": {
+                "first_plan_success": "inconclusive",
+                "no_progress_streak": None,
+                "strategy_mode": "inconclusive",
+                "budget_pressure": "inconclusive",
+            },
+            "context": {
+                "status": "inconclusive",
+                "selected_count": None,
+                "total_bytes": None,
+                "estimated_tokens": None,
+            },
+        },
+        "privacy": {
+            "local_only": True,
+            "stores_content": False,
+            "stores_paths": False,
+            "stores_prompts": False,
+            "stores_identifiers": False,
+        },
+    }
+
+
 def build(root, run_dir, terminal=None, run_descriptor=None, phase=7):
     close_descriptor = False
     if run_descriptor is None:
@@ -101,6 +149,8 @@ def build(root, run_dir, terminal=None, run_descriptor=None, phase=7):
                 shadow_phase,
                 run_descriptor=run_descriptor,
             )
+            if shadow.get("status") == "stale":
+                shadow = phase_context.compile_shadow_descriptor(root, run_descriptor, shadow_phase)
         except (OSError, ValueError, phase_context.PhaseContextError):
             shadow = {"status": "inconclusive"}
         context_status = _enum(shadow.get("status"), {"current", "stale", "missing", "invalid"})
@@ -157,6 +207,20 @@ def build(root, run_dir, terminal=None, run_descriptor=None, phase=7):
             os.close(run_descriptor)
 
 
+def _write_value(run_descriptor, value):
+    workspace_preflight.atomic_directory_write(
+        run_descriptor,
+        SCORECARD_NAME,
+        json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2).encode("utf-8") + b"\n",
+    )
+    flags = os.O_RDONLY | (os.O_NOFOLLOW if hasattr(os, "O_NOFOLLOW") else 0)
+    descriptor = os.open(SCORECARD_NAME, flags, dir_fd=run_descriptor)
+    try:
+        os.fchmod(descriptor, 0o600)
+    finally:
+        os.close(descriptor)
+
+
 def write(root, run_dir, terminal=None, run_descriptor=None, phase=7):
     close_descriptor = False
     if run_descriptor is None:
@@ -164,22 +228,39 @@ def write(root, run_dir, terminal=None, run_descriptor=None, phase=7):
         close_descriptor = True
     try:
         value = build(root, run_dir, terminal=terminal, run_descriptor=run_descriptor, phase=phase)
-        workspace_preflight.atomic_directory_write(
-            run_descriptor,
-            SCORECARD_NAME,
-            json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2).encode("utf-8") + b"\n",
-        )
-        flags = os.O_RDONLY | (os.O_NOFOLLOW if hasattr(os, "O_NOFOLLOW") else 0)
-        descriptor = os.open(SCORECARD_NAME, flags, dir_fd=run_descriptor)
-        try:
-            os.fchmod(descriptor, 0o600)
-        finally:
-            os.close(descriptor)
+        _write_value(run_descriptor, value)
         return value
     except (OSError, ValueError, ScorecardError) as exc:
         if isinstance(exc, ScorecardError):
             raise
         raise ScorecardError("scorecard_write_failed:%s" % exc.__class__.__name__)
+    finally:
+        if close_descriptor:
+            os.close(run_descriptor)
+
+
+def write_terminal(root, run_dir, terminal, run_descriptor=None, phase=7):
+    """Write derived terminal evidence without turning it into a lifecycle gate."""
+    close_descriptor = False
+    if run_descriptor is None:
+        run_descriptor = phase_context._open_run(root, run_dir)
+        close_descriptor = True
+    try:
+        try:
+            return write(
+                root,
+                run_dir,
+                terminal=terminal,
+                run_descriptor=run_descriptor,
+                phase=phase,
+            )
+        except ScorecardError:
+            value = _inconclusive_scorecard(terminal)
+            try:
+                _write_value(run_descriptor, value)
+            except (OSError, ValueError):
+                pass
+            return value
     finally:
         if close_descriptor:
             os.close(run_descriptor)

@@ -657,7 +657,7 @@ class TestOutcomeEvaluation(unittest.TestCase):
         )))
         self.assertFalse(os.path.exists(os.path.join(self.run_dir, "OUTCOME-EVALUATION.json")))
 
-    def test_finish_restores_existing_scorecard_after_post_write_failure(self):
+    def test_finish_replaces_failed_scorecard_projection_with_inconclusive_fallback(self):
         scorecard_path = os.path.join(self.run_dir, scorecard.SCORECARD_NAME)
         original = b'{"previous":true}\n'
         with open(scorecard_path, "wb") as handle:
@@ -675,10 +675,12 @@ class TestOutcomeEvaluation(unittest.TestCase):
         ):
             rc, _ = run_main(["finish", "--root", self.repo, "--write"])
 
-        self.assertEqual(rc, 1)
-        self.assertTrue(os.path.isfile(active_run.active_file(self.repo)))
-        with open(scorecard_path, "rb") as handle:
-            self.assertEqual(handle.read(), original)
+        self.assertEqual(rc, 0)
+        self.assertFalse(os.path.isfile(active_run.active_file(self.repo)))
+        with open(scorecard_path, encoding="utf-8") as handle:
+            value = json.load(handle)
+        self.assertEqual(value["status"], "inconclusive")
+        self.assertEqual(value["derivation"]["reason"], "invalid_evidence")
 
     def test_finish_rechecks_items_after_learning_before_retirement(self):
         evaluation_started = threading.Event()

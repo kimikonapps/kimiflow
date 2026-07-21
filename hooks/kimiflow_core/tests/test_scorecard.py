@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from kimiflow_core import active_run, scorecard
+from kimiflow_core import active_run, phase_context, phase_reads, scorecard
 
 
 class ScorecardTests(unittest.TestCase):
@@ -109,6 +109,25 @@ class ScorecardTests(unittest.TestCase):
         self.assertEqual(value["dimensions"]["context"]["total_bytes"], 99)
         self.assertEqual(load_shadow.call_args.kwargs["run_descriptor"], descriptor)
 
+    def test_stale_terminal_shadow_is_recompiled_from_pinned_evidence(self):
+        plugin = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+        for name in ("PLAN.md", "ACCEPTANCE.md", "INTENT.md"):
+            with open(os.path.join(self.run, name), "w", encoding="utf-8") as handle:
+                handle.write("bounded fixture\n")
+        with mock.patch.dict(os.environ, {"KIMIFLOW_PLUGIN_ROOT": plugin}):
+            entry = phase_reads.phase_entry(self.root, 7)
+            phase_reads.record_read(self.root, self.run, 7, entry["file"], "now", write=True)
+            phase_context.write_shadow(self.root, self.run, 7)
+            self.write_json("EXECUTION-TRACE.json", {"summary": {"work_units": 1}})
+            self.assertEqual(phase_context.load_current_shadow(self.root, self.run, 7)["status"], "stale")
+            value = scorecard.build(self.root, self.run, terminal="done")
+
+        context = value["dimensions"]["context"]
+        self.assertEqual(context["status"], "current")
+        self.assertGreater(context["selected_count"], 0)
+        self.assertGreater(context["total_bytes"], 0)
+        self.assertGreater(context["estimated_tokens"], 0)
+
 
 class TerminalScorecardIntegrationTests(unittest.TestCase):
     def setUp(self):
@@ -169,6 +188,25 @@ class TerminalScorecardIntegrationTests(unittest.TestCase):
                         os.unlink(os.path.join(self.run, name))
                     except FileNotFoundError:
                         pass
+
+    def test_malformed_optional_evidence_does_not_block_abort(self):
+        self.activate("aborted")
+        with open(os.path.join(self.run, "EXECUTION-TRACE.json"), "w", encoding="utf-8") as handle:
+            handle.write("{not-json}\n")
+
+        with mock.patch.object(
+            active_run,
+            "evaluate_terminal_outcome",
+            return_value=({"status": "evaluated", "terminal": "aborted"}, 0, ""),
+        ):
+            rc = active_run.main(["abort", "--root", self.root, "--reason", "fixture", "--write"])
+
+        self.assertEqual(rc, 0)
+        self.assertFalse(os.path.exists(active_run.active_file(self.root)))
+        with open(os.path.join(self.run, scorecard.SCORECARD_NAME), encoding="utf-8") as handle:
+            value = json.load(handle)
+        self.assertEqual(value["status"], "inconclusive")
+        self.assertEqual(value["derivation"], {"status": "invalid", "reason": "invalid_evidence"})
 
     def test_finish_snapshot_restores_scorecard_bytes(self):
         self.activate("done")

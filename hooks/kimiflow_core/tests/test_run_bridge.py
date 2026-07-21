@@ -108,6 +108,29 @@ class RunBridgeTests(unittest.TestCase):
             self.request("run/mutate", self.mutation("act_after_aba", cursor))
         self.assertEqual(stale.exception.code, "stale_cursor")
 
+    def test_direct_mutations_preserve_invalid_items_files(self):
+        path = os.path.join(self.run, "ITEMS.jsonl")
+        cases = (
+            b'{not-json}\n{"id":"item_001","status":"accepted"}\n',
+            b'\xff\n',
+            b'[]\n',
+            b'{"id":"item_001","id":"item_002","status":"pending"}\n',
+            b'{"id":"item_001","status":"accepted"}\n{"id":"item_001","status":"pending"}\n',
+            b'{"id":"item_001","status":"unknown"}\n',
+        )
+        for payload in cases:
+            with self.subTest(payload=payload):
+                with open(path, "wb") as handle:
+                    handle.write(payload)
+
+                rc = active_run.main([
+                    "append-item", "--root", self.root, "--title", "must not land", "--write",
+                ])
+
+                self.assertEqual(rc, 2)
+                with open(path, "rb") as handle:
+                    self.assertEqual(handle.read(), payload)
+
     def test_prepared_action_reconciles_crash_before_completion_receipt(self):
         cursor = self.cursor()
         original = run_bridge._write_receipt

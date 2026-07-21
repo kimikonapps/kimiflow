@@ -377,7 +377,8 @@ reduction; it never satisfies or weakens `PHASE_READ_GATE`.
 Terminal `done|parked|failed|aborted` runs receive `RUN-SCORECARD.json`, an allowlisted projection with separate
 outcome, quality, efficiency, autonomy and context dimensions. It has no aggregate quality score and stores no
 run identity, evidence reference, prompt, code or path. Missing evidence stays `inconclusive`; successful finish
-includes the scorecard in its existing snapshot/rollback transaction.
+includes the scorecard in its existing snapshot/rollback transaction. Malformed derived evidence produces an
+`inconclusive` fallback scorecard instead of blocking `done|parked|failed|aborted` lifecycle transitions.
 
 ---
 

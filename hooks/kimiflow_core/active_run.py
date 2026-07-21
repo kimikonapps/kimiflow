@@ -88,6 +88,7 @@ FINISH_SNAPSHOT_NAMES = (
 _ITEM_MUTATION_LOCAL = threading.local()
 ACTION_ID_RE = re.compile(r"^act_[A-Za-z0-9._-]{1,64}$")
 ACTION_FINGERPRINT_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+ITEM_ID_RE = re.compile(r"^item_[0-9]+$")
 MAX_ITEM_ACTION_RECEIPTS = 256
 ITEM_COUNT_KEYS = {"total", "pending", "built", "accepted", "rejected", "dropped", "open"}
 ITEM_ACTION_OPERATIONS = {"append-item", "mark-built", "mark-accepted", "mark-rejected", "drop-item"}
@@ -310,22 +311,25 @@ def read_items(path):
     rows = []
     if not os.path.isfile(path):
         return rows
-    with open(path, "r", encoding="utf-8") as handle:
-        for line in handle:
-            line = line.rstrip("\n")
-            if not line:
-                continue
-            try:
-                value = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(value, dict):
-                rows.append(value)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.rstrip("\n")
+                if not line:
+                    continue
+                try:
+                    value = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(value, dict):
+                    rows.append(value)
+    except UnicodeError:
+        pass
     return rows
 
 
 def read_items_descriptor(run_descriptor):
-    """Read ITEMS.jsonl from the run directory that was pinned by the lock."""
+    """Strictly read mutable ITEMS.jsonl from the directory pinned by the lock."""
     flags = os.O_RDONLY
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
@@ -338,19 +342,23 @@ def read_items_descriptor(run_descriptor):
         rows = []
         with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
             descriptor = None
-            for line in handle:
+            for line_number, line in enumerate(handle, 1):
                 line = line.rstrip("\n")
                 if not line:
                     continue
                 try:
-                    value = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(value, dict):
-                    rows.append(value)
+                    value = json.loads(line, object_pairs_hook=_reject_item_json_duplicates)
+                except ValueError:
+                    die("active-run items malformed at line %s" % line_number, 2)
+                if not isinstance(value, dict):
+                    die("active-run items malformed at line %s" % line_number, 2)
+                rows.append(value)
+        validate_items_for_mutation(rows)
         return rows
     except FileNotFoundError:
         return []
+    except UnicodeError:
+        die("active-run items malformed encoding", 2)
     except OSError as exc:
         die("cannot read active-run items: %s" % exc, 2)
     finally:
@@ -616,6 +624,35 @@ def item_mutation_lock(root, run_dir, active, allowed_state_statuses=("active",)
 
 def valid_action_id(value):
     return isinstance(value, str) and ACTION_ID_RE.fullmatch(value) is not None
+
+
+def _reject_item_json_duplicates(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate JSON key")
+        value[key] = item
+    return value
+
+
+def validate_items_for_mutation(rows):
+    seen = set()
+    for row in rows:
+        ident = row.get("id")
+        status_value = row.get("status")
+        revision = row.get("mutation_revision", 0)
+        if (
+            not isinstance(ident, str)
+            or ITEM_ID_RE.fullmatch(ident) is None
+            or ident in seen
+            or status_value not in ("pending", "built", "accepted", "rejected", "dropped")
+            or isinstance(revision, bool)
+            or not isinstance(revision, int)
+            or not 0 <= revision <= MAX_ITEM_MUTATION_REVISION
+        ):
+            die("active-run items invalid for mutation", 2)
+        seen.add(ident)
+        item_action_receipts(row)
 
 
 def item_mutation_lock_held(run_descriptor):
@@ -2467,16 +2504,13 @@ def cmd_finish(args):
                             )
                         except execution_control.ExecutionControlError as exc:
                             die("finish refused: execution control invalid (%s)" % exc, 1)
-                    try:
-                        scorecard.write(
-                            root,
-                            run_dir,
-                            terminal="done",
-                            run_descriptor=pinned["run_descriptor"],
-                            phase=7,
-                        )
-                    except scorecard.ScorecardError as exc:
-                        die("finish refused: scorecard invalid (%s)" % exc, 1)
+                    scorecard.write_terminal(
+                        root,
+                        run_dir,
+                        terminal="done",
+                        run_descriptor=pinned["run_descriptor"],
+                        phase=7,
+                    )
                     terminal_state_committed = True
                     if not terminal_run_name_matches(pinned):
                         die("terminal run directory changed before retirement", 2)
@@ -2544,16 +2578,13 @@ def cmd_terminal(command, args):
     }
     if opts["--write"]:
         with pinned_terminal_run(run_dir, terminal_active) as pinned:
-            try:
-                scorecard.write(
-                    root,
-                    run_dir,
-                    terminal=outcome,
-                    run_descriptor=pinned["run_descriptor"],
-                    phase=7,
-                )
-            except scorecard.ScorecardError as exc:
-                die("%s refused: scorecard invalid (%s)" % (command, exc), 1)
+            scorecard.write_terminal(
+                root,
+                run_dir,
+                terminal=outcome,
+                run_descriptor=pinned["run_descriptor"],
+                phase=7,
+            )
             write_run_text(pinned["run_descriptor"], "SESSION-OUTCOME.json", json_pretty(outcome_json) + "\n")
             update_terminal_state(pinned, state_status)
             if not terminal_run_name_matches(pinned):

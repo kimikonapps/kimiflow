@@ -199,6 +199,11 @@ def compile_shadow(root, run_dir, phase, active=None):
         os.close(run_descriptor)
 
 
+def compile_shadow_descriptor(root, run_descriptor, phase):
+    """Compile a fresh projection from an already pinned run directory."""
+    return _compile_descriptor(root, run_descriptor, phase)
+
+
 def write_shadow(root, run_dir, phase, active=None):
     run_descriptor = _open_run(root, run_dir, active=active)
     try:
