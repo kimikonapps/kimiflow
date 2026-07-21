@@ -5,6 +5,7 @@
 @@stderr@@
 @@files@@
 .kimiflow/demo/OUTCOME-EVALUATION.json	mode=600	hash=sha256:1412ba2460107e115a46bb04e8f192407572a366ec1603ed0f5fedd2c21ef95e
+.kimiflow/demo/RUN-SCORECARD.json	mode=600	hash=sha256:d27fe926d25916f6f4bdc8e9c110e87d8c08a0d10f690d37cc3487863537d481
 .kimiflow/demo/SESSION-OUTCOME.json	mode=600	hash=sha256:589d6a735531ae710d17e1943b104ba8e6aec93a0f75dbee2e1f6a64d9c866e1
 .kimiflow/demo/STATE.md	mode=600	hash=sha256:573a1c675fcd62c68718cc4226b86893c0ed6ec808008cee63be75cc6531eddd
 .kimiflow/project/FINDINGS.md	mode=644	hash=sha256:a2ed99a0a376d3147db54333f62ba30603ac43d8cf558ff240d9a724251cbf82

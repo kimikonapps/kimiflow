@@ -351,6 +351,34 @@ Codex transport adapter (for example with App Server); it must not fork Kimiflow
 
 Sources: https://learn.chatgpt.com/docs/non-interactive-mode · https://learn.chatgpt.com/docs/developer-commands?surface=cli#cli-codex-app-server
 
+## Unified local run control plane
+
+`hooks/run-bridge.sh` is the provider-neutral, single-shot JSON-stdio boundary for future Codex, Claude, app and
+local-model adapters. Schema 1 exposes `run/readiness`, `run/context`, `run/scorecard`, and a deliberately small
+`run/mutate` allowlist for Active Run items. It is an adapter over the existing Active Run, flow graph, phase
+reads, mechanical gates, execution trace and outcome evaluation; none of its derived artifacts is authoritative.
+Read methods default to the Active Run; `run/context` and `run/scorecard` also accept an explicit safe
+repo-relative `run` after retirement, so persisted terminal evidence remains reachable without restoring a session.
+
+Readiness normalizes only applicable existing gates and emits a canonical fingerprint. A new mutation requires
+the current `{sequence, readiness_fingerprint}` cursor and exact environment-backed Active Run owner. Direct and
+bridge item writers share one descriptor-pinned reentrant POSIX transaction lock. The bridge persists a bounded
+prepared action receipt before delegation, passes the action ID into the idempotent item mutation, then completes
+the receipt. Exact prepared/completed retries are reconciled before the new-action cursor check; changed payload
+under one ID, stale new cursors, missing owners, receipt exhaustion and unsafe files fail closed. Receipts contain
+operation/fingerprints and sanitized results, never item titles, prompts, code, paths, sessions or transcripts.
+
+Each phase manifest row carries a bounded context policy. The shadow compiler reads the full canonical phase file
+and only named run artifacts through pinned, no-follow regular-file descriptors. Its persisted output contains
+names, sizes and hashes but no bodies. A composite basis covers policy, phase bytes, the phase-read receipt and
+every selected artifact, so every consumer can detect drift. Shadow metadata measures a possible later context
+reduction; it never satisfies or weakens `PHASE_READ_GATE`.
+
+Terminal `done|parked|failed|aborted` runs receive `RUN-SCORECARD.json`, an allowlisted projection with separate
+outcome, quality, efficiency, autonomy and context dimensions. It has no aggregate quality score and stores no
+run identity, evidence reference, prompt, code or path. Missing evidence stays `inconclusive`; successful finish
+includes the scorecard in its existing snapshot/rollback transaction.
+
 ---
 
 ## Display verbosity (all phases)

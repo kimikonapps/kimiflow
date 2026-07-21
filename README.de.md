@@ -96,6 +96,15 @@ Message fortgesetzt werden, solange ihr Active Run offen ist. Der lokale Receipt
 niemals Auftrag oder Transkript. `bash hooks/install-kimiflow-cli.sh --check` prüft den verwalteten Wrapper; ein
 fremdes `kimiflow`-Executable wird nicht überschrieben.
 
+### Einheitliche lokale Run-Steuerung
+
+Rich Clients und Modell-Adapter können `hooks/run-bridge.sh` als JSON-stdio-Grenze für jeweils einen Aufruf
+verwenden. Sie liefert eine deterministische Readiness-Sicht, akzeptiert nur owner-gebundene replay-sichere
+Item-Mutationen und stellt inhaltsfreie Phase-Context-Metadaten sowie eine mehrdimensionale terminale Scorecard
+bereit. Active Run, Graph, Phasen-, Review- und Finish-Gates bleiben maßgeblich; es entsteht weder Daemon noch
+Netzwerkdienst oder Provider. Der Phase Context bleibt Shadow-Evidenz und ersetzt nie die vollständige Phase-Lektüre.
+Terminale Scorecards bleiben nach dem Ende des Active Run über einen expliziten sicheren Run-Pfad lesbar.
+
 ## Demo
 
 ![Kimiflow-Launcher und gegateter Feature-/Fix-Flow](docs/demo/kimiflow.gif)
@@ -159,6 +168,7 @@ Bestätigung autonom weiter. Exakte triviale Arbeit darf den Loop überspringen.
 | Plan-/Review-Gates | AC-Mapping und belegte BLOCKER/HIGHs werden in begrenzten Reparaturrunden gelöst. |
 | Implementation-Conformance-Gate | Rechercheentscheidungen, Invarianten, Pfade und Checks konvergieren in Phase 6; beim Abschluss muss zusätzlich der Commit exakt dem geprüften Stand entsprechen. |
 | Adaptiver Execution-Controller | Run-weites No-Progress und Budgetdruck wählen eine begrenzte Recovery-Aktion; verpflichtende Qualitäts-Gates bleiben erhalten. |
+| Lokale Run-Steuerung | Hosts erhalten einen Readiness-/Cursor-Vertrag; gemeinsames Locking, Owner-Nachweis und Action-Receipts machen unterstützte Item-Mutationen fail-closed und replay-sicher. |
 | Materielle-Entscheidungs-Gate | Reversible Technik läuft weiter; nur Autorität, Risiko, Zugriff, Privacy/Kosten oder Irreversibilität pausieren. |
 | Red/Green-Gate | Fixes brauchen aufgezeichnete failing/passing Evidence und Regression. |
 | Atomic-Commit-Gate | Schema-4-Runs stagen Named Run-Paths und committen lokal unter der ursprünglichen Bau-Freigabe. |

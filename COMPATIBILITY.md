@@ -73,6 +73,7 @@ loop still runs.
 | Primitive | Where kimiflow uses it | If it changes |
 |-----------|------------------------|---------------|
 | Same-filesystem atomic path exchange (`renamex_np(RENAME_SWAP)` on macOS or `renameat2(RENAME_EXCHANGE)` on Linux) | Reversible Memory Lifecycle compare/publish/restore for `LEARNINGS.jsonl` | **Load-bearing only for `lifecycle --write` / `--restore --write`** — an unavailable primitive returns a bounded nonzero refusal before mutation; preview, recall, record, Capsule export, and the rest of Kimiflow remain available. Conflict recovery uses only bounded exchanges, so the canonical path is never removed; a persistently racing or failing filesystem keeps the extra version as an explicit local recovery copy. The release smokes assert that this compatibility boundary stays declared. |
+| POSIX `flock`, `dir_fd`, `O_NOFOLLOW`, atomic rename and JSON stdio | Unified local run control plane (`run-bridge.sh`), phase-context shadow and scorecard | **Load-bearing only for local bridge writes** — missing owner identity, lock support, pinned file safety, valid cursor or exact action receipt fails closed. Read-only embedded Kimiflow remains available; there is no unlocked or network fallback. |
 
 ## Version-bump smoke checklist
 

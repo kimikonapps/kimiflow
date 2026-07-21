@@ -4,42 +4,50 @@
     {
       "id": 0,
       "name": "setup",
-      "file": "phases/phase-0-setup.md"
+      "file": "phases/phase-0-setup.md",
+      "context": {"required": ["STATE.md"], "feature": [], "fix": [], "audit": [], "optional": ["WORKSPACE-PREFLIGHT.json"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     },
     {
       "id": 1,
       "name": "clarify",
-      "file": "phases/phase-1-clarify.md"
+      "file": "phases/phase-1-clarify.md",
+      "context": {"required": ["STATE.md"], "feature": [], "fix": [], "audit": [], "optional": ["CURRENT-STATE.md"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     },
     {
       "id": 2,
       "name": "understand",
-      "file": "phases/phase-2-understand.md"
+      "file": "phases/phase-2-understand.md",
+      "context": {"required": ["STATE.md"], "feature": ["INTENT.md"], "fix": ["PROBLEM.md", "BUG-REPRO.md"], "audit": ["AUDIT-INTENT.md"], "optional": ["CURRENT-STATE.md", "RECALL.md", "STANDARDS-CONTEXT.md"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     },
     {
       "id": 3,
       "name": "plan",
-      "file": "phases/phase-3-plan.md"
+      "file": "phases/phase-3-plan.md",
+      "context": {"required": ["STATE.md"], "feature": ["INTENT.md"], "fix": ["PROBLEM.md", "DIAGNOSIS.md"], "audit": ["AUDIT-INTENT.md", "AUDIT.md"], "optional": ["RESEARCH.md", "RECALL.md", "STANDARDS-CONTEXT.md"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     },
     {
       "id": 4,
       "name": "review-approval",
-      "file": "phases/phase-4-review-approval.md"
+      "file": "phases/phase-4-review-approval.md",
+      "context": {"required": ["STATE.md", "PLAN.md", "ACCEPTANCE.md"], "feature": ["INTENT.md"], "fix": ["PROBLEM.md", "DIAGNOSIS.md"], "audit": ["AUDIT-INTENT.md", "AUDIT.md"], "optional": ["RESEARCH.md", "RECOVERY.md"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     },
     {
       "id": 5,
       "name": "build",
-      "file": "phases/phase-5-build.md"
+      "file": "phases/phase-5-build.md",
+      "context": {"required": ["STATE.md", "PLAN.md", "ACCEPTANCE.md"], "feature": ["INTENT.md"], "fix": ["PROBLEM.md", "DIAGNOSIS.md", "BUG-REPRO.md"], "audit": ["AUDIT.md"], "optional": ["RESEARCH.md", "RECOVERY.md", "ITEMS.jsonl"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     },
     {
       "id": 6,
       "name": "verify",
-      "file": "phases/phase-6-verify.md"
+      "file": "phases/phase-6-verify.md",
+      "context": {"required": ["STATE.md", "PLAN.md", "ACCEPTANCE.md"], "feature": ["INTENT.md"], "fix": ["PROBLEM.md", "DIAGNOSIS.md", "BUG-REPRO.md"], "audit": ["AUDIT.md"], "optional": ["RESEARCH.md", "RECOVERY.md", "ITEMS.jsonl", "EXECUTION-TRACE.json"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     },
     {
       "id": 7,
       "name": "review-commit",
-      "file": "phases/phase-7-review-commit.md"
+      "file": "phases/phase-7-review-commit.md",
+      "context": {"required": ["STATE.md", "PLAN.md", "ACCEPTANCE.md"], "feature": ["INTENT.md"], "fix": ["PROBLEM.md", "DIAGNOSIS.md", "BUG-REPRO.md"], "audit": ["AUDIT.md"], "optional": ["VERIFICATION.md", "CODE-REVIEW.md", "RECOVERY.md", "ITEMS.jsonl", "EXECUTION-TRACE.json"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     }
   ],
   "flow": {

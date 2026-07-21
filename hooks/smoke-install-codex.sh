@@ -362,6 +362,15 @@ PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import runner; assert ru
 grep -q 'embedded plugin remains the default' "$ROOT/README.md" \
   && grep -q 'same `.kimiflow/` state' "$ROOT/README.md" \
   && ok "smoke_runner_surface_visible" || bad "embedded-first runner docs missing"
+echo "== unified local run control plane =="
+for rel in hooks/run-bridge.sh hooks/test-run-bridge.sh; do
+  if [ -x "$ROOT/$rel" ] && bash -n "$ROOT/$rel" 2>/dev/null; then ok "control-plane surface ok: $rel"; else bad "control-plane surface missing/not-exec/bad: $rel"; fi
+done
+PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import phase_context, readiness, run_bridge, scorecard; assert run_bridge.RECEIPT_NAME == "RUN-BRIDGE.json"; assert scorecard.SCORECARD_NAME == "RUN-SCORECARD.json"; assert phase_context.SHADOW_NAME == "PHASE-CONTEXT-SHADOW.json"' 2>/dev/null \
+  && ok "Codex unified run control-plane modules import" || bad "Codex unified run control-plane modules unavailable"
+grep -q 'Unified local run control plane' "$ROOT/reference.md" \
+  && grep -q 'run-bridge.sh' "$ROOT/README.md" \
+  && ok "Codex unified run control-plane contract documented" || bad "Codex unified run control-plane docs missing"
 INSTALLER="$ROOT/hooks/install-codex-hooks.sh"
 if [ -x "$INSTALLER" ] && bash -n "$INSTALLER" 2>/dev/null; then ok "installer script ok: hooks/install-codex-hooks.sh"; else bad "installer script missing/not-exec/bad"; fi
 tmp_home="$(mktemp -d)"

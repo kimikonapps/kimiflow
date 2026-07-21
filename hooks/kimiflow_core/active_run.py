@@ -2,6 +2,7 @@
 
 import contextlib
 import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -12,9 +13,10 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 from datetime import datetime, timezone
 
-from . import execution_control, flow_graph, phase_reads, state, workspace_preflight
+from . import execution_control, flow_graph, phase_context, phase_reads, scorecard, state, workspace_preflight
 from .atomic import atomic_write
 
 try:
@@ -80,8 +82,16 @@ FINISH_SNAPSHOT_NAMES = (
     "RUN-LIFECYCLE.md",
     "OUTCOME-EVALUATION.json",
     "SESSION-OUTCOME.json",
+    scorecard.SCORECARD_NAME,
     execution_control.TRACE_NAME,
 )
+_ITEM_MUTATION_LOCAL = threading.local()
+ACTION_ID_RE = re.compile(r"^act_[A-Za-z0-9._-]{1,64}$")
+ACTION_FINGERPRINT_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+MAX_ITEM_ACTION_RECEIPTS = 256
+ITEM_COUNT_KEYS = {"total", "pending", "built", "accepted", "rejected", "dropped", "open"}
+ITEM_ACTION_OPERATIONS = {"append-item", "mark-built", "mark-accepted", "mark-rejected", "drop-item"}
+MAX_ITEM_MUTATION_REVISION = 1000000000000
 
 
 def usage():
@@ -314,6 +324,40 @@ def read_items(path):
     return rows
 
 
+def read_items_descriptor(run_descriptor):
+    """Read ITEMS.jsonl from the run directory that was pinned by the lock."""
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = None
+    try:
+        descriptor = os.open("ITEMS.jsonl", flags, dir_fd=run_descriptor)
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode):
+            die("unsafe active-run items file", 2)
+        rows = []
+        with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
+            descriptor = None
+            for line in handle:
+                line = line.rstrip("\n")
+                if not line:
+                    continue
+                try:
+                    value = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(value, dict):
+                    rows.append(value)
+        return rows
+    except FileNotFoundError:
+        return []
+    except OSError as exc:
+        die("cannot read active-run items: %s" % exc, 2)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
 def item_counts(rows):
     return {
         "total": len(rows),
@@ -520,20 +564,167 @@ def bind_owner_for_write(root, write):
         write_active(root, updated)
 
 
+@contextlib.contextmanager
+def item_mutation_lock(root, run_dir, active):
+    """Cross-process item/bridge transaction lock, reentrant in one thread."""
+    key = (os.path.realpath(root), os.path.realpath(run_dir))
+    held = getattr(_ITEM_MUTATION_LOCAL, "held", {})
+    if key in held:
+        held[key]["depth"] += 1
+        try:
+            yield held[key]["run_descriptor"]
+        finally:
+            held[key]["depth"] -= 1
+        return
+    if fcntl is None:
+        die("active-run mutation locking requires POSIX", 2)
+    with pinned_terminal_run(run_dir, active) as pinned:
+        try:
+            fcntl.flock(pinned["state_descriptor"], fcntl.LOCK_EX)
+            named_run = os.stat(run_dir, follow_symlinks=False)
+            locked_run = os.fstat(pinned["run_descriptor"])
+            named_state = os.stat("STATE.md", dir_fd=pinned["run_descriptor"], follow_symlinks=False)
+            locked_state = os.fstat(pinned["state_descriptor"])
+            current_active = load_active(root)
+            expected_owner = valid_owner(active.get("owner"))
+            current_owner = valid_owner(current_active.get("owner"))
+            if (
+                (named_run.st_dev, named_run.st_ino) != (locked_run.st_dev, locked_run.st_ino)
+                or (named_state.st_dev, named_state.st_ino) != (locked_state.st_dev, locked_state.st_ino)
+                or current_active.get("present") is not True
+                or current_active.get("status") != "active"
+                or current_active.get("run") != active.get("run")
+                or current_owner != expected_owner
+                or state.state_value(os.path.join(run_dir, "STATE.md"), "Status").strip().lower().split(" ", 1)[0] != "active"
+            ):
+                die("active-run mutation target changed while waiting for lock", 1)
+            held[key] = {"depth": 1, "run_descriptor": pinned["run_descriptor"]}
+            _ITEM_MUTATION_LOCAL.held = held
+            yield pinned["run_descriptor"]
+            if not terminal_run_directory_name_matches(pinned):
+                die("active-run mutation target changed while locked", 2)
+        except OSError as exc:
+            die("cannot lock active-run mutation: %s" % exc, 2)
+        finally:
+            held.pop(key, None)
+            try:
+                fcntl.flock(pinned["state_descriptor"], fcntl.LOCK_UN)
+            except OSError:
+                pass
+
+
+def valid_action_id(value):
+    return isinstance(value, str) and ACTION_ID_RE.fullmatch(value) is not None
+
+
+def item_mutation_lock_held(run_descriptor):
+    try:
+        wanted = os.fstat(run_descriptor)
+    except OSError:
+        return False
+    for value in getattr(_ITEM_MUTATION_LOCAL, "held", {}).values():
+        try:
+            held = os.fstat(value["run_descriptor"])
+        except (KeyError, OSError):
+            continue
+        if (held.st_dev, held.st_ino) == (wanted.st_dev, wanted.st_ino):
+            return True
+    return False
+
+
+def action_request_fingerprint(operation, arguments):
+    payload = json.dumps(
+        {"operation": operation, "arguments": arguments},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "sha256:%s" % hashlib.sha256(payload).hexdigest()
+
+
+def item_action_receipts(row):
+    receipts = row.get("action_receipts", [])
+    if not isinstance(receipts, list) or len(receipts) > MAX_ITEM_ACTION_RECEIPTS:
+        die("item action receipts invalid", 2)
+    for receipt in receipts:
+        counts = receipt.get("item_counts") if isinstance(receipt, dict) else None
+        if (
+            not isinstance(receipt, dict)
+            or set(receipt) != {"action_id", "operation", "request_fingerprint", "item_status", "item_counts"}
+            or not valid_action_id(receipt.get("action_id"))
+            or receipt.get("operation") not in ITEM_ACTION_OPERATIONS
+            or ACTION_FINGERPRINT_RE.fullmatch(str(receipt.get("request_fingerprint", ""))) is None
+            or receipt.get("item_status") not in ("pending", "built", "accepted", "rejected", "dropped")
+            or not isinstance(counts, dict)
+            or set(counts) - ITEM_COUNT_KEYS
+            or any(isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 1000000000000 for value in counts.values())
+        ):
+            die("item action receipts invalid", 2)
+    return receipts
+
+
+def find_item_action(rows, action_id):
+    matches = []
+    for row in rows:
+        for receipt in item_action_receipts(row):
+            if receipt["action_id"] == action_id:
+                matches.append((row, receipt))
+    if len(matches) > 1:
+        die("duplicate item action receipt", 2)
+    return matches[0] if matches else (None, None)
+
+
+def append_item_action(row, action_id, operation, arguments, status, counts):
+    receipts = list(item_action_receipts(row))
+    if len(receipts) >= MAX_ITEM_ACTION_RECEIPTS:
+        die("item action receipt limit reached", 1)
+    receipts.append({
+        "action_id": action_id,
+        "operation": operation,
+        "request_fingerprint": action_request_fingerprint(operation, arguments),
+        "item_status": status,
+        "item_counts": dict(counts),
+    })
+    row["action_receipts"] = receipts
+
+
+def bump_item_mutation_revision(row):
+    revision = row.get("mutation_revision", 0)
+    if isinstance(revision, bool) or not isinstance(revision, int) or not 0 <= revision < MAX_ITEM_MUTATION_REVISION:
+        die("item mutation revision invalid", 2)
+    row["mutation_revision"] = revision + 1
+
+
+def public_item(row):
+    return {key: value for key, value in row.items() if key not in ("action_receipts", "mutation_revision")}
+
+
 def rewrite_items(path, rows):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     payload = "".join(json_compact(row) + "\n" for row in rows)
     atomic_write(path, payload, mode=0o600, refuse_symlink=True)
 
 
-def next_item_id(path):
+def rewrite_items_descriptor(run_descriptor, rows):
+    payload = "".join(json_compact(row) + "\n" for row in rows).encode("utf-8")
+    try:
+        workspace_preflight.atomic_directory_write(run_descriptor, "ITEMS.jsonl", payload)
+    except OSError as exc:
+        die("cannot update active-run items: %s" % exc, 2)
+
+
+def next_item_id_rows(rows):
     max_id = 0
-    for row in read_items(path):
+    for row in rows:
         ident = row.get("id", "")
         match = re.match(r"^item_([0-9]+)$", ident)
         if match:
             max_id = max(max_id, int(match.group(1)))
     return "item_%03d" % (max_id + 1)
+
+
+def next_item_id(path):
+    return next_item_id_rows(read_items(path))
 
 
 def state_rewrite_payload(source, replacements):
@@ -583,7 +774,9 @@ def rewrite_state_descriptor(pinned, replacements):
     backup = ".terminal-state-%s.backup" % token
     backup_created = False
     replacement_identity = None
-    fcntl.flock(descriptor, fcntl.LOCK_EX)
+    already_locked = item_mutation_lock_held(run_descriptor)
+    if not already_locked:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
     try:
         os.lseek(descriptor, 0, os.SEEK_SET)
         chunks = []
@@ -652,7 +845,8 @@ def rewrite_state_descriptor(pinned, replacements):
             restore_terminal_state_backup(run_descriptor, backup)
         die("cannot update terminal STATE: %s" % exc, 2)
     finally:
-        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        if not already_locked:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
 
 
 def update_state_status(run_dir, status):
@@ -800,6 +994,18 @@ def terminal_run_name_matches(pinned):
         state.st_dev,
         state.st_ino,
     ) == pinned["state_identity"]
+
+
+def terminal_run_directory_name_matches(pinned):
+    try:
+        current = os.stat(
+            pinned["run_name"],
+            dir_fd=pinned["parent_descriptor"],
+            follow_symlinks=False,
+        )
+    except OSError:
+        return False
+    return (current.st_dev, current.st_ino) == pinned["run_identity"]
 
 
 def restore_retired_active(active_session_descriptor, retired_active):
@@ -1404,7 +1610,7 @@ def cmd_start(args):
 
 
 def cmd_append_item(args):
-    opts = parse_options(args, "append-item", {"--root": "", "--title": "", "--kind": "change", "--write": False, "--pretty": False})
+    opts = parse_options(args, "append-item", {"--root": "", "--title": "", "--kind": "change", "--action-id": "", "--write": False, "--pretty": False})
     need_jq()
     if not opts["--title"]:
         die("append-item requires --title", 2)
@@ -1413,15 +1619,39 @@ def cmd_append_item(args):
     status = require_active(root)
     run_dir = resolve_run_dir(root, status["run"])
     file_path = items_path(run_dir)
-    ident = next_item_id(file_path)
-    now = iso_now()
-    row = {"id": ident, "kind": opts["--kind"], "title": opts["--title"], "status": "pending", "created_at": now, "updated_at": now}
-    if opts["--write"]:
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        with open(file_path, "a", encoding="utf-8") as handle:
-            handle.write(json_compact(row) + "\n")
-    rows = read_items(file_path)
-    out = {"status": "item_appended", "written": opts["--write"] is True, "items_path": rel_path(root, file_path), "item": row, "item_counts": {"total": len(rows), "open": item_counts(rows)["open"]}}
+    action_id = opts["--action-id"]
+    if action_id and not valid_action_id(action_id):
+        die("append-item: invalid --action-id", 2)
+    active = load_active(root)
+    lock = item_mutation_lock(root, run_dir, active) if opts["--write"] else contextlib.nullcontext(None)
+    with lock as run_descriptor:
+        rows = read_items_descriptor(run_descriptor) if opts["--write"] else read_items(file_path)
+        arguments = {"title": opts["--title"], "kind": opts["--kind"]}
+        row, receipt = find_item_action(rows, action_id) if action_id else (None, None)
+        replayed = receipt is not None
+        if receipt is not None:
+            if receipt["operation"] != "append-item" or receipt["request_fingerprint"] != action_request_fingerprint("append-item", arguments):
+                die("append-item: action-id payload mismatch", 1)
+            counts = receipt["item_counts"]
+            item_status = receipt["item_status"]
+        else:
+            ident = next_item_id_rows(rows)
+            now = iso_now()
+            row = {"id": ident, "kind": opts["--kind"], "title": opts["--title"], "status": "pending", "created_at": now, "updated_at": now}
+            item_status = "pending"
+            if opts["--write"]:
+                bump_item_mutation_revision(row)
+                rows.append(row)
+                counts = {"total": len(rows), "open": item_counts(rows)["open"]}
+                if action_id:
+                    append_item_action(row, action_id, "append-item", arguments, item_status, counts)
+                rewrite_items_descriptor(run_descriptor, rows)
+            else:
+                counts = {"total": len(rows), "open": item_counts(rows)["open"]}
+    out = {"status": "item_appended", "written": opts["--write"] is True, "items_path": rel_path(root, file_path), "item": public_item(row), "item_counts": counts}
+    if action_id:
+        out["replayed"] = replayed
+        out["item_status"] = item_status
     json_print(out, opts["--pretty"])
 
 
@@ -1430,7 +1660,7 @@ def cmd_update_item(command, args):
     new_status = mapping.get(command)
     if not new_status:
         die("unknown item command: %s" % command, 2)
-    opts = parse_options(args, command, {"--root": "", "--id": "", "--reason": "", "--write": False, "--pretty": False})
+    opts = parse_options(args, command, {"--root": "", "--id": "", "--reason": "", "--action-id": "", "--write": False, "--pretty": False})
     need_jq()
     if not opts["--id"]:
         die("%s requires --id" % command, 2)
@@ -1441,23 +1671,54 @@ def cmd_update_item(command, args):
     status = require_active(root)
     run_dir = resolve_run_dir(root, status["run"])
     file_path = items_path(run_dir)
-    rows = read_items(file_path)
-    if not any(row.get("id") == opts["--id"] for row in rows):
-        die("item not found: %s" % opts["--id"], 1)
-    updated = []
-    now = iso_now()
-    for row in rows:
-        row = dict(row)
-        if row.get("id") == opts["--id"]:
-            row["status"] = new_status
-            row["updated_at"] = now
-            if opts["--reason"]:
-                row["reason"] = opts["--reason"]
-        updated.append(row)
-    if opts["--write"]:
-        rewrite_items(file_path, updated)
-    counts = item_counts(updated)
-    out = {"status": "item_updated", "written": opts["--write"] is True, "items_path": rel_path(root, file_path), "id": opts["--id"], "item_status": new_status, "item_counts": counts}
+    action_id = opts["--action-id"]
+    if action_id and not valid_action_id(action_id):
+        die("%s: invalid --action-id" % command, 2)
+    active = load_active(root)
+    lock = item_mutation_lock(root, run_dir, active) if opts["--write"] else contextlib.nullcontext(None)
+    with lock as run_descriptor:
+        rows = read_items_descriptor(run_descriptor) if opts["--write"] else read_items(file_path)
+        arguments = {"id": opts["--id"]}
+        if opts["--reason"]:
+            arguments["reason"] = opts["--reason"]
+        action_row, receipt = find_item_action(rows, action_id) if action_id else (None, None)
+        if receipt is not None:
+            if (
+                action_row.get("id") != opts["--id"]
+                or receipt["operation"] != command
+                or receipt["request_fingerprint"] != action_request_fingerprint(command, arguments)
+            ):
+                die("%s: action-id payload mismatch" % command, 1)
+        if not any(row.get("id") == opts["--id"] for row in rows):
+            die("item not found: %s" % opts["--id"], 1)
+        updated = []
+        replayed = receipt is not None
+        now = iso_now()
+        for row in rows:
+            row = dict(row)
+            if row.get("id") == opts["--id"]:
+                if replayed:
+                    counts = receipt["item_counts"]
+                    item_status = receipt["item_status"]
+                else:
+                    row["status"] = new_status
+                    row["updated_at"] = now
+                    if opts["--reason"]:
+                        row["reason"] = opts["--reason"]
+                    item_status = new_status
+                    if opts["--write"]:
+                        bump_item_mutation_revision(row)
+            updated.append(row)
+        if not replayed:
+            counts = item_counts(updated)
+            if action_id:
+                target = next(row for row in updated if row.get("id") == opts["--id"])
+                append_item_action(target, action_id, command, arguments, item_status, counts)
+        if opts["--write"] and not replayed:
+            rewrite_items_descriptor(run_descriptor, updated)
+    out = {"status": "item_updated", "written": opts["--write"] is True, "items_path": rel_path(root, file_path), "id": opts["--id"], "item_status": item_status, "item_counts": counts}
+    if action_id:
+        out["replayed"] = replayed
     json_print(out, opts["--pretty"])
 
 
@@ -1592,7 +1853,24 @@ def cmd_phase_read(args):
         record = phase_reads.record_read(root, run_dir, opts["--phase"], opts["--file"], iso_now(), write=opts["--write"])
     except phase_reads.PhaseReadError as exc:
         die(str(exc), 2)
-    json_print({"status": "phase_read_recorded", "written": opts["--write"] is True, "run": rel_path(root, run_dir), "record": record}, opts["--pretty"])
+    shadow = {"status": "preview", "authoritative": False}
+    if opts["--write"]:
+        try:
+            shadow = phase_context.write_shadow(
+                root,
+                run_dir,
+                opts["--phase"],
+                active=_active_for_run(root, rel_path(root, run_dir)),
+            )
+        except (OSError, ValueError, phase_context.PhaseContextError) as exc:
+            shadow = phase_context.write_invalid_shadow(
+                root,
+                run_dir,
+                opts["--phase"],
+                str(exc),
+                active=_active_for_run(root, rel_path(root, run_dir)),
+            )
+    json_print({"status": "phase_read_recorded", "written": opts["--write"] is True, "run": rel_path(root, run_dir), "record": record, "context_shadow": shadow}, opts["--pretty"])
 
 
 def _active_for_run(root, run_rel):
@@ -2088,6 +2366,8 @@ def cmd_finish(args):
         snapshot = tempfile.mkdtemp(prefix="kimiflow-finish.", dir=os.environ.get("TMPDIR") or "/tmp")
         terminal_state_committed = False
         snapshot_complete = False
+        mutation_lock = None
+        mutation_lock_entered = False
         try:
             with pinned_terminal_run(run_dir, active) as pinned:
                 try:
@@ -2140,6 +2420,12 @@ def cmd_finish(args):
                     if not terminal_run_name_matches(pinned):
                         die("terminal run directory changed before final validation", 2)
                     final_active = load_active(root)
+                    mutation_lock = item_mutation_lock(root, run_dir, final_active)
+                    mutation_lock.__enter__()
+                    mutation_lock_entered = True
+                    final_status = status_json(root)
+                    if final_status["item_counts"]["open"] != 0:
+                        die("finish refused: unresolved active-session items remain", 1)
                     try:
                         final_trace_present = execution_control.trace_present(root, run_dir, final_active)
                     except execution_control.ExecutionControlError as exc:
@@ -2150,7 +2436,7 @@ def cmd_finish(args):
                         or final_trace_present
                     ):
                         try:
-                            execution_control.require_finishable(root, run_dir, final_active, status["item_counts"])
+                            execution_control.require_finishable(root, run_dir, final_active, final_status["item_counts"])
                         except execution_control.ExecutionControlError as exc:
                             die("finish refused: execution control invalid (%s)" % exc, 1)
                     require_finish_conformance(run_dir, final_active)
@@ -2170,11 +2456,21 @@ def cmd_finish(args):
                                 root,
                                 run_dir,
                                 final_active,
-                                status["item_counts"],
+                                final_status["item_counts"],
                                 write=True,
                             )
                         except execution_control.ExecutionControlError as exc:
                             die("finish refused: execution control invalid (%s)" % exc, 1)
+                    try:
+                        scorecard.write(
+                            root,
+                            run_dir,
+                            terminal="done",
+                            run_descriptor=pinned["run_descriptor"],
+                            phase=7,
+                        )
+                    except scorecard.ScorecardError as exc:
+                        die("finish refused: scorecard invalid (%s)" % exc, 1)
                     terminal_state_committed = True
                     if not terminal_run_name_matches(pinned):
                         die("terminal run directory changed before retirement", 2)
@@ -2190,6 +2486,8 @@ def cmd_finish(args):
                         restore_finish(root, run_dir, snapshot, run_descriptor=pinned["run_descriptor"])
                     raise
         finally:
+            if mutation_lock_entered:
+                mutation_lock.__exit__(None, None, None)
             shutil.rmtree(snapshot, ignore_errors=True)
         result_status = "finished"
     else:
@@ -2240,6 +2538,16 @@ def cmd_terminal(command, args):
     }
     if opts["--write"]:
         with pinned_terminal_run(run_dir, terminal_active) as pinned:
+            try:
+                scorecard.write(
+                    root,
+                    run_dir,
+                    terminal=outcome,
+                    run_descriptor=pinned["run_descriptor"],
+                    phase=7,
+                )
+            except scorecard.ScorecardError as exc:
+                die("%s refused: scorecard invalid (%s)" % (command, exc), 1)
             write_run_text(pinned["run_descriptor"], "SESSION-OUTCOME.json", json_pretty(outcome_json) + "\n")
             update_terminal_state(pinned, state_status)
             if not terminal_run_name_matches(pinned):

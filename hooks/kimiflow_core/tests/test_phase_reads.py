@@ -27,7 +27,16 @@ class TestPhaseReads(unittest.TestCase):
 
     def write_manifest(self):
         os.makedirs(os.path.join(self.root, "phases"), exist_ok=True)
-        phases = [{"id": idx, "name": "p%s" % idx, "file": "phases/phase-%s.md" % idx} for idx in range(8)]
+        context = {
+            "required": ["STATE.md"],
+            "feature": [],
+            "fix": [],
+            "audit": [],
+            "optional": [],
+            "max_file_bytes": 4096,
+            "max_total_bytes": 8192,
+        }
+        phases = [{"id": idx, "name": "p%s" % idx, "file": "phases/phase-%s.md" % idx, "context": context} for idx in range(8)]
         with open(os.path.join(self.root, "phases", "PHASES.json"), "w", encoding="utf-8") as handle:
             json.dump({"schema_version": 1, "phases": phases}, handle)
 
@@ -93,6 +102,19 @@ class TestPhaseReads(unittest.TestCase):
     def test_wrong_manifest_file_for_phase_refused(self):
         with self.assertRaises(phase_reads.PhaseReadError):
             phase_reads.record_read(self.root, self.run, 1, "phases/phase-2.md", "now")
+
+    def test_manifest_context_policy_is_strict_and_preserved(self):
+        entry = phase_reads.phase_entry(self.root, 1)
+        self.assertEqual(entry["context"]["required"], ["STATE.md"])
+        self.assertEqual(entry["context"]["max_total_bytes"], 8192)
+        path = os.path.join(self.root, "phases", "PHASES.json")
+        with open(path, "r", encoding="utf-8") as handle:
+            value = json.load(handle)
+        value["phases"][1]["context"]["optional"] = ["../outside"]
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(value, handle)
+        with self.assertRaises(phase_reads.PhaseReadError):
+            phase_reads.load_manifest(self.root)
 
 
 if __name__ == "__main__":

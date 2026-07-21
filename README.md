@@ -116,6 +116,15 @@ a message while their active run remains open. The local receipt contains transp
 task or transcript. `bash hooks/install-kimiflow-cli.sh --check` verifies the managed wrapper, and the installer
 refuses to overwrite an unrelated `kimiflow` executable.
 
+### Unified local run control plane
+
+Rich clients and model adapters can use `hooks/run-bridge.sh` as a single-request JSON-stdio boundary. It
+returns one deterministic readiness view, accepts only owner-bound replay-safe item mutations, and exposes
+content-free phase-context metadata plus a multidimensional terminal scorecard. Existing Active Run, graph,
+phase, review and finish gates remain authoritative; the bridge adds no daemon, network service or provider.
+Phase context stays in shadow mode and never replaces the required full phase read. Terminal scorecards remain
+readable through an explicit safe run path after the Active Run has retired.
+
 ## Demo
 
 ![Kimiflow launcher and gated feature/fix flow](docs/demo/kimiflow.gif)
@@ -179,6 +188,7 @@ without a second confirmation. Exact trivial work may skip the loop.
 | Plan-blocker and review gates | Acceptance mappings and evidenced `BLOCKER/HIGH` findings are resolved within a bounded repair budget. |
 | Implementation-conformance gate | Researched decisions, invariants, affected paths, and exact checks converge in Phase 6; finish additionally proves the committed delivery matches. |
 | Adaptive execution controller | Run-wide no-progress and budget pressure select a bounded recovery action; mandatory quality gates remain intact. |
+| Local run control plane | Hosts receive one readiness/cursor contract; shared locking, owner proof and action receipts make supported item mutations fail closed and replay-safe. |
 | Material-decision gate | Reversible technical work continues; only missing authority, material risk, external access, privacy/cost, or irreversibility pauses. |
 | Red/green gate | Fixes cannot finish without recorded failing and passing evidence plus regression coverage. |
 | Atomic commit gate | Schema-4 runs stage named run-owned paths and commit locally under the original build authority. |

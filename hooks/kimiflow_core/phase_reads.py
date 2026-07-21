@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 
 from . import state
 from .atomic import atomic_write
@@ -10,6 +11,23 @@ from .atomic import atomic_write
 
 class PhaseReadError(ValueError):
     pass
+
+
+CONTEXT_KEYS = {"required", "feature", "fix", "audit", "optional", "max_file_bytes", "max_total_bytes"}
+CONTEXT_LIST_KEYS = ("required", "feature", "fix", "audit", "optional")
+MAX_CONTEXT_FILES = 24
+MAX_CONTEXT_FILE_BYTES = 1024 * 1024
+MAX_CONTEXT_TOTAL_BYTES = 4 * 1024 * 1024
+LEGACY_CONTEXT_POLICY = {
+    "required": ["STATE.md"],
+    "feature": [],
+    "fix": [],
+    "audit": [],
+    "optional": [],
+    "max_file_bytes": 256 * 1024,
+    "max_total_bytes": 1024 * 1024,
+}
+MAX_READ_REVISION = 1000000000000
 
 
 def plugin_root():
@@ -67,6 +85,47 @@ def _phase_int(value):
     return phase
 
 
+def _context_artifact(value):
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,95}", value):
+        raise PhaseReadError("phase manifest invalid: context artifact must be a flat bounded name")
+    if value in (".", ".."):
+        raise PhaseReadError("phase manifest invalid: context artifact traversal")
+    return value
+
+
+def _context_policy(value):
+    if value is None:
+        return {key: list(item) if isinstance(item, list) else item for key, item in LEGACY_CONTEXT_POLICY.items()}
+    if not isinstance(value, dict) or set(value) != CONTEXT_KEYS:
+        raise PhaseReadError("phase manifest invalid: context policy shape")
+    result = {}
+    seen = set()
+    for key in CONTEXT_LIST_KEYS:
+        entries = value.get(key)
+        if not isinstance(entries, list):
+            raise PhaseReadError("phase manifest invalid: context %s list missing" % key)
+        if len(entries) > MAX_CONTEXT_FILES:
+            raise PhaseReadError("phase manifest invalid: too many context artifacts")
+        normalized = []
+        for item in entries:
+            name = _context_artifact(item)
+            if name in seen:
+                raise PhaseReadError("phase manifest invalid: duplicate context artifact %s" % name)
+            seen.add(name)
+            normalized.append(name)
+        result[key] = normalized
+    for key, upper in (("max_file_bytes", MAX_CONTEXT_FILE_BYTES), ("max_total_bytes", MAX_CONTEXT_TOTAL_BYTES)):
+        number = value.get(key)
+        if isinstance(number, bool) or not isinstance(number, int) or not 1 <= number <= upper:
+            raise PhaseReadError("phase manifest invalid: context %s" % key)
+        result[key] = number
+    if result["max_total_bytes"] < result["max_file_bytes"]:
+        raise PhaseReadError("phase manifest invalid: context total smaller than file cap")
+    if "STATE.md" not in result["required"]:
+        raise PhaseReadError("phase manifest invalid: context must require STATE.md")
+    return result
+
+
 def load_manifest(root):
     path = manifest_path(root)
     if not os.path.isfile(path):
@@ -89,7 +148,10 @@ def load_manifest(root):
             raise PhaseReadError("phase manifest invalid: duplicate phase %s" % phase)
         seen.add(phase)
         rel = _safe_phase_file(str(row.get("file", "")))
-        out.append({"id": phase, "file": rel, "name": str(row.get("name", ""))})
+        name = str(row.get("name", ""))
+        if not name:
+            raise PhaseReadError("phase manifest invalid: phase name missing")
+        out.append({"id": phase, "file": rel, "name": name, "context": _context_policy(row.get("context"))})
     return sorted(out, key=lambda item: item["id"])
 
 
@@ -156,7 +218,11 @@ def record_read(root, run_dir, phase, rel_file, now, write=False):
         "read_at": now,
     }
     records = load_records(run_dir)
+    revision = records.get("revision", 0)
+    if isinstance(revision, bool) or not isinstance(revision, int) or not 0 <= revision < MAX_READ_REVISION:
+        raise PhaseReadError("phase-read records invalid: revision")
     records["schema_version"] = 1
+    records["revision"] = revision + 1
     records.setdefault("reads", {})[str(entry["id"])] = record
     records["updated_at"] = now
     if write:

@@ -349,6 +349,15 @@ PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import runner; assert ru
 grep -q 'embedded plugin remains the default' "$ROOT/README.md" \
   && grep -q 'same `.kimiflow/` state' "$ROOT/README.md" \
   && ok "smoke_embedded_first_runner_docs" || bad "embedded-first runner docs missing"
+echo "== unified local run control plane =="
+for rel in hooks/run-bridge.sh hooks/test-run-bridge.sh; do
+  if [ -x "$ROOT/$rel" ] && bash -n "$ROOT/$rel" 2>/dev/null; then ok "control-plane surface ok: $rel"; else bad "control-plane surface missing/not-exec/bad: $rel"; fi
+done
+PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import phase_context, readiness, run_bridge, scorecard; assert run_bridge.RECEIPT_NAME == "RUN-BRIDGE.json"; assert scorecard.SCORECARD_NAME == "RUN-SCORECARD.json"; assert phase_context.SHADOW_NAME == "PHASE-CONTEXT-SHADOW.json"' 2>/dev/null \
+  && ok "unified run control-plane modules import" || bad "unified run control-plane modules unavailable"
+grep -q 'Unified local run control plane' "$ROOT/reference.md" \
+  && grep -q 'run-bridge.sh' "$ROOT/README.md" \
+  && ok "unified run control-plane contract documented" || bad "unified run control-plane docs missing"
 jq -e '.hooks.SessionStart[0].hooks | any(.command | contains("active-run.sh session-bootstrap"))' "$ROOT/hooks/hooks.json" >/dev/null 2>&1 \
   && ok "Claude SessionStart persists Kimiflow session identity" || bad "Claude SessionStart identity bootstrap missing"
 while IFS= read -r cmd; do

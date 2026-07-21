@@ -7,10 +7,11 @@ import shutil
 import stat
 import subprocess
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
-from kimiflow_core import active_run, execution_control, workspace_preflight
+from kimiflow_core import active_run, execution_control, scorecard, workspace_preflight
 
 
 def run_main(args, stdin_text=None):
@@ -643,6 +644,62 @@ class TestOutcomeEvaluation(unittest.TestCase):
             self.repo, ".kimiflow", "project", "STRATEGY-OUTCOMES.jsonl"
         )))
         self.assertFalse(os.path.exists(os.path.join(self.run_dir, "OUTCOME-EVALUATION.json")))
+
+    def test_finish_restores_existing_scorecard_after_post_write_failure(self):
+        scorecard_path = os.path.join(self.run_dir, scorecard.SCORECARD_NAME)
+        original = b'{"previous":true}\n'
+        with open(scorecard_path, "wb") as handle:
+            handle.write(original)
+
+        write_scorecard = scorecard.write
+
+        def fail_after_scorecard_write(*args, **kwargs):
+            write_scorecard(*args, **kwargs)
+            raise scorecard.ScorecardError("simulated post-write failure")
+
+        with mock.patch(
+            "kimiflow_core.active_run.scorecard.write",
+            side_effect=fail_after_scorecard_write,
+        ):
+            rc, _ = run_main(["finish", "--root", self.repo, "--write"])
+
+        self.assertEqual(rc, 1)
+        self.assertTrue(os.path.isfile(active_run.active_file(self.repo)))
+        with open(scorecard_path, "rb") as handle:
+            self.assertEqual(handle.read(), original)
+
+    def test_finish_rechecks_items_after_learning_before_retirement(self):
+        evaluation_started = threading.Event()
+        allow_evaluation = threading.Event()
+        result = {}
+
+        def paused_evaluation(*_args, **_kwargs):
+            evaluation_started.set()
+            self.assertTrue(allow_evaluation.wait(3))
+            return ({
+                "status": "evaluated",
+                "id": "out_" + ("a" * 64),
+                "terminal": "done",
+                "classification": "verified_success",
+                "promotable": True,
+            }, 0, "")
+
+        def finish():
+            result["value"] = run_main(["finish", "--root", self.repo, "--write"])
+
+        with mock.patch.object(active_run, "evaluate_terminal_outcome", side_effect=paused_evaluation):
+            worker = threading.Thread(target=finish)
+            worker.start()
+            self.assertTrue(evaluation_started.wait(3))
+            active_run.main(["append-item", "--root", self.repo, "--title", "late item", "--write"])
+            allow_evaluation.set()
+            worker.join(5)
+
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(result["value"][0], 1)
+        self.assertTrue(os.path.isfile(active_run.active_file(self.repo)))
+        rows = active_run.read_items(active_run.items_path(self.run_dir))
+        self.assertEqual(rows[0]["title"], "late item")
 
     def test_parked_run_preserves_conformance_pin_on_resume(self):
         self.enable_conformance("current")

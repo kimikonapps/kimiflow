@@ -1,0 +1,151 @@
+import json
+import os
+import shutil
+import tempfile
+import unittest
+from unittest import mock
+
+from kimiflow_core import phase_context, phase_reads
+
+
+class PhaseContextTests(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.root)
+        self.run = os.path.join(self.root, ".kimiflow", "demo")
+        os.makedirs(self.run)
+        self.plugin = os.path.join(self.root, "plugin")
+        os.makedirs(os.path.join(self.plugin, "phases"))
+        self.old_plugin = os.environ.get("KIMIFLOW_PLUGIN_ROOT")
+        os.environ["KIMIFLOW_PLUGIN_ROOT"] = self.plugin
+        self.addCleanup(self.restore_plugin)
+        context = {
+            "required": ["STATE.md", "PLAN.md"],
+            "feature": ["INTENT.md"],
+            "fix": [],
+            "audit": [],
+            "optional": ["OPTIONAL.md"],
+            "max_file_bytes": 8192,
+            "max_total_bytes": 32768,
+        }
+        phases = []
+        for number in range(8):
+            rel = "phases/phase-%s.md" % number
+            phases.append({"id": number, "name": "phase-%s" % number, "file": rel, "context": context})
+            with open(os.path.join(self.plugin, rel), "w", encoding="utf-8") as handle:
+                handle.write("phase instruction %s\n" % number)
+        with open(os.path.join(self.plugin, "phases", "PHASES.json"), "w", encoding="utf-8") as handle:
+            json.dump({"schema_version": 3, "phases": phases}, handle)
+        self.write("STATE.md", "Mode: feature\nPhase reads required: yes\n")
+        self.write("PLAN.md", "private plan body\n")
+        self.write("INTENT.md", "private intent body\n")
+        phase_reads.record_read(self.root, self.run, 3, "phases/phase-3.md", "now", write=True)
+
+    def restore_plugin(self):
+        if self.old_plugin is None:
+            os.environ.pop("KIMIFLOW_PLUGIN_ROOT", None)
+        else:
+            os.environ["KIMIFLOW_PLUGIN_ROOT"] = self.old_plugin
+
+    def write(self, name, content):
+        with open(os.path.join(self.run, name), "w", encoding="utf-8") as handle:
+            handle.write(content)
+
+    def test_phase_context_shadow_is_deterministic_and_non_authoritative(self):
+        first = phase_context.compile_shadow(self.root, self.run, 3)
+        second = phase_context.compile_shadow(self.root, self.run, 3)
+        self.assertEqual(first, second)
+        self.assertFalse(first["authoritative"])
+        saved = phase_context.write_shadow(self.root, self.run, 3)
+        with open(os.path.join(self.run, phase_context.SHADOW_NAME), encoding="utf-8") as handle:
+            raw = handle.read()
+        self.assertEqual(saved, json.loads(raw))
+        self.assertNotIn("private plan body", raw)
+        self.assertNotIn("private intent body", raw)
+        self.assertEqual(phase_context.load_current_shadow(self.root, self.run, 3)["status"], "current")
+
+        self.write("PLAN.md", "changed private plan\n")
+        self.assertEqual(phase_context.load_current_shadow(self.root, self.run, 3)["status"], "stale")
+        os.unlink(os.path.join(self.run, "PHASE-READS.json"))
+        self.assertEqual(phase_reads.gate(self.root, self.run, 3)["status"], "CLOSED")
+
+    def test_policy_and_source_drift_change_composite_basis(self):
+        original = phase_context.compile_shadow(self.root, self.run, 3)["composite_basis"]
+        self.write("OPTIONAL.md", "new source\n")
+        with_source = phase_context.compile_shadow(self.root, self.run, 3)["composite_basis"]
+        self.assertNotEqual(original, with_source)
+        manifest = os.path.join(self.plugin, "phases", "PHASES.json")
+        with open(manifest, encoding="utf-8") as handle:
+            value = json.load(handle)
+        value["phases"][3]["context"]["max_total_bytes"] += 1
+        with open(manifest, "w", encoding="utf-8") as handle:
+            json.dump(value, handle)
+        with_policy = phase_context.compile_shadow(self.root, self.run, 3)["composite_basis"]
+        self.assertNotEqual(with_source, with_policy)
+
+    def test_repeated_same_timestamp_phase_read_stales_an_unreplaced_shadow(self):
+        phase_context.write_shadow(self.root, self.run, 3)
+        phase_reads.record_read(self.root, self.run, 3, "phases/phase-3.md", "now", write=True)
+
+        self.assertEqual(phase_context.load_current_shadow(self.root, self.run, 3)["status"], "stale")
+
+    def test_phase_read_receipt_counts_toward_total_byte_cap(self):
+        self.write("PLAN.md", "p" * 4000)
+        self.write("INTENT.md", "i" * 4000)
+        manifest = os.path.join(self.plugin, "phases", "PHASES.json")
+        with open(manifest, encoding="utf-8") as handle:
+            value = json.load(handle)
+        selected_bytes = sum(os.path.getsize(os.path.join(self.run, name)) for name in ("STATE.md", "PLAN.md", "INTENT.md"))
+        phase_bytes = os.path.getsize(os.path.join(self.plugin, "phases", "phase-3.md"))
+        value["phases"][3]["context"]["max_total_bytes"] = max(8192, selected_bytes + phase_bytes)
+        with open(manifest, "w", encoding="utf-8") as handle:
+            json.dump(value, handle)
+
+        with self.assertRaisesRegex(phase_context.PhaseContextError, "context_total_oversize"):
+            phase_context.compile_shadow(self.root, self.run, 3)
+
+    def test_write_shadow_rejects_run_directory_exchange(self):
+        moved = self.run + "-moved"
+        original_compile = phase_context._compile_descriptor
+
+        def exchange_after_compile(*args, **kwargs):
+            value = original_compile(*args, **kwargs)
+            os.rename(self.run, moved)
+            os.mkdir(self.run)
+            return value
+
+        with mock.patch.object(phase_context, "_compile_descriptor", side_effect=exchange_after_compile):
+            with self.assertRaisesRegex(phase_context.PhaseContextError, "run_identity_changed"):
+                phase_context.write_shadow(self.root, self.run, 3)
+        self.assertFalse(os.path.exists(os.path.join(self.run, phase_context.SHADOW_NAME)))
+
+    def test_symlink_and_post_stat_exchange_are_rejected(self):
+        plan = os.path.join(self.run, "PLAN.md")
+        outside = os.path.join(self.root, "outside")
+        with open(outside, "w", encoding="utf-8") as handle:
+            handle.write("outside secret\n")
+        os.unlink(plan)
+        os.symlink(outside, plan)
+        with self.assertRaises(phase_context.PhaseContextError):
+            phase_context.compile_shadow(self.root, self.run, 3)
+        os.unlink(plan)
+        self.write("PLAN.md", "safe\n")
+
+        original_open = phase_context.os.open
+        exchanged = {"done": False}
+
+        def exchange_open(name, flags, *args, **kwargs):
+            if name == "PLAN.md" and kwargs.get("dir_fd") is not None and not exchanged["done"]:
+                exchanged["done"] = True
+                os.unlink(plan)
+                with open(plan, "w", encoding="utf-8") as handle:
+                    handle.write("replacement\n")
+            return original_open(name, flags, *args, **kwargs)
+
+        with mock.patch.object(phase_context.os, "open", side_effect=exchange_open):
+            with self.assertRaises(phase_context.PhaseContextError):
+                phase_context.compile_shadow(self.root, self.run, 3)
+
+
+if __name__ == "__main__":
+    unittest.main()

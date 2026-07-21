@@ -4,7 +4,7 @@
 {"status":"item_updated","written":true,"items_path":".kimiflow/demo/ITEMS.jsonl","id":"item_001","item_status":"built","item_counts":{"total":1,"pending":0,"built":1,"accepted":0,"rejected":0,"dropped":0,"open":1}}
 @@stderr@@
 @@files@@
-.kimiflow/demo/ITEMS.jsonl	mode=600	hash=sha256:0fcabababfd52738281e05149ba060df300ca25cf1a169cc2af00a7ec5bd5cf5
+.kimiflow/demo/ITEMS.jsonl	mode=600	hash=sha256:caf3c294928e9fc57f1ff637eb2e9889500ff9086485522477a9d7f9e9a03463
 .kimiflow/demo/STATE.md	mode=644	hash=sha256:42e3adbce0428a0c90a275721713087437c84cca7e87a645f3d846f04e384d3d
 .kimiflow/project/FINDINGS.md	mode=644	hash=sha256:a2ed99a0a376d3147db54333f62ba30603ac43d8cf558ff240d9a724251cbf82
 .kimiflow/session/ACTIVE_RUN.json	mode=644	hash=sha256:5cec8cb6a8a9b60209801e144ad56dc2fa831038510e7052fc126c7071bba494
