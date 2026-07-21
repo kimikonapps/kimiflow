@@ -6,6 +6,37 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.11
+
+The local-control and test-integrity release: Kimiflow exposes one host-neutral run bridge, keeps
+terminal completion fail-safe, and verifies CI, Recall, and behavioral evidence without false-green shortcuts.
+
+### Added
+
+- **One local run control plane now serves embedded and terminal hosts:** The run bridge exposes bounded phase
+  context, readiness, scorecard, item transitions, and terminal actions without giving a second process ownership
+  of the active run or requiring a new workspace.
+- **CI has one executable test inventory:** Every `hooks/test-*.sh` surface is classified once. Ubuntu runs the
+  complete lane while macOS runs only the named portability contracts; missing dependencies and real skips fail closed.
+- **Behavioral-eval receipts are mechanically attributable and offline:** Scenario, mode, source commit, strict
+  majority, and rule citations are validated against one immutable local Git snapshot. Replacement refs and lazy
+  network fetching are disabled, malformed Markdown locations are rejected, and repeated source reads are cached.
+
+### Changed
+
+- **Recall quality now measures precision, recall, ranking, deduplication, history, and workspace privacy:** The
+  frozen holdout includes nine isolated cases, including a cross-workspace exclusion without suppressing valid
+  private evidence inside its owning project.
+- **Install smokes assert loadable behavior rather than test spelling:** Method-name greps and duplicate CI runs
+  were removed; provider fixtures now close HTTP errors, threads, servers, and sockets deterministically.
+- **Memory lifecycle filesystem handling is stricter:** Publication, restore, capsule, and provider boundaries
+  preserve no-follow, ownership, atomicity, and recovery semantics under filesystem races and hostile path shapes.
+
+### Fixed
+
+- **Phase 7 can finalize a verified run without becoming its own blocker:** The terminal controller accepts the
+  valid finalizer state while keeping incomplete, failed, parked, or externally owned lifecycle transitions fail-safe.
+
 ## 0.2.10
 
 The verified memory-intelligence release: Kimiflow measures which recalled evidence actually helped,
