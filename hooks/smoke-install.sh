@@ -197,6 +197,7 @@ if [ -f "$ROOT/hooks/memory_router/outcomes.py" ] \
   && [ -f "$ROOT/hooks/memory_router/attribution.py" ] \
   && [ -f "$ROOT/hooks/memory_router/lifecycle.py" ] \
   && [ -f "$ROOT/hooks/memory_router/capsule.py" ] \
+  && [ -f "$ROOT/hooks/memory_router/workspace_scope.py" ] \
   && "$ROOT/hooks/memory-router.sh" evaluate-run --help >/dev/null 2>&1 \
   && grep -q -- '--strategies' "$ROOT/phases/phase-2-understand.md" \
   && grep -q 'Strategy evidence:' "$ROOT/phases/phase-3-plan.md" \
@@ -208,10 +209,12 @@ if [ -f "$ROOT/hooks/memory_router/outcomes.py" ] \
   && grep -q '"lifecycle": _lifecycle.run' "$ROOT/hooks/memory_router/__main__.py" \
   && grep -q '"capsule": _capsule.run' "$ROOT/hooks/memory_router/__main__.py" \
   && grep -q 'portable_entry' "$ROOT/hooks/memory_router/provider.py" \
+  && grep -q -- '--scope-path <path>' "$ROOT/reference.md" \
+  && grep -q 'test_workspace_scope_keeps_local_and_global_and_omits_foreign_unit' "$ROOT/hooks/memory_router/tests/test_recall.py" \
   && grep -q 'OUTCOME-EVALUATION.json' "$ROOT/phases/phase-7-review-commit.md"; then
-  ok "automatic strategy, verified recall, and memory lifecycle contract"
+  ok "automatic strategy, verified recall, memory lifecycle, and workspace recall contract"
 else
-  bad "automatic strategy, verified recall, or memory lifecycle contract incomplete"
+  bad "automatic strategy, verified recall, memory lifecycle, or workspace recall contract incomplete"
 fi
 if [ -x "$ROOT/hooks/test-memory-router-parity.sh" ] && bash -n "$ROOT/hooks/test-memory-router-parity.sh" 2>/dev/null; then ok "memory router test ok"; else bad "memory router test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/vault-mcp-setup.sh" ] && bash -n "$ROOT/hooks/vault-mcp-setup.sh" 2>/dev/null; then ok "vault MCP setup helper ok"; else bad "vault MCP setup helper missing/not-exec/bad"; fi

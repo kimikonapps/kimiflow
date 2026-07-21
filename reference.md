@@ -1056,7 +1056,7 @@ curation. Invoke from the installed plugin root (Codex: set `KIMIFLOW_HOST=codex
 
 ```text
 memory-router.sh status [--root <path>] [--pretty]
-memory-router.sh recall --query <text>|--query-file <path> [--strategies] [--max <n>] [--write <path>]
+memory-router.sh recall --query <text>|--query-file <path> [--scope-path <path>]... [--strategies] [--max <n>] [--write <path>]
 memory-router.sh history [--query <text>|--query-file <path>] [--max <n>] [--write]
 memory-router.sh metrics [--global] [--global-purge]
 memory-router.sh classify --input <path>|--text <text>
@@ -1092,6 +1092,38 @@ direct-source representative of a duplicate group; it grants no authority.
 Inspect the cited current evidence before relying on a hit. The frozen, deterministic quality holdout lives in
 `evals/fixtures/recall-quality-holdout.json` and runs with
 `PYTHONPATH=hooks python3 -m unittest memory_router.tests.test_recall_quality`.
+
+**Workspace-aware Recall:** for a `--query-file` below `.kimiflow/`, Recall boundedly reads the sibling
+`STATE.md` `Affected files:` block. Repeatable explicit `--scope-path` values take precedence. One to 32 paths
+may resolve through no-follow ancestor checks to at most eight nearest nested package manifests. When resolution
+is proven, direct JSONL source windows exclude only evidence that belongs exclusively to unselected nested units,
+the FTS query gets one bounded expanded window before the same filter, and local candidates rank before query
+coverage. A multi-evidence Learning stays local when any evidence is selected and stays shared when any evidence
+is root-level or unbound. Memory, user profile, run history, strategies, root facts, and evidence-unbound Learnings
+remain global. Candidate locality accepts only typed file references: a line-qualified ref, a Learning ref with a
+current stored SHA-256 file fingerprint whose canonical relative path matches the ref, or a Fact carrying its schema's positive
+integer `line`. Ambiguous legacy path strings remain shared, including dotted directories, while typed extensionless
+files still route correctly. Flattened FTS Learning/Fact hits are bounded seeds for the existing full-row duplicate
+closure: recovered current rows receive authoritative locality, proven foreign shadows are omitted, and unmatched
+shadows remain shared so FTS-only normalized global rules are not lost. Other index kinds remain shared. The expanded
+FTS window is capped at 2048 candidates. Candidate boundary work is cached per directory and capped at
+128 distinct directories. Exceeding
+that cap discards the scoped pass and retries project-wide instead of accumulating state or returning a partial
+narrowing. Omission identities are capped at 256 and expose a truncation flag rather than growing with the corpus;
+the complete canonical serialized unit path/marker list is capped at 1024 UTF-8 bytes and control-character paths
+fall back instead of entering JSON or Markdown.
+
+`workspace_scope` in `RECALL.json` reports the bounded unit list, activation/fallback reason and aggregate foreign
+omission count. It may also report salted `repository_id`/`worktree_id` pseudonyms from an already existing local
+metrics salt and one read-only canonical Git query, including on a safe project-wide fallback; raw absolute paths
+never leave the resolver. Missing/malformed
+or project-foreign State, path escape, symlink/unreadable or ambiguous boundaries, oversized unit paths, mixed
+root/package scope, limit overflow, or a
+manifest/receipt change during selection disables narrowing. A changed scope discards the pass and retries exactly
+once project-wide; automatically inferred scope also binds and rechecks the exact `STATE.md` snapshot. The feature
+never recursively scans the repository, creates an index or worktree, changes sparse
+checkout, contacts a provider, or pauses for user confirmation. Plain `--query` calls without `--scope-path` retain
+the prior output and selection behavior.
 
 **Verified recall utility (Contract 1):** after global packing, every selected hit copy receives a deterministic
 `rec_<64 lowercase hex>` over its source, evidence identity, and canonical content. IDs do not participate in

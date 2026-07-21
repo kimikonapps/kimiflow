@@ -204,6 +204,11 @@ Context-Budget und ein globales Trefferlimit und entfernt quellenübergreifende 
 immer ein Hinweis: aktueller Code, Tests, Specs und Primär-Evidence gewinnen. Der optionale SQLite-Index
 wird nur mit aktuellem Source-Fingerprint verwendet; stale Indizes werden ignoriert und bei einem
 persistierten Recall atomar neu gebaut.
+In großen Monorepos leitet Run-Artefakt-Recall aus den betroffenen Dateien höchstens acht verschachtelte
+Package-Einheiten ab und reiht deren Evidence zuerst. Root-Regeln und Evidence ohne nachweisbare Package-Grenze
+bleiben global; ungültige, gemischte, zu große oder während des Recalls veränderte Grenzen führen sicher zu
+projektweitem Recall. Dafür gibt es nur begrenzte Ancestor-Checks—keinen Repo-Scan, Dependency-Graph,
+Worktree-Write, Netzwerkzugriff oder User-Gate.
 Finale Treffer erhalten außerdem stabile lokale IDs. Kimiflow zählt eine ID nur dann als verwendet, wenn
 sie tatsächlich eine Plan-Entscheidung prägt, verbindet sie mit der Verifikation und bewertet sie im
 bestehenden Outcome-Artefakt als `helpful`, `neutral` oder `contradicted`. Dafür entstehen weder externe

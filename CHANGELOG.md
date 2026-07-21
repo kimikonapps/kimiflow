@@ -18,6 +18,14 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
   bounded six-field allowlist, omitting Unicode-equivalent local provenance, paths, evidence references, common
   credential and JWT shapes (including common GitHub token prefixes), dotted/dotless e-mails, secrets, outside-tree
   symlink evidence, and unsafe content.
+- **Recall is workspace-aware without a dependency graph:** Run `Affected files` or repeatable `--scope-path`
+  values can prove up to eight nested package units through bounded no-follow ancestor checks. Local evidence ranks
+  first while root/unbound authority stays global; ambiguous, overflowing, unsafe, State-drifted, or boundary-drifted scopes retry
+  project-wide. Only line- or fingerprint-typed file evidence narrows Recall, so ambiguous legacy paths stay global;
+  flattened Learning/Fact index hits seed authoritative full-row recovery; only proven foreign shadows are omitted,
+  while unresolved/global shadows remain eligible. Candidate/index/omission accounting is hard-capped for large
+  corpora. Optional Git worktree
+  identity is salted and path-free, with no worktree mutation or user gate.
 
 ### Changed
 

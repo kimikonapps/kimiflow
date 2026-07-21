@@ -7,10 +7,11 @@ import shutil
 import sqlite3
 import subprocess
 import tempfile
+import tracemalloc
 import unittest
 from unittest import mock
 
-from memory_router import recall, recall_index, usage_metrics
+from memory_router import recall, recall_index, usage_metrics, workspace_scope
 from memory_router.__main__ import main
 
 TAG = "kimiflow--v0.1.50"
@@ -279,12 +280,15 @@ class RecallJsonCase(unittest.TestCase):
                 handle.write('{"name":"%s"}\n' % unit)
         rows = [
             {"kind": "module", "path": "packages/web/src/f%d.py" % index,
+             "line": 1,
              "summary": "auth token foreign %d" % index}
             for index in range(25)
         ]
         rows.extend([
-            {"kind": "module", "path": "packages/api/src/local.py", "summary": "auth local"},
-            {"kind": "docs", "path": "README.md", "summary": "auth global"},
+            {"kind": "module", "path": "packages/api/src/local.py", "line": 1,
+             "summary": "auth local"},
+            {"kind": "docs", "path": "README.md", "line": 1,
+             "summary": "auth global"},
         ])
         self.write("FACTS.jsonl", "".join(json.dumps(row) + "\n" for row in rows))
         result = recall.recall_json(
@@ -305,16 +309,23 @@ class RecallJsonCase(unittest.TestCase):
                 handle.write('{"name":"%s"}\n' % unit)
         self.write(
             "LEARNINGS.jsonl",
+            "".join(
+                json.dumps({"id": "shared%d" % index, "status": "current",
+                            "scope": "project", "summary": "auth evidence token shared",
+                            "evidence": ["README.md"]}) + "\n"
+                for index in range(25)
+            ) +
             json.dumps({"id": "mixed", "status": "current", "scope": "project",
                         "summary": "auth mixed evidence",
-                        "evidence": ["packages/web/src/a.py", "packages/api/src/b.py"]}) + "\n" +
+                        "evidence": ["packages/web/src/a.py:1", "packages/api/src/b.py:1"]}) + "\n" +
             json.dumps({"id": "foreign", "status": "current", "scope": "project",
                         "summary": "auth foreign evidence",
-                        "evidence": ["packages/web/src/a.py"]}) + "\n",
+                        "evidence": ["packages/web/src/a.py:1"]}) + "\n",
         )
         recall_index.build_recall_index(self.root, recall_index.recall_db_path(self.root))
         result = recall.recall_json(
-            self.root, "auth evidence", 5, scope_paths=["packages/api/src/main.py"]
+            self.root, "auth evidence token", 1,
+            scope_paths=["packages/api/src/main.py"]
         )
         self.assertEqual(
             [row["id"] for row in result["sources"]["learnings"]["hits"]], ["mixed"]
@@ -322,11 +333,449 @@ class RecallJsonCase(unittest.TestCase):
         all_index = json.dumps(result["sources"]["index"]["hits"])
         self.assertNotIn("foreign", all_index)
 
+    def test_workspace_scope_carries_typed_full_rows_into_fts_shadows(self):
+        for unit in ("api", "web"):
+            directory = os.path.join(self.root, "packages", unit)
+            os.makedirs(os.path.join(directory, "src"))
+            with open(os.path.join(directory, "package.json"), "w", encoding="utf-8") as handle:
+                handle.write("{}\n")
+        self.write(
+            "LEARNINGS.jsonl",
+            json.dumps({
+                "id": "foreign-extensionless",
+                "status": "current",
+                "summary": "auth foreign docker strategy",
+                "evidence": ["packages/web/Dockerfile"],
+                "evidence_fingerprints": [{
+                    "ref": "packages/web/Dockerfile",
+                    "path": "packages/web/Dockerfile",
+                    "status": "current",
+                    "digest_algorithm": "sha256",
+                    "digest": "a" * 64,
+                    "sha256": "a" * 64,
+                }],
+            }) + "\n",
+        )
+        self.write(
+            "FACTS.jsonl",
+            json.dumps({
+                "kind": "module",
+                "path": "packages/web/config.d",
+                "summary": "auth ambiguous directory",
+            }) + "\n",
+        )
+        recall_index.build_recall_index(
+            self.root, recall_index.recall_db_path(self.root)
+        )
+
+        result = recall.recall_json(
+            self.root, "auth", 5, scope_paths=["packages/api/src/main.py"]
+        )
+        rendered = json.dumps(result["sources"])
+        self.assertNotIn("foreign docker strategy", rendered)
+        self.assertIn("packages/web/config.d", rendered)
+
+    def test_workspace_scope_malformed_learning_evidence_stays_shared(self):
+        directory = os.path.join(self.root, "packages", "api")
+        os.makedirs(os.path.join(directory, "src"))
+        with open(os.path.join(directory, "package.json"), "w", encoding="utf-8") as handle:
+            handle.write("{}\n")
+        self.write(
+            "LEARNINGS.jsonl",
+            json.dumps({
+                "id": "malformed-evidence",
+                "status": "current",
+                "summary": "auth malformed evidence",
+                "evidence": [{"path": "packages/api/src/a.py"}],
+            }) + "\n",
+        )
+        result = recall.recall_json(
+            self.root, "auth", 5, scope_paths=["packages/api/src/main.py"]
+        )
+        self.assertEqual(
+            [row["id"] for row in result["sources"]["learnings"]["hits"]],
+            ["malformed-evidence"],
+        )
+
+    def test_workspace_scope_omits_flattened_learning_fact_shadows(self):
+        for unit in ("api", "web"):
+            directory = os.path.join(self.root, "packages", unit)
+            os.makedirs(os.path.join(directory, "src"))
+            with open(os.path.join(directory, "package.json"), "w", encoding="utf-8") as handle:
+                handle.write("{}\n")
+        rows = [
+            {"id": "foreign", "status": "current", "summary": "auth collision one",
+             "evidence": ["packages/web/src/a.py:1"]},
+            {"id": "local", "status": "current", "summary": "auth collision one",
+             "evidence": ["packages/web/src/a.py:1", "packages/api/src/b.py:1"]},
+            {"id": "shared", "status": "current", "summary": "auth collision two",
+             "evidence": ["packages/web/src/c.py:1", "NOT VERIFIED"]},
+            {"id": "local-two", "status": "current", "summary": "auth collision two",
+             "evidence": ["packages/web/src/c.py:1", "packages/api/src/d.py:1"]},
+        ]
+        self.write(
+            "LEARNINGS.jsonl", "".join(json.dumps(row) + "\n" for row in rows)
+        )
+        recall_index.build_recall_index(
+            self.root, recall_index.recall_db_path(self.root)
+        )
+        result = recall.recall_json(
+            self.root, "auth collision", 10,
+            scope_paths=["packages/api/src/main.py"],
+        )
+        self.assertFalse(any(
+            hit.get("kind") in ("learning", "fact")
+            for hit in result["sources"]["index"]["hits"]
+        ))
+
+    def test_workspace_scope_missing_index_does_not_disable_direct_narrowing(self):
+        for unit in ("api", "web"):
+            directory = os.path.join(self.root, "packages", unit)
+            os.makedirs(os.path.join(directory, "src"))
+            with open(os.path.join(directory, "package.json"), "w", encoding="utf-8") as handle:
+                handle.write("{}\n")
+        self.write(
+            "FACTS.jsonl",
+            "".join(
+                json.dumps({
+                    "path": "packages/web/src/f%d.py" % index,
+                    "line": 1,
+                    "summary": "auth foreign %d" % index,
+                }) + "\n"
+                for index in range(21)
+            ),
+        )
+        with mock.patch.dict(os.environ, {"KIMIFLOW_RECALL_BUDGET": "20"}):
+            result = recall.recall_json(
+                self.root, "auth", 5,
+                scope_paths=["packages/api/src/main.py"],
+            )
+        self.assertEqual(result["sources"]["index"]["freshness"], "missing")
+        self.assertEqual(result["workspace_scope"]["status"], "active")
+        self.assertEqual(result["workspace_scope"]["foreign_hits_omitted"], 21)
+
+    def test_workspace_scope_drift_fallback_keeps_generator_receipt_count(self):
+        directory = os.path.join(self.root, "packages", "api")
+        os.makedirs(os.path.join(directory, "src"))
+        with open(os.path.join(directory, "package.json"), "w", encoding="utf-8") as handle:
+            handle.write("{}\n")
+        paths = (path for path in ["packages/api/src/main.py"])
+        with mock.patch(
+            "memory_router.workspace_scope.revalidate_scope",
+            return_value=False,
+        ):
+            result = recall.recall_json(
+                self.root, "auth", 5, scope_paths=paths
+            )
+        self.assertEqual(result["workspace_scope"]["status"], "fallback")
+        self.assertEqual(result["workspace_scope"]["requested_path_count"], 1)
+
+    def test_workspace_scope_fts_seed_recovers_global_full_rows(self):
+        directory = os.path.join(self.root, "packages", "api")
+        os.makedirs(os.path.join(directory, "src"))
+        with open(os.path.join(directory, "package.json"), "w", encoding="utf-8") as handle:
+            handle.write("{}\n")
+        self.write(
+            "LEARNINGS.jsonl",
+            json.dumps({
+                "id": "accented-global",
+                "status": "current",
+                "summary": "café global rule",
+                "evidence": ["NOT VERIFIED"],
+            }) + "\n",
+        )
+        facts = [
+            {"path": "README.md", "line": 1, "summary": "auth legacy"}
+            for _ in range(20)
+        ]
+        facts.append({
+            "path": "ARCHITECTURE.md", "line": 1,
+            "summary": "auth architecture boundary",
+        })
+        self.write(
+            "FACTS.jsonl", "".join(json.dumps(row) + "\n" for row in facts)
+        )
+        recall_index.build_recall_index(
+            self.root, recall_index.recall_db_path(self.root)
+        )
+
+        accented = recall.recall_json(
+            self.root, "cafe", 2, scope_paths=["packages/api/src/main.py"]
+        )
+        self.assertEqual(
+            [row["id"] for row in accented["sources"]["learnings"]["hits"]],
+            ["accented-global"],
+        )
+        recovered = recall.recall_json(
+            self.root, "auth", 2, scope_paths=["packages/api/src/main.py"]
+        )
+        self.assertEqual(
+            {row["path"] for row in recovered["sources"]["facts"]["hits"]},
+            {"README.md", "ARCHITECTURE.md"},
+        )
+
+    def test_workspace_scope_incomplete_shadow_scan_keeps_index_hit_shared(self):
+        for unit in ("api", "web"):
+            directory = os.path.join(self.root, "packages", unit)
+            os.makedirs(os.path.join(directory, "src"))
+            with open(os.path.join(directory, "package.json"), "w", encoding="utf-8") as handle:
+                handle.write("{}\n")
+        self.write(
+            "LEARNINGS.jsonl",
+            json.dumps({
+                "id": "foreign-accented",
+                "status": "current",
+                "summary": "café foreign rule",
+                "evidence": ["packages/web/src/a.py:1"],
+            }) + "\n",
+        )
+        recall_index.build_recall_index(
+            self.root, recall_index.recall_db_path(self.root)
+        )
+        original = recall._iter_jsonl_objects_with_receipt
+
+        def interrupted(path, completion=None):
+            inner_completion = {}
+            for row in original(path, inner_completion):
+                yield row
+                return
+
+        with mock.patch(
+            "memory_router.recall._iter_jsonl_objects_with_receipt",
+            side_effect=interrupted,
+        ):
+            result = recall.recall_json(
+                self.root, "cafe", 5,
+                scope_paths=["packages/api/src/main.py"],
+            )
+        self.assertIn(
+            "café foreign rule",
+            [hit.get("summary") for hit in result["sources"]["index"]["hits"]],
+        )
+
+    def test_workspace_scope_shadow_proof_belongs_to_receipted_scan(self):
+        for unit in ("api", "web"):
+            directory = os.path.join(self.root, "packages", unit)
+            os.makedirs(os.path.join(directory, "src"))
+            with open(os.path.join(directory, "package.json"), "w", encoding="utf-8") as handle:
+                handle.write("{}\n")
+        self.write(
+            "LEARNINGS.jsonl",
+            json.dumps({
+                "id": "foreign",
+                "status": "current",
+                "summary": "auth foreign rule",
+                "evidence": ["packages/web/src/a.py:1"],
+            }) + "\n",
+        )
+        recall_index.build_recall_index(
+            self.root, recall_index.recall_db_path(self.root)
+        )
+        original = recall._ranked_jsonl_hits
+        learning_path = os.path.join(self.project, "LEARNINGS.jsonl")
+
+        def replace_after_rank(path, *args, **kwargs):
+            result = original(path, *args, **kwargs)
+            if path == learning_path:
+                replacement = learning_path + ".replacement"
+                with open(replacement, "w", encoding="utf-8"):
+                    pass
+                os.replace(replacement, learning_path)
+            return result
+
+        with mock.patch(
+            "memory_router.recall._ranked_jsonl_hits",
+            side_effect=replace_after_rank,
+        ):
+            result = recall.recall_json(
+                self.root, "auth", 5,
+                scope_paths=["packages/api/src/main.py"],
+            )
+        self.assertIn(
+            "auth foreign rule",
+            [hit.get("summary") for hit in result["sources"]["index"]["hits"]],
+        )
+
+    def test_workspace_scope_caps_fts_only_globals_without_suppressing_them(self):
+        directory = os.path.join(self.root, "packages", "api")
+        os.makedirs(os.path.join(directory, "src"))
+        with open(os.path.join(directory, "package.json"), "w", encoding="utf-8") as handle:
+            handle.write("{}\n")
+        self.write(
+            "LEARNINGS.jsonl",
+            "".join(
+                json.dumps({
+                    "id": "accented-global-%d" % index,
+                    "status": "current",
+                    "summary": "café global rule %d %s" % (index, "x" * 500),
+                    "evidence": ["manual:global-%d" % index],
+                }) + "\n"
+                for index in range(25)
+            ),
+        )
+        recall_index.build_recall_index(
+            self.root, recall_index.recall_db_path(self.root)
+        )
+        result = recall.recall_json(
+            self.root, "cafe", 5,
+            scope_paths=["packages/api/src/main.py"],
+        )
+        self.assertEqual(result["sources"]["learnings"]["count"], 5)
+        self.write(
+            "FACTS.jsonl",
+            "".join(
+                json.dumps({
+                    "path": "GLOBAL-%d.md" % index,
+                    "line": 1,
+                    "summary": "café global fact %d %s" % (
+                        index, "y" * 500
+                    ),
+                }) + "\n"
+                for index in range(25)
+            ),
+        )
+        recall_index.build_recall_index(
+            self.root, recall_index.recall_db_path(self.root)
+        )
+        facts = recall.recall_json(
+            self.root, "cafe", 5,
+            scope_paths=["packages/api/src/main.py"],
+        )
+        self.assertEqual(facts["sources"]["facts"]["count"], 5)
+
+    def test_workspace_scope_omission_identity_hashes_full_values(self):
+        for unit in ("api", "web"):
+            directory = os.path.join(self.root, "packages", unit)
+            os.makedirs(os.path.join(directory, "src"))
+            with open(os.path.join(directory, "package.json"), "w", encoding="utf-8") as handle:
+                handle.write("{}\n")
+        prefix = "x" * 600
+        rows = [
+            {"path": "packages/web/src/%s-%d.py" % (prefix, index),
+             "line": 1, "summary": "auth %s-%d" % (prefix, index)}
+            for index in range(2)
+        ]
+        self.write(
+            "FACTS.jsonl", "".join(json.dumps(row) + "\n" for row in rows)
+        )
+        scope = recall.recall_json(
+            self.root, "auth", 5, scope_paths=["packages/api/src/main.py"]
+        )["workspace_scope"]
+        self.assertEqual(scope["foreign_hits_omitted"], 2)
+        self.assertFalse(scope["foreign_hits_omitted_truncated"])
+
+    def test_workspace_scope_locality_precedes_shared_query_coverage(self):
+        directory = os.path.join(self.root, "packages", "api")
+        os.makedirs(os.path.join(directory, "src"))
+        with open(os.path.join(directory, "package.json"), "w", encoding="utf-8") as handle:
+            handle.write("{}\n")
+        rows = [
+            {"path": "shared%d.py" % index, "line": 1,
+             "summary": "auth token shared"}
+            for index in range(25)
+        ]
+        rows.append({"path": "packages/api/src/local.py", "line": 1,
+                     "summary": "auth local"})
+        self.write("FACTS.jsonl", "".join(json.dumps(row) + "\n" for row in rows))
+        result = recall.recall_json(
+            self.root, "auth token", 1, scope_paths=["packages/api/src/main.py"]
+        )
+        self.assertEqual(
+            [row["path"] for row in result["sources"]["facts"]["hits"]],
+            ["packages/api/src/local.py"],
+        )
+
+    def test_workspace_scope_bounded_classification_falls_back_project_wide(self):
+        directory = os.path.join(self.root, "packages", "api")
+        os.makedirs(os.path.join(directory, "src"))
+        with open(os.path.join(directory, "package.json"), "w", encoding="utf-8") as handle:
+            handle.write("{}\n")
+        rows = [
+            {"path": "unknown/d%d/file.py" % index, "line": 1,
+             "summary": "auth shared"}
+            for index in range(workspace_scope.MAX_CANDIDATE_DIRECTORIES + 1)
+        ]
+        rows.append({"path": "packages/api/src/local.py", "line": 1,
+                     "summary": "auth local"})
+        self.write("FACTS.jsonl", "".join(json.dumps(row) + "\n" for row in rows))
+        legacy = self.obj("auth")
+        result = recall.recall_json(
+            self.root, "auth", 5, scope_paths=["packages/api/src/main.py"]
+        )
+        self.assertEqual(result["workspace_scope"]["status"], "fallback")
+        self.assertEqual(
+            result["workspace_scope"]["reason"], "scope_classification_limit"
+        )
+        self.assertEqual(result["sources"], legacy["sources"])
+
+    def test_workspace_scope_caps_foreign_omission_accounting(self):
+        for unit in ("api", "web"):
+            directory = os.path.join(self.root, "packages", unit)
+            os.makedirs(os.path.join(directory, "src"))
+            with open(os.path.join(directory, "package.json"), "w", encoding="utf-8") as handle:
+                handle.write("{}\n")
+        exact_rows = [
+            {"path": "packages/web/src/f%d.py" % index, "line": 1,
+             "summary": "auth %d" % index}
+            for index in range(workspace_scope.MAX_FOREIGN_IDENTITIES)
+        ]
+        self.write("FACTS.jsonl", "".join(json.dumps(row) + "\n" for row in exact_rows))
+        exact = recall.recall_json(
+            self.root, "auth", 5, scope_paths=["packages/api/src/main.py"]
+        )["workspace_scope"]
+        self.assertEqual(
+            exact["foreign_hits_omitted"], workspace_scope.MAX_FOREIGN_IDENTITIES
+        )
+        self.assertFalse(exact["foreign_hits_omitted_truncated"])
+
+        rows = exact_rows + [
+            {"path": "packages/web/src/f%d.py" % index, "line": 1,
+             "summary": "auth %d" % index}
+            for index in range(
+                workspace_scope.MAX_FOREIGN_IDENTITIES,
+                workspace_scope.MAX_FOREIGN_IDENTITIES + 20,
+            )
+        ]
+        self.write("FACTS.jsonl", "".join(json.dumps(row) + "\n" for row in rows))
+        result = recall.recall_json(
+            self.root, "auth", 5, scope_paths=["packages/api/src/main.py"]
+        )
+        scope = result["workspace_scope"]
+        self.assertEqual(scope["foreign_hits_omitted"], workspace_scope.MAX_FOREIGN_IDENTITIES)
+        self.assertTrue(scope["foreign_hits_omitted_truncated"])
+
+    def test_workspace_scope_drift_discards_scoped_pass_once(self):
+        for unit in ("api", "web"):
+            directory = os.path.join(self.root, "packages", unit)
+            os.makedirs(os.path.join(directory, "src"))
+            with open(os.path.join(directory, "package.json"), "w", encoding="utf-8") as handle:
+                handle.write("{}\n")
+        self.write(
+            "FACTS.jsonl",
+            '{"path":"packages/web/src/a.py","line":1,"summary":"auth"}\n',
+        )
+        legacy = self.obj("auth")
+        with mock.patch(
+            "memory_router.recall.workspace_scope.revalidate_scope", return_value=False
+        ) as revalidate:
+            result = recall.recall_json(
+                self.root, "auth", 5, scope_paths=["packages/api/src/main.py"]
+            )
+        self.assertEqual(revalidate.call_count, 1)
+        self.assertEqual(result["sources"], legacy["sources"])
+        self.assertEqual(result["workspace_scope"]["status"], "fallback")
+        self.assertEqual(
+            result["workspace_scope"]["reason"], "scope_changed_during_recall"
+        )
+
     def test_scope_overflow_falls_back_without_partial_filtering(self):
         os.makedirs(os.path.join(self.root, "packages", "api", "src"))
         with open(os.path.join(self.root, "packages", "api", "package.json"), "w") as handle:
             handle.write("{}\n")
-        self.write("FACTS.jsonl", '{"path":"packages/api/src/a.py","summary":"auth"}\n')
+        self.write(
+            "FACTS.jsonl",
+            '{"path":"packages/api/src/a.py","line":1,"summary":"auth"}\n',
+        )
         legacy = self.obj("auth")
         overflow = recall.recall_json(
             self.root,
@@ -605,6 +1054,262 @@ class RecallJsonCase(unittest.TestCase):
         self.assertEqual(o["sources"]["facts"]["hits"][0]["path"], "src/r0.py")
         self.assertEqual(o["sources"]["learnings"]["count"], 0)
         self.assertIn("duplicate_closure_truncated", o["explanation"]["reason_codes"])
+        recall_index.build_recall_index(
+            self.root, recall_index.recall_db_path(self.root)
+        )
+        indexed = self.obj("alpha beta", max_hits=5)
+        self.assertEqual(indexed["sources"]["learnings"]["count"], 0)
+        self.assertIn(
+            "duplicate_closure_truncated",
+            indexed["explanation"]["reason_codes"],
+        )
+        os.makedirs(os.path.join(self.root, "packages", "api", "src"))
+        with open(
+            os.path.join(self.root, "packages", "api", "package.json"),
+            "w",
+            encoding="utf-8",
+        ) as handle:
+            handle.write("{}\n")
+        scoped = recall.recall_json(
+            self.root, "alpha beta", 5,
+            scope_paths=["packages/api/src/main.py"],
+        )
+        self.assertEqual(scoped["sources"]["learnings"]["count"], 0)
+        self.assertIn(
+            "duplicate_closure_truncated",
+            scoped["explanation"]["reason_codes"],
+        )
+
+    def test_seeded_duplicate_closure_does_not_retain_chain_after_cap(self):
+        def chain(_path, completion=None):
+            for index in range(2000):
+                current = ("x" * 4096) + str(index)
+                yield {
+                    "status": "current",
+                    "ref": "seed",
+                    "summary": current,
+                }
+            if completion is not None:
+                completion["complete"] = True
+
+        tracemalloc.start()
+        try:
+            with mock.patch(
+                "memory_router.recall._iter_jsonl_objects_with_receipt",
+                side_effect=chain,
+            ):
+                hits, unsafe_refs, _ = recall._preferred_duplicates(
+                    "unused", ["query"], "ref,summary", [],
+                    [{"ref": "seed"}], 1,
+                    seed_match=lambda _row: True,
+                )
+            _, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(unsafe_refs, {"seed"})
+        self.assertLess(peak, 2 * 1024 * 1024)
+
+    def test_seeded_duplicate_closure_revokes_late_bridge_exemptions(self):
+        seeds = [
+            {"ref": "manual:a", "summary": "seed-a"},
+            {"ref": "manual:b", "summary": "bridge-b"},
+        ]
+
+        def rows(_path, completion=None):
+            yield {"status": "current", **seeds[0]}
+            yield {
+                "status": "current",
+                "ref": "manual:a",
+                "summary": "bridge-b",
+            }
+            yield {"status": "current", **seeds[1]}
+            if completion is not None:
+                completion["complete"] = True
+
+        with mock.patch(
+            "memory_router.recall._iter_jsonl_objects_with_receipt",
+            side_effect=rows,
+        ):
+            _, unsafe_refs, unsafe_summaries = recall._preferred_duplicates(
+                "unused", ["query"], "ref,summary", [], seeds, 1,
+                seed_match=lambda _row: True,
+                safe_lower_hits=seeds,
+            )
+        self.assertEqual(unsafe_refs, {"manual:a", "manual:b"})
+        self.assertEqual(unsafe_summaries, {"seed-a", "bridge-b"})
+
+    def test_seeded_duplicate_closure_binds_long_full_summary_aliases(self):
+        long_a = "a" * 500
+        long_b = "b" * 500
+        seeds = [
+            {"ref": "manual:a", "summary": long_a[:420]},
+            {"ref": "manual:b", "summary": long_b[:420]},
+        ]
+
+        def rows(_path, completion=None):
+            yield {"status": "current", "ref": "manual:a", "summary": long_a}
+            yield {"status": "current", "ref": "manual:b", "summary": long_b}
+            yield {"status": "current", "ref": "bridge", "summary": long_a}
+            yield {"status": "current", "ref": "bridge", "summary": long_b}
+            if completion is not None:
+                completion["complete"] = True
+
+        with mock.patch(
+            "memory_router.recall._iter_jsonl_objects_with_receipt",
+            side_effect=rows,
+        ):
+            _, unsafe_refs, unsafe_summaries = recall._preferred_duplicates(
+                "unused", ["query"], "ref,summary", [], seeds, 1,
+                seed_match=lambda _row: True,
+                safe_lower_hits=seeds,
+                safe_match_key=lambda hit: (
+                    recall.hit_ref(hit), recall._normalized_summary(hit)[:420]
+                ),
+            )
+        self.assertEqual(unsafe_refs, {"manual:a", "manual:b"})
+        self.assertEqual(unsafe_summaries, {long_a[:420], long_b[:420]})
+
+    def test_seeded_duplicate_closure_rejects_ambiguous_shadow_aliases(self):
+        prefix = "x" * 420
+        seed = {"ref": "manual:a", "summary": prefix}
+
+        def rows(_path, completion=None):
+            for index in range(100):
+                yield {
+                    "status": "current",
+                    "ref": "manual:a",
+                    "summary": prefix + str(index),
+                }
+            if completion is not None:
+                completion["complete"] = True
+
+        with mock.patch(
+            "memory_router.recall._iter_jsonl_objects_with_receipt",
+            side_effect=rows,
+        ):
+            _, unsafe_refs, _ = recall._preferred_duplicates(
+                "unused", ["query"], "ref,summary", [], [seed], 1,
+                seed_match=lambda _row: True,
+                safe_lower_hits=[seed],
+                safe_match_key=lambda hit: (
+                    recall.hit_ref(hit), recall._normalized_summary(hit)[:420]
+                ),
+            )
+        self.assertEqual(unsafe_refs, {"manual:a"})
+
+    def test_seeded_duplicate_closure_hashes_large_full_alias_state(self):
+        seeds = [
+            {"ref": "manual:%d" % index, "summary": ("s%03d" % index) * 105}
+            for index in range(128)
+        ]
+
+        def rows(_path, completion=None):
+            for seed in seeds:
+                yield {
+                    "status": "current",
+                    "ref": seed["ref"],
+                    "summary": seed["summary"] + ("z" * (64 * 1024)),
+                }
+            if completion is not None:
+                completion["complete"] = True
+
+        tracemalloc.start()
+        try:
+            with mock.patch(
+                "memory_router.recall._iter_jsonl_objects_with_receipt",
+                side_effect=rows,
+            ):
+                _, unsafe_refs, _ = recall._preferred_duplicates(
+                    "unused", ["query"], "ref,summary", [], seeds, 1,
+                    seed_match=lambda _row: True,
+                    safe_lower_hits=seeds,
+                    safe_match_key=lambda hit: (
+                        recall.hit_ref(hit), recall._normalized_summary(hit)[:420]
+                    ),
+                )
+            _, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        self.assertEqual(unsafe_refs, set())
+        self.assertLess(peak, 4 * 1024 * 1024)
+
+    def test_seed_safety_uses_only_the_final_complete_accepted_scan(self):
+        seeds = [
+            {"ref": "manual:a", "summary": "seed-a"},
+            {"ref": "manual:c", "summary": "seed-c"},
+        ]
+        scans = [
+            [
+                {"status": "current", **seeds[0]},
+                {"status": "current", "ref": "manual:a",
+                 "summary": "transient", "foreign": True},
+            ],
+            [
+                {"status": "current", **seeds[0]},
+                {"status": "current", **seeds[1]},
+                {"status": "current", "ref": "manual:a",
+                 "summary": "rejected", "foreign": True},
+                {"status": "current", "ref": "manual:c",
+                 "summary": "accepted-bridge"},
+            ],
+        ]
+
+        def rows(_path, completion=None):
+            current = scans.pop(0)
+            yield from current
+            if completion is not None:
+                completion["complete"] = True
+
+        def accept_factory(_observations):
+            return lambda row: not row.get("foreign", False)
+
+        with mock.patch(
+            "memory_router.recall._iter_jsonl_objects_with_receipt",
+            side_effect=rows,
+        ):
+            _, unsafe_refs, _ = recall._preferred_duplicates(
+                "unused", ["query"], "ref,summary", [], seeds, 2,
+                seed_match=lambda _row: True,
+                safe_lower_hits=seeds,
+                safe_match_key=lambda hit: (
+                    recall.hit_ref(hit), recall._normalized_summary(hit)
+                ),
+                accept_factory=accept_factory,
+            )
+        self.assertEqual(unsafe_refs, {"manual:c"})
+
+    def test_incomplete_seed_scan_keeps_unobserved_independent_shadow_safe(self):
+        seeds = [
+            {"ref": "manual:a", "summary": "seed-a"},
+            {"ref": "manual:b", "summary": "seed-b"},
+        ]
+
+        def interrupted(_path, completion=None):
+            yield {
+                "status": "current",
+                "ref": "manual:a",
+                "summary": "bridge-a",
+            }
+            yield {
+                "status": "current",
+                "ref": "manual:a",
+                "summary": "late-a",
+            }
+
+        with mock.patch(
+            "memory_router.recall._iter_jsonl_objects_with_receipt",
+            side_effect=interrupted,
+        ):
+            _, unsafe_refs, _ = recall._preferred_duplicates(
+                "unused", ["query"], "ref,summary", [], seeds, 1,
+                seed_match=lambda _row: True,
+                safe_lower_hits=seeds,
+                safe_match_key=lambda hit: (
+                    recall.hit_ref(hit), recall._normalized_summary(hit)
+                ),
+            )
+        self.assertEqual(unsafe_refs, {"manual:a"})
 
     def test_source_candidates_rank_before_bounded_window(self):
         rows = [
@@ -923,8 +1628,8 @@ class RecallRunCase(unittest.TestCase):
             with open(os.path.join(directory, "package.json"), "w") as handle:
                 handle.write("{}\n")
         with open(os.path.join(self.project, "FACTS.jsonl"), "w") as handle:
-            handle.write('{"path":"packages/api/src/a.py","summary":"auth api"}\n')
-            handle.write('{"path":"packages/web/src/a.py","summary":"auth web"}\n')
+            handle.write('{"path":"packages/api/src/a.py","line":1,"summary":"auth api"}\n')
+            handle.write('{"path":"packages/web/src/a.py","line":1,"summary":"auth web"}\n')
         run = os.path.join(self.root, ".kimiflow", "demo")
         os.makedirs(run)
         query = os.path.join(run, "INTENT.md")
@@ -951,6 +1656,47 @@ class RecallRunCase(unittest.TestCase):
         self.assertEqual(
             [row["path"] for row in explicit["sources"]["facts"]["hits"]],
             ["packages/web/src/a.py"],
+        )
+
+        original_pack = recall._pack_hits
+
+        def mutate_state_after_pack(*args, **kwargs):
+            packed = original_pack(*args, **kwargs)
+            with open(os.path.join(run, "STATE.md"), "a", encoding="utf-8") as handle:
+                handle.write("# concurrent state change\n")
+            return packed
+
+        with mock.patch(
+            "memory_router.recall._pack_hits", side_effect=mutate_state_after_pack
+        ):
+            code, out, err = self.run_recall(["--query-file", query, "--max", "5"])
+        self.assertEqual((code, err), (0, ""))
+        drifted = json.loads(out)
+        self.assertEqual(drifted["workspace_scope"]["status"], "fallback")
+        self.assertEqual(
+            drifted["workspace_scope"]["reason"], "scope_changed_during_recall"
+        )
+        self.assertEqual(
+            {row["path"] for row in drifted["sources"]["facts"]["hits"]},
+            {"packages/api/src/a.py", "packages/web/src/a.py"},
+        )
+
+        external = tempfile.mkdtemp(prefix="kimiflow-foreign-run-")
+        self.addCleanup(shutil.rmtree, external, ignore_errors=True)
+        foreign_run = os.path.join(external, ".kimiflow", "demo")
+        os.makedirs(foreign_run)
+        foreign_query = os.path.join(foreign_run, "INTENT.md")
+        with open(foreign_query, "w", encoding="utf-8") as handle:
+            handle.write("auth\n")
+        with open(os.path.join(foreign_run, "STATE.md"), "w", encoding="utf-8") as handle:
+            handle.write("Affected files:\n- packages/web/src/main.py\n")
+        code, out, err = self.run_recall(["--query-file", foreign_query, "--max", "5"])
+        self.assertEqual((code, err), (0, ""))
+        foreign = json.loads(out)
+        self.assertNotIn("workspace_scope", foreign)
+        self.assertEqual(
+            {row["path"] for row in foreign["sources"]["facts"]["hits"]},
+            {"packages/api/src/a.py", "packages/web/src/a.py"},
         )
 
     def test_write_creates_md_json_and_usage(self):

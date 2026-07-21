@@ -223,6 +223,11 @@ Recall now packs memory, facts, learnings, strategies, and history into one glob
 one global hit limit, removing cross-source duplicates. Every recalled item remains advisory: current
 code, tests, specifications, and primary evidence win. The optional SQLite index is used only while its
 source fingerprint is current; stale indexes are bypassed and atomically rebuilt on a persisted recall.
+For large monorepos, run-artifact Recall infers up to eight nested package units from affected files and
+ranks their evidence first. Root-level rules and evidence without a proven package boundary stay global;
+invalid, mixed, overflowing, or concurrently changed boundaries fall back to project-wide Recall. The
+resolver uses bounded ancestor checks only—no repository scan, dependency graph, worktree change, network
+request, or user approval.
 Final hits also receive stable local IDs. Kimiflow records an ID as used only when it actually shapes a
 plan decision, then links it to verification and classifies it `helpful`, `neutral`, or `contradicted` in
 the existing outcome artifact. This adds no external telemetry, copied recall text, or user confirmation.
