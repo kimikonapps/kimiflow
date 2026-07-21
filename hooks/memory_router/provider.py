@@ -78,10 +78,13 @@ def _http_probe(url, timeout, headers=None):
             return resp.getcode(), resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as exc:
         try:
-            body = exc.read().decode("utf-8", "replace")
-        except Exception:
-            body = ""
-        return exc.code, body
+            try:
+                body = exc.read().decode("utf-8", "replace")
+            except Exception:
+                body = ""
+            return exc.code, body
+        finally:
+            exc.close()
     except Exception:
         return None, ""
 

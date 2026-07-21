@@ -1,12 +1,15 @@
 {
-  "schema_version": 1,
-  "frozen_at": "2026-07-20",
+  "schema_version": 2,
+  "frozen_at": "2026-07-21",
+  "metric": "evidence_ref_precision_recall",
   "cases": [
     {
       "id": "de_direct_fact_dedup",
       "query": "transaktion race condition",
       "budget": 90,
       "max_hits": 4,
+      "min_precision": 1.0,
+      "min_recall": 1.0,
       "facts": [
         {"kind": "invariant", "area": "storage", "path": "src/storage.py", "line": 18, "summary": "transaktion verhindert race condition"}
       ],
@@ -23,6 +26,8 @@
       "query": "release hook cache",
       "budget": 70,
       "max_hits": 3,
+      "min_precision": 0.5,
+      "min_recall": 1.0,
       "facts": [],
       "learnings": [
         {"id": "release", "status": "current", "summary": "release hook refreshes the installed cache", "evidence": ["hooks/install.sh:40"]},
@@ -39,6 +44,8 @@
       "query": "offline sync conflict resolution",
       "budget": 38,
       "max_hits": 2,
+      "min_precision": 1.0,
+      "min_recall": 1.0,
       "facts": [
         {"kind": "flow", "area": "sync", "path": "src/sync.py", "line": 7, "summary": "offline sync conflict resolution"}
       ],
@@ -50,6 +57,109 @@
       ],
       "expected_refs": ["src/sync.py:7"],
       "forbidden_refs": [".kimiflow/old-run/PLAN.md"]
+    },
+    {
+      "id": "stale_learning_is_never_recalled",
+      "query": "database migration checksum",
+      "budget": 80,
+      "max_hits": 3,
+      "min_precision": 1.0,
+      "min_recall": 1.0,
+      "facts": [],
+      "learnings": [
+        {"id": "current", "status": "current", "summary": "database migration validates checksum", "evidence": ["src/migrate.py:22"]},
+        {"id": "stale", "status": "stale", "summary": "database migration ignores checksum", "evidence": ["src/legacy_migrate.py:8"]}
+      ],
+      "run_artifacts": [],
+      "expected_refs": ["src/migrate.py:22"],
+      "forbidden_refs": ["src/legacy_migrate.py:8"]
+    },
+    {
+      "id": "cross_source_duplicate_prefers_fact",
+      "query": "atomic ledger replace",
+      "budget": 90,
+      "max_hits": 4,
+      "min_precision": 1.0,
+      "min_recall": 1.0,
+      "facts": [
+        {"kind": "invariant", "area": "ledger", "path": "src/ledger.py", "line": 31, "summary": "atomic ledger replace preserves the canonical file"}
+      ],
+      "learnings": [
+        {"id": "same", "status": "current", "summary": "atomic ledger replace preserves the canonical file", "evidence": ["src/ledger.py:31"]}
+      ],
+      "run_artifacts": [],
+      "expected_refs": ["src/ledger.py:31"],
+      "forbidden_refs": []
+    },
+    {
+      "id": "two_relevant_sources_fit_global_cap",
+      "query": "privacy capsule provider sync",
+      "budget": 120,
+      "max_hits": 2,
+      "min_precision": 1.0,
+      "min_recall": 1.0,
+      "facts": [
+        {"kind": "flow", "area": "privacy", "path": "src/capsule.py", "line": 11, "summary": "privacy capsule filters provider sync"}
+      ],
+      "learnings": [
+        {"id": "provider", "status": "current", "summary": "provider sync exports only privacy capsule rows", "evidence": ["src/provider.py:55"]},
+        {"id": "noise", "status": "current", "summary": "provider status prints a local path", "evidence": ["src/status.py:9"]}
+      ],
+      "run_artifacts": [],
+      "expected_refs": ["src/capsule.py:11", "src/provider.py:55"],
+      "forbidden_refs": ["src/status.py:9"]
+    },
+    {
+      "id": "history_wins_when_it_is_only_complete_match",
+      "query": "rollback cache corruption recovery",
+      "budget": 100,
+      "max_hits": 1,
+      "min_precision": 1.0,
+      "min_recall": 1.0,
+      "facts": [],
+      "learnings": [
+        {"id": "partial", "status": "current", "summary": "cache helper", "evidence": ["src/cache.py:3"]}
+      ],
+      "run_artifacts": [
+        {"path": ".kimiflow/cache-recovery/PLAN.md", "content": "rollback cache corruption recovery uses the last verified snapshot\n"}
+      ],
+      "expected_refs": [".kimiflow/cache-recovery/PLAN.md"],
+      "forbidden_refs": ["src/cache.py:3"]
+    },
+    {
+      "id": "german_compound_terms_rank_exact_evidence",
+      "query": "arbeitsbaum konfliktpruefung",
+      "budget": 80,
+      "max_hits": 1,
+      "min_precision": 1.0,
+      "min_recall": 1.0,
+      "facts": [
+        {"kind": "contract", "area": "workspace", "path": "src/worktree.py", "line": 44, "summary": "arbeitsbaum konfliktpruefung erlaubt nur disjunkte pfade"}
+      ],
+      "learnings": [
+        {"id": "noise", "status": "current", "summary": "arbeitsbaum status", "evidence": ["src/status.py:12"]}
+      ],
+      "run_artifacts": [],
+      "expected_refs": ["src/worktree.py:44"],
+      "forbidden_refs": ["src/status.py:12"]
+    },
+    {
+      "id": "cross_workspace_privacy_exclusion",
+      "query": "customer export boundary",
+      "budget": 100,
+      "max_hits": 2,
+      "min_precision": 1.0,
+      "min_recall": 1.0,
+      "workspace_units": ["packages/api", "packages/web"],
+      "scope_paths": ["packages/api/src/main.py"],
+      "facts": [
+        {"kind": "contract", "area": "privacy", "path": "packages/api/src/export.py", "line": 9, "summary": "customer export boundary local"},
+        {"kind": "contract", "area": "privacy", "path": "packages/web/src/private.py", "line": 7, "summary": "customer export boundary foreign private detail"}
+      ],
+      "learnings": [],
+      "run_artifacts": [],
+      "expected_refs": ["packages/api/src/export.py:9"],
+      "forbidden_refs": ["packages/web/src/private.py:7"]
     }
   ]
 }

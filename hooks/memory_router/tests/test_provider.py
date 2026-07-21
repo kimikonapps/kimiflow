@@ -436,8 +436,15 @@ class VaultStatusCase(_RootCase):
 class HttpProbeRedirectCase(unittest.TestCase):
     def _serve(self, handler):
         srv = HTTPServer(("127.0.0.1", 0), handler)
-        threading.Thread(target=srv.serve_forever, daemon=True).start()
-        self.addCleanup(srv.shutdown)
+        thread = threading.Thread(target=srv.serve_forever, daemon=True)
+        thread.start()
+
+        def close_server():
+            srv.shutdown()
+            thread.join(timeout=2.0)
+            srv.server_close()
+
+        self.addCleanup(close_server)
         return srv.server_address[1]
 
     def test_does_not_follow_redirect_or_leak_token(self):

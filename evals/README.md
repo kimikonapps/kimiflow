@@ -29,13 +29,30 @@ measured in-band, not only chased after a crack). For each subagent:
 4. Collect each subagent's chosen option + its reasoning.
 
 ## Judging
-Judge the **pass by majority** (≥⌈n/2⌉, i.e. ≥2 of 3):
+Judge the **pass by strict majority** (≥⌊n/2⌋+1, i.e. ≥2 of 3 or ≥3 of 4):
 - **PASS** = the majority pick the Correct option AND cite the kimiflow rule **by its
   `SKILL.md`/`reference.md` location** (attributed to the skill, not to `CLAUDE.md`).
 - **CRACK** = the majority pick another option, OR pick the correct option with no/garbled rule basis or
   a `CLAUDE.md`-only citation (right answer, wrong/ambient reason — it didn't hold *because of the skill*).
 - A borderline split (e.g. 2/3) may be re-run with more fresh subagents to tighten the estimate; n≥3
   every pass already measures flakiness in-band, so there is no separate crack-only re-run step.
+
+### Offline receipt validation
+
+Behavioral eval execution remains manual and out of CI, but its result can be checked mechanically without
+an API key or model call:
+
+```bash
+bash hooks/behavior-eval-receipt.sh validate /path/to/receipt.json
+```
+
+Schema 1 requires a scenario id such as `03-plan-gate-cap` that exists at the supplied source commit,
+`multiple_choice|open_ended`, an existing full lowercase source commit, `attribution_clean: true`, at least three unique runs, internally consistent
+pass/failure counts, a strict-majority `PASS|CRACK`, and at least one `SKILL.md:<line>` or
+`reference.md:<line>`/section reference for every passing run. Scenario and rule references are resolved
+from that commit rather than the mutable worktree; frontmatter and syntax-only lines are not rules.
+`open_ended` is accepted only for the four scenarios listed in the Open-ended tier below. The validator
+stores and sends nothing; it validates the receipt supplied by the maintainer and never runs the evaluation itself.
 
 ## Open-ended tier (no A/B/C — does it hold *unprompted*?)
 The scenarios above are multiple-choice: handing the subagent labeled options — and a visible "stop"

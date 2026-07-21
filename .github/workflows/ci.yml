@@ -6,7 +6,15 @@ on:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            lane: full
+          - os: macos-latest
+            lane: portability
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -19,23 +27,11 @@ jobs:
             bash -n "$f"
           done
 
-      - name: Unit tests (every hooks/test-*.sh) — hard gate
-        run: |
-          set -e
-          # Run EVERY unit test by discovery so a newly added test can never silently
-          # skip CI (audit finding: 19 of 28 were hard-coded, so several never ran on PRs).
-          # Exclude the two PRODUCTION hooks that also match the test-* glob:
-          # test-gate.sh (Stop hook — cats stdin, evals a local marker) and
-          # test-weakening-scan.sh (Phase-7 scanner). Both have *-unit.sh tests instead.
-          for t in hooks/test-*.sh; do
-            case "$t" in
-              hooks/test-gate.sh|hooks/test-weakening-scan.sh) continue ;;
-            esac
-            echo "=== $t ==="
-            bash "$t" </dev/null
-          done
+      - name: Test plan (${{ matrix.lane }}) — hard gate
+        run: bash hooks/ci-test-plan.sh run "${{ matrix.lane }}"
 
       - name: Validate JSON — hard gate
+        if: matrix.lane == 'full'
         run: |
           jq -e . hooks/hooks.json > /dev/null
           jq -e . hooks.json > /dev/null
@@ -45,22 +41,17 @@ jobs:
           jq -e . .agents/plugins/marketplace.json > /dev/null
 
       - name: Claude install smoke-test (structural) — hard gate
+        if: matrix.lane == 'full'
         run: bash hooks/smoke-install.sh
 
       - name: Codex install smoke-test (structural) — hard gate
+        if: matrix.lane == 'full'
         run: bash hooks/smoke-install-codex.sh
 
-      - name: Unit tests (memory-router Python) — hard gate
-        run: bash hooks/test-memory-router-unit.sh
-
-      - name: Parity tests (memory-router) — hard gate
-        run: bash hooks/test-memory-router-parity.sh
-
-      - name: Unit tests (project-map-status) — hard gate
-        run: bash hooks/test-project-map-status.sh
-
       - name: ShellCheck (errors) — hard gate
+        if: matrix.lane == 'full'
         run: shellcheck --severity=error hooks/*.sh
 
       - name: ShellCheck (warnings, informational)
+        if: matrix.lane == 'full'
         run: shellcheck --severity=warning hooks/*.sh || true
