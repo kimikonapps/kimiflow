@@ -529,6 +529,18 @@ class TestOutcomeEvaluation(unittest.TestCase):
         with open(self.router_log, "r", encoding="utf-8") as handle:
             self.assertIn("review-run", handle.read())
 
+    def test_finish_accepts_phase_seven_preclosed_state(self):
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, "r", encoding="utf-8") as handle:
+            source = handle.read()
+        with open(state_path, "w", encoding="utf-8") as handle:
+            handle.write(source.replace("Status: active", "Status: done"))
+
+        rc, _ = run_main(["finish", "--root", self.repo, "--write"])
+
+        self.assertEqual(rc, 0)
+        self.assertFalse(os.path.exists(active_run.active_file(self.repo)))
+
     def test_finish_refuses_malformed_open_conformance(self):
         self.enable_conformance()
         gate = os.path.join(self.temp, "conformance-gate-malformed")

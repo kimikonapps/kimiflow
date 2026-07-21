@@ -565,7 +565,7 @@ def bind_owner_for_write(root, write):
 
 
 @contextlib.contextmanager
-def item_mutation_lock(root, run_dir, active):
+def item_mutation_lock(root, run_dir, active, allowed_state_statuses=("active",)):
     """Cross-process item/bridge transaction lock, reentrant in one thread."""
     key = (os.path.realpath(root), os.path.realpath(run_dir))
     held = getattr(_ITEM_MUTATION_LOCAL, "held", {})
@@ -595,7 +595,8 @@ def item_mutation_lock(root, run_dir, active):
                 or current_active.get("status") != "active"
                 or current_active.get("run") != active.get("run")
                 or current_owner != expected_owner
-                or state.state_value(os.path.join(run_dir, "STATE.md"), "Status").strip().lower().split(" ", 1)[0] != "active"
+                or state.state_value(os.path.join(run_dir, "STATE.md"), "Status").strip().lower().split(" ", 1)[0]
+                not in allowed_state_statuses
             ):
                 die("active-run mutation target changed while waiting for lock", 1)
             held[key] = {"depth": 1, "run_descriptor": pinned["run_descriptor"]}
@@ -2420,7 +2421,12 @@ def cmd_finish(args):
                     if not terminal_run_name_matches(pinned):
                         die("terminal run directory changed before final validation", 2)
                     final_active = load_active(root)
-                    mutation_lock = item_mutation_lock(root, run_dir, final_active)
+                    mutation_lock = item_mutation_lock(
+                        root,
+                        run_dir,
+                        final_active,
+                        allowed_state_statuses=("active", "done"),
+                    )
                     mutation_lock.__enter__()
                     mutation_lock_entered = True
                     final_status = status_json(root)
