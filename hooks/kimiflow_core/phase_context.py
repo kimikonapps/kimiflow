@@ -25,6 +25,13 @@ def _digest(payload):
     return "sha256:%s" % hashlib.sha256(payload).hexdigest()
 
 
+def _same_file_snapshot(before, opened):
+    return all(
+        getattr(before, field) == getattr(opened, field)
+        for field in ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns")
+    )
+
+
 def _open_run(root, run_dir, active=None):
     expected_parent = os.path.realpath(os.path.join(root, ".kimiflow"))
     if os.path.realpath(os.path.dirname(run_dir)) != expected_parent:
@@ -62,7 +69,7 @@ def _read_descriptor_file(directory, name, cap, required=True):
             raise PhaseContextError("artifact_oversize:%s" % name)
         descriptor = os.open(name, flags, dir_fd=directory)
         opened = os.fstat(descriptor)
-        if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino):
+        if not stat.S_ISREG(opened.st_mode) or not _same_file_snapshot(named, opened):
             raise PhaseContextError("artifact_exchanged:%s" % name)
         chunks = []
         total = 0
@@ -108,7 +115,7 @@ def _read_phase_file(root, rel, cap):
             raise PhaseContextError("unsafe_phase_file")
         descriptor = os.open(path, flags)
         opened = os.fstat(descriptor)
-        if (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino):
+        if not _same_file_snapshot(named, opened):
             raise PhaseContextError("phase_file_exchanged")
         payload = os.read(descriptor, cap + 1)
         if len(payload) > cap:

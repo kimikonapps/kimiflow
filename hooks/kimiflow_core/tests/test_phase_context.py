@@ -146,6 +146,19 @@ class PhaseContextTests(unittest.TestCase):
             with self.assertRaises(phase_context.PhaseContextError):
                 phase_context.compile_shadow(self.root, self.run, 3)
 
+    def test_file_snapshot_rejects_reused_inode_with_changed_metadata(self):
+        path = os.path.join(self.run, "PLAN.md")
+        before = os.stat(path, follow_symlinks=False)
+        opened = mock.Mock(
+            st_dev=before.st_dev,
+            st_ino=before.st_ino,
+            st_mode=before.st_mode,
+            st_size=before.st_size + 1,
+            st_mtime_ns=before.st_mtime_ns + 1,
+            st_ctime_ns=before.st_ctime_ns + 1,
+        )
+        self.assertFalse(phase_context._same_file_snapshot(before, opened))
+
 
 if __name__ == "__main__":
     unittest.main()

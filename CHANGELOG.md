@@ -4,7 +4,11 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Fixed
+
+- **Phase-context artifact exchange detection now survives immediate inode reuse:** Snapshot validation compares
+  mode, size, modification time, and metadata-change time in addition to device/inode before accepting an opened
+  file, closing the Linux filesystem race exposed by the `0.2.11` CI run.
 
 ## 0.2.11
 
