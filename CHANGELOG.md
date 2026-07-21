@@ -4,6 +4,13 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.13
+
+The Linux memory-snapshot integrity hotfix: lifecycle writes now reject identical-byte ABA exchanges
+even when the filesystem immediately reuses the original inode.
+
 ### Fixed
 
 - Harden memory lifecycle compare-and-swap receipts against Linux inode reuse during identical-byte ABA replacements while retaining intentional in-place permission updates.
