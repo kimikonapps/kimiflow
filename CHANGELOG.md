@@ -4,6 +4,13 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.12
+
+The Linux snapshot-integrity hotfix: phase-context evidence remains fail-closed even when a filesystem
+immediately reuses an inode during an artifact exchange.
+
 ### Fixed
 
 - **Phase-context artifact exchange detection now survives immediate inode reuse:** Snapshot validation compares
