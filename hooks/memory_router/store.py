@@ -75,7 +75,10 @@ def _file_snapshot_at(directory_descriptor, name):
         == (after.st_size, after.st_mtime_ns, after.st_ctime_ns)
         == (anchored.st_size, anchored.st_mtime_ns, anchored.st_ctime_ns)
     )
-    return (identity, b"".join(chunks), stat.S_IMODE(anchored.st_mode)) if stable else None
+    receipt = (anchored.st_size, anchored.st_mtime_ns)
+    return (
+        identity, b"".join(chunks), stat.S_IMODE(anchored.st_mode), receipt
+    ) if stable else None
 
 
 def _native_exchange_at(directory_descriptor, source, target):
@@ -163,7 +166,8 @@ def _file_snapshot(path):
         == (current.st_size, current.st_mtime_ns, current.st_ctime_ns)
     )
     mode = stat.S_IMODE(current.st_mode)
-    return (identity, b"".join(chunks), mode) if stable else None
+    receipt = (current.st_size, current.st_mtime_ns)
+    return (identity, b"".join(chunks), mode, receipt) if stable else None
 
 
 def local_file_snapshot(root, path):
@@ -241,6 +245,19 @@ def local_file_snapshot(root, path):
 
 def _same_snapshot(left, right):
     return left is not None and right is not None and left == right
+
+
+def _same_source_generation(current, expected):
+    """Match a prior source while permitting an in-place permission update.
+
+    The stat receipt detects an unlink/recreate ABA even when Linux immediately
+    reuses the old inode and the replacement contains identical bytes. A chmod
+    on the still-pinned file is intentionally accepted so the writer preserves
+    the newer permissions instead of treating them as a content conflict.
+    """
+    if current is None or expected is None or current[:2] != expected[:2]:
+        return False
+    return current[3] == expected[3]
 
 
 def stable_file_snapshot(path, missing_ok=False, allow_detached=False):
@@ -582,7 +599,9 @@ def atomic_write(path, data, mode=0o644, refuse_symlink=True, expected=None,
             if (initial_snapshot is None
                     or initial_snapshot[1] != expected.encode("utf-8")
                     or (expected_snapshot is not None
-                        and initial_snapshot[:2] != expected_snapshot[:2])):
+                        and not _same_source_generation(
+                            initial_snapshot, expected_snapshot
+                        ))):
                 raise ConcurrentWriteError("source changed during rewrite")
             mode = initial_snapshot[2]
         fd, tmp = _temporary_file(path)

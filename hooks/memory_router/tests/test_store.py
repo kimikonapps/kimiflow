@@ -50,6 +50,18 @@ class TestStore(unittest.TestCase):
         with open(os.path.join(original_project, "state.json"), encoding="utf-8") as handle:
             self.assertEqual(handle.read(), "original")
 
+    def test_source_generation_rejects_reused_identity_with_new_metadata(self):
+        identity = (1, 2)
+        before = (identity, b"same", 0o644, (4, 100))
+        replacement = (identity, b"same", 0o644, (4, 101))
+        self.assertFalse(store._same_source_generation(replacement, before))
+
+    def test_source_generation_allows_in_place_permission_update(self):
+        identity = (1, 2)
+        before = (identity, b"same", 0o644, (4, 100))
+        chmod = (identity, b"same", 0o600, (4, 100))
+        self.assertTrue(store._same_source_generation(chmod, before))
+
     def test_read_text_missing_returns_default(self):
         self.assertEqual(store.read_text(os.path.join(self.d, "nope"), "d"), "d")
 

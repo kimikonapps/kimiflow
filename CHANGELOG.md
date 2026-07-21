@@ -4,7 +4,9 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Fixed
+
+- Harden memory lifecycle compare-and-swap receipts against Linux inode reuse during identical-byte ABA replacements while retaining intentional in-place permission updates.
 
 ## 0.2.12
 
