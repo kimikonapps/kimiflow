@@ -6,27 +6,25 @@ Hook-Wiring, Resolver-Verhalten und Smoke-Installationen fuer Claude Code und Co
 ## Lokaler Standard-Check
 
 ```bash
-bash hooks/smoke-install.sh
-bash hooks/smoke-install-codex.sh
-bash hooks/test-kimiflow-runner.sh
-bash hooks/test-install-kimiflow-cli.sh
-bash hooks/test-project-map-status.sh
+bash hooks/ci-test-plan.sh verify full
+bash hooks/ci-test-plan.sh run full
 git diff --check
 ```
 
-Fuer groessere Hook-Aenderungen sollten zusaetzlich die direkt betroffenen Unit-Tests unter `hooks/test-*.sh`
-laufen.
+Der Plan inventarisiert jede `hooks/test-*.sh`-Oberflaeche genau einmal. Fokussierte Tests duerfen waehrend der
+Entwicklung zusaetzlich laufen, ersetzen den vollstaendigen Plan aber nicht.
 
 ## CI
 
 `.github/workflows/ci.yml` laeuft auf Push und Pull Request. Die Pipeline prueft:
 
 - Bash-Syntax fuer `hooks/*.sh`.
-- Unit-Tests fuer Gate-Resolver, Commit-Hygiene, State-Gate, Test-Gate, Secret-Content-Scan,
-  Test-Weakening-Scan und Project-Map-Status.
+- Auf Ubuntu den vollstaendigen, deterministischen Testplan ohne erlaubte Pflicht-Skips.
+- Auf macOS die portabilitaetskritischen Python-Vertraege plus eine kleine Shell-Lane fuer Active Run,
+  Product Intake und Host-Hook-Wiring.
 - JSON-Syntax und Manifeststruktur fuer Claude, Codex und Hook-Manifeste.
 - Claude- und Codex-Smoke-Installationen.
-- ShellCheck als informationalen Hinweis.
+- ShellCheck-Fehler als hartes Gate; Warnungen bleiben informational.
 
 ## Smoke-Tests
 

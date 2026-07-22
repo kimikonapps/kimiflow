@@ -4,7 +4,31 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Added
+
+- Provider-neutral terminal adapter protocol for tool-capable local or remote coding-agent harnesses, with a
+  capability handshake, stable session ownership, normalized usage receipts, a persisted turn limit, and one
+  final bounded recovery turn.
+- Allowlist-based clean marketplace candidate with deterministic runtime fingerprint, same-version cache-drift
+  detection, and release checks for candidate drift and undocumented post-tag changes.
+- Exact per-phase `reference.md` section loading and hash-bound phase receipts, reducing default context without
+  weakening stale-evidence detection.
+
+### Changed
+
+- Product Intake contract 3 is required for every fresh non-trivial feature run; audit runs use their native
+  intent/evidence artifacts rather than synthetic feature-plan files.
+- Codex loads the bundled manifest-declared hook contract directly instead of relying on unregistered user-level
+  wrapper files; hook matchers and response adapters cover both supported host payload shapes.
+- Workspace inventory and Recall preprocessing stay bounded for large repositories and marker-heavy artifacts;
+  macOS CI now exercises the active-run, intake, installer, and hook-manifest shell contracts.
+
+### Fixed
+
+- Owner commits accept only one canonical named-path `git commit --only` grammar, while foreign/no-run behavior
+  remains unchanged; read-only clean audits no longer open the frontend gate on their target paths.
+- Usage reporting now distinguishes unavailable counters from real zeroes, and release/runtime status can no
+  longer report a false-current installation merely because its version string matches.
 
 ## 0.2.13
 

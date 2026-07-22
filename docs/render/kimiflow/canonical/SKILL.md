@@ -61,12 +61,12 @@ You are the **orchestrator**. Run the phases as a state machine, keep only essen
 
 ## Phase Files (on-demand)
 
-Phase detail is loaded only when entering that phase. For post-R2 runs, `hooks/active-run.sh start --run .kimiflow/<slug> --write` marks `phase_reads_required: true`; read `phases/PHASES.json`, read the phase file, then record it with `hooks/active-run.sh phase-read --run .kimiflow/<slug> --phase <N> --file phases/<file>.md --write` before crossing the next gate boundary. `clarify-gate.sh` checks through Phase 1, `plan-blocker-gate.sh` through Phase 4, and `finish --write` through Phase 7. Resume via `active-run.sh next-action`.
+On phase entry, post-R2 runs (`phase_reads_required`) read `phases/PHASES.json`, its phase file, and only that row's `reference_sections` via `hooks/reference-section.sh "<section>"`. Record with `active-run.sh phase-read --run .kimiflow/<slug> --phase <N> --file phases/<file>.md --write`; the receipt binds both hash sets. Never preload all `reference.md`. Clarify checks through Phase 1, plan-blocker through Phase 4, and finish through Phase 7. Resume via `active-run.sh next-action`.
 
 | Phase | File | Always-loaded boundary cues |
 |---|---|---|
 | 0 Setup, Routing & Scope-Gate | `phases/phase-0-setup.md` | model/session; `workspace-preflight.sh` then clean gate; frontend Contract-1 start receipt; scope/verbosity. |
-| 1 Clarify | `phases/phase-1-clarify.md` | Contract-3 mandatory Product Intake; ≤1 causal second batch; no HOW; intent lock. |
+| 1 Clarify | `phases/phase-1-clarify.md` | Contract-3 mandatory Product Intake via `clarify-gate.sh`; ≤1 causal second batch; no HOW; intent lock. |
 | 2 Understand / diagnose | `phases/phase-2-understand.md` | Current-State Pulse / Gate; `discovery-gate.sh`; `suggest-affected-sections.sh`; Contract-3 feasibility; scoped standards; conditional Senior Design trigger; lazy frontend classification. |
 | 3 Plan | `phases/phase-3-plan.md` | acceptance criteria, conditional Architecture Fit mapping, Red evidence for fix mode, cause proof. |
 | 4 Plan-gate / approval | `phases/phase-4-review-approval.md` | plan/review resolvers; plain-language build summary; material-risk CONTINUE/STOP/PARK. |

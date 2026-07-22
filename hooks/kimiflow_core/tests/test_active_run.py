@@ -121,6 +121,7 @@ class TestExecutionControlIntegration(unittest.TestCase):
     def write_state(self, execution=True, current=5):
         lines = [
             "Flow schema: 4",
+            "Intent contract: 3",
             "Status: active",
             "Mode: feature",
             "Scope: large",
@@ -226,6 +227,25 @@ class TestExecutionControlIntegration(unittest.TestCase):
         summary = active_run.status_json(self.root)["execution_control"]
         self.assertEqual(summary["work_units"], 1)
         self.assertEqual(summary["no_progress_streak"], 0)
+
+    def test_headless_controller_defers_usage_and_turn_observation_to_runner(self):
+        rc, _ = self.start()
+        self.assertEqual(rc, 0)
+        session_dir = os.path.join(self.root, ".kimiflow", "session")
+        with open(os.path.join(session_dir, "HEADLESS_RUN.json"), "w", encoding="utf-8") as handle:
+            json.dump({
+                "schema_version": 1,
+                "status": "running",
+                "root": self.root,
+                "host": "codex",
+                "session_id": "owner-session",
+            }, handle)
+        with mock.patch.dict(os.environ, {"KIMIFLOW_RUNNER_CONTROLLER": "1"}):
+            rc, out = run_main(["stop-gate"], stdin_text=self.hook_payload())
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["decision"], "block")
+        self.assertEqual(active_run.status_json(self.root)["execution_control"]["work_units"], 0)
+        self.assertFalse(os.path.exists(os.path.join(self.run_dir, active_run.HOST_USAGE_RECEIPT)))
 
     def test_finish_snapshot_restores_state_and_execution_trace_together(self):
         rc, _ = self.start()
@@ -397,6 +417,7 @@ class TestOutcomeEvaluation(unittest.TestCase):
         with open(os.path.join(self.run_dir, "STATE.md"), "w", encoding="utf-8") as handle:
             handle.write(
                 "Flow schema: 4\n"
+                "Intent contract: 3\n"
                 "Status: active\n"
                 "Mode: feature\n"
                 "Scope: small\n"
@@ -890,7 +911,9 @@ class TestAwaitUser(unittest.TestCase):
         self.assertNotIn("frontend_quality_start_head", restarted)
 
     def test_schema4_workspace_wait_receipt_survives_park_and_resume(self):
-        self.write_state("Flow schema: 4\nRecovery: clean\n")
+        self.write_state("Flow schema: 4\nIntent contract: 3\nRecovery: clean\n")
+        rc, _ = run_main(["start", "--run", ".kimiflow/demo", "--root", self.root, "--write"])
+        self.assertEqual(rc, 0)
         rc, _ = self.await_user(kind="workspace")
         self.assertEqual(rc, 0)
         rc, _ = run_main(["prompt-context"], stdin_text=self.hook_payload())
@@ -959,7 +982,9 @@ class TestAwaitUser(unittest.TestCase):
         self.assertFalse(self.read_active().get("workspace_wait_used_at"))
 
     def test_schema4_workspace_receipt_preserves_concurrent_state_append(self):
-        self.write_state("Flow schema: 4\nRecovery: clean\n")
+        self.write_state("Flow schema: 4\nIntent contract: 3\nRecovery: clean\n")
+        rc, _ = run_main(["start", "--run", ".kimiflow/demo", "--root", self.root, "--write"])
+        self.assertEqual(rc, 0)
         state_path = os.path.join(self.root, ".kimiflow", "demo", "STATE.md")
         original_stat = os.stat
         appended = False
@@ -1535,7 +1560,7 @@ class TestTerminalWorktreeRetirement(unittest.TestCase):
         run_dir = os.path.join(self.repo, self.run_rel)
         os.makedirs(run_dir)
         with open(os.path.join(run_dir, "STATE.md"), "w", encoding="utf-8") as handle:
-            handle.write("Flow schema: 4\nStatus: active\nMode: feature\nScope: small\nAffected files: tracked.txt\n")
+            handle.write("Flow schema: 4\nIntent contract: 3\nStatus: active\nMode: feature\nScope: small\nAffected files: tracked.txt\n")
         rc, _ = run_main(["start", "--run", self.run_rel, "--root", self.repo, "--write"])
         self.assertEqual(rc, 0)
         self.linked = os.path.join(self.temp, "exceptional")

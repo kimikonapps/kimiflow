@@ -1,0 +1,697 @@
+{
+  "file_count": 115,
+  "files": [
+    {
+      "bytes": 460,
+      "mode": "0644",
+      "path": ".claude-plugin/plugin.json",
+      "sha256": "sha256:d762a43e3852ca9fcabca2656f901e1a41c5d95ec17bc284225aec21a9819427"
+    },
+    {
+      "bytes": 3461,
+      "mode": "0644",
+      "path": ".codex-plugin/plugin.json",
+      "sha256": "sha256:ed9fddece7cc796e80cecaad9b3b88c21a64167c1fc72a8cc7ada7342de70965"
+    },
+    {
+      "bytes": 15732,
+      "mode": "0644",
+      "path": "COMPATIBILITY.md",
+      "sha256": "sha256:a38982310a219d65589ee9bcbf785d86b5f6faa72cf5f31e646626a568b59d51"
+    },
+    {
+      "bytes": 1064,
+      "mode": "0644",
+      "path": "LICENSE",
+      "sha256": "sha256:b796986e145d409f27c8ec0edaaf223ee51bdbbc2fa4477fe2d6c0984d5adf5b"
+    },
+    {
+      "bytes": 18627,
+      "mode": "0644",
+      "path": "README.de.md",
+      "sha256": "sha256:a24f390ef47e71f319717e3d2b6508e9be438abb4fb06505c97d194ceb825545"
+    },
+    {
+      "bytes": 19428,
+      "mode": "0644",
+      "path": "README.md",
+      "sha256": "sha256:59315e394ab4653317ebc98f090e19398f1b0f500a6066e2671d094b26f0f77d"
+    },
+    {
+      "bytes": 16929,
+      "mode": "0644",
+      "path": "SKILL.md",
+      "sha256": "sha256:b843a06bb4194ecb357641f6e1a3945ca470349bb1a52a9df978209b51bba724"
+    },
+    {
+      "bytes": 5051,
+      "mode": "0644",
+      "path": "docs/commit-secret-gate.md",
+      "sha256": "sha256:8454a2f0e9209b16f66ca482f2ac61ed3123a76c51c57cdeb461722b43587fcc"
+    },
+    {
+      "bytes": 4323,
+      "mode": "0644",
+      "path": "docs/kimiflow-scaling-knobs.md",
+      "sha256": "sha256:a8a6ef157aa3f1598a63f3ad1f9d926928dcb67034eed876b7c2ff13c510e8f6"
+    },
+    {
+      "bytes": 4157,
+      "mode": "0644",
+      "path": "hooks.json",
+      "sha256": "sha256:cd2152fdc45665d36fb4e171d561e9163dd3f4f2de88125048bf7501e583be5d"
+    },
+    {
+      "bytes": 680,
+      "mode": "0755",
+      "path": "hooks/active-run.sh",
+      "sha256": "sha256:8bb07169d9096778a3eb7d140c059ee50241175e16612f43a31dbba35e7108a6"
+    },
+    {
+      "bytes": 254,
+      "mode": "0755",
+      "path": "hooks/behavior-eval-receipt.sh",
+      "sha256": "sha256:91bb07d91179f003798a8be115697d6787c29c798aa7d0df45ac479cebe7b447"
+    },
+    {
+      "bytes": 29792,
+      "mode": "0755",
+      "path": "hooks/clarify-gate.sh",
+      "sha256": "sha256:39e45b55036f1a7c1957284fe6e2c18007d64ebb98f5f1ed78d0e0c230b42751"
+    },
+    {
+      "bytes": 23487,
+      "mode": "0755",
+      "path": "hooks/commit-secret-gate.sh",
+      "sha256": "sha256:3f796193923d1d7fbd4eb7badcb250a20bcc3a702747dee679784ae2ac725b07"
+    },
+    {
+      "bytes": 44427,
+      "mode": "0755",
+      "path": "hooks/conformance-gate.sh",
+      "sha256": "sha256:8e9d17d5d2528702f31f34002b531dac66491eed8477955e5a9fa6f391be45f8"
+    },
+    {
+      "bytes": 5231,
+      "mode": "0755",
+      "path": "hooks/current-state-gate.sh",
+      "sha256": "sha256:b92a9a9db3fbca38e7be2e50a600ef43ab99401075739d9783b23a14923a91f9"
+    },
+    {
+      "bytes": 6387,
+      "mode": "0755",
+      "path": "hooks/discovery-gate.sh",
+      "sha256": "sha256:c4125dbfa1234474d88a800d59301ab670cde119873b9df044087410b8c42069"
+    },
+    {
+      "bytes": 50130,
+      "mode": "0755",
+      "path": "hooks/frontend-quality-gate.sh",
+      "sha256": "sha256:ed2406f85d1bf44490ef46bfa32547d131f2fe1061d97eff3c95fa1b7bb5aac9"
+    },
+    {
+      "bytes": 2314,
+      "mode": "0644",
+      "path": "hooks/hooks.json",
+      "sha256": "sha256:77dfd54cba5869f3d0a333a1f6ce72c530f997b28bcb6b83110758cb2ddf58ff"
+    },
+    {
+      "bytes": 3556,
+      "mode": "0755",
+      "path": "hooks/install-codex-hooks.sh",
+      "sha256": "sha256:913b85ee50e997bc7990cb6c0edbd737669822f9a3d47c49308574f5e1374ca9"
+    },
+    {
+      "bytes": 2300,
+      "mode": "0755",
+      "path": "hooks/install-kimiflow-cli.sh",
+      "sha256": "sha256:210e410a967ad67edfb2ac36a7a29b8be87532f94ee20cf1403821c21fcddcd2"
+    },
+    {
+      "bytes": 8810,
+      "mode": "0755",
+      "path": "hooks/intake-gate.sh",
+      "sha256": "sha256:d48eed810f308bef6af871d77216092d592c91601d4782c2b61cd7444b264398"
+    },
+    {
+      "bytes": 2040,
+      "mode": "0644",
+      "path": "hooks/kimiflow-lib.sh",
+      "sha256": "sha256:08c14305f3bf91c8d0b8fb21dfb0148a55c437db6932d7bf9a991f6df83ecb55"
+    },
+    {
+      "bytes": 488,
+      "mode": "0755",
+      "path": "hooks/kimiflow-root.sh",
+      "sha256": "sha256:8861e2f6bb5cfff070de237f8acab41596bb5329da0e130dc5d41842f4d09d79"
+    },
+    {
+      "bytes": 456,
+      "mode": "0755",
+      "path": "hooks/kimiflow-runner.sh",
+      "sha256": "sha256:8b21d58966906db09491e47a9a4f6f62a22d834097c00716cee5142ff207a256"
+    },
+    {
+      "bytes": 86,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/__init__.py",
+      "sha256": "sha256:0a7f95d4ea04bd64f22a08a92f1845d79cc05d220da8612179b369b17c68080e"
+    },
+    {
+      "bytes": 143085,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/active_run.py",
+      "sha256": "sha256:b7ed101a483d3dd7025f20933eb54c201450681d3edae45688d4119e2621295e"
+    },
+    {
+      "bytes": 714,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/atomic.py",
+      "sha256": "sha256:cb400951fc9a0d86c5f967af63c06fe57899725cfec088db1a19782930f92ef2"
+    },
+    {
+      "bytes": 422,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/contracts.py",
+      "sha256": "sha256:a6574d8dff058ea51720728265daf560f6fa17a543bf102ef757d477014280be"
+    },
+    {
+      "bytes": 11020,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/eval_receipt.py",
+      "sha256": "sha256:196083c0aeff6d4456f8866cbe3a91f76a88e1c37c6f6d011e810f849c5875d9"
+    },
+    {
+      "bytes": 43091,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/execution_control.py",
+      "sha256": "sha256:bdf7f70e364ed1dfc3e8c5ceb50c7fcab64af04eb780fb9007de9f262da87006"
+    },
+    {
+      "bytes": 18152,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/flow_graph.py",
+      "sha256": "sha256:139ba52f818d85809c7c5380687c0aec4964acac8bbc262b62a908e684ddbd34"
+    },
+    {
+      "bytes": 37274,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/launcher_status.py",
+      "sha256": "sha256:103a769a7d4255c9c3294ea970e17bc600eaa0ee684c283f6bc6cc566aa1273f"
+    },
+    {
+      "bytes": 12158,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/model_adapter.py",
+      "sha256": "sha256:db55286d1987b8f8f0a3df67c6e22e5ef7f78df57d941203527fab08e399c4f3"
+    },
+    {
+      "bytes": 2255,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/paths.py",
+      "sha256": "sha256:d3839b6e4c646b9c2b8bf2ae84c97798b88abcdcd271b17817efb1d33a68c739"
+    },
+    {
+      "bytes": 11466,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/phase_context.py",
+      "sha256": "sha256:4f83a4e20249469b4cde9d6a1e9955a5b8e660b009c5df96d350ecc343476938"
+    },
+    {
+      "bytes": 14221,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/phase_reads.py",
+      "sha256": "sha256:0fa9bf8578ac75f3233609182f38ca2c0e8d8dd89e7dabbe49ba9a1e05b431f5"
+    },
+    {
+      "bytes": 24685,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/project_map_status.py",
+      "sha256": "sha256:4115b318500c75b01d02b8547893116d0d15b70fcef88779e65527a23be5e92f"
+    },
+    {
+      "bytes": 8223,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/readiness.py",
+      "sha256": "sha256:52c34c935568e297898ccdee454746f2dcfe5e4b36cf7ea59338895c415a9d5c"
+    },
+    {
+      "bytes": 15467,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/run_bridge.py",
+      "sha256": "sha256:8259f8f05f45a3239f3a54f6c5f0abe8c454ccf501a48011b365995dcf65ddff"
+    },
+    {
+      "bytes": 30582,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/runner.py",
+      "sha256": "sha256:1617b1d7fda07702b3ea1bbcae78602a357536ac054216a767f72b95635919e7"
+    },
+    {
+      "bytes": 11255,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/scorecard.py",
+      "sha256": "sha256:88d585a93cd75f0528f519c687f6849afabadfb28e8514267345dd3156f9a898"
+    },
+    {
+      "bytes": 777,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/state.py",
+      "sha256": "sha256:bde683ba6e94f5e24bace1d8b8056c16c73f8f08776a372f319207f9eb26be4c"
+    },
+    {
+      "bytes": 73420,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/workspace_preflight.py",
+      "sha256": "sha256:70f64b30904faa75d0e7f7fdc62d9b35b0c2027ff6cb62a1a6d3be85d37718f7"
+    },
+    {
+      "bytes": 418,
+      "mode": "0755",
+      "path": "hooks/launcher-status.sh",
+      "sha256": "sha256:aded8e3e7413c922d05c3e7d065b0c52dc4b1ef74da218371eb920bc4f3d8cf7"
+    },
+    {
+      "bytes": 6456,
+      "mode": "0755",
+      "path": "hooks/lsp-diagnostics.sh",
+      "sha256": "sha256:00ab111e94d25ef55fcf817de216ad7f15fefe6c75ecb4a7bf9681c300c3464c"
+    },
+    {
+      "bytes": 2809,
+      "mode": "0755",
+      "path": "hooks/map-staleness-nudge.sh",
+      "sha256": "sha256:e1ab1caf503630ca648c13d040736b3dedc8119fd9c5d074c346b3470ed25e7b"
+    },
+    {
+      "bytes": 574,
+      "mode": "0755",
+      "path": "hooks/memory-router.sh",
+      "sha256": "sha256:8f0415b02598da05b982b7d4c9f80fbae342c94cc340b363edecc39000a57a06"
+    },
+    {
+      "bytes": 26,
+      "mode": "0644",
+      "path": "hooks/memory_router/__init__.py",
+      "sha256": "sha256:5a4b307b80634ce7d3ab3b6fd7de94d0c7a0f5873a19ece02a9b3d9cb5d90963"
+    },
+    {
+      "bytes": 1903,
+      "mode": "0644",
+      "path": "hooks/memory_router/__main__.py",
+      "sha256": "sha256:ab327a13f430a8ef0173565ac8221d367f4f9cdf602af810cde31b19d1a35f30"
+    },
+    {
+      "bytes": 19563,
+      "mode": "0644",
+      "path": "hooks/memory_router/attribution.py",
+      "sha256": "sha256:28748716ecf1a92998e00958b8ac4d74c92c4d789ab2154a71dac984885f778e"
+    },
+    {
+      "bytes": 12016,
+      "mode": "0644",
+      "path": "hooks/memory_router/capsule.py",
+      "sha256": "sha256:b3bddc292446f8c5d785ad7e1cbbd5f8ba47c25887eb8446dd726a9a5e1cd7e3"
+    },
+    {
+      "bytes": 4284,
+      "mode": "0644",
+      "path": "hooks/memory_router/classify.py",
+      "sha256": "sha256:a18ded03882c02d3fa6882186eba9b7114d547935c30653311daeca9a140bc3e"
+    },
+    {
+      "bytes": 3646,
+      "mode": "0644",
+      "path": "hooks/memory_router/cli.py",
+      "sha256": "sha256:455478c7444ba6440242405f25f4fb18ae65b62385d779244c5df99e49ac953d"
+    },
+    {
+      "bytes": 898,
+      "mode": "0644",
+      "path": "hooks/memory_router/clock.py",
+      "sha256": "sha256:501f0de6fd94a7785f22a69ccf17e675af87d50efc3d2f5929ff99a898282237"
+    },
+    {
+      "bytes": 4261,
+      "mode": "0644",
+      "path": "hooks/memory_router/consolidate.py",
+      "sha256": "sha256:1432d04ae7a3b083849050b33c90e66bbe1a1ac0c084baaafb504a1b9445aa19"
+    },
+    {
+      "bytes": 685,
+      "mode": "0644",
+      "path": "hooks/memory_router/contracts.py",
+      "sha256": "sha256:117d16e4c92228b16c5afd355356322ce8e17e37f31b3ac0a60590a7b17aa987"
+    },
+    {
+      "bytes": 4825,
+      "mode": "0644",
+      "path": "hooks/memory_router/curate.py",
+      "sha256": "sha256:1e6ec1dde27359b83dc8feb46efc7288ed443cfebe0f40f03bf02d197e0914dd"
+    },
+    {
+      "bytes": 17437,
+      "mode": "0644",
+      "path": "hooks/memory_router/economics.py",
+      "sha256": "sha256:aa0272db8506437e165a1e97f097b14621df4dcdc50c7b1b956bfa5c9cc23969"
+    },
+    {
+      "bytes": 3248,
+      "mode": "0644",
+      "path": "hooks/memory_router/global_metrics.py",
+      "sha256": "sha256:be5d64ff3f6b143480656cb7a0b5edc014b0f1e4113691e8e4e19613e5e6a9d4"
+    },
+    {
+      "bytes": 4314,
+      "mode": "0644",
+      "path": "hooks/memory_router/history.py",
+      "sha256": "sha256:7b3aab6fd38d55845a2215f9375c4c8e1eb949d8b587c02b0caaed36b84153af"
+    },
+    {
+      "bytes": 2716,
+      "mode": "0644",
+      "path": "hooks/memory_router/index.py",
+      "sha256": "sha256:9f897a994bb668aa84647f978e066211251b66756f9f19ebabcfb5f336a92b6e"
+    },
+    {
+      "bytes": 11026,
+      "mode": "0644",
+      "path": "hooks/memory_router/lifecycle.py",
+      "sha256": "sha256:063f795210c47e9746bd087f7d4311d19bee7da8445c9bd96fc9abd6ab0354b5"
+    },
+    {
+      "bytes": 6243,
+      "mode": "0644",
+      "path": "hooks/memory_router/memory_md.py",
+      "sha256": "sha256:20f68f2a65355eca157f4e350bdafef0dccab3430c33b591d8bcf085adb82cfb"
+    },
+    {
+      "bytes": 3001,
+      "mode": "0644",
+      "path": "hooks/memory_router/metrics.py",
+      "sha256": "sha256:cb682ddbfcf66df8ae75aba6d31bb936de1ccbc92fd970738c08af1f2542781a"
+    },
+    {
+      "bytes": 25298,
+      "mode": "0644",
+      "path": "hooks/memory_router/outcomes.py",
+      "sha256": "sha256:7a5c73e0a2e4d3838911e26ca449d674f5be4621a800cdd892398033de48c7dd"
+    },
+    {
+      "bytes": 715,
+      "mode": "0644",
+      "path": "hooks/memory_router/paths.py",
+      "sha256": "sha256:173d287f8a93cbbb618d5c4a588fe68831c8bd47aba56c60e7749bebddacc1f1"
+    },
+    {
+      "bytes": 17442,
+      "mode": "0644",
+      "path": "hooks/memory_router/propose.py",
+      "sha256": "sha256:10ebe9f4ec67f609975dda8f6a3716807abd65a82db4d60131dd3e1fbea2ae93"
+    },
+    {
+      "bytes": 45846,
+      "mode": "0644",
+      "path": "hooks/memory_router/provider.py",
+      "sha256": "sha256:2247dafd40f386789ab80f6a17368e86379ab42c4bdd13a1683fa86ff0aee829"
+    },
+    {
+      "bytes": 52336,
+      "mode": "0644",
+      "path": "hooks/memory_router/recall.py",
+      "sha256": "sha256:cba5b0aa781260bc0982b368955bde8e06cab720c9f60a2ba6462a667887ee8d"
+    },
+    {
+      "bytes": 30621,
+      "mode": "0644",
+      "path": "hooks/memory_router/recall_index.py",
+      "sha256": "sha256:2591305d19eb1919668eefa9e3e8c8269567f75d18d1c6fd0f88aa1585a334c2"
+    },
+    {
+      "bytes": 2921,
+      "mode": "0644",
+      "path": "hooks/memory_router/record.py",
+      "sha256": "sha256:da01c6fb333f069d8678a93a9c7702e95a13340e68fcdf46d12df985408af2dc"
+    },
+    {
+      "bytes": 22858,
+      "mode": "0644",
+      "path": "hooks/memory_router/review.py",
+      "sha256": "sha256:b05b36c91db3cca3c9f96fccf12497501b6791cf5ffdf06c08978c9638593058"
+    },
+    {
+      "bytes": 6252,
+      "mode": "0644",
+      "path": "hooks/memory_router/rows.py",
+      "sha256": "sha256:cd2df91abb1a99687224965c7936316f09d2e188af6e23c931603eae6be71bce"
+    },
+    {
+      "bytes": 6969,
+      "mode": "0644",
+      "path": "hooks/memory_router/runs.py",
+      "sha256": "sha256:bab7c75f64dc4d270a5dccea296635d373e6364435489bb6abc87b05e212f009"
+    },
+    {
+      "bytes": 14638,
+      "mode": "0644",
+      "path": "hooks/memory_router/standards.py",
+      "sha256": "sha256:7426225119b1212fa9357dfd5851a22809b1f5d00e5a234a22909240c017cc94"
+    },
+    {
+      "bytes": 8557,
+      "mode": "0644",
+      "path": "hooks/memory_router/status.py",
+      "sha256": "sha256:0ff7d3f072245179d1c81c0beef945d56cb19ae89db357e5076ef1ebca6cd1a6"
+    },
+    {
+      "bytes": 29006,
+      "mode": "0644",
+      "path": "hooks/memory_router/store.py",
+      "sha256": "sha256:692d986b4e084486a592cdbf104402d7ed8b357216ab04de721efe35c6e9b489"
+    },
+    {
+      "bytes": 31353,
+      "mode": "0644",
+      "path": "hooks/memory_router/summaries.py",
+      "sha256": "sha256:406e9bd127daf6ca04828a4bbe89902aad7951133c874e6c4c714b3394546db6"
+    },
+    {
+      "bytes": 1085,
+      "mode": "0644",
+      "path": "hooks/memory_router/text.py",
+      "sha256": "sha256:c4af45b1eec036db8273e666e28bf310dbcacda603311ff6ad51de4229c45997"
+    },
+    {
+      "bytes": 4536,
+      "mode": "0644",
+      "path": "hooks/memory_router/usage_metrics.py",
+      "sha256": "sha256:8b3160b26da7cce6ab2f483ec6de9f703e5b5cd4acd4845118d2497a2be4b0e3"
+    },
+    {
+      "bytes": 26060,
+      "mode": "0644",
+      "path": "hooks/memory_router/workspace_scope.py",
+      "sha256": "sha256:0a6d70c06bc4d56ca4df98f347bb3469891c0f30ed01231b613c70db66bc3320"
+    },
+    {
+      "bytes": 6389,
+      "mode": "0644",
+      "path": "hooks/memory_router/writes.py",
+      "sha256": "sha256:b0ca4f3bfc60778799154ac971bdfad8d308578a7830882ef0a633eae8f4f054"
+    },
+    {
+      "bytes": 18637,
+      "mode": "0755",
+      "path": "hooks/plan-blocker-gate.sh",
+      "sha256": "sha256:809cc96b5428b2224fa59620a3d8f9f37045deadb49fc7d730ad70ae04365432"
+    },
+    {
+      "bytes": 420,
+      "mode": "0755",
+      "path": "hooks/project-map-status.sh",
+      "sha256": "sha256:1a0bb6ed1110630c977eb2ea3bc67e4bbf9440115821e7411692e897005e664c"
+    },
+    {
+      "bytes": 5935,
+      "mode": "0755",
+      "path": "hooks/red-green-gate.sh",
+      "sha256": "sha256:13e4b052a2f9151aec2fdb8d7b6075cf5d1a6c1e9a45c7d09d6b158ce5d1ad69"
+    },
+    {
+      "bytes": 619,
+      "mode": "0755",
+      "path": "hooks/reference-section.sh",
+      "sha256": "sha256:03b7e88847325cf53b57f47e550232479d1f929a69b01f55f99bb1050c30c61b"
+    },
+    {
+      "bytes": 5268,
+      "mode": "0755",
+      "path": "hooks/resolve-build-gate.sh",
+      "sha256": "sha256:fd9599494be0fddfc592907f7b4fc2b13ba89bce77baf8a96bb0946044a52955"
+    },
+    {
+      "bytes": 13001,
+      "mode": "0755",
+      "path": "hooks/resolve-review-gate.sh",
+      "sha256": "sha256:f18498c3ec4f076c3d4413b07a94f6c5ac19fb37304ce1e5425fc26716b74455"
+    },
+    {
+      "bytes": 4036,
+      "mode": "0755",
+      "path": "hooks/resolve-verbosity.sh",
+      "sha256": "sha256:2ff0137f63206419dda99077d6595d6d3bb892e6fba634da0d48616f4d1e1d77"
+    },
+    {
+      "bytes": 305,
+      "mode": "0755",
+      "path": "hooks/run-bridge.sh",
+      "sha256": "sha256:63469d9b883e4ec027d53d95a548ad8c109388d004cae6de5f894312c712ec40"
+    },
+    {
+      "bytes": 2412,
+      "mode": "0755",
+      "path": "hooks/secret-content-scan.sh",
+      "sha256": "sha256:3c6bf2e4923bd5d7fd6fc24dfc89ed3058c964cb498fe63ab92c1dd39ddac4a2"
+    },
+    {
+      "bytes": 3658,
+      "mode": "0755",
+      "path": "hooks/state-gate.sh",
+      "sha256": "sha256:d28114756bdd9e1587f30186145af0fa504a62359ce3ab98c9f9d4d587fb307d"
+    },
+    {
+      "bytes": 3636,
+      "mode": "0755",
+      "path": "hooks/suggest-affected-sections.sh",
+      "sha256": "sha256:a1749d1db8b31ef1cbad41b7185d6cc4b711c8d06d8d801d4702e9d00d8ad6c3"
+    },
+    {
+      "bytes": 3569,
+      "mode": "0755",
+      "path": "hooks/test-gate.sh",
+      "sha256": "sha256:55ab83281461b9e591a039601aab978c119204f596fa4673ae9df464653bde59"
+    },
+    {
+      "bytes": 2467,
+      "mode": "0755",
+      "path": "hooks/test-weakening-scan.sh",
+      "sha256": "sha256:9d27660eae249fa4e6c70c46244b304e7e3214d05428e1548b951736f043a555"
+    },
+    {
+      "bytes": 3679,
+      "mode": "0755",
+      "path": "hooks/vault-mcp-open-terminal.sh",
+      "sha256": "sha256:548bb31fd896fba227d45c348a83f8b714248da53c4a4b2bb8c868424166c888"
+    },
+    {
+      "bytes": 16299,
+      "mode": "0755",
+      "path": "hooks/vault-mcp-setup.sh",
+      "sha256": "sha256:9c02640d502a6095f0bff6e00b0ec7a3ae559f1338ae400d34f2ddf8f38f3770"
+    },
+    {
+      "bytes": 2560,
+      "mode": "0755",
+      "path": "hooks/working-tree-gate.sh",
+      "sha256": "sha256:301da2e1139721b18848d4380f2d6a7130ab30afbc3b56efbf8c6573ccacb3af"
+    },
+    {
+      "bytes": 345,
+      "mode": "0755",
+      "path": "hooks/workspace-preflight.sh",
+      "sha256": "sha256:69b1dd90595aecb844c9473889a41c65df9cc01a3005719e2cd8d0bb41dddba2"
+    },
+    {
+      "bytes": 8256,
+      "mode": "0644",
+      "path": "phases/PHASES.json",
+      "sha256": "sha256:61e448cd0fd5186e533478f5a1c1500c8017ba54a5c84480560acb94a7d1591f"
+    },
+    {
+      "bytes": 14789,
+      "mode": "0644",
+      "path": "phases/phase-0-setup.md",
+      "sha256": "sha256:6269cfa6bed085617ea20817cf43a57af466eff654442669a37ea8bed2df42c0"
+    },
+    {
+      "bytes": 4377,
+      "mode": "0644",
+      "path": "phases/phase-1-clarify.md",
+      "sha256": "sha256:ce453e08fa830da942bfa85b765f13016c37646334aafb662ab0aadf4538e8cf"
+    },
+    {
+      "bytes": 16449,
+      "mode": "0644",
+      "path": "phases/phase-2-understand.md",
+      "sha256": "sha256:07bc4e3f7667e61e65b8d87042cfe2930c1b28cbe7fdc6cd1c23e13937ab964b"
+    },
+    {
+      "bytes": 7172,
+      "mode": "0644",
+      "path": "phases/phase-3-plan.md",
+      "sha256": "sha256:6543f837cef3926959d157df8b4b9389b1d78715a0d6ff79690ab5c9663a7d61"
+    },
+    {
+      "bytes": 8448,
+      "mode": "0644",
+      "path": "phases/phase-4-review-approval.md",
+      "sha256": "sha256:44301365476e486087a4482eeb1efa9b4a6238090ee0f289b20a03eda0e8cce7"
+    },
+    {
+      "bytes": 4286,
+      "mode": "0644",
+      "path": "phases/phase-5-build.md",
+      "sha256": "sha256:fb33665ba1cc6506d2bb68f9d2f7c188acfb3a1741b2888c306165755abd5bc4"
+    },
+    {
+      "bytes": 7661,
+      "mode": "0644",
+      "path": "phases/phase-6-verify.md",
+      "sha256": "sha256:2df6551607f06b69060f00bbbd1ac9b2d29cc9e7813c49eea52af08e8abc56c8"
+    },
+    {
+      "bytes": 14654,
+      "mode": "0644",
+      "path": "phases/phase-7-review-commit.md",
+      "sha256": "sha256:4299dba5f63b615c658f93fdbfd5131d614451640dc386b6353a24666fdd1cb4"
+    },
+    {
+      "bytes": 168443,
+      "mode": "0644",
+      "path": "reference.md",
+      "sha256": "sha256:c74e6222121d35be202201c4ad11e9542c5faf13c21ea7165e97c1626026fb16"
+    },
+    {
+      "bytes": 963,
+      "mode": "0644",
+      "path": "references/frontend-quality-flagship.md",
+      "sha256": "sha256:58d5f31b8e6f984ea361636428e260724d5f8048b3cc7f33608a5519b118b1b4"
+    },
+    {
+      "bytes": 2158,
+      "mode": "0644",
+      "path": "references/frontend-quality-qa.md",
+      "sha256": "sha256:71c82fdcf306e639c8edff529a2141c1c14dd9945a8bd909b5bcb03c9dbe71bb"
+    },
+    {
+      "bytes": 2299,
+      "mode": "0644",
+      "path": "references/frontend-quality-standard.md",
+      "sha256": "sha256:f948700f371b73bca0f5e54d738e89a31e220172be5294c36e361e85851e1c94"
+    },
+    {
+      "bytes": 14975,
+      "mode": "0644",
+      "path": "skills/kimiflow/SKILL.md",
+      "sha256": "sha256:3725380573167b63ab122a3e581a31a8fd405cb246e2443f576440251870d4ae"
+    },
+    {
+      "bytes": 244,
+      "mode": "0644",
+      "path": "skills/kimiflow/agents/openai.yaml",
+      "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
+    }
+  ],
+  "runtime_fingerprint": "sha256:43e955776eaa32bde1b1d322b7539f20827d2ba440a3f9ea137ee6533826640c",
+  "schema_version": 1
+}

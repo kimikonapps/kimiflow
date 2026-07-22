@@ -62,6 +62,18 @@ class TermsFromQueryCase(unittest.TestCase):
         q = " ".join("term%02d" % i for i in range(40))
         self.assertEqual(len(self.t(q)), 30)
 
+    def test_workflow_metadata_is_removed_without_dropping_product_modes(self):
+        query = (
+            "Flow schema: 4\nStatus: active\nMode: feature\nScope: large\n"
+            "Mode: offline\nStatus: available only after synchronization\n"
+        )
+        terms = self.t(query)
+        self.assertNotIn("feature", terms)
+        self.assertNotIn("large", terms)
+        self.assertIn("offline", terms)
+        self.assertIn("available", terms)
+        self.assertIn("synchronization", terms)
+
 
 class JsonlHitsCase(unittest.TestCase):
     def setUp(self):

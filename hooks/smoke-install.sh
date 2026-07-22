@@ -380,7 +380,10 @@ consumer="$(mktemp -d)"
 mkdir -p "$consumer/.kimiflow/demo"
 cat > "$consumer/.kimiflow/demo/STATE.md" <<'EOF'
 Flow schema: 4
+Intent contract: 3
 Status: active
+Mode: feature
+Scope: small
 Recovery: clean
 Affected files: README.md
 Phase 0: done

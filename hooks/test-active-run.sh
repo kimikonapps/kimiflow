@@ -349,6 +349,7 @@ grep -q '^Status: done' "$REPO/.kimiflow/demo/STATE.md" && pass "finish_marks_st
 reset_repo
 cat >> "$REPO/.kimiflow/demo/STATE.md" <<'EOF'
 Flow schema: 4
+Intent contract: 3
 Conformance contract: 1
 Conformance basis: pending
 Run started head: NOT VERIFIED
@@ -504,6 +505,7 @@ reset_repo
 write_flow_manifest
 sed -i.bak '1i\
 Flow schema: 4\
+Intent contract: 3\
 Recovery: clean\
 Review gate: code
 ' "$REPO/.kimiflow/demo/STATE.md" && rm "$REPO/.kimiflow/demo/STATE.md.bak"
@@ -565,6 +567,52 @@ out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" prompt-context)"
 assert_empty "$out" "prompt_context_noops_without_active_session"
 out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" stop-gate)"
 assert_empty "$out" "stop_gate_noops_without_active_session"
+
+reset_repo
+printf 'Flow schema: 4\nIntent contract: 2\n' >> "$REPO/.kimiflow/demo/STATE.md"
+if run_active start --run .kimiflow/demo --scope small --write >/dev/null 2>&1; then
+  fail "fresh_schema4_feature_requires_contract3"
+else
+  pass "fresh_schema4_feature_requires_contract3"
+fi
+
+reset_repo
+sed -i.bak 's/^Mode: feature$/Mode: audit/' "$REPO/.kimiflow/demo/STATE.md" && rm -f "$REPO/.kimiflow/demo/STATE.md.bak"
+printf 'Flow schema: 4\nIntent contract: 2\n' >> "$REPO/.kimiflow/demo/STATE.md"
+if run_active start --run .kimiflow/demo --mode feature --scope small --write >/dev/null 2>&1; then
+  fail "schema4_mode_selector_mismatch_fails_closed"
+else
+  pass "schema4_mode_selector_mismatch_fails_closed"
+fi
+
+reset_repo
+sed -i.bak 's/^Scope: small$/Scope: trivial/' "$REPO/.kimiflow/demo/STATE.md" && rm -f "$REPO/.kimiflow/demo/STATE.md.bak"
+printf 'Flow schema: 4\nIntent contract: 2\n' >> "$REPO/.kimiflow/demo/STATE.md"
+if run_active start --run .kimiflow/demo --mode feature --scope large --write >/dev/null 2>&1; then
+  fail "schema4_scope_selector_mismatch_fails_closed"
+else
+  pass "schema4_scope_selector_mismatch_fails_closed"
+fi
+
+reset_repo
+printf 'Flow schema: 4\nIntent contract: 2\n' >> "$REPO/.kimiflow/demo/STATE.md"
+cat > "$REPO/.kimiflow/demo/SESSION-OUTCOME.json" <<'EOF'
+{"schema_version":1,"outcome":"parked","session_pins":{"mode":"feature","scope":"small","host":"codex","flow_schema":"3","intent_contract":"2"}}
+EOF
+if run_active start --run .kimiflow/demo --scope small --write >/dev/null 2>&1; then
+  fail "forged_parked_pins_cannot_bypass_contract3"
+else
+  pass "forged_parked_pins_cannot_bypass_contract3"
+fi
+
+reset_repo
+printf 'Flow schema: 3\nIntent contract: 2\n' >> "$REPO/.kimiflow/demo/STATE.md"
+if run_active start --run .kimiflow/demo --scope small --write >/dev/null 2>&1; then
+  pass "legacy_schema3_feature_keeps_contract2"
+  run_active abort --reason "legacy contract fixture complete" --write >/dev/null
+else
+  fail "legacy_schema3_feature_keeps_contract2"
+fi
 
 reset_repo
 printf 'Flow schema: 4\nIntent contract: 3\n' >> "$REPO/.kimiflow/demo/STATE.md"

@@ -83,6 +83,32 @@ class PhaseContextTests(unittest.TestCase):
         with_policy = phase_context.compile_shadow(self.root, self.run, 3)["composite_basis"]
         self.assertNotEqual(with_source, with_policy)
 
+    def test_mode_selected_artifact_is_required(self):
+        os.unlink(os.path.join(self.run, "INTENT.md"))
+        with self.assertRaisesRegex(phase_context.PhaseContextError, "artifact_missing:INTENT.md"):
+            phase_context.compile_shadow(self.root, self.run, 3)
+
+    def test_audit_mode_requires_only_its_selected_artifacts(self):
+        manifest = os.path.join(self.plugin, "phases", "PHASES.json")
+        with open(manifest, encoding="utf-8") as handle:
+            value = json.load(handle)
+        value["phases"][3]["context"].update({
+            "required": ["STATE.md"],
+            "feature": ["INTENT.md", "PLAN.md"],
+            "audit": ["AUDIT-INTENT.md", "AUDIT.md"],
+        })
+        with open(manifest, "w", encoding="utf-8") as handle:
+            json.dump(value, handle)
+        self.write("STATE.md", "Mode: audit\nPhase reads required: yes\n")
+        self.write("AUDIT-INTENT.md", "audit target\n")
+        with self.assertRaisesRegex(phase_context.PhaseContextError, "artifact_missing:AUDIT.md"):
+            phase_context.compile_shadow(self.root, self.run, 3)
+        self.write("AUDIT.md", "audit evidence\n")
+        shadow = phase_context.compile_shadow(self.root, self.run, 3)
+        names = {row["name"] for row in shadow["selection"]}
+        self.assertIn("AUDIT-INTENT.md", names)
+        self.assertIn("AUDIT.md", names)
+
     def test_repeated_same_timestamp_phase_read_stales_an_unreplaced_shadow(self):
         phase_context.write_shadow(self.root, self.run, 3)
         phase_reads.record_read(self.root, self.run, 3, "phases/phase-3.md", "now", write=True)
@@ -158,6 +184,21 @@ class PhaseContextTests(unittest.TestCase):
             st_ctime_ns=before.st_ctime_ns + 1,
         )
         self.assertFalse(phase_context._same_file_snapshot(before, opened))
+
+    def test_shadow_includes_only_manifest_selected_reference_sections(self):
+        manifest = os.path.join(self.plugin, "phases", "PHASES.json")
+        with open(manifest, encoding="utf-8") as handle:
+            value = json.load(handle)
+        value["phases"][3]["reference_sections"] = ["Selected"]
+        with open(manifest, "w", encoding="utf-8") as handle:
+            json.dump(value, handle)
+        with open(os.path.join(self.plugin, "reference.md"), "w", encoding="utf-8") as handle:
+            handle.write("## Selected\nsmall\n\n## Huge unused\n" + ("x" * 50000) + "\n")
+        phase_reads.record_read(self.root, self.run, 3, "phases/phase-3.md", "later", write=True)
+        shadow = phase_context.compile_shadow(self.root, self.run, 3)
+        references = [row for row in shadow["selection"] if row["kind"] == "reference"]
+        self.assertEqual([row["name"] for row in references], ["Selected"])
+        self.assertLess(references[0]["bytes"], 100)
 
 
 if __name__ == "__main__":

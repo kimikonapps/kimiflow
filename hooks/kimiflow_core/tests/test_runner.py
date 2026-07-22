@@ -5,17 +5,18 @@ import subprocess
 import tempfile
 import unittest
 
-from kimiflow_core import runner
+from kimiflow_core import active_run, runner
 
 
 THREAD = "019f5fa0-567a-70e0-9b07-604ffbdafbf4"
 
 
 class FakeAdapter:
-    def __init__(self, start_action=None, resume_actions=None, returncode=0):
+    def __init__(self, start_action=None, resume_actions=None, returncode=0, usage=None):
         self.start_action = start_action
         self.resume_actions = list(resume_actions or [])
         self.returncode = returncode
+        self.usage = usage
         self.starts = []
         self.resumes = []
 
@@ -24,7 +25,7 @@ class FakeAdapter:
         on_thread(THREAD)
         if self.start_action:
             self.start_action()
-        return runner.TurnResult(returncode=self.returncode, thread_id=THREAD)
+        return runner.TurnResult(returncode=self.returncode, thread_id=THREAD, usage=self.usage)
 
     def resume(self, root, thread_id, prompt, on_thread):
         self.resumes.append((root, thread_id, prompt))
@@ -33,7 +34,7 @@ class FakeAdapter:
             if isinstance(action, BaseException):
                 raise action
             action()
-        return runner.TurnResult(returncode=self.returncode, thread_id=thread_id)
+        return runner.TurnResult(returncode=self.returncode, thread_id=thread_id, usage=self.usage)
 
 
 class InterruptingAdapter(FakeAdapter):
@@ -146,6 +147,72 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(adapter.resumes[0][1], THREAD)
         self.assertIn("next action", adapter.resumes[0][2].lower())
         self.assertEqual(self.read_receipt()["status"], "done")
+
+    def test_usage_receipt_distinguishes_known_usage_from_unavailable(self):
+        known = {"model_calls": 1, "tool_calls": 3, "input_tokens": 120, "output_tokens": 30}
+        adapter = FakeAdapter(start_action=lambda: self.write_active(awaiting=True), usage=known)
+        result = runner.run_task(self.root, "measure it", adapter=adapter)
+        self.assertEqual(result["usage"], {"status": "available", **known})
+
+        os.unlink(runner.receipt_path(self.root))
+        os.unlink(self.active_path)
+        unavailable = runner.run_task(
+            self.root, "no counters", adapter=FakeAdapter(start_action=lambda: self.write_active(awaiting=True))
+        )
+        self.assertEqual(unavailable["usage"]["status"], "unavailable")
+        self.assertTrue(all(unavailable["usage"][key] is None for key in runner.model_adapter.USAGE_KEYS))
+
+    def test_usage_unavailability_is_sticky_after_any_unmeasured_turn(self):
+        known = {"model_calls": 1, "tool_calls": 2, "input_tokens": 10, "output_tokens": 4}
+        available = runner._merge_usage(runner._unavailable_usage(), known, initialize=True)
+        self.assertEqual(available["status"], "available")
+        unknown = runner._merge_usage(available, None)
+        self.assertEqual(unknown["status"], "unavailable")
+        self.assertEqual(runner._merge_usage(unknown, known)["status"], "unavailable")
+
+        self.write_active()
+        status = {"run": ".kimiflow/demo"}
+        self.assertEqual(active_run.record_host_usage(self.root, status, known)["status"], "available")
+        self.assertEqual(active_run.record_host_usage(self.root, status, None)["status"], "unavailable")
+        self.assertEqual(active_run.record_host_usage(self.root, status, known)["status"], "unavailable")
+
+    def test_no_progress_has_one_final_recovery_then_resumable_exhaustion(self):
+        old = os.environ.get("KIMIFLOW_RUNNER_TURN_LIMIT")
+        os.environ["KIMIFLOW_RUNNER_TURN_LIMIT"] = "1"
+        self.addCleanup(
+            lambda: os.environ.pop("KIMIFLOW_RUNNER_TURN_LIMIT", None)
+            if old is None else os.environ.__setitem__("KIMIFLOW_RUNNER_TURN_LIMIT", old)
+        )
+        adapter = FakeAdapter(start_action=self.write_active)
+        result = runner.run_task(self.root, "never progresses", adapter=adapter)
+        self.assertEqual(result["status"], "exhausted")
+        self.assertEqual(result["turns"], 2)
+        self.assertEqual(len(adapter.resumes), 1)
+        self.assertIn("single final bounded recovery", adapter.resumes[0][2])
+        stored = self.read_receipt()
+        self.assertTrue(stored["final_recovery_used"])
+        self.assertEqual(stored["status"], "exhausted")
+
+        resumed = FakeAdapter(resume_actions=[lambda: self.write_outcome("done")])
+        finished = runner.resume_task(self.root, adapter=resumed)
+        self.assertEqual(finished["status"], "done")
+        self.assertGreater(self.read_receipt()["turn_limit"], stored["turn_limit"])
+
+    def test_adapter_capability_preflight_fails_before_start(self):
+        class Incomplete(FakeAdapter):
+            def info(self):
+                return {
+                    "schema_version": 1,
+                    "name": "chat-only",
+                    "host": "local",
+                    "capabilities": {"files": False, "shell": False, "tests": False, "resume": True, "gates": False},
+                }
+
+        adapter = Incomplete()
+        with self.assertRaises(runner.RunnerError) as ctx:
+            runner.run_task(self.root, "must not start", adapter=adapter)
+        self.assertEqual(ctx.exception.status, "adapter_incompatible")
+        self.assertEqual(adapter.starts, [])
 
     def test_continuation_prompt_carries_bounded_execution_decision(self):
         prompt = runner._continuation_prompt(

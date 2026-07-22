@@ -30,6 +30,12 @@ PORTABILITY_MODULES = (
     "memory_router.tests.test_provider",
     "memory_router.tests.test_recall_quality",
 )
+PORTABILITY_SHELL_SURFACES = (
+    "hooks/test-active-run.sh",
+    "hooks/test-intake-gate.sh",
+    "hooks/test-install-codex-hooks.sh",
+    "hooks/test-hooks-json.sh",
+)
 SKIP_PATTERNS = (
     re.compile(r"(?m)^SKIP:"),
     re.compile(r"OK \([^\r\n)]*\bskipped=[1-9][0-9]*\b"),
@@ -95,12 +101,15 @@ def lane_commands(root, lane):
     if lane == "full":
         return tuple(("bash", row["path"]) for row in rows if row["category"] == "full")
     if lane == "portability":
-        return ((sys.executable, "-m", "unittest") + PORTABILITY_MODULES,)
+        return (
+            ((sys.executable, "-m", "unittest") + PORTABILITY_MODULES,)
+            + tuple(("bash", path) for path in PORTABILITY_SHELL_SURFACES)
+        )
     raise PlanError("unknown lane: %s" % lane)
 
 
 def missing_dependencies(root, lane, which=shutil.which):
-    required = FULL_REQUIRED_TOOLS if lane == "full" else ("git",)
+    required = FULL_REQUIRED_TOOLS if lane == "full" else ("bash", "git", "jq", "rg")
     missing = [tool for tool in required if which(tool) is None]
     if lane == "full":
         probe = subprocess.run(

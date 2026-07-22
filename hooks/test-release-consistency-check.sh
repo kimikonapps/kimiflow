@@ -41,6 +41,17 @@ make_launcher_fixture() {
 
 run() { OUT="$("$SCRIPT" --root "$1" 2>&1)"; RC=$?; }
 
+make_tagged_fixture() {
+  local d="$1" v="$2"
+  make_fixture "$d" "$v"
+  git -C "$d" init -q
+  git -C "$d" config user.email kimiflow@example.test
+  git -C "$d" config user.name "kimiflow test"
+  git -C "$d" add .
+  git -C "$d" commit -q -m release
+  git -C "$d" tag "kimiflow--v$v"
+}
+
 # AC-1.1 consistent fixture passes
 F="$TMP/c1"; make_fixture "$F" "0.1.0"
 run "$F"
@@ -158,6 +169,30 @@ chmod +x "$F/hooks/launcher-status.sh"
 run "$F"
 { [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF 'launcher-status default output bytes: 8001'; } \
   && pass "launcher_budget_counts_trailing_newline" || fail "launcher_budget_counts_trailing_newline: rc=$RC :: $OUT"
+
+# AC-5.1 a repository candidate checker is part of the manual release verdict.
+F="$TMP/c12"; make_fixture "$F" "0.1.0"
+mkdir -p "$F/hooks"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$F/hooks/build-plugin-candidate.sh"
+chmod +x "$F/hooks/build-plugin-candidate.sh"
+run "$F"
+{ [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF 'clean plugin candidate'; } \
+  && pass "candidate_drift_blocks_release" || fail "candidate_drift_blocks_release: rc=$RC :: $OUT"
+
+# AC-5.2 source commits after the current tag require real Unreleased notes.
+F="$TMP/c13"; make_tagged_fixture "$F" "0.1.0"
+printf 'change\n' > "$F/code.txt"
+git -C "$F" add code.txt
+git -C "$F" commit -q -m change
+printf '# Changelog\n\n## Unreleased\n\n_No unreleased changes._\n\n## 0.1.0\n\n- release\n' > "$F/CHANGELOG.md"
+run "$F"
+{ [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF 'Unreleased is empty'; } \
+  && pass "post_tag_change_requires_unreleased_note" || fail "post_tag_change_requires_unreleased_note: rc=$RC :: $OUT"
+
+# AC-5.3 a populated Unreleased section satisfies the post-tag guard.
+printf '# Changelog\n\n## Unreleased\n\n### Changed\n\n- runtime repair\n\n## 0.1.0\n\n- release\n' > "$F/CHANGELOG.md"
+run "$F"
+[ "$RC" -eq 0 ] && pass "post_tag_change_with_note_passes" || fail "post_tag_change_with_note: rc=$RC :: $OUT"
 
 # NOTE: real-repo version consistency is verified MANUALLY before a release
 # (`bash hooks/release-consistency-check.sh`), NOT asserted here — this unit test must stay a

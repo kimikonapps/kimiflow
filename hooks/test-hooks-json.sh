@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-hooks-json.sh — regression tests for the hook manifests (hooks/hooks.json + root hooks.json).
+# test-hooks-json.sh — regression tests for the loaded hook manifest and legacy compatibility copy.
 #
 # Guards the fail-open found in audit: an UNQUOTED ${KIMIFLOW_PLUGIN_ROOT:-…} expansion
 # word-splits on a plugin root containing a space (e.g. ".../VIBE CODING/kimiflow"), every
@@ -54,18 +54,31 @@ for f in "$ROOT/hooks/hooks.json" "$ROOT/hooks.json"; do
   done < <(jq -r '.. | objects | select(.type? == "command") | .command' "$f")
 done
 
-# --- 4. Product Intake guard is wired before writes and explicit response capture -----
+# --- 4. The Codex manifest explicitly names the one loaded hook contract ---------------
+if [ "$(jq -r '.hooks // empty' "$ROOT/.codex-plugin/plugin.json")" = "./hooks/hooks.json" ]; then
+  ok "Codex manifest pins hooks/hooks.json"
+else
+  fail "Codex manifest does not pin hooks/hooks.json"
+fi
+
+# --- 5. Product Intake guard is wired before writes and explicit response capture -----
 if jq -e '.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[0].command | contains("intake-gate.sh")' "$ROOT/hooks/hooks.json" >/dev/null \
   && jq -e '.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[0].command | contains("intake-gate.sh")' "$ROOT/hooks.json" >/dev/null; then
   ok "intake gate is first on Bash for both hosts"
 else
   fail "intake gate is not first on Bash for both hosts"
 fi
-if jq -e '.hooks.PostToolUse[] | select(.matcher == "AskUserQuestion") | .hooks[].command | contains("intake-response")' "$ROOT/hooks/hooks.json" >/dev/null \
-  && jq -e '.hooks.PostToolUse[] | select(.matcher == "request_user_input") | .hooks[].command | contains("intake-response")' "$ROOT/hooks.json" >/dev/null; then
+if jq -e '.hooks.PostToolUse[] | select(.matcher | contains("AskUserQuestion") and contains("request_user_input")) | .hooks[].command | contains("intake-response")' "$ROOT/hooks/hooks.json" >/dev/null \
+  && jq -e '.hooks.PostToolUse[] | select(.matcher | contains("AskUserQuestion") and contains("request_user_input")) | .hooks[].command | contains("intake-response")' "$ROOT/hooks.json" >/dev/null; then
   ok "explicit native intake response adapters are wired"
 else
   fail "native intake response adapter wiring missing"
+fi
+
+if jq -e '.hooks.PreToolUse[] | select(.matcher | contains("apply_patch") and contains("Write") and contains("update_plan") and contains("Agent") and contains("TaskCreate") and contains("request_user_input") and contains("AskUserQuestion"))' "$ROOT/hooks/hooks.json" >/dev/null; then
+  ok "loaded contract covers Codex and Claude mutation namespaces"
+else
+  fail "loaded contract does not cover both host namespaces"
 fi
 
 echo

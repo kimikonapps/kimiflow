@@ -1,0 +1,6 @@
+/.git* export-ignore
+/.github export-ignore
+/.kimiflow export-ignore
+/.superpowers export-ignore
+/docs/superpowers export-ignore
+/evals export-ignore

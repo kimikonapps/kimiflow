@@ -9,7 +9,7 @@
       "name": "kimiflow",
       "source": {
         "source": "local",
-        "path": "./"
+        "path": "./plugins/kimiflow"
       },
       "policy": {
         "installation": "AVAILABLE",

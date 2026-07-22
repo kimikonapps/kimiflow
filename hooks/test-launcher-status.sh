@@ -37,6 +37,42 @@ hash_file() {
   fi
 }
 
+write_runtime_manifest() {
+  local runtime_root="$1" payload="$2"
+  mkdir -p "$runtime_root"
+  printf '%s' "$payload" > "$runtime_root/runtime.txt"
+  python3 - "$runtime_root" <<'PY'
+import hashlib
+import json
+import os
+import sys
+
+root = sys.argv[1]
+rel = "runtime.txt"
+with open(os.path.join(root, rel), "rb") as handle:
+    payload = handle.read()
+mode = "0644"
+digest = hashlib.sha256()
+digest.update(rel.encode() + b"\0")
+digest.update(mode.encode() + b"\0")
+digest.update(str(len(payload)).encode() + b"\0" + payload + b"\0")
+manifest = {
+    "schema_version": 1,
+    "runtime_fingerprint": "sha256:" + digest.hexdigest(),
+    "file_count": 1,
+    "files": [{
+        "path": rel,
+        "mode": mode,
+        "bytes": len(payload),
+        "sha256": "sha256:" + hashlib.sha256(payload).hexdigest(),
+    }],
+}
+with open(os.path.join(root, "RUNTIME-FINGERPRINT.json"), "w", encoding="utf-8") as handle:
+    json.dump(manifest, handle)
+    handle.write("\n")
+PY
+}
+
 reset_repo() {
   rm -rf "$REPO"
   rm -rf "$KIMIFLOW_HOME"
@@ -98,6 +134,25 @@ mkdir -p "$fake_cache/.codex-plugin"
 printf '{"version":"0.0.1"}\n' > "$fake_cache/.codex-plugin/plugin.json"
 out="$(KIMIFLOW_PLUGIN_ROOT="$fake_cache" run_status)"
 assert_jq "$out" '.installation.mode == "plugin_cache" and .installation.cache_status == "stale_cache" and .installation.action_required == true and .launcher.primary_action.id == "update_installed_plugin"' "launcher_detects_stale_installed_cache"
+
+printf '{"version":"9.9.9"}\n' > "$fake_cache/.codex-plugin/plugin.json"
+mkdir -p "$REPO/plugins/kimiflow"
+printf '{"schema_version":1,"runtime_fingerprint":"sha256:expected"}\n' > "$REPO/plugins/kimiflow/RUNTIME-FINGERPRINT.json"
+printf '{"schema_version":1,"runtime_fingerprint":"sha256:installed"}\n' > "$fake_cache/RUNTIME-FINGERPRINT.json"
+out="$(KIMIFLOW_PLUGIN_ROOT="$fake_cache" run_status)"
+assert_jq "$out" '.installation.version == .installation.repo_version and .installation.cache_status == "stale_cache" and .installation.runtime_fingerprint == "sha256:installed" and .installation.repo_runtime_fingerprint == "sha256:expected"' "launcher_detects_same_version_runtime_drift"
+
+rm "$fake_cache/RUNTIME-FINGERPRINT.json"
+out="$(KIMIFLOW_PLUGIN_ROOT="$fake_cache" run_status)"
+assert_jq "$out" '.installation.version == .installation.repo_version and .installation.runtime_fingerprint == "unknown" and .installation.repo_runtime_fingerprint == "sha256:expected" and .installation.cache_status == "stale_cache" and .installation.action_required == true' "launcher_rejects_missing_installed_runtime_fingerprint"
+
+write_runtime_manifest "$REPO/plugins/kimiflow" "same runtime bytes"
+write_runtime_manifest "$fake_cache" "same runtime bytes"
+out="$(KIMIFLOW_PLUGIN_ROOT="$fake_cache" run_status)"
+assert_jq "$out" '.installation.cache_status == "current" and .installation.action_required == false' "launcher_accepts_verified_same_version_runtime"
+printf 'mutated runtime bytes' > "$fake_cache/runtime.txt"
+out="$(KIMIFLOW_PLUGIN_ROOT="$fake_cache" run_status)"
+assert_jq "$out" '.installation.cache_status == "stale_cache" and .installation.action_required == true' "launcher_rejects_manifest_listed_runtime_mutation"
 
 reset_repo
 BASE="$(cd "$REPO" && git rev-parse --short HEAD)"

@@ -25,6 +25,8 @@ mkdir -p "$REPO/.kimiflow"
 # Build a PreToolUse payload for a command running in $1 (repo dir defaults to $REPO).
 payload() { jq -nc --arg c "$1" --arg d "${2:-$REPO}" '{tool_input:{command:$c}, cwd:$d}'; }
 run()     { payload "$1" "${2:-$REPO}" | "$HOOK"; }
+payload_owner() { jq -nc --arg c "$1" --arg d "${2:-$REPO}" '{tool_input:{command:$c}, cwd:$d, session_id:"owner-session"}'; }
+run_owner() { payload_owner "$1" "${2:-$REPO}" | KIMIFLOW_HOST=codex "$HOOK"; }
 
 assert_deny()  { # $1=cmd $2=label [$3=repo]
   out="$(run "$1" "${3:-$REPO}")"
@@ -160,6 +162,102 @@ seed_arepo .env;     assert_allow "sudo git commit -am wip"      "commit_sudo_pr
 seed_arepo .env;     assert_allow 'git commit -m "a\"; x" -a'    "commit_escaped_quote_known_gap"        "$AREPO"
 # (c) an explicit pathspec commit of a tracked secret is NOT covered (no shell-AST pathspec parsing)
 seed_arepo .env;     assert_allow "git commit .env -m wip"      "pathspec_commit_known_gap(documented)" "$AREPO"
+
+# The legacy parser boundaries stay unchanged outside an owner run. The active owner gets a
+# deliberately narrower, mechanically parseable grammar instead of relying on those regex gaps.
+mkdir -p "$AREPO/.kimiflow/session"
+jq -n '{schema_version:1,status:"active",host:"codex",owner:{host:"codex",session_id:"owner-session"}}' > "$AREPO/.kimiflow/session/ACTIVE_RUN.json"
+assert_owner_deny() {
+  out="$(run_owner "$1" "$AREPO")"
+  if printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then pass "$2"; else fail "$2 (expected DENY, got: ${out:-<empty/allow>})"; fi
+}
+assert_owner_allow() {
+  out="$(run_owner "$1" "$AREPO")"
+  if printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then fail "$2 (expected ALLOW, got DENY: $out)"; else pass "$2"; fi
+}
+clear_index
+stage safe.txt
+assert_owner_allow "git commit --only -m wip -- safe.txt" "owner_canonical_named_commit_allowed"
+assert_owner_deny "env X=1 git commit -am wip" "owner_env_prefix_denied"
+assert_owner_deny "sudo git commit -am wip" "owner_sudo_prefix_denied"
+assert_owner_deny 'git commit -m "a\"; x" -a' "owner_escaped_quote_denied"
+assert_owner_deny "git commit .env -m wip" "owner_implicit_pathspec_denied"
+assert_owner_deny "git commit -m wip" "owner_pathless_commit_denied"
+assert_owner_deny "git commit --only -m wip -- ../safe.txt" "owner_traversal_path_denied"
+assert_owner_deny 'git commit --only -m wip -- "$(printf .env)"' "owner_command_substitution_path_denied"
+assert_owner_deny 'git commit --only -m wip -- *.env' "owner_unquoted_glob_path_denied"
+assert_owner_deny 'git commit --only -m wip -- ~/.env' "owner_tilde_path_denied"
+assert_owner_deny '/usr/bin/git commit --only -m wip -- .env' "owner_absolute_git_binary_denied"
+assert_owner_deny "'/usr/bin/git' commit --only -m wip -- .env" "owner_single_quoted_git_binary_denied"
+assert_owner_deny '"./bin/git" commit --only -m wip -- .env' "owner_double_quoted_git_binary_denied"
+assert_owner_deny '\git commit --only -m wip -- .env' "owner_escaped_git_binary_denied"
+assert_owner_deny "gi''t commit --only -m wip -- .env" "owner_concatenated_git_binary_denied"
+assert_owner_deny $'git \\\n commit --only -m wip -- .env' "owner_line_continuation_git_denied"
+assert_owner_deny $'g\\\nit commit --only -m wip -- .e\\\nnv' "owner_continuation_inside_tokens_denied"
+mkdir -p "$AREPO/app/(auth)/[slug]"
+: > "$AREPO/app/(auth)/[slug]/page.tsx"
+git -C "$AREPO" add -f 'app/(auth)/[slug]/page.tsx' >/dev/null 2>&1
+assert_owner_allow "git commit --only -m wip -- 'app/(auth)/[slug]/page.tsx'" "owner_quoted_framework_path_allowed"
+payload_owner "git commit -m wip" "$AREPO" | jq '.session_id="foreign-session"' | KIMIFLOW_HOST=codex "$HOOK" > "$WORK/foreign-owner.out"
+if grep -q 'active run owners must commit' "$WORK/foreign-owner.out"; then fail "foreign_session_not_newly_policed"; else pass "foreign_session_not_newly_policed"; fi
+payload_owner "/usr/bin/git commit -m wip" "$AREPO" | jq '.session_id="foreign-session"' | KIMIFLOW_HOST=codex "$HOOK" > "$WORK/foreign-absolute-git.out"
+if grep -q 'permissionDecision.*deny' "$WORK/foreign-absolute-git.out"; then fail "foreign_absolute_git_keeps_legacy_allow"; else pass "foreign_absolute_git_keeps_legacy_allow"; fi
+payload_owner "git commit -m wip" "$AREPO" | KIMIFLOW_HOST=claude "$HOOK" > "$WORK/foreign-host.out"
+if grep -q 'active run owners must commit' "$WORK/foreign-host.out"; then fail "foreign_host_not_owner"; else pass "foreign_host_not_owner"; fi
+payload_owner "git commit -m wip" "$AREPO" | PLUGIN_ROOT=/installed/kimiflow "$HOOK" > "$WORK/inferred-codex-host.out"
+if grep -q 'active run owners must commit' "$WORK/inferred-codex-host.out"; then pass "codex_host_inferred_from_plugin_root"; else fail "codex_host_inferred_from_plugin_root"; fi
+git -C "$AREPO" add -f .env >/dev/null 2>&1
+assert_owner_deny "git commit --only -m wip -- .env" "owner_named_secret_path_denied"
+out="$(run_owner "\\git -C $AREPO commit --only -m wip -- .env" "$WORK")"
+if printf '%s' "$out" | grep -q 'permissionDecision.*deny'; then pass "owner_escaped_git_dashc_outside_denied"; else fail "owner_escaped_git_dashc_outside_denied (expected DENY, got: ${out:-<empty/allow>})"; fi
+out="$(run_owner "gi''t -C $AREPO commit --only -m wip -- .env" "$WORK")"
+if printf '%s' "$out" | grep -q 'permissionDecision.*deny'; then pass "owner_concatenated_git_dashc_outside_denied"; else fail "owner_concatenated_git_dashc_outside_denied (expected DENY, got: ${out:-<empty/allow>})"; fi
+out="$(run_owner $'git -C \\\n '$AREPO' commit --only -m wip -- .env' "$WORK")"
+if printf '%s' "$out" | grep -q 'permissionDecision.*deny'; then pass "owner_line_continuation_dashc_outside_denied"; else fail "owner_line_continuation_dashc_outside_denied (expected DENY, got: ${out:-<empty/allow>})"; fi
+assert_owner_allow "echo git commit later" "owner_non_git_echo_allowed"
+assert_owner_allow "printf git commit" "owner_non_git_printf_allowed"
+assert_owner_allow "command -v git commit" "owner_command_lookup_allowed"
+assert_owner_deny "sh -c 'git commit --only -m wip -- .env'" "owner_shell_wrapper_denied"
+assert_owner_deny "eval 'git commit --only -m wip -- .env'" "owner_eval_wrapper_denied"
+assert_owner_deny "sh -c 'sh -c \"git commit --only -m wip -- .env\"'" "owner_nested_shell_wrapper_denied"
+assert_owner_deny "sh -lc 'git commit --only -m wip -- .env'" "owner_shell_lc_wrapper_denied"
+assert_owner_deny "env -S 'git commit --only -m wip -- .env'" "owner_env_split_wrapper_denied"
+assert_owner_deny "exec -a fake-git git commit --only -m wip -- .env" "owner_exec_argv0_wrapper_denied"
+out="$(run_owner "sh -c 'git -C $AREPO commit --only -m wip -- .env'" "$WORK")"
+if printf '%s' "$out" | grep -q 'permissionDecision.*deny'; then pass "owner_shell_wrapper_dashc_outside_denied"; else fail "owner_shell_wrapper_dashc_outside_denied (expected DENY, got: ${out:-<empty/allow>})"; fi
+out="$(run_owner $'true\ngit -C '$AREPO' commit --only -m wip -- .env' "$WORK")"
+if printf '%s' "$out" | grep -q 'permissionDecision.*deny'; then pass "owner_newline_segment_outside_denied"; else fail "owner_newline_segment_outside_denied (expected DENY, got: ${out:-<empty/allow>})"; fi
+two_backslash_command=$'true\\\\\n'"git -C $AREPO commit --only -m wip -- .env"
+out="$(run_owner "$two_backslash_command" "$WORK")"
+if printf '%s' "$out" | grep -q 'permissionDecision.*deny'; then pass "owner_even_backslashes_keep_newline_denied"; else fail "owner_even_backslashes_keep_newline_denied (expected DENY, got: ${out:-<empty/allow>})"; fi
+deep_shell_command="$(python3 - "$AREPO" <<'PY'
+import shlex
+import sys
+
+command = f"git -C {shlex.quote(sys.argv[1])} commit --only -m wip -- .env"
+for _ in range(5):
+    command = f"sh -c {shlex.quote(command)}"
+print(command)
+PY
+)"
+out="$(run_owner "$deep_shell_command" "$WORK")"
+if printf '%s' "$out" | grep -q 'permissionDecision.*deny'; then pass "owner_deep_shell_wrapper_denied"; else fail "owner_deep_shell_wrapper_denied (expected DENY, got: ${out:-<empty/allow>})"; fi
+deep_eval_command="$(python3 - "$AREPO" <<'PY'
+import shlex
+import sys
+
+commit = f"git -C {shlex.quote(sys.argv[1])} commit --only -m wip -- .env"
+print(("eval " * 1100) + commit)
+PY
+)"
+out="$(run_owner "$deep_eval_command" "$WORK" 2>"$WORK/deep-eval.err")"
+if printf '%s' "$out" | grep -q 'permissionDecision.*deny' && [ ! -s "$WORK/deep-eval.err" ]; then
+  pass "owner_deep_eval_wrapper_denied_without_traceback"
+else
+  fail "owner_deep_eval_wrapper_denied_without_traceback (expected quiet DENY, got: ${out:-<empty/allow>})"
+fi
+out="$(run_owner "git commit -m noop || git -C $AREPO commit --only -m wip -- .env" "$WORK")"
+if printf '%s' "$out" | grep -q 'permissionDecision.*deny'; then pass "owner_later_compound_root_denied"; else fail "owner_later_compound_root_denied (expected DENY, got: ${out:-<empty/allow>})"; fi
 
 # whitespace normalization: a literal TAB between argv tokens must NOT defeat detection (tabs are
 # normalized to spaces before parsing) — covers both the -a working-tree scan and the git_sub-guarded

@@ -35,9 +35,16 @@ class CiTestPlanCase(unittest.TestCase):
         self.assertNotIn("hooks/test-weakening-scan.sh", paths)
 
     def test_portability_lane_targets_platform_sensitive_contracts(self):
-        command, = ci_test_plan.lane_commands(self.root, "portability")
+        command, *shell_commands = ci_test_plan.lane_commands(self.root, "portability")
         self.assertEqual(command[:3], (ci_test_plan.sys.executable, "-m", "unittest"))
         self.assertEqual(command[3:], ci_test_plan.PORTABILITY_MODULES)
+        self.assertEqual(
+            tuple(shell_commands),
+            tuple(("bash", path) for path in ci_test_plan.PORTABILITY_SHELL_SURFACES),
+        )
+        self.assertIn(("bash", "hooks/test-active-run.sh"), shell_commands)
+        self.assertIn(("bash", "hooks/test-intake-gate.sh"), shell_commands)
+        self.assertIn(("bash", "hooks/test-install-codex-hooks.sh"), shell_commands)
 
     def test_missing_dependency_is_fail_closed(self):
         with mock.patch.object(ci_test_plan, "missing_dependencies", return_value=("jq",)):

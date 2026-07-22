@@ -1,0 +1,4 @@
+interface:
+  display_name: "kimiflow"
+  short_description: "Context-aware project launcher, codebase map, and feature/fix gates"
+  default_prompt: "Open Kimiflow's launcher, inspect project status, and route this work through the right gates."

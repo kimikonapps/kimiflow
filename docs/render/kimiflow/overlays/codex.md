@@ -7,7 +7,7 @@ description: "Codex port of the Kimiflow feature and bug-fix loop. Use automatic
 
 Run the Kimiflow loop for the user's request.
 
-This Codex skill is the host-native entrypoint for the same Kimiflow engine used by the Claude Code plugin. The canonical workflow lives in the installed plugin root (`SKILL.md` and `reference.md`); read those files before running any phase, then apply the Codex host map below.
+This Codex skill maps the same Kimiflow engine used by Claude Code. Read installed `SKILL.md` once. Per phase, read only its `PHASES.json` `reference_sections` via `hooks/reference-section.sh`; the receipt binds their hashes. Never preload all `reference.md`. Then apply this host map.
 
 ## Routing
 

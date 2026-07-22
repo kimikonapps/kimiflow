@@ -142,6 +142,52 @@ else
   say "  skip  rendered skill outputs (no docs/render/kimiflow source)"
 fi
 
+# The published marketplace source must be a clean, reproducible runtime candidate rather than
+# the maintainer repository. Keep this manual-release-only like the rest of this helper.
+candidate_builder="$ROOT/hooks/build-plugin-candidate.sh"
+if [ -x "$candidate_builder" ]; then
+  if "$candidate_builder" --check >/dev/null 2>&1; then
+    say "  ok    clean plugin candidate + runtime fingerprint"
+  else
+    say "  FAIL  clean plugin candidate or runtime fingerprint drift"
+    fails=$((fails+1))
+  fi
+else
+  say "  skip  clean plugin candidate (builder absent)"
+fi
+
+# A tagged version may legitimately have no pending notes. Once source commits exist after that
+# tag, however, an empty Unreleased section would make a later release silently omit its changes.
+if command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  release_ref=""
+  for candidate_ref in "kimiflow--v$ver" "v$ver" "$ver"; do
+    if git -C "$ROOT" rev-parse --verify --quiet "refs/tags/$candidate_ref" >/dev/null; then
+      release_ref="$candidate_ref"
+      break
+    fi
+  done
+  if [ -n "$release_ref" ]; then
+    commits_after_release="$(git -C "$ROOT" rev-list --count "$release_ref..HEAD" 2>/dev/null || printf '0')"
+    if [ "$commits_after_release" -gt 0 ]; then
+      if awk '
+        /^## Unreleased[[:space:]]*$/ { inside=1; next }
+        inside && /^##[[:space:]]/ { exit }
+        inside {
+          line=$0
+          gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+          if (line != "" && line != "_No unreleased changes._" && line !~ /^<!--.*-->$/) found=1
+        }
+        END { exit !found }
+      ' "$changelog"; then
+        say "  ok    Unreleased documents $commits_after_release commit(s) after $release_ref"
+      else
+        say "  FAIL  Unreleased is empty with $commits_after_release commit(s) after $release_ref"
+        fails=$((fails+1))
+      fi
+    fi
+  fi
+fi
+
 check_max_bytes "SKILL.md always-loaded prose" "$ROOT/SKILL.md" 17000
 check_max_bytes "Codex SKILL.md always-loaded prose" "$ROOT/skills/kimiflow/SKILL.md" 15000
 if [ -d "$ROOT/phases" ]; then

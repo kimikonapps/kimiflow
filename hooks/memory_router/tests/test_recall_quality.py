@@ -9,7 +9,7 @@ from unittest import mock
 from memory_router import recall
 
 
-FIXTURE_SHA256 = "7f561c073d598620e1676fa4b9e423cd8f34887e530390b37e1e7d4ff20430de"
+FIXTURE_SHA256 = "42432815eb76b0e5b5e8ac3b14bcab473adcaeefa97bc6a69caad912f71cd9a0"
 
 
 def _repo_root():

@@ -116,6 +116,69 @@ class TestPhaseReads(unittest.TestCase):
         with self.assertRaises(phase_reads.PhaseReadError):
             phase_reads.load_manifest(self.root)
 
+    def test_context_artifact_may_be_shared_by_mutually_exclusive_modes(self):
+        path = os.path.join(self.root, "phases", "PHASES.json")
+        with open(path, "r", encoding="utf-8") as handle:
+            value = json.load(handle)
+        context = value["phases"][1]["context"]
+        context["feature"] = ["PLAN.md"]
+        context["fix"] = ["PLAN.md"]
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(value, handle)
+        entry = phase_reads.phase_entry(self.root, 1)
+        self.assertEqual(entry["context"]["feature"], ["PLAN.md"])
+        self.assertEqual(entry["context"]["fix"], ["PLAN.md"])
+
+    def test_context_artifact_cannot_duplicate_required_or_optional(self):
+        path = os.path.join(self.root, "phases", "PHASES.json")
+        with open(path, "r", encoding="utf-8") as handle:
+            value = json.load(handle)
+        value["phases"][1]["context"]["feature"] = ["STATE.md"]
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(value, handle)
+        with self.assertRaisesRegex(phase_reads.PhaseReadError, "duplicate context artifact STATE.md"):
+            phase_reads.load_manifest(self.root)
+
+    def test_reference_section_hash_is_recorded_and_staleness_closes_gate(self):
+        manifest = os.path.join(self.root, "phases", "PHASES.json")
+        with open(manifest, encoding="utf-8") as handle:
+            value = json.load(handle)
+        value["phases"][0]["reference_sections"] = ["Setup contract"]
+        with open(manifest, "w", encoding="utf-8") as handle:
+            json.dump(value, handle)
+        with open(os.path.join(self.root, "reference.md"), "w", encoding="utf-8") as handle:
+            handle.write("# Reference\n\n## Setup contract\nBounded setup rules.\n\n## Other\nNot selected.\n")
+        self.require_phase_reads()
+        record = phase_reads.record_read(self.root, self.run, 0, "phases/phase-0.md", "now", write=True)
+        self.assertEqual([row["name"] for row in record["reference_sections"]], ["Setup contract"])
+        self.assertEqual(phase_reads.gate(self.root, self.run, 0)["status"], "OPEN")
+        with open(os.path.join(self.root, "reference.md"), "a", encoding="utf-8") as handle:
+            handle.write("changed selected section boundary\n")
+        # The append is under Other and must not invalidate Setup.
+        self.assertEqual(phase_reads.gate(self.root, self.run, 0)["status"], "OPEN")
+        with open(os.path.join(self.root, "reference.md"), "w", encoding="utf-8") as handle:
+            handle.write("# Reference\n\n## Setup contract\nChanged setup rules.\n\n## Other\nNot selected.\n")
+        verdict = phase_reads.gate(self.root, self.run, 0)
+        self.assertEqual(verdict["status"], "CLOSED")
+        self.assertIn("phase_0_reference_stale", verdict["detail"])
+
+    def test_reference_section_must_be_unique(self):
+        with open(os.path.join(self.root, "reference.md"), "w", encoding="utf-8") as handle:
+            handle.write("## Duplicate\none\n## Duplicate\ntwo\n")
+        with self.assertRaisesRegex(phase_reads.PhaseReadError, "exactly once"):
+            phase_reads.reference_section_bytes("Duplicate")
+
+    def test_reference_section_ignores_template_headings_inside_fences(self):
+        with open(os.path.join(self.root, "reference.md"), "w", encoding="utf-8") as handle:
+            handle.write(
+                "## Selected\nRules.\n```md\n## Template heading\n```\nStill selected.\n\n"
+                "## Next\nNot selected.\n"
+            )
+        payload = phase_reads.reference_section_bytes("Selected").decode("utf-8")
+        self.assertIn("## Template heading", payload)
+        self.assertIn("Still selected.", payload)
+        self.assertNotIn("Not selected.", payload)
+
 
 if __name__ == "__main__":
     unittest.main()

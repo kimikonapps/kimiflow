@@ -142,6 +142,9 @@ class TestFlowGraph(unittest.TestCase):
         self.assertEqual(graph["terminal_node"], "done")
         self.assertEqual(len(graph["phase_entries"]), 8)
 
+        self.write_manifest(schema_version=3)
+        self.assertEqual(flow_graph.load_graph()["manifest_schema_version"], 3)
+
         duplicate = flow_contract()
         duplicate["transitions"].append(dict(duplicate["transitions"][0]))
         self.write_manifest(duplicate)

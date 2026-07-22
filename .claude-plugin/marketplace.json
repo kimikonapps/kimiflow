@@ -15,7 +15,7 @@
       "author": {
         "name": "kimikon"
       },
-      "source": ".",
+      "source": "./plugins/kimiflow",
       "tags": [
         "workflow",
         "quality-gates",

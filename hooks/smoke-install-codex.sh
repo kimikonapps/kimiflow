@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # kimiflow — Codex install smoke-test. Verifies the Codex plugin layer, skill
-# entrypoint, stable hook installer, optional plugin hook wiring, and synthetic
+# entrypoint, bundled plugin hook wiring, and synthetic
 # Codex-shaped hook payloads.
 set -u
 
@@ -13,7 +13,7 @@ command -v jq  >/dev/null 2>&1 || { echo "smoke-install-codex: jq required"; exi
 command -v git >/dev/null 2>&1 || { echo "smoke-install-codex: git required"; exit 2; }
 
 echo "== codex manifests =="
-for j in .codex-plugin/plugin.json .agents/plugins/marketplace.json hooks.json; do
+for j in .codex-plugin/plugin.json .agents/plugins/marketplace.json hooks/hooks.json hooks.json; do
   if jq -e . "$ROOT/$j" >/dev/null 2>&1; then ok "valid JSON: $j"; else bad "invalid JSON: $j"; fi
 done
 cv="$(jq -r '.version' "$ROOT/.codex-plugin/plugin.json" 2>/dev/null)"
@@ -29,12 +29,14 @@ jq -e '((.interface.longDescription // "") + " " + (.description // "")) | test(
   && ok "codex plugin describes code-review ensemble" || bad "codex plugin description does not mention code-review ensemble"
 jq -e '((.interface.longDescription // "") + " " + (.interface.shortDescription // "") + " " + (.description // "") + " " + ((.interface.defaultPrompt // []) | join(" "))) | test("full/grill/plan/build/quick/review/audit/fix"; "i") and test("kimiflow full"; "i") and test("grill"; "i") and test("plan"; "i")' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
   && ok "codex plugin exposes natural mode aliases" || bad "codex plugin natural mode aliases missing"
-jq -e '.name == "kimiflow" and (.plugins[] | select(.name == "kimiflow" and .source.path == "./"))' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
+jq -e '.name == "kimiflow" and (.plugins[] | select(.name == "kimiflow" and .source.source == "local" and .source.path == "./plugins/kimiflow"))' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
   && ok "codex marketplace entry" || bad "codex marketplace entry"
 jq -e '[.. | strings] | join(" ") | test("full/grill/plan/build/quick/review/audit/fix"; "i")' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
   && ok "codex marketplace describes natural mode aliases" || bad "codex marketplace missing natural mode aliases"
-jq -e '[.hooks[]?[]?.hooks[]? | select(.type == "command")] | length == 9 and all(.[]; (.name // "" | length > 0) and (.description // "" | length > 0) and (.statusMessage // "" | length > 0))' "$ROOT/hooks.json" >/dev/null 2>&1 \
-  && ok "codex plugin hooks are labelled" || bad "codex plugin hook labels missing"
+jq -e '.hooks == "./hooks/hooks.json"' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
+  && ok "codex manifest pins loaded hook contract" || bad "codex manifest hook path missing"
+jq -e '.hooks.PreToolUse[] | select(.matcher | contains("apply_patch") and contains("Write") and contains("update_plan") and contains("TaskCreate"))' "$ROOT/hooks/hooks.json" >/dev/null 2>&1 \
+  && ok "loaded hook contract covers both host tool namespaces" || bad "loaded hook contract host coverage missing"
 
 echo "== capability display sync (Codex) =="
 # Four canonical capabilities must each appear PER-FIELD in the prominent shortDescription surfaces (non-vacuous drift guard;
@@ -342,15 +344,15 @@ for term in 'Raw map vs. publishable docs' 'Repo-doc publish safety' 'never auto
   grep -q "$term" "$ROOT/reference.md" && ok "project map publish safety documented: $term" || bad "project map publish safety missing: $term"
 done
 
-echo "== codex plugin hook wiring (optional while plugin_hooks is unavailable) =="
+echo "== bundled codex plugin hook wiring =="
 while IFS= read -r cmd; do
   [ -n "$cmd" ] || continue
   rel="$(printf '%s\n' "$cmd" | grep -oE 'hooks/[^ "]*\.sh' | head -1)"
   p="$ROOT/$rel"
   if [ -x "$p" ] && bash -n "$p" 2>/dev/null; then ok "hook script ok: $rel"; else bad "hook script missing/not-exec/bad: $rel"; fi
-done < <(jq -r '.hooks[]?[]?.hooks[]?.command' "$ROOT/hooks.json" 2>/dev/null)
+done < <(jq -r '.hooks[]?[]?.hooks[]?.command' "$ROOT/hooks/hooks.json" 2>/dev/null)
 
-echo "== stable codex hook installer =="
+echo "== bundled codex hook contract validator =="
 echo "== optional embedded-first terminal runner =="
 for rel in hooks/kimiflow-runner.sh hooks/install-kimiflow-cli.sh hooks/test-kimiflow-runner.sh hooks/test-install-kimiflow-cli.sh; do
   if [ -x "$ROOT/$rel" ] && bash -n "$ROOT/$rel" 2>/dev/null; then ok "runner surface ok: $rel"; else bad "runner surface missing/not-exec/bad: $rel"; fi
@@ -372,36 +374,14 @@ grep -q 'Unified local run control plane' "$ROOT/reference.md" \
 INSTALLER="$ROOT/hooks/install-codex-hooks.sh"
 if [ -x "$INSTALLER" ] && bash -n "$INSTALLER" 2>/dev/null; then ok "installer script ok: hooks/install-codex-hooks.sh"; else bad "installer script missing/not-exec/bad"; fi
 tmp_home="$(mktemp -d)"
-if CODEX_HOME="$tmp_home/codex" "$INSTALLER" >/dev/null 2>&1; then ok "installer writes wrappers into temp CODEX_HOME"; else bad "installer failed in temp CODEX_HOME"; fi
-for f in kimiflow-commit-secret-gate.sh kimiflow-intake-gate.sh kimiflow-state-gate.sh kimiflow-test-gate.sh kimiflow-active-run.sh; do
-  wp="$tmp_home/codex/hooks/$f"
-  if [ -x "$wp" ] && bash -n "$wp" 2>/dev/null && grep -q "KIMIFLOW_PLUGIN_ROOT=" "$wp"; then ok "wrapper ok: $f"; else bad "wrapper missing/bad: $f"; fi
-done
-
-# Stable-wrapper coverage is EXPLICIT, not incidental: the plugin-hook commands reduce to a small
-# distinct script set; the 5 stable wrappers cover the enforcement gates. The one script left unwrapped MUST be
-# exactly map-staleness-nudge.sh (a non-blocking advisory nudge, deliberately plugin_hooks-only). Any other
-# gap = drift (e.g. a new enforcement hook added to hooks.json but never wrapped).
-wrapped_scripts="commit-secret-gate.sh intake-gate.sh state-gate.sh test-gate.sh active-run.sh"
-uncovered=""
-while IFS= read -r s; do
-  [ -n "$s" ] || continue
-  case " $wrapped_scripts " in
-    *" $s "*) ;;
-    *) uncovered="${uncovered:+$uncovered }$s" ;;
-  esac
-done < <(jq -r '.hooks[]?[]?.hooks[]?.command' "$ROOT/hooks.json" 2>/dev/null | grep -oE 'hooks/[^ "]*\.sh' | sed 's#hooks/##' | sort -u)
-if [ "$uncovered" = "map-staleness-nudge.sh" ]; then
-  ok "stable installer covers all enforcement gates; only plugin_hooks-only map-staleness-nudge is unwrapped"
-else
-  bad "stable-wrapper coverage drift: unwrapped plugin hooks = '$uncovered' (expected exactly 'map-staleness-nudge.sh')"
-fi
+if CODEX_HOME="$tmp_home/codex" "$INSTALLER" --check >/dev/null 2>&1; then ok "bundled hook contract validates"; else bad "bundled hook contract validation failed"; fi
+[ ! -e "$tmp_home/codex/hooks" ] && ok "validator creates no unregistered wrappers" || bad "validator created unregistered wrappers"
 
 echo "== codex gate fires (synthetic payloads) =="
-COMMIT_HOOK="$tmp_home/codex/hooks/kimiflow-commit-secret-gate.sh"
-STATE_HOOK="$tmp_home/codex/hooks/kimiflow-state-gate.sh"
-TEST_HOOK="$tmp_home/codex/hooks/kimiflow-test-gate.sh"
-ACTIVE_HOOK="$tmp_home/codex/hooks/kimiflow-active-run.sh"
+COMMIT_HOOK="$ROOT/hooks/commit-secret-gate.sh"
+STATE_HOOK="$ROOT/hooks/state-gate.sh"
+TEST_HOOK="$ROOT/hooks/test-gate.sh"
+ACTIVE_HOOK="$ROOT/hooks/active-run.sh"
 
 deny_commit() { jq -nc --arg c "$1" --arg d "$2" '{tool_input:{args:{command:$c}}, cwd:$d, hook_event_name:"PreToolUse"}' | bash "$COMMIT_HOOK" 2>/dev/null | grep -q '"permissionDecision":"deny"'; }
 deny_state()  { jq -nc --arg c "$1" --arg d "$2" '{tool_input:{args:{command:$c}}, cwd:$d, hook_event_name:"PreToolUse"}' | bash "$STATE_HOOK" 2>/dev/null | grep -q '"permissionDecision":"deny"'; }
@@ -442,7 +422,10 @@ tmp3="$(mktemp -d)"
 mkdir -p "$tmp3/.kimiflow/demo"
 cat > "$tmp3/.kimiflow/demo/STATE.md" <<'EOF'
 Flow schema: 4
+Intent contract: 3
 Status: active
+Mode: feature
+Scope: small
 Recovery: clean
 Affected files: README.md
 Phase 0: done
@@ -483,7 +466,7 @@ rm -rf "$tmp1" "$tmp2" "$tmp3" "$tmp_home"
 echo "== MANUAL (needs Codex app/CLI plugin browser) =="
 cat <<'MANUAL'
   [ ] Add the Git marketplace (`codex plugin marketplace add kimikonapps/kimiflow`), then install kimiflow.
-  [ ] Run the stable hook installer from that marketplace checkout once.
+  [ ] Open `/hooks`, review and trust the Kimiflow plugin hooks once after install/update.
   [ ] Start a new Codex thread and invoke "$kimiflow <tiny change>".
   [ ] Confirm an actionable implementation request for a substantial cross-surface/integration/data/security/API/architecture/discovery feature auto-routes into Kimiflow.
   [ ] Confirm a discussion, idea, recommendation, explanation/status request, or wish formulation stays direct and read-only.

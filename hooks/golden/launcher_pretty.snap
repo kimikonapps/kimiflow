@@ -14,6 +14,8 @@
     "plugin_root": "ROOT",
     "version": "VERSION",
     "repo_version": "unknown",
+    "runtime_fingerprint": "unknown",
+    "repo_runtime_fingerprint": "unknown",
     "cache_status": "source_checkout",
     "action_required": false
   },
@@ -163,6 +165,8 @@
       "installation": {
         "version": "VERSION",
         "repo_version": "unknown",
+        "runtime_fingerprint": "unknown",
+        "repo_runtime_fingerprint": "unknown",
         "mode": "source_checkout",
         "cache_status": "source_checkout",
         "action_required": false

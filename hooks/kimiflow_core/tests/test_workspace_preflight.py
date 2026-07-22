@@ -1344,6 +1344,17 @@ class WorkspacePreflightCase(unittest.TestCase):
         self.assertEqual(len(status["ignored_paths"]), wp.IGNORED_PATH_SAMPLE_LIMIT)
         self.assertTrue(status["ignored_paths_truncated"])
 
+    def test_untracked_inventory_is_streamed_and_output_is_bounded(self):
+        linked = self.add_tree("untracked-sample")
+        for index in range(wp.UNTRACKED_PATH_SAMPLE_LIMIT + 25):
+            with open(os.path.join(linked, "untracked-%03d.tmp" % index), "w", encoding="utf-8") as handle:
+                handle.write("untracked\n")
+        status = wp.worktree_status(linked)
+        self.assertEqual(status["untracked"], wp.UNTRACKED_PATH_SAMPLE_LIMIT + 25)
+        self.assertEqual(len(status["dirty_paths"]), wp.UNTRACKED_PATH_SAMPLE_LIMIT)
+        self.assertTrue(status["dirty_paths_truncated"])
+        self.assertLess(len(json.dumps(status)), 20000)
+
     def test_prune_refuses_registered_missing_worktree(self):
         linked = self.add_tree("registered-stale")
         run = self.write_run(status="active")

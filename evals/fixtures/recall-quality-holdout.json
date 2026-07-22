@@ -160,6 +160,25 @@
       "run_artifacts": [],
       "expected_refs": ["packages/api/src/export.py:9"],
       "forbidden_refs": ["packages/web/src/private.py:7"]
+    },
+    {
+      "id": "workflow_markers_do_not_displace_domain_terms",
+      "query": "<!-- kimiflow:clarify-evidence mode=questions count=3 confirmed=yes source=current-run contract=3 round=1 channel=native_tool status=sealed digest=sha256 receipt=intake policy=bounded product=confirmed technical=owned architecture=active recovery=clean phase=understand -->\n# Intent\nFlow schema: 4\nIntent contract: 3\nStatus: active\nMode: feature\nScope: large\nThe plugin packaging boundary must exclude private run artifacts and bind the installed runtime fingerprint.",
+      "budget": 80,
+      "max_hits": 1,
+      "min_precision": 1.0,
+      "min_recall": 1.0,
+      "facts": [
+        {"kind": "contract", "area": "packaging", "path": "hooks/build-plugin-candidate.sh", "line": 12, "summary": "plugin packaging boundary excludes private run artifacts and binds runtime fingerprint"}
+      ],
+      "learnings": [
+        {"id": "marker-noise", "status": "current", "summary": "kimiflow clarify evidence contract receipt status phase", "evidence": ["docs/workflow.md:1"]}
+      ],
+      "run_artifacts": [
+        {"path": ".kimiflow/old/INTENT.md", "content": "<!-- kimiflow:clarify-evidence mode=questions count=3 confirmed=yes source=current-run -->\n# Intent\nUnrelated workflow receipt.\n"}
+      ],
+      "expected_refs": ["hooks/build-plugin-candidate.sh:12"],
+      "forbidden_refs": ["docs/workflow.md:1", ".kimiflow/old/INTENT.md"]
     }
   ]
 }

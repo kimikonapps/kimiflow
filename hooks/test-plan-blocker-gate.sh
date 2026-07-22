@@ -531,6 +531,18 @@ reset_audit
 out="$(run_gate)"
 assert_field "$out" 2 OPEN "audit_mode_opens_without_plan_acceptance"
 
+reset_audit
+cat >> "$RUN/STATE.md" <<'EOF'
+Architecture contract: 1
+Architecture deliberation: off
+EOF
+cat >> "$RUN/AUDIT.md" <<'EOF'
+<!-- kimiflow:architecture-deliberation status=off approaches=0 principles=0 critique=0 user_gate=no -->
+Architecture off reason: This is a read-only audit of the existing implementation.
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "audit_architecture_off_opens_without_compatibility_plan"
+
 # Audit without AUDIT.md → still blocked (understanding missing)
 reset_audit; rm -f "$RUN/AUDIT.md"
 out="$(run_gate)"

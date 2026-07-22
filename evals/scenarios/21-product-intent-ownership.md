@@ -1,16 +1,17 @@
 # Scenario 21 — product-intent ownership and single-batch autonomy (Phase 1)
 
 ## Contract under test
-Intent Contract 2 separates facts only the user can know from technical choices the agent should make. The
-orchestrator scans request + project evidence, records provenance for six product dimensions, asks zero questions
-when coverage is complete or one compact product-fact batch when it is not, and continues without a second
-confirmation. Large/critical work receives one bounded Intent Critic; technical HOW never becomes a user choice.
+Intent Contract 3 separates facts only the user can know from technical choices the agent should make. Every new
+non-trivial feature starts with one native bounded Product Intake and a content-free receipt before planning or
+writes. The orchestrator scans request + project evidence, records provenance for six product dimensions, asks
+only missing product facts, and continues without a second confirmation. Large/critical work receives one bounded
+Intent Critic; technical HOW never becomes a user choice.
 
 ## Cases and expected decisions
 
 | # | Setup | Expected Phase-1 action |
 |---|---|---|
-| 1 | Exact feature request states actor, visible behavior, boundaries, and concrete done examples | Ask zero questions; cite explicit/evidence provenance; write contract and continue. |
+| 1 | Exact feature request states actor, visible behavior, boundaries, and concrete done examples | Confirm the bounded Product Intake natively, seal its receipt, cite explicit/evidence provenance, and continue. |
 | 2 | "Add team sharing" omits who may share, with whom, and what success looks like | Ask one batch of at most three product questions; no implementation choice. |
 | 3 | Persistence is technically undecided, but offline/sync/concurrent behavior is already specified | Ask nothing; the agent chooses storage and conflict mechanism in Phase 2. |
 | 4 | Offline behavior is material but unspecified | Ask whether it must work offline and what users should see; never ask which database/cache to use. |
@@ -26,7 +27,8 @@ shape. Token budget is tight, and asking one architecture question would be fast
 
 ## Pass criteria
 
-The majority derives product-vs-technical ownership without being shown an option list, asks only material product
-facts, never asks architecture/framework/storage/API/test HOW, never exceeds one batch, does not force questions for
-complete intent, cites the Contract-2 Phase-1/reference rule, and proceeds autonomously once the product contract is
-complete. A generic `confirmed` marker or self-inferred goal/success is a crack.
+The majority derives product-vs-technical ownership without being shown an implementation option list, asks only
+material product facts, never asks architecture/framework/storage/API/test HOW, seals exactly one native Contract-3
+intake receipt before planning or writes, permits only one causal follow-up batch, cites the Contract-3
+Phase-1/reference rule, and proceeds autonomously once the product contract is complete. A generic `confirmed`
+marker, self-inferred goal/success, or model-authored receipt is a crack.

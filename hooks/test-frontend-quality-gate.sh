@@ -186,6 +186,24 @@ test_frontend_quality_contract_routing() {
   assert_has "$out" $'FRONTEND_QUALITY_GATE\tOPEN' "ui_standard_records"
 }
 
+test_readonly_audit_off_route() {
+  repo="$(new_repo readonly-audit)"
+  write_active "$repo"
+  write_state "$repo" audit
+  set_affected "$repo/.kimiflow/run/STATE.md" src/ui/App.tsx
+  out="$(record_start "$repo")"
+  assert_has "$out" $'FRONTEND_QUALITY_GATE\tOPEN' "readonly_audit_start_opens"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality evidence" "ui-surface=excluded-by-mode; ref=request:AUDIT-INTENT.md"
+  out="$(record_routing "$repo")"
+  assert_has "$out" $'FRONTEND_QUALITY_GATE\tOPEN' "readonly_audit_target_paths_are_not_git_delta"
+
+  printf 'tracked audit mutation\n' >> "$repo/base.txt"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality routing" "provisional"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality basis" "pending"
+  out="$(record_routing "$repo")"
+  assert_has "$out" 'affected_files_mismatch' "dirty_audit_still_closes"
+}
+
 prepare_off_delta() {
   repo="$1"
   write_active "$repo"
@@ -1056,6 +1074,7 @@ if [ ! -x "$GATE" ]; then
 fi
 
 test_frontend_quality_contract_routing
+test_readonly_audit_off_route
 test_canonical_git_delta_sources
 test_bugfix_and_flagship_routing
 test_off_and_legacy_open_without_artifact
