@@ -387,11 +387,11 @@ deny_commit() { jq -nc --arg c "$1" --arg d "$2" '{tool_input:{args:{command:$c}
 deny_state()  { jq -nc --arg c "$1" --arg d "$2" '{tool_input:{args:{command:$c}}, cwd:$d, hook_event_name:"PreToolUse"}' | bash "$STATE_HOOK" 2>/dev/null | grep -q '"permissionDecision":"deny"'; }
 block_stop()  { jq -nc --arg d "$1" '{cwd:$d, hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | bash "$TEST_HOOK" 2>/dev/null | grep -qE '"decision"[[:space:]]*:[[:space:]]*"block"'; }
 allow_stop_active() { out="$(jq -nc --arg d "$1" '{cwd:$d, hook_input:{stop_hook_active:true}, hook_event_name:"Stop"}' | bash "$TEST_HOOK" 2>/dev/null)"; [ -z "$out" ]; }
-test_gate_owner_blocks() { jq -nc --arg d "$1" '{cwd:$d, session_id:"owner-session", hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | bash "$TEST_HOOK" 2>/dev/null | grep -qE '"decision"[[:space:]]*:[[:space:]]*"block"'; }
-test_gate_other_passes() { out="$(jq -nc --arg d "$1" '{cwd:$d, session_id:"other-session", hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | bash "$TEST_HOOK" 2>/dev/null)"; [ -z "$out" ]; }
-active_prompt_context() { jq -nc --arg d "$1" '{cwd:$d, session_id:"owner-session", prompt:"follow-up text", hook_event_name:"UserPromptSubmit"}' | bash "$ACTIVE_HOOK" prompt-context 2>/dev/null | grep -q 'additionalContext'; }
-active_stop_blocks() { jq -nc --arg d "$1" '{cwd:$d, session_id:"owner-session", hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | bash "$ACTIVE_HOOK" stop-gate 2>/dev/null | grep -qE '"decision"[[:space:]]*:[[:space:]]*"block"'; }
-active_other_stop_passes() { out="$(jq -nc --arg d "$1" '{cwd:$d, session_id:"other-session", hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | bash "$ACTIVE_HOOK" stop-gate 2>/dev/null)"; [ -z "$out" ]; }
+test_gate_owner_blocks() { jq -nc --arg d "$1" '{cwd:$d, session_id:"owner-session", hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | KIMIFLOW_HOST=codex bash "$TEST_HOOK" 2>/dev/null | grep -qE '"decision"[[:space:]]*:[[:space:]]*"block"'; }
+test_gate_other_passes() { out="$(jq -nc --arg d "$1" '{cwd:$d, session_id:"other-session", hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | KIMIFLOW_HOST=codex bash "$TEST_HOOK" 2>/dev/null)"; [ -z "$out" ]; }
+active_prompt_context() { jq -nc --arg d "$1" '{cwd:$d, session_id:"owner-session", prompt:"follow-up text", hook_event_name:"UserPromptSubmit"}' | KIMIFLOW_HOST=codex bash "$ACTIVE_HOOK" prompt-context 2>/dev/null | grep -q 'additionalContext'; }
+active_stop_blocks() { jq -nc --arg d "$1" '{cwd:$d, session_id:"owner-session", hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | KIMIFLOW_HOST=codex bash "$ACTIVE_HOOK" stop-gate 2>/dev/null | grep -qE '"decision"[[:space:]]*:[[:space:]]*"block"'; }
+active_other_stop_passes() { out="$(jq -nc --arg d "$1" '{cwd:$d, session_id:"other-session", hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | KIMIFLOW_HOST=codex bash "$ACTIVE_HOOK" stop-gate 2>/dev/null)"; [ -z "$out" ]; }
 
 tmp1="$(mktemp -d)"; ( cd "$tmp1" && git init -q && mkdir .kimiflow )
 tmp2="$(mktemp -d)"; ( cd "$tmp2" && git init -q )
@@ -437,7 +437,7 @@ Phase 5: in-progress
 Phase 6: open
 Phase 7: open
 EOF
-active_phase_out="$(bash "$ACTIVE_HOOK" start --root "$tmp3" --run .kimiflow/demo --write 2>/dev/null || true)"
+active_phase_out="$(KIMIFLOW_SESSION_HOST=codex KIMIFLOW_SESSION_ID=owner-session bash "$ACTIVE_HOOK" start --root "$tmp3" --run .kimiflow/demo --write 2>/dev/null || true)"
 if printf '%s\n' "$active_phase_out" | jq -e '.phase_reads_required == true' >/dev/null 2>&1; then
   ok "active session wrapper enables phase reads from plugin root"
 else

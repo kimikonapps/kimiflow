@@ -109,7 +109,7 @@ def lane_commands(root, lane):
 
 
 def missing_dependencies(root, lane, which=shutil.which):
-    required = FULL_REQUIRED_TOOLS if lane == "full" else ("bash", "git", "jq", "rg")
+    required = FULL_REQUIRED_TOOLS if lane == "full" else ("bash", "git", "jq")
     missing = [tool for tool in required if which(tool) is None]
     if lane == "full":
         probe = subprocess.run(

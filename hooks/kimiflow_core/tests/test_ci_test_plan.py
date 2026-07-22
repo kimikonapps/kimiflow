@@ -51,6 +51,15 @@ class CiTestPlanCase(unittest.TestCase):
             with self.assertRaisesRegex(ci_test_plan.PlanError, "missing required CI dependencies: jq"):
                 ci_test_plan.verify(self.root, "full")
 
+    def test_portability_dependencies_match_executed_lane(self):
+        available = {"bash", "git", "jq"}
+        missing = ci_test_plan.missing_dependencies(
+            self.root,
+            "portability",
+            which=lambda tool: "/usr/bin/" + tool if tool in available else None,
+        )
+        self.assertEqual(missing, ())
+
     def test_bash_surfaces_do_not_need_an_execute_bit(self):
         with mock.patch.object(ci_test_plan, "missing_dependencies", return_value=()):
             with mock.patch.object(ci_test_plan.os.path, "isfile", return_value=True):
