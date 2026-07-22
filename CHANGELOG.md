@@ -6,6 +6,29 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.15
+
+The optional app-host readiness release: Kimiflow adds a capability-negotiated, provider-neutral host contract
+for KimiTalk and other coding-agent frontends while preserving the existing standalone Codex and Claude paths.
+
+### Added
+
+- Optional workflow-context, abstract model-role, structured-event, and root-confinement negotiation for command
+  adapters, plus a read-only `adapter-check` preflight and opt-in JSONL event output.
+- A Draft 2020-12 public adapter schema and implementation guide with local Qwen/KimiTalk examples.
+
+### Changed
+
+- Feature-capable resumes bind the adapter identity, resolved executable, declared features, model catalog, and
+  selected role mapping in one privacy-safe contract fingerprint; legacy adapter payloads remain unchanged.
+
+### Fixed
+
+- Adapter completion now waits for successful process exit, event streams have aggregate/count/time bounds, and
+  timeout cleanup owns the complete process group so blocked input or inherited output pipes cannot hang a run.
+- Closed event consumers and malformed, oversized, or invalidly encoded adapter responses now fail as durable,
+  non-retried transport errors instead of producing false success or an unstructured traceback.
+
 ## 0.2.14
 
 The provider-neutral bounded-runtime release: Kimiflow adds reproducible plugin packaging, stronger product-intent
