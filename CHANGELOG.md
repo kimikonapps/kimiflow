@@ -4,6 +4,13 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.14
+
+The provider-neutral bounded-runtime release: Kimiflow adds reproducible plugin packaging, stronger product-intent
+and owner gates, bounded large-repository context, and a portable coding-agent adapter contract.
+
 ### Added
 
 - Provider-neutral terminal adapter protocol for tool-capable local or remote coding-agent harnesses, with a
@@ -29,6 +36,8 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
   remains unchanged; read-only clean audits no longer open the frontend gate on their target paths.
 - Usage reporting now distinguishes unavailable counters from real zeroes, and release/runtime status can no
   longer report a false-current installation merely because its version string matches.
+- CI portability requirements now match the commands actually executed, and synthetic Codex candidate smokes
+  declare their host and session identity explicitly.
 
 ## 0.2.13
 
