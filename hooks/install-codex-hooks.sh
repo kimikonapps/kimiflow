@@ -77,8 +77,8 @@ write_wrapper() {
   printf 'installed %s\n' "$wrapper"
 }
 
-# Stable-wrapper scope: only the four ENFORCEMENT hooks are wrapped here —
-# commit-secret-gate, state-gate, test-gate (blocking gates) plus active-run
+# Stable-wrapper scope: only the five ENFORCEMENT hooks are wrapped here —
+# intake-gate, commit-secret-gate, state-gate, test-gate (blocking gates) plus active-run
 # (active-session contract; the one wrapper serves both its prompt-context and
 # stop-gate sub-commands). Together they cover 5 of the 6 plugin-hook commands
 # in hooks.json. The 6th, map-staleness-nudge.sh, is intentionally NOT wrapped:
@@ -89,6 +89,7 @@ write_wrapper() {
 # 6-hook set is carried only by the experimental plugin_hooks path (hooks.json).
 if [ "$CHECK_ONLY" -eq 1 ]; then
   check_wrapper kimiflow-commit-secret-gate.sh commit-secret-gate.sh
+  check_wrapper kimiflow-intake-gate.sh intake-gate.sh
   check_wrapper kimiflow-state-gate.sh state-gate.sh
   check_wrapper kimiflow-test-gate.sh test-gate.sh
   check_wrapper kimiflow-active-run.sh active-run.sh
@@ -97,6 +98,7 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
 fi
 
 write_wrapper kimiflow-commit-secret-gate.sh commit-secret-gate.sh
+write_wrapper kimiflow-intake-gate.sh intake-gate.sh
 write_wrapper kimiflow-state-gate.sh state-gate.sh
 write_wrapper kimiflow-test-gate.sh test-gate.sh
 write_wrapper kimiflow-active-run.sh active-run.sh

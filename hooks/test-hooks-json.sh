@@ -54,6 +54,20 @@ for f in "$ROOT/hooks/hooks.json" "$ROOT/hooks.json"; do
   done < <(jq -r '.. | objects | select(.type? == "command") | .command' "$f")
 done
 
+# --- 4. Product Intake guard is wired before writes and explicit response capture -----
+if jq -e '.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[0].command | contains("intake-gate.sh")' "$ROOT/hooks/hooks.json" >/dev/null \
+  && jq -e '.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[0].command | contains("intake-gate.sh")' "$ROOT/hooks.json" >/dev/null; then
+  ok "intake gate is first on Bash for both hosts"
+else
+  fail "intake gate is not first on Bash for both hosts"
+fi
+if jq -e '.hooks.PostToolUse[] | select(.matcher == "AskUserQuestion") | .hooks[].command | contains("intake-response")' "$ROOT/hooks/hooks.json" >/dev/null \
+  && jq -e '.hooks.PostToolUse[] | select(.matcher == "request_user_input") | .hooks[].command | contains("intake-response")' "$ROOT/hooks.json" >/dev/null; then
+  ok "explicit native intake response adapters are wired"
+else
+  fail "native intake response adapter wiring missing"
+fi
+
 echo
 if [ "$fails" -gt 0 ]; then echo "test-hooks-json: $fails failure(s)"; exit 1; fi
 echo "test-hooks-json: all green"

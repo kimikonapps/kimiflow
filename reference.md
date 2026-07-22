@@ -502,7 +502,7 @@ Goal: establish source-backed product intent BEFORE research/plan. Kimiflow perf
 - **Agent-owned HOW:** architecture, framework/library, dependency choice, data model/schema, internal API, code/file structure, design patterns, test strategy, migration mechanism, performance/concurrency algorithm, operational tooling, and implementation order. A user may state a hard technical constraint, but Kimiflow never asks them to design the solution.
 - Translate technical-looking uncertainty into a product consequence only when that consequence is material: ask "must it work offline and sync across devices?", never "SQLite or PostgreSQL?". Technical uncertainty goes to Phase 2 research and autonomous recovery.
 
-**Intent Coverage Scan (Contract 2):** before asking, inspect the current request/conversation, code, project docs/tests, scoped standards, memory, and current sources. Cover exactly six dimensions: `goal`, `actor`, `behavior`, `boundaries`, `success`, `constraints`. Record one provenance per dimension:
+**Intent Coverage Scan (Contract 3):** before asking, inspect the current request/conversation, code, project docs/tests, scoped standards, memory, and current sources. Cover exactly six dimensions: `goal`, `actor`, `behavior`, `boundaries`, `success`, `constraints`. Record one provenance per dimension:
 - `user_explicit` — directly stated in the current request/conversation.
 - `user_confirmed` — supplied/selected in this run's single question batch.
 - `project_evidence` — established by current project evidence; cite the path/reference in the relevant INTENT section.
@@ -510,30 +510,30 @@ Goal: establish source-backed product intent BEFORE research/plan. Kimiflow perf
 - `not_applicable` — genuinely irrelevant; allowed only for actor/boundaries/constraints.
 - `unknown_material` — could change visible product behavior or acceptance and must be resolved before the gate.
 
-Goal, visible behavior, and success require `user_explicit|user_confirmed|project_evidence`; the agent may not invent them. `inferred` and generic `confirmed` are not Contract-2 provenance. Project evidence can settle a dimension only when it is current and cited, not because the existing implementation happens to do something.
+Goal, visible behavior, and success require `user_explicit|user_confirmed|project_evidence`; the agent may not invent them. `inferred` and generic `confirmed` are not Contract-3 provenance. Project evidence can settle a dimension only when it is current and cited, not because the existing implementation happens to do something.
 
-**Selective elicitation:** rank `unknown_material` candidates by **Impact x Uncertainty**. Ask only the highest-value product facts in **one compact batch**: `quick` ≤2, `small` ≤3, `large`/critical ≤5. Order dependencies first, use everyday language, one thought per item, and offer a recommended product default/choices. "I don't know" selects the smallest safe reversible default; paid/privacy/irreversible behavior defaults to excluded rather than silently accepted. Ask zero questions when coverage is sufficient. Never ask to reach a quota, never ask sequentially, and never open a second clarification round.
+**Selective elicitation:** rank product candidates by **Impact x Uncertainty**. Ask only the highest-value product facts in **one compact batch**: `quick` ≤2, `small` ≤3, `large`/critical ≤5. When coverage is already complete, use the batch to confirm the compact Goal/Included/Excluded/Done contract instead of asking filler. Order dependencies first, use everyday language, one thought per item, and offer a recommended product default/choices. "I don't know" selects the smallest safe reversible default; paid/privacy/irreversible behavior defaults to excluded rather than silently accepted. A second compact batch is legal only when the first response itself creates a new material product conflict; mark it `cause=first_response_conflict`. Never ask sequential technical questions.
 
 **Bounded Intent Critic:** `large`/critical runs use one fresh-context critic inside the existing agent budget. Packet: request + compact coverage draft, ≤900 words. Output: only `COVERAGE_OK` or ≤5 missing **user-owned** product facts; no research, code, or HOW. A clean result records `critic=passed`. `small|quick` folds the same adversarial scan into the top orchestrator and records `critic=folded`. If fresh-agent routing is unavailable on a large run, record the routing fallback and let the top orchestrator process the identical isolated packet before recording the pass; availability never becomes a user wait.
 
-**One interaction, then autonomy:** after the optional answer, write the Goal/Included/Excluded/Done contract. The answer itself establishes it; do not ask "Does this match?" or request a second approval. Explicit build authority continues immediately. `grill` writes/shows the contract and stops by mode, not for another confirmation.
+**One interaction, then autonomy:** before the question, write `INTAKE.md` with `<!-- kimiflow:intake contract=3 round=1 questions=<1-5> selection=impact_uncertainty technical_questions=0 -->`, then register `active-run.sh await-user --kind intake --round 1 --request .kimiflow/<slug>/INTAKE.md --write`. The explicit answer establishes the contract; chat/native adapters write only request digest, channel, and time—never prompt or answer text. `request_user_input` with `autoResolutionMs`, timeout/default/cancel/error outcomes, and non-owner responses do not count. A causal round 2 uses `INTAKE-2.md` with `cause=first_response_conflict`. Afterward, explicit build authority continues immediately. `grill` stops by mode, not for another confirmation.
 
-**Mechanical clarify gate:** new nontrivial feature runs declare `Intent contract: 2` and `INTENT.md` includes:
+**Mechanical clarify gate:** new nontrivial feature runs declare `Intent contract: 3` and `INTENT.md` includes:
 
 ```md
-<!-- kimiflow:intent-coverage contract=2 goal=user_explicit actor=project_evidence behavior=user_explicit boundaries=reversible_default success=user_explicit constraints=not_applicable unknown_material=0 question_rounds=0 technical_questions=0 critic=folded authority=explicit summary=present source=current-run -->
+<!-- kimiflow:intent-coverage contract=3 goal=user_explicit actor=user_confirmed behavior=user_explicit boundaries=user_confirmed success=user_explicit constraints=not_applicable unknown_material=0 question_rounds=1 technical_questions=0 critic=folded authority=explicit summary=present source=current-run -->
 ```
 
-Allowed `question_rounds` are `0|1`; round 1 requires at least one `user_confirmed` dimension. `technical_questions` and `unknown_material` must both be zero. `large` requires `critic=passed`; smaller runs accept `passed|folded`. Actual builds require `authority=explicit|confirmed`; `plan|grill` do not claim future build authority. `hooks/clarify-gate.sh` validates this fail-closed shape. It cannot prove semantic honesty, so the critic, citations, balanced evals, and later goal-backward review remain required.
+Allowed `question_rounds` are `1|2`; round 2 requires its round-1 receipt and the causal conflict marker. `technical_questions` and `unknown_material` must both be zero. `large` requires `critic=passed`; smaller runs accept `passed|folded`. Actual builds require `authority=explicit|confirmed`; `plan|grill` do not claim future build authority. Add bounded sequential `Requirement R1:`…`R20:` rows for material confirmed product requirements. Run `clarify-gate.sh <run> --record-intent-lock` once: it validates request/receipt freshness, writes `INTENT-LOCK.json`, pins its digest in Active Run, and thereafter rejects INTENT or lock replacement. Supported PreToolUse hooks block implementation planning/project writes before the receipt and directly protect Active Run/receipt/lock authority files throughout the run. This is a strong local guardrail, not a claim that a host which omits these hook events cannot bypass it.
 
 Every dimension marked `project_evidence` also needs one exact body line `Intent evidence: <dimension> :: <repo-path>:<line>` (or a current `https://...` source). Missing citations close the gate; a provenance word alone never substitutes for evidence.
 
-Runs without `Intent contract: 2`, audits, fixes, and schema-3/count artifacts keep the prior compatible `kimiflow:clarify-evidence` contract. A normal fix passes Phase 1 with a usable `PROBLEM.md` and asks only for diagnosis-blocking input.
+Runs with Intent Contract 1/2, audits, fixes, trivial work, and schema-3/count artifacts keep their prior compatible contracts. A normal fix passes Phase 1 with a usable `PROBLEM.md` and asks only for diagnosis-blocking input.
 
 **INTENT.md template** (plain product language):
 ```
 # Intent: <feature>
-<!-- kimiflow:intent-coverage contract=2 goal=<provenance> actor=<provenance> behavior=<provenance> boundaries=<provenance> success=<provenance> constraints=<provenance> unknown_material=0 question_rounds=0|1 technical_questions=0 critic=folded|passed authority=explicit|confirmed summary=present source=current-run -->
+<!-- kimiflow:intent-coverage contract=3 goal=<provenance> actor=<provenance> behavior=<provenance> boundaries=<provenance> success=<provenance> constraints=<provenance> unknown_material=0 question_rounds=1|2 technical_questions=0 critic=folded|passed authority=explicit|confirmed summary=present source=current-run -->
 ## Goal / value
 ## Primary actor
 ## Visible behavior
@@ -542,6 +542,7 @@ Runs without `Intent contract: 2`, audits, fixes, and schema-3/count artifacts k
 ## What done looks like (concrete product examples)
 ## Material product constraints / consequences
 ## Evidence and reversible defaults
+Requirement R1: <material confirmed product requirement>
 ## Open questions (none when the gate is called)
 ```
 
@@ -608,6 +609,13 @@ The classification is a one-way scope gate: only `required` may enlarge the plan
 **Considered alternatives (conditional material-fork dual-plan only).** Scope size alone never adds a second planner. Use two independent planners only when intent + classified research prove at least two viable architectures with material user-visible/operational trade-offs, or an irreversible public API/data/migration contract. Internal-interface novelty, general complexity, and optional robustness do not trigger it. If triggered, `PLAN.md` records the losing real approach + selecting trade-off; otherwise omit the section.
 
 **Decision Triage:** project/code decisions are `project_derived`; current sources may yield `evidence_derived`; reversible low-risk HOW is `safe_default`; missing technical evidence is `needs_research`; only product/business/policy/scope/privacy/cost/lock-in/breaking/irreversible-contract choices are `user_required`. Open technical or user decisions keep Discovery closed. Build risk is required only for scope expansion, breaking/public/data/migration contracts, paid/privacy-sensitive services, hard-to-reverse architecture, or material drift from confirmed intent.
+
+**Contract-3 feasibility boundary:** before planning, RESEARCH carries exactly one
+`<!-- kimiflow:feasibility status=fit|evolve|replace|conflict|unproven user_gate=yes|no decision=confirmed|not_required -->`
+and one `Feasibility summary:` line. `fit|evolve` use `user_gate=no decision=not_required` and continue autonomously.
+`replace` opens only after a confirmed typed `scope-risk|irreversible` decision recorded as
+`Feasibility decision kind:`; it is a later material consequence decision, never another intake round.
+`conflict|unproven` remain closed until evidence or the product contract changes. Intent Contract 1/2 stays compatible.
 
 ## Adaptive Architecture Deliberation
 
@@ -1562,7 +1570,7 @@ Recheck D1: <named change signal>
 
 `verifier :: <named evidence method>` replaces `command` only when the decision cannot be checked mechanically. Rows for syntax, taste, or behavior already completely covered by an existing row are forbidden. `plan-blocker-gate.sh` calls `conformance-gate.sh <run> --plan`; it checks the versioned shape, cap, evidence source, affected paths, and AC mapping before review. The helper never executes PLAN text.
 
-**Adaptive verification.** Phase 6 runs every declared method, then compares the complete delivered Git delta with the decision evidence, invariant, path scope, and acceptance outcome. A `small` run folds this into the current orchestrator and creates no model call. A `large` run gives the compact contract and decisive evidence to its one already-required independent verifier; it does not add a reviewer or research lane. External research is refreshed only when a named dependency/source changed, a falsifier stopped applying, or local evidence contradicts the chosen mechanism.
+**Adaptive verification.** Phase 6 runs every declared method, then compares the complete delivered Git delta with the decision evidence, invariant, path scope, and acceptance outcome. Contract-3 features map every immutable INTENT row with exactly one `Requirement trace Rn: AC-N` in ACCEPTANCE and one `Requirement Rn: passed :: <method/evidence>` in VERIFICATION. Missing, failed, duplicate, or unexpected rows close the plan/final gate, preventing recovery work from silently changing the requested product. A `small` run folds this into the current orchestrator and creates no model call. A `large` run gives the compact contract and decisive evidence to its one already-required independent verifier; it does not add a reviewer or research lane. External research is refreshed only when a named dependency/source changed, a falsifier stopped applying, or local evidence contradicts the chosen mechanism.
 
 `VERIFICATION.md` carries the normal passed receipt, one exact `Decision check Dn: passed :: <PLAN method>` per row, and exactly one compact conformance receipt. This example is a `large` run with active architecture deliberation:
 

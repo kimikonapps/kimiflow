@@ -38,7 +38,8 @@ USAGE = """#!/usr/bin/env bash
 #   active-run.sh mark-built|mark-accepted --id <id> [--root <path>] [--write] [--pretty]
 #   active-run.sh mark-rejected|drop-item --id <id> --reason <text> [--root <path>] [--write] [--pretty]
 #   active-run.sh refresh-baseline [--root <path>] [--workspace-disposition] [--write] [--pretty]
-#   active-run.sh await-user --run <path> [--kind <kind>] [--reason <text>] [--root <path>] [--write] [--pretty]
+#   active-run.sh await-user --run <path> [--kind <kind>] [--round <1|2>] [--request <path>] [--reason <text>] [--root <path>] [--write] [--pretty]
+#   active-run.sh pin-intent-lock --run <path> --digest <sha256:...> [--root <path>] [--write] [--pretty]
 #   active-run.sh phase-read --run <path> --phase <0-7> --file phases/<file>.md [--root <path>] [--write] [--pretty]
 #   active-run.sh phase-read-status --run <path> [--root <path>] [--json] [--pretty]
 #   active-run.sh phase-read-gate --run <path> --through-phase <0-7> [--root <path>]
@@ -49,6 +50,7 @@ USAGE = """#!/usr/bin/env bash
 #   active-run.sh session-bootstrap
 #   active-run.sh owner-check
 #   active-run.sh prompt-context
+#   active-run.sh intake-response
 #   active-run.sh stop-gate
 #
 # R2 invariant examples:
@@ -73,7 +75,9 @@ RECOVERY_AWAIT_USER_KINDS = {
     "irreversible",
     "workspace",
 }
-AWAIT_USER_KINDS = RECOVERY_AWAIT_USER_KINDS | {"preview", "commit"}
+AWAIT_USER_KINDS = RECOVERY_AWAIT_USER_KINDS | {"preview", "commit", "intake"}
+INTAKE_REQUEST_LIMIT = 64 * 1024
+INTAKE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 FINISH_ARTIFACT_LIMIT = 8 * 1024 * 1024
 FINISH_SNAPSHOT_NAMES = (
     "STATE.md",
@@ -552,6 +556,116 @@ def write_active(root, value):
     path = active_file(root)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     atomic_write(path, json_pretty(value) + "\n", mode=0o600, refuse_symlink=True)
+
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    try:
+        with open(path, "rb") as handle:
+            while True:
+                chunk = handle.read(65536)
+                if not chunk:
+                    break
+                digest.update(chunk)
+    except OSError as exc:
+        die("cannot hash %s: %s" % (path, exc), 2)
+    return "sha256:%s" % digest.hexdigest()
+
+
+def intake_receipt_path(run_dir, round_number):
+    return os.path.join(run_dir, "INTAKE-RECEIPT-%s.json" % round_number)
+
+
+def intake_request_name(round_number):
+    return "INTAKE.md" if round_number == 1 else "INTAKE-2.md"
+
+
+def strict_intake_request(root, run_dir, request, round_number):
+    expected = os.path.join(run_dir, intake_request_name(round_number))
+    requested = os.path.join(root, request) if not os.path.isabs(request) else request
+    if os.path.normpath(requested) != os.path.normpath(expected):
+        die("await-user: intake request must be %s" % rel_path(root, expected), 2)
+    try:
+        info = os.lstat(expected)
+    except OSError:
+        die("await-user: intake request is missing", 2)
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode) or info.st_size <= 0 or info.st_size > INTAKE_REQUEST_LIMIT:
+        die("await-user: intake request is unsafe or out of bounds", 2)
+    try:
+        with open(expected, "r", encoding="utf-8") as handle:
+            text_value = handle.read(INTAKE_REQUEST_LIMIT + 1)
+    except (OSError, UnicodeError):
+        die("await-user: intake request is not valid UTF-8", 2)
+    marker = re.findall(r"^<!-- kimiflow:intake ([^\n]+) -->$", text_value, flags=re.MULTILINE)
+    if len(marker) != 1:
+        die("await-user: intake marker missing or duplicate", 2)
+    attrs = dict(re.findall(r"([a-z_]+)=([A-Za-z0-9_-]+)", marker[0]))
+    if attrs.get("contract") != "3" or attrs.get("round") != str(round_number):
+        die("await-user: intake marker contract or round mismatch", 2)
+    if round_number == 2 and attrs.get("cause") != "first_response_conflict":
+        die("await-user: round 2 requires cause=first_response_conflict", 2)
+    return rel_path(root, expected), file_sha256(expected)
+
+
+def valid_intake_receipt(run_dir, round_number, request_digest=None):
+    path = intake_receipt_path(run_dir, round_number)
+    try:
+        if os.path.islink(path) or not os.path.isfile(path):
+            return False
+        with open(path, "r", encoding="utf-8") as handle:
+            value = json.load(handle)
+    except (OSError, json.JSONDecodeError, UnicodeError):
+        return False
+    expected_keys = {"schema_version", "contract", "round", "request", "request_digest", "channel", "responded_at"}
+    if not isinstance(value, dict) or set(value) != expected_keys:
+        return False
+    if value.get("schema_version") != 1 or value.get("contract") != 3 or value.get("round") != round_number:
+        return False
+    if value.get("request") != intake_request_name(round_number) or value.get("channel") not in ("chat", "native_tool"):
+        return False
+    digest = value.get("request_digest")
+    if not isinstance(digest, str) or INTAKE_DIGEST_RE.fullmatch(digest) is None:
+        return False
+    return request_digest is None or digest == request_digest
+
+
+def record_intake_response(root, active, channel):
+    if active.get("awaiting_user") is not True or active.get("awaiting_kind") != "intake":
+        return False
+    round_number = active.get("intake_round")
+    request_digest = active.get("intake_request_digest")
+    request_path = active.get("intake_request")
+    if round_number not in (1, 2) or not isinstance(request_path, str) or not isinstance(request_digest, str):
+        return False
+    run_dir = resolve_run_dir(root, active.get("run", ""))
+    expected_rel, current_digest = strict_intake_request(root, run_dir, request_path, round_number)
+    if current_digest != request_digest or expected_rel != request_path:
+        return False
+    if round_number == 2 and not valid_intake_receipt(run_dir, 1):
+        return False
+    receipt = {
+        "schema_version": 1,
+        "contract": 3,
+        "round": round_number,
+        "request": intake_request_name(round_number),
+        "request_digest": request_digest,
+        "channel": channel,
+        "responded_at": iso_now(),
+    }
+    receipt_path = intake_receipt_path(run_dir, round_number)
+    if os.path.lexists(receipt_path):
+        return valid_intake_receipt(run_dir, round_number, request_digest)
+    atomic_write(receipt_path, json_pretty(receipt) + "\n", mode=0o600, refuse_symlink=True)
+    resumed = dict(active)
+    resumed.pop("present", None)
+    for key in (
+        "awaiting_user", "awaiting_kind", "awaiting_reason", "awaiting_since",
+        "intake_round", "intake_request", "intake_request_digest",
+    ):
+        resumed.pop(key, None)
+    resumed["updated_at"] = iso_now()
+    write_active(root, resumed)
+    return True
 
 
 def bind_owner_for_write(root, write):
@@ -1565,6 +1679,21 @@ def cmd_start(args):
         status["conformance_contract"] = resume_pins.get("conformance_contract")
     else:
         status["conformance_contract"] = persisted_conformance or None
+    persisted_intent = state.state_value(state_path, "Intent contract").strip()
+    if same_active and "intent_contract" in prior_active:
+        selected_intent = str(prior_active.get("intent_contract") or "").strip()
+    elif "intent_contract" in resume_pins:
+        selected_intent = str(resume_pins.get("intent_contract") or "").strip()
+    else:
+        selected_intent = persisted_intent
+    if selected_intent:
+        if selected_intent not in ("1", "2", "3"):
+            die("unsupported intent contract: %s" % selected_intent, 1)
+        status["intent_contract"] = selected_intent
+    if same_active and prior_active.get("intent_lock_digest"):
+        status["intent_lock_digest"] = prior_active["intent_lock_digest"]
+    elif resume_pins.get("intent_lock_digest"):
+        status["intent_lock_digest"] = resume_pins["intent_lock_digest"]
     if same_active and "frontend_quality_contract" in prior_active:
         status["frontend_quality_contract"] = prior_active.get("frontend_quality_contract")
     elif "frontend_quality_contract" in resume_pins:
@@ -1807,7 +1936,7 @@ def cmd_refresh_baseline(args):
 
 
 def cmd_await_user(args):
-    opts = parse_options(args, "await-user", {"--root": "", "--run": "", "--kind": "", "--reason": "", "--write": False, "--pretty": False})
+    opts = parse_options(args, "await-user", {"--root": "", "--run": "", "--kind": "", "--reason": "", "--round": "", "--request": "", "--write": False, "--pretty": False})
     need_jq()
     if not opts["--run"]:
         die("await-user requires --run", 2)
@@ -1834,13 +1963,29 @@ def cmd_await_user(args):
     schema_number = int(flow_schema) if flow_schema.isdigit() else 0
     if schema_number >= 3 and not kind:
         die("await-user: schema-%s runs require --kind" % schema_number, 2)
-    if schema_number >= 4 and kind not in RECOVERY_AWAIT_USER_KINDS:
+    if schema_number >= 4 and kind not in (RECOVERY_AWAIT_USER_KINDS | {"intake"}):
         die("await-user: schema-4 allows only material decision kinds", 2)
     if recovery == "active" and kind not in RECOVERY_AWAIT_USER_KINDS:
         die("await-user: --kind %s is not allowed during active recovery" % (kind or "<missing>"), 2)
     state_workspace_wait = state.state_value(os.path.join(run_dir, "STATE.md"), "Workspace decision used at").strip()
     if schema_number >= 4 and kind == "workspace" and (active.get("workspace_wait_used_at") or state_workspace_wait):
         die("await-user: schema-4 workspace decision was already used", 2)
+    intake_round = None
+    intake_request = ""
+    intake_digest = ""
+    if kind == "intake":
+        if active.get("intent_contract") != "3" or active.get("mode") != "feature" or active.get("scope") == "trivial":
+            die("await-user: intake requires a pinned Contract-3 non-trivial feature", 2)
+        if opts["--round"] not in ("1", "2") or not opts["--request"]:
+            die("await-user: intake requires --round 1|2 and --request", 2)
+        intake_round = int(opts["--round"])
+        intake_request, intake_digest = strict_intake_request(root, run_dir, opts["--request"], intake_round)
+        if intake_round == 2 and not valid_intake_receipt(run_dir, 1):
+            die("await-user: round 2 requires a valid round-1 receipt", 2)
+        if valid_intake_receipt(run_dir, intake_round, intake_digest):
+            die("await-user: intake round already has a valid receipt", 1)
+    elif opts["--round"] or opts["--request"]:
+        die("await-user: --round/--request require --kind intake", 2)
     prior_active = dict(active)
     prior_active.pop("present", None)
     prior_active.pop("path", None)
@@ -1857,6 +2002,10 @@ def cmd_await_user(args):
     now = iso_now()
     updated["awaiting_since"] = now
     updated["updated_at"] = now
+    if kind == "intake":
+        updated["intake_round"] = intake_round
+        updated["intake_request"] = intake_request
+        updated["intake_request_digest"] = intake_digest
     if schema_number >= 4 and kind == "workspace":
         updated["workspace_wait_used_at"] = now
     if opts["--write"]:
@@ -1873,7 +2022,35 @@ def cmd_await_user(args):
                 except (OSError, ValueError) as exc:
                     die("cannot roll back incomplete workspace wait: %s" % exc, 2)
                 raise
-    json_print({"status": "awaiting_user", "written": opts["--write"] is True, "run": run_rel, "awaiting_kind": kind or None, "reason": opts["--reason"] or None}, opts["--pretty"])
+    json_print({"status": "awaiting_user", "written": opts["--write"] is True, "run": run_rel, "awaiting_kind": kind or None, "round": intake_round, "request_digest": intake_digest or None, "reason": opts["--reason"] or None}, opts["--pretty"])
+
+
+def cmd_pin_intent_lock(args):
+    opts = parse_options(args, "pin-intent-lock", {"--root": "", "--run": "", "--digest": "", "--write": False, "--pretty": False})
+    need_jq()
+    if not opts["--run"] or INTAKE_DIGEST_RE.fullmatch(opts["--digest"]) is None:
+        die("pin-intent-lock requires --run and --digest sha256:<hex>", 2)
+    root = resolve_root(opts["--root"], strict=opts["--write"])
+    bind_owner_for_write(root, opts["--write"])
+    active = load_active(root)
+    run_dir = resolve_run_dir(root, opts["--run"])
+    if active.get("present") is not True or active.get("run") != rel_path(root, run_dir):
+        die("pin-intent-lock: run does not match active session", 1)
+    if active.get("intent_contract") != "3" or active.get("mode") != "feature" or active.get("scope") == "trivial":
+        die("pin-intent-lock: Contract-3 feature required", 1)
+    lock_path = os.path.join(run_dir, "INTENT-LOCK.json")
+    if file_sha256(lock_path) != opts["--digest"]:
+        die("pin-intent-lock: digest does not match lock file", 1)
+    existing = str(active.get("intent_lock_digest") or "")
+    if existing and existing != opts["--digest"]:
+        die("pin-intent-lock: lock basis is immutable", 1)
+    updated = dict(active)
+    updated.pop("present", None)
+    updated["intent_lock_digest"] = opts["--digest"]
+    updated["updated_at"] = iso_now()
+    if opts["--write"]:
+        write_active(root, updated)
+    json_print({"status": "intent_lock_pinned", "written": opts["--write"] is True, "run": active["run"], "digest": opts["--digest"]}, opts["--pretty"])
 
 
 def cmd_phase_read(args):
@@ -2095,7 +2272,8 @@ def parked_session_pins(run_dir):
 def session_pins(active):
     keys = (
         "mode", "scope", "host", "started_at", "started_head", "flow_schema",
-        "conformance_contract", "frontend_quality_contract", "frontend_quality_start_head",
+        "conformance_contract", "intent_contract", "intent_lock_digest",
+        "frontend_quality_contract", "frontend_quality_start_head",
     )
     if "execution_contract" in active:
         keys = keys + ("execution_contract",)
@@ -2810,12 +2988,16 @@ def cmd_prompt_context():
         return 0
     active = load_active(root)
     if active.get("awaiting_user") is True:
-        # The user answered the gate question the orchestrator was awaiting; resume the run.
-        resumed = dict(active)
-        for key in ("awaiting_user", "awaiting_kind", "awaiting_reason", "awaiting_since"):
-            resumed.pop(key, None)
-        resumed["updated_at"] = iso_now()
-        write_active(root, resumed)
+        if active.get("awaiting_kind") == "intake":
+            record_intake_response(root, active, "chat")
+        else:
+            # The user answered the material gate question the orchestrator was awaiting.
+            resumed = dict(active)
+            resumed.pop("present", None)
+            for key in ("awaiting_user", "awaiting_kind", "awaiting_reason", "awaiting_since"):
+                resumed.pop(key, None)
+            resumed["updated_at"] = iso_now()
+            write_active(root, resumed)
         status = status_json(root)
     run = status["run"]
     stale = status["stale_risk"]
@@ -2834,6 +3016,60 @@ def cmd_prompt_context():
     if stale in ("needs_revalidation", "unknown") and not exact_revalidation:
         context += " Active-session freshness is %s; revalidate the plan/code first, then run hooks/active-run.sh refresh-baseline --write before finishing." % stale
     sys.stdout.write(json_pretty({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": context}}) + "\n")
+    return 0
+
+
+def _native_response_rejected(value):
+    rejected_statuses = {"auto_resolved", "autoresolved", "cancelled", "canceled", "default", "defaulted", "error", "failed", "timeout", "timed_out"}
+    if isinstance(value, dict):
+        for key, item in value.items():
+            normalized = str(key).replace("-", "_").lower()
+            if normalized in ("iserror", "is_error", "cancelled", "canceled", "timed_out", "timeout", "auto_resolved", "autoresolved") and item not in (False, None, "", 0):
+                return True
+            if normalized in ("status", "outcome", "reason") and str(item).replace("-", "_").lower() in rejected_statuses:
+                return True
+            if _native_response_rejected(item):
+                return True
+    elif isinstance(value, list):
+        return any(_native_response_rejected(item) for item in value)
+    return False
+
+
+def _native_response_present(value):
+    if isinstance(value, dict):
+        for key in ("answers", "answer", "responses", "response", "result", "value"):
+            if key in value and _native_response_present(value[key]):
+                return True
+        return any(_native_response_present(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_native_response_present(item) for item in value)
+    return isinstance(value, (str, int, float, bool)) and value not in ("", False)
+
+
+def cmd_intake_response():
+    input_text = sys.stdin.read()
+    data = parse_hook_input(input_text)
+    root = hook_root(input_text, data)
+    status = status_json(root)
+    if not (status.get("present") is True and status.get("terminal") is False):
+        return 0
+    if hook_owner_relation(status, data) != "owner":
+        return 0
+    active = load_active(root)
+    if active.get("awaiting_user") is not True or active.get("awaiting_kind") != "intake":
+        return 0
+    tool_name = data.get("tool_name") or data.get("name")
+    if not tool_name and isinstance(data.get("tool"), dict):
+        tool_name = data["tool"].get("name")
+    if tool_name not in ("AskUserQuestion", "request_user_input"):
+        return 0
+    tool_input = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
+    if tool_name == "request_user_input" and "autoResolutionMs" in tool_input:
+        return 0
+    response = data.get("tool_response", data.get("tool_output", data.get("result")))
+    if response is None or _native_response_rejected(data) or not _native_response_present(response):
+        return 0
+    record_intake_response(root, active, "native_tool")
     return 0
 
 
@@ -2920,6 +3156,8 @@ def main(argv=None):
             cmd_refresh_baseline(args)
         elif command == "await-user":
             cmd_await_user(args)
+        elif command == "pin-intent-lock":
+            cmd_pin_intent_lock(args)
         elif command == "phase-read":
             cmd_phase_read(args)
         elif command == "phase-read-status":
@@ -2938,6 +3176,8 @@ def main(argv=None):
             return cmd_owner_check()
         elif command == "prompt-context":
             return cmd_prompt_context()
+        elif command == "intake-response":
+            return cmd_intake_response()
         elif command == "stop-gate":
             return cmd_stop_gate()
         elif command in ("--help", "-h", "help"):

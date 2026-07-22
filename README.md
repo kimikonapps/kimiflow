@@ -159,18 +159,20 @@ Useful explicit forms:
 ```
 
 Kimiflow first proves where the product goal, actor, visible behavior, boundaries, and success came
-from. Missing product facts are asked once in one compact batch; complete requests ask nothing. The
-user decides WHAT/WHY, while architecture, libraries, data models, tests, and other technical HOW stay
-with the agent. The answer becomes the plain-language contract and the run continues autonomously
-without a second confirmation. Exact trivial work may skip the loop.
+from. Every new non-trivial feature gets one compact Product Intake before planning or project writes;
+an already-complete request gets a short contract confirmation instead of filler questions. The user
+decides WHAT/WHY, while architecture, libraries, data models, tests, and other technical HOW stay with
+the agent. After the answer, the product contract is locked and the run continues autonomously. A
+second batch is allowed only when the first answer creates a new material product conflict. Exact
+trivial work and fixes keep their direct routes.
 
 ## Eight Phases
 
 | Phase | What happens |
 |---|---|
 | 0 Setup | Inventory every worktree, create durable run state, then batch any safe-disposition decision once. |
-| 1 Clarify | Prove product-intent provenance, ask at most one product batch, forbid HOW questions, then continue. |
-| 2 Understand | Inspect project knowledge and code; choose Discovery `none`, `pulse`, or `focused`. Fixes reproduce and prove the cause. |
+| 1 Clarify | Run the mandatory Product Intake for non-trivial features, forbid HOW questions, lock the confirmed contract, then continue. |
+| 2 Understand | Inspect project knowledge and code; choose Discovery `none`, `pulse`, or `focused`, and prove architecture feasibility before planning. Fixes reproduce and prove the cause. |
 | 3 Plan | Write a flat minimum-complete plan, testable acceptance criteria, and up to five evidence-bound implementation decisions. |
 | 4 Review | Resolve plan blockers and pause only for a material authority, scope, risk, privacy, cost, or irreversible decision. |
 | 5 Implement | Apply the smallest accepted change, normally sequentially; fixes preserve red evidence before production code. |
@@ -184,9 +186,9 @@ without a second confirmation. Exact trivial work may skip the loop.
 | Gate | Enforced boundary |
 |---|---|
 | Workspace preflight | Every linked tree and dirty path is classified; cleanup is no-force, ownership-bound, and solo-dev by default. |
-| Clarify and Discovery gates | Product-intent provenance is complete, technical questions are zero, and source/scope/decision evidence exists before planning. |
+| Product Intake, Clarify and Discovery gates | Supported planning/writes stay blocked until an explicit product response; the locked intent, zero technical questions, feasibility, and source/scope/decision evidence must hold before planning. |
 | Plan-blocker and review gates | Acceptance mappings and evidenced `BLOCKER/HIGH` findings are resolved within a bounded repair budget. |
-| Implementation-conformance gate | Researched decisions, invariants, affected paths, and exact checks converge in Phase 6; finish additionally proves the committed delivery matches. |
+| Implementation-conformance gate | Researched decisions, invariants, affected paths, exact checks, and every locked product requirement converge in Phase 6; finish additionally proves the committed delivery matches. |
 | Adaptive execution controller | Run-wide no-progress and budget pressure select a bounded recovery action; mandatory quality gates remain intact. |
 | Local run control plane | Hosts receive one readiness/cursor contract; shared locking, owner proof and action receipts make supported item mutations fail closed and replay-safe. |
 | Material-decision gate | Reversible technical work continues; only missing authority, material risk, external access, privacy/cost, or irreversibility pauses. |

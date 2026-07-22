@@ -2,7 +2,7 @@
 # kimiflow — Phase-1 intent guard plus post-diagnosis fix approval guard.
 #
 # Usage:
-#   clarify-gate.sh <run-dir> [--post-diagnosis|--record-fix-approval] [--pretty]
+#   clarify-gate.sh <run-dir> [--post-diagnosis|--record-fix-approval|--record-intent-lock] [--pretty]
 #
 # Output:
 #   CLARIFY_GATE<TAB>OPEN|CLOSED<TAB>blockers=<n><TAB>reason=<code><TAB>detail=<codes>
@@ -25,10 +25,12 @@ emit() {
 run_dir=""
 post_diagnosis=0
 record_fix_approval=0
+record_intent_lock=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --post-diagnosis) post_diagnosis=1; shift ;;
     --record-fix-approval) post_diagnosis=1; record_fix_approval=1; shift ;;
+    --record-intent-lock) record_intent_lock=1; shift ;;
     --pretty) shift ;;   # accepted, reserved no-op (no pretty-print path implemented)
     -*) shift ;;
     *) [ -z "$run_dir" ] && run_dir="$1"; shift ;;
@@ -184,6 +186,9 @@ state_approval_basis="$(kimiflow_state_value "$state" "Fix approval basis" | tr 
 legacy_approval_present="$(grep -Eio '<!--[[:space:]]*kimiflow:fix-approval[^>]*-->' "$run_dir/DIAGNOSIS.md" 2>/dev/null | head -1 || true)"
 if [ "$record_fix_approval" -eq 1 ] && [ "$mode_value" != "fix" ]; then
   emit CLOSED 1 malformed "fix_approval_mode_invalid"
+fi
+if [ "$record_intent_lock" -eq 1 ] && { [ "$mode_value" != "feature" ] || [ "$intent_contract" != "3" ]; }; then
+  emit CLOSED 1 malformed "intent_lock_mode_invalid"
 fi
 if [ "$post_diagnosis" -eq 1 ] && [ -n "$state_approval$state_approval_basis$legacy_approval_present" ] && [ "$mode_value" != "fix" ]; then
   emit CLOSED 1 fix-approval-blockers "fix_approval_mode_changed"
@@ -367,6 +372,144 @@ if [ "$mode_value" = "feature" ] && [ "$scope" != "trivial" ]; then
       if [ "$blockers" -eq 0 ]; then
         emit_open
       fi
+      emit CLOSED "$blockers" clarify-blockers "$details"
+      ;;
+    3)
+      coverage_marker="$(grep -Eio '<!--[[:space:]]*kimiflow:intent-coverage[^>]*-->|kimiflow:intent-coverage[^[:cntrl:]]*' "$artifact" | head -1 || true)"
+      coverage_marker="$(printf '%s\n' "$coverage_marker" | sed 's/<!--[[:space:]]*//; s/[[:space:]]*-->//')"
+      [ -n "$coverage_marker" ] || { add_blocker "intent_coverage_missing"; emit CLOSED "$blockers" clarify-blockers "$details"; }
+      coverage_contract="$(marker_attr "$coverage_marker" contract)"
+      coverage_goal="$(marker_attr "$coverage_marker" goal)"
+      coverage_actor="$(marker_attr "$coverage_marker" actor)"
+      coverage_behavior="$(marker_attr "$coverage_marker" behavior)"
+      coverage_boundaries="$(marker_attr "$coverage_marker" boundaries)"
+      coverage_success="$(marker_attr "$coverage_marker" success)"
+      coverage_constraints="$(marker_attr "$coverage_marker" constraints)"
+      coverage_unknowns="$(marker_attr "$coverage_marker" unknown_material)"
+      coverage_rounds="$(marker_attr "$coverage_marker" question_rounds)"
+      coverage_technical="$(marker_attr "$coverage_marker" technical_questions)"
+      coverage_critic="$(marker_attr "$coverage_marker" critic)"
+      coverage_authority="$(marker_attr "$coverage_marker" authority)"
+      coverage_summary="$(marker_attr "$coverage_marker" summary)"
+      coverage_source="$(marker_attr "$coverage_marker" source)"
+
+      [ "$coverage_contract" = "3" ] || add_blocker "intent_coverage_contract_invalid"
+      case "$flow_schema" in ''|*[!0-9]*) add_blocker "intent_contract_schema_invalid" ;; *) [ "$flow_schema" -ge 4 ] || add_blocker "intent_contract_schema_invalid" ;; esac
+      case "$scope" in small|large) ;; *) add_blocker "intent_scope_tier_invalid" ;; esac
+      strong_product_source "$coverage_goal" || add_blocker "intent_goal_provenance_invalid"
+      bounded_product_source "$coverage_actor" || add_blocker "intent_actor_provenance_invalid"
+      strong_product_source "$coverage_behavior" || add_blocker "intent_behavior_provenance_invalid"
+      bounded_product_source "$coverage_boundaries" || add_blocker "intent_boundaries_provenance_invalid"
+      strong_product_source "$coverage_success" || add_blocker "intent_success_provenance_invalid"
+      bounded_product_source "$coverage_constraints" || add_blocker "intent_constraints_provenance_invalid"
+      require_project_evidence goal "$coverage_goal"
+      require_project_evidence actor "$coverage_actor"
+      require_project_evidence behavior "$coverage_behavior"
+      require_project_evidence boundaries "$coverage_boundaries"
+      require_project_evidence success "$coverage_success"
+      require_project_evidence constraints "$coverage_constraints"
+      [ "$coverage_unknowns" = "0" ] || add_blocker "intent_material_unknowns_open"
+      case "$coverage_rounds" in 1|2) ;; "") add_blocker "intent_question_rounds_missing" ;; *) add_blocker "intent_question_rounds_exceeded" ;; esac
+      [ "$coverage_technical" = "0" ] || add_blocker "intent_technical_questions_forbidden"
+      if [ "$scope" = "large" ]; then [ "$coverage_critic" = "passed" ] || add_blocker "intent_critic_required"; else case "$coverage_critic" in passed|folded) ;; *) add_blocker "intent_critic_invalid" ;; esac; fi
+      case "$coverage_source" in current-run|current_run) ;; *) add_blocker "intent_coverage_not_current_run" ;; esac
+      if [ "$requires_implementation_authority" -eq 1 ]; then case "$coverage_authority" in explicit|confirmed) ;; *) add_blocker "implementation_authority_missing" ;; esac; fi
+      [ "$coverage_summary" = "present" ] || add_blocker "plain_summary_missing"
+
+      contract3_detail="$(python3 - "$run_dir" "$coverage_rounds" "$record_intent_lock" "$SCRIPT_DIR/active-run.sh" <<'PY'
+import hashlib, json, os, re, subprocess, sys, tempfile
+run_dir, rounds_raw, record_raw, active_script = sys.argv[1:]
+errors=[]
+try: rounds=int(rounds_raw)
+except ValueError: rounds=0
+
+def sha(path):
+    h=hashlib.sha256()
+    with open(path,"rb") as f:
+        for chunk in iter(lambda:f.read(65536),b""): h.update(chunk)
+    return "sha256:"+h.hexdigest()
+
+def request(round_no):
+    name="INTAKE.md" if round_no==1 else "INTAKE-2.md"
+    path=os.path.join(run_dir,name)
+    try:
+        if os.path.islink(path) or not os.path.isfile(path) or not 0 < os.path.getsize(path) <= 65536:
+            raise OSError
+        text=open(path,encoding="utf-8").read()
+    except (OSError,UnicodeError):
+        errors.append("intake_request_%d_missing"%round_no); return None,None
+    markers=re.findall(r"^<!-- kimiflow:intake ([^\n]+) -->$",text,re.M)
+    if len(markers)!=1:
+        errors.append("intake_marker_%d_invalid"%round_no); return path,None
+    attrs=dict(re.findall(r"([a-z_]+)=([A-Za-z0-9_-]+)",markers[0]))
+    if attrs.get("contract")!="3" or attrs.get("round")!=str(round_no): errors.append("intake_marker_%d_invalid"%round_no)
+    try: questions=int(attrs.get("questions","0"))
+    except ValueError: questions=0
+    if not 1 <= questions <= 5: errors.append("intake_questions_%d_out_of_bounds"%round_no)
+    if attrs.get("selection")!="impact_uncertainty": errors.append("intake_selection_%d_invalid"%round_no)
+    if attrs.get("technical_questions")!="0": errors.append("intake_technical_questions_%d_forbidden"%round_no)
+    if round_no==2 and attrs.get("cause")!="first_response_conflict": errors.append("intake_round_2_cause_invalid")
+    return path,sha(path)
+
+def receipt(round_no,digest):
+    path=os.path.join(run_dir,"INTAKE-RECEIPT-%d.json"%round_no)
+    try:
+        if os.path.islink(path): raise OSError
+        value=json.load(open(path,encoding="utf-8"))
+    except (OSError,ValueError,UnicodeError):
+        errors.append("intake_receipt_%d_missing"%round_no); return
+    expected={"schema_version","contract","round","request","request_digest","channel","responded_at"}
+    request_name="INTAKE.md" if round_no==1 else "INTAKE-2.md"
+    if set(value)!=expected or value.get("schema_version")!=1 or value.get("contract")!=3 or value.get("round")!=round_no or value.get("request")!=request_name or value.get("request_digest")!=digest or value.get("channel") not in ("chat","native_tool") or not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z",str(value.get("responded_at",""))):
+        errors.append("intake_receipt_%d_invalid"%round_no)
+
+for n in range(1,rounds+1):
+    _,d=request(n)
+    if d: receipt(n,d)
+if rounds==1 and os.path.lexists(os.path.join(run_dir,"INTAKE-RECEIPT-2.json")): errors.append("intake_round_2_unbound")
+
+intent=os.path.join(run_dir,"INTENT.md")
+try: intent_text=open(intent,encoding="utf-8").read(); intent_digest=sha(intent)
+except (OSError,UnicodeError): errors.append("intent_missing"); intent_text=""; intent_digest=""
+requirements=re.findall(r"^Requirement (R[1-9][0-9]*):\s*\S.+$",intent_text,re.M)
+if not requirements or len(requirements)>20 or requirements != ["R%d"%n for n in range(1,len(requirements)+1)]: errors.append("intent_requirements_invalid")
+lock_path=os.path.join(run_dir,"INTENT-LOCK.json")
+lock=None
+if os.path.lexists(lock_path):
+    try:
+        if os.path.islink(lock_path): raise OSError
+        lock=json.load(open(lock_path,encoding="utf-8"))
+    except (OSError,ValueError,UnicodeError): errors.append("intent_lock_invalid")
+if lock is None and record_raw=="1" and not errors:
+    lock={"schema_version":1,"contract":3,"intent_digest":intent_digest,"requirements":requirements,"locked_at":__import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    try:
+        fd=os.open(lock_path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+        with os.fdopen(fd,"w",encoding="utf-8") as f: json.dump(lock,f,ensure_ascii=False,indent=2); f.write("\n"); f.flush(); os.fsync(f.fileno())
+    except OSError: errors.append("intent_lock_write_failed")
+if lock is None and "intent_lock_invalid" not in errors: errors.append("intent_lock_missing")
+if isinstance(lock,dict):
+    if set(lock)!={"schema_version","contract","intent_digest","requirements","locked_at"} or lock.get("schema_version")!=1 or lock.get("contract")!=3 or lock.get("intent_digest")!=intent_digest or lock.get("requirements")!=requirements: errors.append("intent_lock_stale")
+    else:
+        lock_digest=sha(lock_path)
+        try:
+            root=subprocess.run(["git","-C",run_dir,"rev-parse","--show-toplevel"],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True,check=True).stdout.strip()
+            active=json.load(open(os.path.join(root,".kimiflow/session/ACTIVE_RUN.json"),encoding="utf-8"))
+            pinned=active.get("intent_lock_digest","")
+            if pinned and pinned!=lock_digest: errors.append("intent_lock_basis_replaced")
+            elif not pinned and record_raw=="1":
+                rel=os.path.relpath(os.path.realpath(run_dir),os.path.realpath(root))
+                p=subprocess.run([active_script,"pin-intent-lock","--root",root,"--run",rel,"--digest",lock_digest,"--write"],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                if p.returncode: errors.append("intent_lock_pin_failed")
+            elif not pinned: errors.append("intent_lock_pin_missing")
+        except (OSError,ValueError,subprocess.CalledProcessError): errors.append("intent_lock_pin_missing")
+print(",".join(dict.fromkeys(errors)))
+PY
+)"
+      if [ -n "$contract3_detail" ]; then
+        old_ifs="$IFS"; IFS=','; set -- $contract3_detail; IFS="$old_ifs"
+        for detail in "$@"; do add_blocker "$detail"; done
+      fi
+      if [ "$blockers" -eq 0 ]; then emit_open; fi
       emit CLOSED "$blockers" clarify-blockers "$details"
       ;;
     *)

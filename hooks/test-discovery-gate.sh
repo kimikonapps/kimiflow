@@ -41,6 +41,16 @@ EOF
 
 run_gate() { "$SCRIPT" "$RUN"; }
 
+reset_contract3() {
+  reset_run
+  sed -i.bak -e 's/Flow schema: 3/Flow schema: 4/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+  printf 'Intent contract: 3\n' >> "$RUN/STATE.md"
+  cat >> "$RUN/RESEARCH.md" <<'EOF'
+<!-- kimiflow:feasibility status=evolve user_gate=no decision=not_required -->
+Feasibility summary: The current architecture can evolve reversibly.
+EOF
+}
+
 reset_run
 out="$(run_gate)"
 assert_field "$out" 2 OPEN "complete_discovery_opens"
@@ -143,6 +153,33 @@ sed -i.bak 's/Flow schema: 3/Flow schema: invalid/' "$RUN/STATE.md" && rm "$RUN/
 out="$(run_gate)"
 assert_field "$out" 2 CLOSED "invalid_flow_schema_closes"
 assert_contains "$out" "flow_schema_invalid" "invalid_flow_schema_detail"
+
+reset_contract3
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "contract3_evolve_opens_autonomously"
+
+reset_contract3
+sed -i.bak 's/status=evolve user_gate=no decision=not_required/status=replace user_gate=no decision=not_required/' "$RUN/RESEARCH.md" && rm "$RUN/RESEARCH.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "contract3_unconfirmed_replace_closes"
+assert_contains "$out" "feasibility_replace_unconfirmed" "contract3_unconfirmed_replace_detail"
+
+reset_contract3
+sed -i.bak 's/status=evolve user_gate=no decision=not_required/status=replace user_gate=yes decision=confirmed/' "$RUN/RESEARCH.md" && rm "$RUN/RESEARCH.md.bak"
+printf 'Feasibility decision kind: scope-risk\n' >> "$RUN/RESEARCH.md"
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "contract3_confirmed_replace_opens"
+
+reset_contract3
+sed -i.bak 's/status=evolve/status=unproven/' "$RUN/RESEARCH.md" && rm "$RUN/RESEARCH.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "contract3_unproven_closes"
+assert_contains "$out" "feasibility_status_unproven" "contract3_unproven_detail"
+
+reset_run
+printf 'Intent contract: 2\n' >> "$RUN/STATE.md"
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "contract2_feasibility_marker_not_required"
 
 reset_run
 sed -i.bak -e 's/Mode: feature/Mode: featre/' -e 's/Discovery required: yes/Discovery required: no/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"

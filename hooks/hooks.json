@@ -27,11 +27,35 @@
         "hooks": [
           {
             "type": "command",
+            "command": "\"${KIMIFLOW_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\"/hooks/intake-gate.sh"
+          },
+          {
+            "type": "command",
             "command": "\"${KIMIFLOW_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\"/hooks/commit-secret-gate.sh"
           },
           {
             "type": "command",
             "command": "\"${KIMIFLOW_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\"/hooks/state-gate.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|TaskCreate|TaskUpdate|EnterPlanMode|ExitPlanMode|AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${KIMIFLOW_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\"/hooks/intake-gate.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${KIMIFLOW_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}\"/hooks/active-run.sh intake-response"
           }
         ]
       }

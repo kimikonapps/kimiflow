@@ -302,6 +302,55 @@ def git_root(run_dir):
     return os.path.realpath(os.fsdecode(proc.stdout).strip())
 
 
+def validate_intent_authority(root, run_dir, run_descriptor, state_contract, intent, requirements, errors):
+    active_path = os.path.join(root, ".kimiflow", "session", "ACTIVE_RUN.json")
+    active_text = read_text(active_path) if os.path.lexists(active_path) else None
+    try:
+        active = json.loads(active_text) if active_text is not None else None
+    except json.JSONDecodeError:
+        active = None
+    expected_run = os.path.relpath(run_dir, root).replace(os.sep, "/")
+    if not isinstance(active, dict) or active.get("run") != expected_run:
+        if state_contract == "3":
+            errors.append("active_intent_contract_mismatch")
+        return
+    pinned_contract = str(active.get("intent_contract") or "").strip()
+    if pinned_contract:
+        if pinned_contract != state_contract:
+            errors.append("active_intent_contract_mismatch")
+            return
+    elif state_contract == "3":
+        errors.append("active_intent_contract_mismatch")
+        return
+    if state_contract != "3":
+        return
+
+    lock_text = read_run_text(run_descriptor, "INTENT-LOCK.json")
+    try:
+        lock = json.loads(lock_text) if lock_text is not None else None
+    except json.JSONDecodeError:
+        lock = None
+    if not isinstance(lock, dict):
+        errors.append("intent_lock_invalid")
+        return
+    current_intent_digest = "sha256:" + hashlib.sha256(intent.encode("utf-8")).hexdigest()
+    expected_keys = {"schema_version", "contract", "intent_digest", "requirements", "locked_at"}
+    locked_at = str(lock.get("locked_at") or "")
+    if (
+        set(lock) != expected_keys
+        or lock.get("schema_version") != 1
+        or lock.get("contract") != 3
+        or lock.get("intent_digest") != current_intent_digest
+        or lock.get("requirements") != requirements
+        or re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", locked_at) is None
+    ):
+        errors.append("intent_lock_stale")
+        return
+    lock_digest = "sha256:" + hashlib.sha256(lock_text.encode("utf-8")).hexdigest()
+    if str(active.get("intent_lock_digest") or "") != lock_digest:
+        errors.append("intent_lock_basis_replaced")
+
+
 def actual_delta(root, started_head, errors):
     verify = run(["git", "-C", root, "cat-file", "-e", "%s^{commit}" % started_head])
     if verify.returncode != 0:
@@ -701,6 +750,7 @@ scope = one_state(state_lines, "Scope", errors).lower().split(" ", 1)[0]
 basis = one_state(state_lines, "Conformance basis", errors)
 started_head = one_state(state_lines, "Run started head", errors, required=not plan_only)
 architecture_state = one_state(state_lines, "Architecture deliberation", errors, required=False).lower().split(" ", 1)[0]
+intent_contract = one_state(state_lines, "Intent contract", errors, required=False).strip()
 affected = affected_paths(state_lines, errors)
 if schema != "4":
     errors.append("flow_schema_invalid")
@@ -722,10 +772,39 @@ evidence_name = "RESEARCH.md" if mode == "feature" else "DIAGNOSIS.md"
 plan = artifact(plan_path, "plan", errors, directory=run_descriptor)
 acceptance = artifact(acceptance_path, "acceptance", errors, directory=run_descriptor)
 evidence = artifact(os.path.join(run_dir, evidence_name), evidence_name.lower(), errors, directory=run_descriptor)
+intent_name = "INTENT.md" if mode == "feature" else "PROBLEM.md"
+intent = artifact(os.path.join(run_dir, intent_name), intent_name.lower(), errors, directory=run_descriptor)
 plan_lines = markdown_lines(plan)
 acceptance_lines = markdown_lines(acceptance)
 evidence_lines = markdown_lines(evidence)
 acceptance_criteria = declared_acceptance_criteria(acceptance_lines)
+requirements = []
+if mode == "feature" and intent_contract == "3":
+    requirements = re.findall(r"^Requirement (R[1-9][0-9]*):\s*\S.+$", intent, flags=re.MULTILINE)
+    expected_requirements = ["R%s" % ident for ident in range(1, len(requirements) + 1)]
+    if not requirements or len(requirements) > 20 or requirements != expected_requirements:
+        errors.append("intent_requirements_invalid")
+    trace_rows = {}
+    for line in acceptance_lines:
+        match = re.fullmatch(r"Requirement trace (R[1-9][0-9]*): (AC-[0-9]+)", line)
+        if match:
+            trace_rows.setdefault(match.group(1), []).append(match.group(2))
+    for requirement in requirements:
+        values = trace_rows.get(requirement, [])
+        if len(values) != 1:
+            errors.append("requirement_trace_%s_%s" % (requirement, "missing" if not values else "duplicate"))
+        elif values[0] not in acceptance_criteria:
+            errors.append("requirement_trace_%s_ac_missing" % requirement)
+    unexpected_traces = sorted(set(trace_rows) - set(requirements))
+    if unexpected_traces:
+        errors.append("requirement_trace_%s_unexpected" % unexpected_traces[0])
+root = None
+root_probe = run(["git", "-C", os.path.dirname(os.path.dirname(run_dir)), "rev-parse", "--show-toplevel"])
+if root_probe.returncode == 0:
+    root = os.path.realpath(os.fsdecode(root_probe.stdout).strip())
+    validate_intent_authority(root, run_dir, run_descriptor, intent_contract, intent, requirements, errors)
+elif intent_contract == "3":
+    errors.append("git_root_missing")
 evidence_headings = {
     match.group(1).strip()
     for line in evidence_lines
@@ -801,11 +880,27 @@ if errors:
     emit("CLOSED", "plan-contract", errors)
 if plan_only:
     emit("OPEN", "plan-clean", [])
-root = git_root(os.path.dirname(os.path.dirname(run_dir)))
+if root is None:
+    root = git_root(os.path.dirname(os.path.dirname(run_dir)))
 
 verification_path = os.path.join(run_dir, "VERIFICATION.md")
 verification = artifact(verification_path, "verification", errors, directory=run_descriptor)
 verification_lines = markdown_lines(verification)
+if mode == "feature" and intent_contract == "3":
+    requirement_checks = {}
+    for line in verification_lines:
+        match = re.fullmatch(r"Requirement (R[1-9][0-9]*): (passed|failed) :: (\S.*)", line)
+        if match:
+            requirement_checks.setdefault(match.group(1), []).append((match.group(2), match.group(3)))
+    for requirement in requirements:
+        values = requirement_checks.get(requirement, [])
+        if len(values) != 1:
+            errors.append("requirement_check_%s_%s" % (requirement, "missing" if not values else "duplicate"))
+        elif values[0][0] != "passed":
+            errors.append("requirement_check_%s_not_passed" % requirement)
+    unexpected_requirement_checks = sorted(set(requirement_checks) - set(requirements))
+    if unexpected_requirement_checks:
+        errors.append("requirement_check_%s_unexpected" % unexpected_requirement_checks[0])
 generic = [line for line in verification_lines if line.startswith("<!-- kimiflow:verification ")]
 generic_match = None
 if len(generic) != 1:
@@ -959,8 +1054,6 @@ for ident, row in decision_rows.items():
         if rel not in delta:
             errors.append("path_D%s_not_in_delta" % ident)
 
-intent_name = "INTENT.md" if mode == "feature" else "PROBLEM.md"
-intent = artifact(os.path.join(run_dir, intent_name), intent_name.lower(), errors, directory=run_descriptor)
 if errors:
     emit("CLOSED", "conformance-blockers", errors)
 if status != "converged":

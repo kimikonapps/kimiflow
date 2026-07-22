@@ -33,7 +33,7 @@ jq -e '.name == "kimiflow" and (.plugins[] | select(.name == "kimiflow" and .sou
   && ok "codex marketplace entry" || bad "codex marketplace entry"
 jq -e '[.. | strings] | join(" ") | test("full/grill/plan/build/quick/review/audit/fix"; "i")' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
   && ok "codex marketplace describes natural mode aliases" || bad "codex marketplace missing natural mode aliases"
-jq -e '[.hooks[]?[]?.hooks[]? | select(.type == "command")] | length == 6 and all(.[]; (.name // "" | length > 0) and (.description // "" | length > 0) and (.statusMessage // "" | length > 0))' "$ROOT/hooks.json" >/dev/null 2>&1 \
+jq -e '[.hooks[]?[]?.hooks[]? | select(.type == "command")] | length == 9 and all(.[]; (.name // "" | length > 0) and (.description // "" | length > 0) and (.statusMessage // "" | length > 0))' "$ROOT/hooks.json" >/dev/null 2>&1 \
   && ok "codex plugin hooks are labelled" || bad "codex plugin hook labels missing"
 
 echo "== capability display sync (Codex) =="
@@ -77,10 +77,10 @@ for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'k
   grep -q "$term" "$ROOT/README.md" && ok "README documents mode alias: $term" || bad "README missing mode alias: $term"
 done
 grep -q 'full.*does not create an approval stop' "$ROOT/SKILL.md" && ok "full mode follows material-risk decisions" || bad "full mode still forces approval"
-grep -q 'provenance scan; ≤1 product batch' "$ROOT/SKILL.md" && ok "canonical skill bounds intent interaction" || bad "canonical skill missing bounded intent interaction"
-grep -q 'zero or one product-question batch' "$SKILL" && ok "Codex wrapper preserves bounded intent interaction" || bad "Codex wrapper missing bounded intent interaction"
-grep -q 'Intent Coverage Scan (Contract 2)' "$ROOT/reference.md" && ok "reference documents provenance-aware intent coverage" || bad "reference missing provenance-aware intent coverage"
-grep -q 'one compact batch' "$ROOT/README.md" && ok "README documents batched clarification" || bad "README missing batched clarification"
+grep -q 'Contract-3 mandatory Product Intake' "$ROOT/SKILL.md" && ok "canonical skill requires bounded intent interaction" || bad "canonical skill missing bounded intent interaction"
+grep -q 'require one explicit bounded Product Intake' "$SKILL" && ok "Codex wrapper preserves mandatory intent interaction" || bad "Codex wrapper missing mandatory intent interaction"
+grep -q 'Intent Coverage Scan (Contract 3)' "$ROOT/reference.md" && ok "reference documents provenance-aware intent coverage" || bad "reference missing provenance-aware intent coverage"
+grep -q 'one compact Product Intake' "$ROOT/README.md" && ok "README documents batched clarification" || bad "README missing batched clarification"
 grep -q 'git commit --only' "$ROOT/phases/phase-7-review-commit.md" && grep -q 'foreign staged' "$ROOT/phases/phase-7-review-commit.md" \
   && ok "atomic commit isolates foreign staged paths" || bad "atomic commit foreign-staging isolation missing"
 grep -q 'Vault Pulse' "$ROOT/SKILL.md" && ok "canonical skill requires scope=large Vault Pulse semantics" || bad "canonical skill missing Vault Pulse"
@@ -139,13 +139,13 @@ if grep -Ei 'code-review-audit|full.*one mode-specific Preview approval|explicit
 grep -q 'automatisch geroutete' "$ROOT/docs/architecture.md" && grep -q 'automatically routed' "$ROOT/docs/kimiflow-vs-claude-md-vs-superpowers.md" && ok "maintainer docs preserve automatic routing" || bad "maintainer docs lost automatic routing"
 if [ -x "$ROOT/hooks/clarify-gate.sh" ] && bash -n "$ROOT/hooks/clarify-gate.sh" 2>/dev/null; then ok "clarify gate helper ok"; else bad "clarify gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-clarify-gate.sh" ] && bash -n "$ROOT/hooks/test-clarify-gate.sh" 2>/dev/null; then ok "clarify gate test ok"; else bad "clarify gate test missing/not-exec/bad"; fi
-if grep -q 'Intent contract: 2' "$ROOT/phases/phase-0-setup.md" \
+if grep -q 'Intent contract: 3' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'Impact x Uncertainty' "$ROOT/phases/phase-1-clarify.md" \
   && grep -q 'technical_questions=0' "$ROOT/reference.md" \
   && grep -q 'intent_coverage_missing' "$ROOT/hooks/clarify-gate.sh" \
-  && grep -q 'contract2_complete_zero_round_opens' "$ROOT/hooks/test-clarify-gate.sh" \
+  && grep -q 'contract3_valid_intake_records_lock' "$ROOT/hooks/test-clarify-gate.sh" \
   && grep -q 'product-intent ownership' "$ROOT/evals/README.md"; then
-  ok "product intent ownership and single-batch autonomy"
+  ok "product intent ownership and mandatory-intake autonomy"
 else
   bad "product intent ownership contract incomplete"
 fi
@@ -373,16 +373,16 @@ INSTALLER="$ROOT/hooks/install-codex-hooks.sh"
 if [ -x "$INSTALLER" ] && bash -n "$INSTALLER" 2>/dev/null; then ok "installer script ok: hooks/install-codex-hooks.sh"; else bad "installer script missing/not-exec/bad"; fi
 tmp_home="$(mktemp -d)"
 if CODEX_HOME="$tmp_home/codex" "$INSTALLER" >/dev/null 2>&1; then ok "installer writes wrappers into temp CODEX_HOME"; else bad "installer failed in temp CODEX_HOME"; fi
-for f in kimiflow-commit-secret-gate.sh kimiflow-state-gate.sh kimiflow-test-gate.sh kimiflow-active-run.sh; do
+for f in kimiflow-commit-secret-gate.sh kimiflow-intake-gate.sh kimiflow-state-gate.sh kimiflow-test-gate.sh kimiflow-active-run.sh; do
   wp="$tmp_home/codex/hooks/$f"
   if [ -x "$wp" ] && bash -n "$wp" 2>/dev/null && grep -q "KIMIFLOW_PLUGIN_ROOT=" "$wp"; then ok "wrapper ok: $f"; else bad "wrapper missing/bad: $f"; fi
 done
 
-# Stable-wrapper coverage is EXPLICIT, not incidental: the 6 hooks.json plugin-hook commands reduce to 5
-# distinct scripts; the 4 stable wrappers cover the enforcement gates. The one script left unwrapped MUST be
+# Stable-wrapper coverage is EXPLICIT, not incidental: the plugin-hook commands reduce to a small
+# distinct script set; the 5 stable wrappers cover the enforcement gates. The one script left unwrapped MUST be
 # exactly map-staleness-nudge.sh (a non-blocking advisory nudge, deliberately plugin_hooks-only). Any other
 # gap = drift (e.g. a new enforcement hook added to hooks.json but never wrapped).
-wrapped_scripts="commit-secret-gate.sh state-gate.sh test-gate.sh active-run.sh"
+wrapped_scripts="commit-secret-gate.sh intake-gate.sh state-gate.sh test-gate.sh active-run.sh"
 uncovered=""
 while IFS= read -r s; do
   [ -n "$s" ] || continue

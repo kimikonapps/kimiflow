@@ -18,6 +18,13 @@
         "matcher": "Bash",
         "hooks": [
           {
+            "name": "Kimiflow Product Intake",
+            "description": "Blocks supported planning and project writes until the required Product Intake response is recorded.",
+            "type": "command",
+            "command": "KIMIFLOW_HOST=codex \"${KIMIFLOW_PLUGIN_ROOT:-.}\"/hooks/intake-gate.sh",
+            "statusMessage": "Checking Kimiflow Product Intake"
+          },
+          {
             "name": "Kimiflow commit hygiene",
             "description": "Blocks broad git staging and secret-looking paths in Kimiflow repositories before Bash commands run.",
             "type": "command",
@@ -30,6 +37,32 @@
             "type": "command",
             "command": "KIMIFLOW_HOST=codex \"${KIMIFLOW_PLUGIN_ROOT:-.}\"/hooks/state-gate.sh",
             "statusMessage": "Checking Kimiflow run state"
+          }
+        ]
+      },
+      {
+        "matcher": "apply_patch|Edit|Write|update_plan|request_user_input",
+        "hooks": [
+          {
+            "name": "Kimiflow Product Intake",
+            "description": "Blocks supported planning and project writes until the required Product Intake response is recorded.",
+            "type": "command",
+            "command": "KIMIFLOW_HOST=codex \"${KIMIFLOW_PLUGIN_ROOT:-.}\"/hooks/intake-gate.sh",
+            "statusMessage": "Checking Kimiflow Product Intake"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "request_user_input",
+        "hooks": [
+          {
+            "name": "Kimiflow intake response",
+            "description": "Records a content-free receipt only for an explicit native Product Intake response.",
+            "type": "command",
+            "command": "KIMIFLOW_HOST=codex \"${KIMIFLOW_PLUGIN_ROOT:-.}\"/hooks/active-run.sh intake-response",
+            "statusMessage": "Recording Kimiflow Product Intake response"
           }
         ]
       }

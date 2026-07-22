@@ -566,6 +566,23 @@ assert_empty "$out" "prompt_context_noops_without_active_session"
 out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" stop-gate)"
 assert_empty "$out" "stop_gate_noops_without_active_session"
 
+reset_repo
+printf 'Flow schema: 4\nIntent contract: 3\n' >> "$REPO/.kimiflow/demo/STATE.md"
+run_active start --run .kimiflow/demo --scope small --write >/dev/null
+out="$(run_active status)"
+assert_jq "$out" '.mode == "feature" and .scope == "small"' "contract3_start_keeps_feature_selector"
+assert_jq "$(cat "$REPO/.kimiflow/session/ACTIVE_RUN.json")" '.intent_contract == "3"' "contract3_start_pins_intent_selector"
+cat > "$REPO/.kimiflow/demo/INTAKE.md" <<'EOF'
+<!-- kimiflow:intake contract=3 round=1 questions=1 selection=impact_uncertainty technical_questions=0 -->
+Confirm the compact product contract.
+EOF
+run_active await-user --run .kimiflow/demo --kind intake --round 1 --request .kimiflow/demo/INTAKE.md --write >/dev/null
+out="$(printf '{"cwd":"%s","session_id":"owner-session","prompt":"private contract answer"}' "$REPO" | KIMIFLOW_HOST=codex "$SCRIPT" prompt-context)"
+assert_jq "$out" '.hookSpecificOutput.hookEventName == "UserPromptSubmit"' "contract3_chat_response_resumes_run"
+assert_jq "$(cat "$REPO/.kimiflow/demo/INTAKE-RECEIPT-1.json")" '.contract == 3 and .round == 1 and .channel == "chat"' "contract3_chat_response_writes_receipt"
+if grep -R -Fq 'private contract answer' "$REPO/.kimiflow"; then fail "contract3_receipt_does_not_store_answer"; else pass "contract3_receipt_does_not_store_answer"; fi
+run_active abort --reason "contract3 fixture complete" --write >/dev/null
+
 CLAUDE_ENV_FILE_TEST="$WORK/claude-env"
 printf '{"session_id":"claude-session","hook_event_name":"SessionStart"}' \
   | CLAUDE_ENV_FILE="$CLAUDE_ENV_FILE_TEST" "$SCRIPT" session-bootstrap

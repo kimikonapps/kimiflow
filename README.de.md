@@ -139,18 +139,20 @@ Explizite Formen:
 ```
 
 Kimiflow belegt zuerst, woher Produktziel, Nutzer, sichtbares Verhalten, Grenzen und Erfolgskriterien
-kommen. Fehlende Produktfakten werden einmal kompakt gebündelt; vollständige Aufträge brauchen keine
-Frage. Der User entscheidet WHAT/WHY, der Agent Architektur, Libraries, Datenmodell, Tests und anderes
-technisches HOW. Die Antwort wird direkt zum einfachen Vertrag, danach läuft der Flow ohne zweite
-Bestätigung autonom weiter. Exakte triviale Arbeit darf den Loop überspringen.
+kommen. Jedes neue nicht-triviale Feature erhält vor Planung und Projekt-Writes einen kompakten Product
+Intake; bei einem bereits vollständigen Auftrag wird der kurze Produktvertrag bestätigt statt mit
+Füllfragen verlängert. Der User entscheidet WHAT/WHY, der Agent Architektur, Libraries, Datenmodell,
+Tests und anderes technisches HOW. Danach wird der Vertrag gesperrt und der Flow läuft autonom weiter.
+Ein zweiter Fragenblock ist nur erlaubt, wenn die erste Antwort selbst einen neuen materiellen
+Produktkonflikt erzeugt. Fixes und exakt triviale Arbeit behalten ihre direkten Routen.
 
 ## Acht Phasen
 
 | Phase | Ablauf |
 |---|---|
 | 0 Setup | Alle Worktrees inventarisieren, dauerhaften Run-State anlegen, sichere Aufräumentscheidung einmal bündeln. |
-| 1 Klären | Produkt-Intent belegen, höchstens einen Produktfragen-Block stellen, HOW-Fragen verbieten und weiterlaufen. |
-| 2 Verstehen | Projektwissen und Code prüfen; Discovery `none`, `pulse` oder `focused`. Fixes reproduzieren und belegen die Ursache. |
+| 1 Klären | Für nicht-triviale Features den verpflichtenden Product Intake durchführen, HOW-Fragen verbieten, den bestätigten Vertrag sperren und weiterlaufen. |
+| 2 Verstehen | Projektwissen und Code prüfen; Discovery `none`, `pulse` oder `focused` wählen und die Architektur-Machbarkeit vor dem Plan belegen. Fixes reproduzieren und belegen die Ursache. |
 | 3 Planen | Flachen minimum-complete Plan, testbare Akzeptanzkriterien und höchstens fünf belegte Umsetzungsentscheidungen schreiben. |
 | 4 Review | Plan-Blocker lösen; nur bei Autorität, materiellem Scope/Risiko, Privacy/Kosten oder Irreversibilität pausieren. |
 | 5 Umsetzen | Kleinste akzeptierte Änderung bauen; Fixes sichern Red-Evidence vor Production-Code. |
@@ -164,9 +166,9 @@ Bestätigung autonom weiter. Exakte triviale Arbeit darf den Loop überspringen.
 | Gate | Gesicherte Grenze |
 |---|---|
 | Workspace-Preflight | Alle Worktrees und Dirty-Pfade werden klassifiziert; ein eigener Ausnahme-Tree wird vollständig archiviert statt gelöscht. |
-| Clarify-/Discovery-Gates | Produkt-Intent hat Provenienz, technische Fragen sind null und Quellen-/Scope-/Entscheidungs-Evidence existiert. |
+| Product-Intake-/Clarify-/Discovery-Gates | Unterstützte Planung und Writes bleiben bis zu einer expliziten Produktantwort gesperrt; gesperrter Intent, null technische Fragen, Machbarkeit und Quellen-/Scope-/Entscheidungs-Evidence müssen vor dem Plan stimmen. |
 | Plan-/Review-Gates | AC-Mapping und belegte BLOCKER/HIGHs werden in begrenzten Reparaturrunden gelöst. |
-| Implementation-Conformance-Gate | Rechercheentscheidungen, Invarianten, Pfade und Checks konvergieren in Phase 6; beim Abschluss muss zusätzlich der Commit exakt dem geprüften Stand entsprechen. |
+| Implementation-Conformance-Gate | Rechercheentscheidungen, Invarianten, Pfade, Checks und jede gesperrte Produktanforderung konvergieren in Phase 6; beim Abschluss muss zusätzlich der Commit exakt dem geprüften Stand entsprechen. |
 | Adaptiver Execution-Controller | Run-weites No-Progress und Budgetdruck wählen eine begrenzte Recovery-Aktion; verpflichtende Qualitäts-Gates bleiben erhalten. |
 | Lokale Run-Steuerung | Hosts erhalten einen Readiness-/Cursor-Vertrag; gemeinsames Locking, Owner-Nachweis und Action-Receipts machen unterstützte Item-Mutationen fail-closed und replay-sicher. |
 | Materielle-Entscheidungs-Gate | Reversible Technik läuft weiter; nur Autorität, Risiko, Zugriff, Privacy/Kosten oder Irreversibilität pausieren. |

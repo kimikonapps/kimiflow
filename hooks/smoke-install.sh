@@ -77,9 +77,9 @@ for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'k
   grep -q "$term" "$ROOT/README.md" && ok "README documents mode alias: $term" || bad "README missing mode alias: $term"
 done
 grep -q 'full.*does not create an approval stop' "$ROOT/SKILL.md" && ok "full mode follows material-risk decisions" || bad "full mode still forces approval"
-grep -q 'provenance scan; ≤1 product batch' "$ROOT/SKILL.md" && ok "canonical skill bounds intent interaction" || bad "canonical skill missing bounded intent interaction"
-grep -q 'Intent Coverage Scan (Contract 2)' "$ROOT/reference.md" && ok "reference documents provenance-aware intent coverage" || bad "reference missing provenance-aware intent coverage"
-grep -q 'one compact batch' "$ROOT/README.md" && ok "README documents batched clarification" || bad "README missing batched clarification"
+grep -q 'Contract-3 mandatory Product Intake' "$ROOT/SKILL.md" && ok "canonical skill bounds intent interaction" || bad "canonical skill missing bounded intent interaction"
+grep -q 'Intent Coverage Scan (Contract 3)' "$ROOT/reference.md" && ok "reference documents provenance-aware intent coverage" || bad "reference missing provenance-aware intent coverage"
+grep -q 'one compact Product Intake' "$ROOT/README.md" && ok "README documents batched clarification" || bad "README missing batched clarification"
 grep -q 'git commit --only' "$ROOT/phases/phase-7-review-commit.md" && grep -q 'foreign staged' "$ROOT/phases/phase-7-review-commit.md" \
   && ok "atomic commit isolates foreign staged paths" || bad "atomic commit foreign-staging isolation missing"
 grep -q 'Vault Pulse' "$ROOT/SKILL.md" && ok "canonical skill requires scope=large Vault Pulse semantics" || bad "canonical skill missing Vault Pulse"
@@ -141,13 +141,13 @@ if grep -Ei 'code-review-audit|full.*one mode-specific Preview approval|explicit
 grep -q 'automatisch geroutete' "$ROOT/docs/architecture.md" && grep -q 'automatically routed' "$ROOT/docs/kimiflow-vs-claude-md-vs-superpowers.md" && ok "maintainer docs preserve automatic routing" || bad "maintainer docs lost automatic routing"
 if [ -x "$ROOT/hooks/clarify-gate.sh" ] && bash -n "$ROOT/hooks/clarify-gate.sh" 2>/dev/null; then ok "clarify gate helper ok"; else bad "clarify gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-clarify-gate.sh" ] && bash -n "$ROOT/hooks/test-clarify-gate.sh" 2>/dev/null; then ok "clarify gate test ok"; else bad "clarify gate test missing/not-exec/bad"; fi
-if grep -q 'Intent contract: 2' "$ROOT/phases/phase-0-setup.md" \
+if grep -q 'Intent contract: 3' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'Impact x Uncertainty' "$ROOT/phases/phase-1-clarify.md" \
   && grep -q 'technical_questions=0' "$ROOT/reference.md" \
   && grep -q 'intent_coverage_missing' "$ROOT/hooks/clarify-gate.sh" \
-  && grep -q 'contract2_complete_zero_round_opens' "$ROOT/hooks/test-clarify-gate.sh" \
+  && grep -q 'contract3_valid_intake_records_lock' "$ROOT/hooks/test-clarify-gate.sh" \
   && grep -q 'product-intent ownership' "$ROOT/evals/README.md"; then
-  ok "product intent ownership and single-batch autonomy"
+  ok "product intent ownership and mandatory-intake autonomy"
 else
   bad "product intent ownership contract incomplete"
 fi

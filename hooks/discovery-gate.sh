@@ -31,6 +31,7 @@ flow_schema="$(kimiflow_state_value "$state" "Flow schema" | tr '[:upper:]' '[:l
 mode="$(kimiflow_state_value "$state" "Mode" | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
 scope="$(kimiflow_state_value "$state" "Scope" | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
 required="$(kimiflow_state_value "$state" "Discovery required" | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
+intent_contract="$(kimiflow_state_value "$state" "Intent contract" | awk '{print $1}')"
 
 case "$flow_schema" in
   "") ;;
@@ -113,6 +114,37 @@ esac
 case "$technical_gaps" in 0) ;; ""|*[!0-9]*) add_blocker "technical_gaps_invalid" ;; *) add_blocker "technical_gaps_open" ;; esac
 case "$user_decisions" in 0) ;; ""|*[!0-9]*) add_blocker "user_decisions_invalid" ;; *) add_blocker "user_decisions_open" ;; esac
 case "$scope_change" in no|confirmed) ;; pending|yes) add_blocker "scope_change_unconfirmed" ;; *) add_blocker "scope_change_invalid" ;; esac
+
+if [ "$nontrivial_feature" -eq 1 ] && [ "$intent_contract" = "3" ]; then
+  feasibility_lines="$(grep -E '^<!--[[:space:]]*kimiflow:feasibility[[:space:]][^>]*-->$' "$research" 2>/dev/null || true)"
+  feasibility_count="$(printf '%s\n' "$feasibility_lines" | grep -c . || true)"
+  if [ "$feasibility_count" -ne 1 ]; then
+    add_blocker "feasibility_marker_invalid"
+  else
+    feasibility="$(printf '%s\n' "$feasibility_lines" | sed 's/<!--[[:space:]]*//; s/[[:space:]]*-->//')"
+    feasibility_value() {
+      printf '%s\n' "$feasibility" | sed -n "s/.*$1=\([A-Za-z0-9_-][A-Za-z0-9_-]*\).*/\1/p" | tr '[:upper:]' '[:lower:]'
+    }
+    feasibility_status="$(feasibility_value status)"
+    feasibility_user_gate="$(feasibility_value user_gate)"
+    feasibility_decision="$(feasibility_value decision)"
+    summary_count="$(grep -Ec '^Feasibility summary:[[:space:]]*\S' "$research" 2>/dev/null || true)"
+    [ "$summary_count" -eq 1 ] || add_blocker "feasibility_summary_invalid"
+    case "$feasibility_status" in
+      fit|evolve)
+        [ "$feasibility_user_gate" = "no" ] || add_blocker "feasibility_user_gate_invalid"
+        [ "$feasibility_decision" = "not_required" ] || add_blocker "feasibility_decision_invalid"
+        ;;
+      replace)
+        [ "$feasibility_user_gate" = "yes" ] || add_blocker "feasibility_replace_unconfirmed"
+        [ "$feasibility_decision" = "confirmed" ] || add_blocker "feasibility_replace_unconfirmed"
+        grep -Eiq '^Feasibility decision kind:[[:space:]]*(scope-risk|irreversible)[[:space:]]*$' "$research" || add_blocker "feasibility_decision_kind_invalid"
+        ;;
+      conflict|unproven) add_blocker "feasibility_status_$feasibility_status" ;;
+      *) add_blocker "feasibility_status_invalid" ;;
+    esac
+  fi
+fi
 
 if [ "$blockers" -eq 0 ]; then
   emit OPEN 0 clean ""

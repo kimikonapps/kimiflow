@@ -65,6 +65,42 @@ run_gate() { KIMIFLOW_PLUGIN_ROOT="$WORK" "$SCRIPT" "$RUN"; }
 run_post_diagnosis_gate() { KIMIFLOW_PLUGIN_ROOT="$WORK" "$SCRIPT" "$RUN" --post-diagnosis; }
 record_fix_approval() { KIMIFLOW_PLUGIN_ROOT="$WORK" "$SCRIPT" "$RUN" --record-fix-approval; }
 record_fix_approval_with_gnu_stat() { PATH="$WORK/bin:$PATH" KIMIFLOW_PLUGIN_ROOT="$WORK" "$SCRIPT" "$RUN" --record-fix-approval; }
+record_intent_lock() { KIMIFLOW_HOST=codex KIMIFLOW_SESSION_ID=owner-session "$SCRIPT" "$RUN" --record-intent-lock; }
+
+reset_contract3_feature() {
+  rm -rf "$WORK"
+  mkdir -p "$RUN" "$WORK/src" "$WORK/plugin"
+  git -C "$WORK" init -q
+  git -C "$WORK" config user.email test@example.test
+  git -C "$WORK" config user.name test
+  printf '.kimiflow/\n' > "$WORK/.gitignore"
+  printf 'base\n' > "$WORK/src/app.txt"
+  cat > "$RUN/STATE.md" <<'EOF'
+Flow schema: 4
+Intent contract: 3
+Status: active
+Mode: feature
+Alias: automatic-kimiflow
+Scope: small
+Affected files: src/app.txt
+Phase 0: done
+Phase 1: done
+EOF
+  cat > "$RUN/INTENT.md" <<'EOF'
+# Intent
+<!-- kimiflow:intent-coverage contract=3 goal=user_explicit actor=user_confirmed behavior=user_explicit boundaries=user_confirmed success=user_explicit constraints=not_applicable unknown_material=0 question_rounds=1 technical_questions=0 critic=folded authority=explicit summary=present source=current-run -->
+Requirement R1: The requested product behavior is implemented.
+EOF
+  cat > "$RUN/INTAKE.md" <<'EOF'
+<!-- kimiflow:intake contract=3 round=1 questions=2 selection=impact_uncertainty technical_questions=0 -->
+Product questions.
+EOF
+  digest="sha256:$(shasum -a 256 "$RUN/INTAKE.md" | awk '{print $1}')"
+  jq -n --arg digest "$digest" '{schema_version:1,contract:3,round:1,request:"INTAKE.md",request_digest:$digest,channel:"chat",responded_at:"2026-07-22T09:00:00Z"}' > "$RUN/INTAKE-RECEIPT-1.json"
+  git -C "$WORK" add .gitignore src/app.txt
+  git -C "$WORK" commit -qm base
+  KIMIFLOW_PLUGIN_ROOT="$WORK/plugin" KIMIFLOW_HOST=codex KIMIFLOW_SESSION_ID=owner-session "$ACTIVE" start --root "$WORK" --run .kimiflow/demo --mode feature --scope small --write >/dev/null
+}
 
 write_phase_fixture() {
   mkdir -p "$WORK/phases"
@@ -518,6 +554,31 @@ out="$(run_post_diagnosis_gate)"
 assert_field "$out" 2 OPEN "schema2_fix_resume_needs_no_new_approval_marker"
 
 if command -v jq >/dev/null 2>&1; then
+  reset_contract3_feature
+  out="$(run_gate)"
+  assert_field "$out" 2 CLOSED "contract3_requires_intent_lock"
+  assert_contains "$out" "intent_lock_missing" "contract3_missing_lock_detail"
+  out="$(record_intent_lock)"
+  assert_field "$out" 2 OPEN "contract3_valid_intake_records_lock"
+  jq -e '.intent_lock_digest | startswith("sha256:")' "$WORK/.kimiflow/session/ACTIVE_RUN.json" >/dev/null \
+    && pass "contract3_lock_digest_pinned" || fail "contract3_lock_digest_pinned"
+  printf '\nRequirement R2: A later unconfirmed requirement.\n' >> "$RUN/INTENT.md"
+  out="$(run_gate)"
+  assert_field "$out" 2 CLOSED "contract3_intent_drift_closes"
+  assert_contains "$out" "intent_lock_stale" "contract3_intent_drift_detail"
+  rm "$RUN/INTENT-LOCK.json"
+  intent_digest="sha256:$(shasum -a 256 "$RUN/INTENT.md" | awk '{print $1}')"
+  jq -n --arg digest "$intent_digest" '{schema_version:1,contract:3,intent_digest:$digest,requirements:["R1","R2"],locked_at:"2026-07-22T09:10:00Z"}' > "$RUN/INTENT-LOCK.json"
+  out="$(run_gate)"
+  assert_field "$out" 2 CLOSED "contract3_coupled_lock_rewrite_closes"
+  assert_contains "$out" "intent_lock_basis_replaced" "contract3_coupled_lock_rewrite_detail"
+
+  reset_contract3_feature
+  sed -i.bak 's/questions=2/questions=6/' "$RUN/INTAKE.md" && rm "$RUN/INTAKE.md.bak"
+  out="$(run_gate)"
+  assert_field "$out" 2 CLOSED "contract3_question_budget_enforced"
+  assert_contains "$out" "intake_questions_1_out_of_bounds" "contract3_question_budget_detail"
+
   reset_run
   write_phase_fixture
   printf 'Phase reads required: yes\n' >> "$RUN/STATE.md"

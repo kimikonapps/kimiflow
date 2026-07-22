@@ -137,6 +137,76 @@ write_contract small
 out="$(run_gate --plan)"
 assert_status "$out" OPEN "valid_plan_contract_opens"
 
+reset_repo
+write_contract small
+printf 'Intent contract: 3\n' >> "$RUN/STATE.md"
+cat > "$RUN/INTENT.md" <<'EOF'
+# Intent
+Requirement R1: Preserve the selected decision invariant.
+Requirement R2: Produce current verification evidence.
+EOF
+mkdir -p "$REPO/.kimiflow/session"
+python3 - "$RUN" "$REPO/.kimiflow/session/ACTIVE_RUN.json" "$START" <<'PY'
+import datetime
+import hashlib
+import json
+import pathlib
+import sys
+
+run = pathlib.Path(sys.argv[1])
+active_path = pathlib.Path(sys.argv[2])
+started_head = sys.argv[3]
+intent = run / "INTENT.md"
+intent_digest = "sha256:" + hashlib.sha256(intent.read_bytes()).hexdigest()
+lock = {
+    "schema_version": 1,
+    "contract": 3,
+    "intent_digest": intent_digest,
+    "requirements": ["R1", "R2"],
+    "locked_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+}
+lock_path = run / "INTENT-LOCK.json"
+lock_path.write_text(json.dumps(lock, sort_keys=True) + "\n", encoding="utf-8")
+lock_digest = "sha256:" + hashlib.sha256(lock_path.read_bytes()).hexdigest()
+active_path.write_text(json.dumps({
+    "status": "active",
+    "run": ".kimiflow/demo",
+    "mode": "feature",
+    "scope": "small",
+    "started_head": started_head,
+    "intent_contract": "3",
+    "intent_lock_digest": lock_digest,
+    "conformance_contract": "1",
+}) + "\n", encoding="utf-8")
+PY
+cat >> "$RUN/ACCEPTANCE.md" <<'EOF'
+Requirement trace R1: AC-1
+Requirement trace R2: AC-1
+EOF
+out="$(run_gate --plan)"
+assert_status "$out" OPEN "contract3_requirement_traces_open_plan"
+sed -i.bak '/Requirement trace R2:/d' "$RUN/ACCEPTANCE.md" && rm "$RUN/ACCEPTANCE.md.bak"
+out="$(run_gate --plan)"
+assert_status "$out" CLOSED "contract3_missing_requirement_trace_closes"
+assert_contains "$out" "requirement_trace_R2_missing" "contract3_missing_requirement_trace_detail"
+printf 'Requirement trace R2: AC-1\n' >> "$RUN/ACCEPTANCE.md"
+printf 'Requirement R1: passed :: test -s src/a.txt\n' >> "$RUN/VERIFICATION.md"
+out="$(run_gate)"
+assert_status "$out" CLOSED "contract3_missing_final_requirement_check_closes"
+assert_contains "$out" "requirement_check_R2_missing" "contract3_missing_final_requirement_check_detail"
+printf 'Requirement R2: passed :: conformance receipt\n' >> "$RUN/VERIFICATION.md"
+out="$(run_gate --record)"
+assert_status "$out" OPEN "contract3_all_requirement_checks_record_basis"
+sed -i.bak '/Requirement R2:/d' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
+out="$(run_gate --plan)"
+assert_status "$out" CLOSED "contract3_intent_lock_drift_closes"
+assert_contains "$out" "intent_lock_stale" "contract3_intent_lock_drift_detail"
+printf 'Requirement R2: Produce current verification evidence.\n' >> "$RUN/INTENT.md"
+sed -i.bak 's/Intent contract: 3/Intent contract: 2/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+out="$(run_gate --plan)"
+assert_status "$out" CLOSED "contract3_state_downgrade_closes"
+assert_contains "$out" "active_intent_contract_mismatch" "contract3_state_downgrade_detail"
+
 cat > "$RUN/PLAN.md" <<'EOF'
 # Plan
 ```markdown
