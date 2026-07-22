@@ -49,6 +49,15 @@ Routinebestaetigung weiter. Zaehler bleiben `null`, wenn der Provider keine Usag
 `codex app-server` bleibt eine moegliche spaetere Transport-Alternative fuer einen echten Rich Client, ist aber
 keine Abhaengigkeit des schlanken CLI-Wegs.
 
+Ein optionaler App-Host erweitert Protokoll v1 nur ueber ausgehandelte Feature-Flags. Ohne diese Flags bleiben
+Prompt und Request des bestehenden Command-Adapters unveraendert. Mit `workflow_context` erhaelt der Host
+transient die kanonischen Skill-/Phasen-/Bridge-Pfade; `model_roles` transportiert nur abstrakte Rollen, waehrend
+der Host die konkreten Modell-IDs besitzt. `structured_events` werden vor JSON-Parsing groessenbegrenzt, auf
+oeffentliche Felder normalisiert und nicht im Receipt gespeichert. Ein SHA-256-Fingerprint bindet Features,
+Anforderungen und Rollen an Resume, ohne Modell-IDs zu persistieren. `root_confinement` bleibt eine vom Host
+durchzusetzende und von Kimiflow vorab pruefbare Vertrauensgrenze. Der Vertrag liegt unter
+`references/adapter-protocol.md`; KimiTalk, Providerclients oder ein Netzwerkdienst sind keine Abhaengigkeiten.
+
 `hooks/build-plugin-candidate.sh` erzeugt den Marketplace-Inhalt aus einer engen Source-Allowlist und schreibt
 `RUNTIME-FINGERPRINT.json`; private Maintainer-/Run-Daten und generierte Caches sind verboten. Der Launcher kann
 damit auch gleichversionige stale Installationen erkennen. `hooks/release-consistency-check.sh` rendert vor dem
@@ -68,6 +77,7 @@ Pretty <= 12,000 Bytes auf einem sauberen Fixture-Repo).
 - Normale Laeufe persistieren State unter `.kimiflow/<slug>/`.
 - Eingebettete Hosts bleiben der Standard; der optionale Terminal-Runner und seine Adapter duerfen Workflow-State, Memory,
   Gates, Provider oder Worktree-Management weder duplizieren noch ersetzen.
+- App-Host-Funktionen sind opt-in; ihr Fehlen darf weder Installation noch normale Codex-, Claude- oder Legacy-CLI-Nutzung veraendern.
 - Project Intelligence persistiert lokale Projektkarten und bounded Memory unter `.kimiflow/project/`.
 - Repo-Doku ist ein kuratierter Publishing-Layer. Lokale Findings und sensible Arbeitsnotizen bleiben in
   `.kimiflow/project/` und werden nicht automatisch committed.

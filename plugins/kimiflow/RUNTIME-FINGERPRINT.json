@@ -1,5 +1,5 @@
 {
-  "file_count": 115,
+  "file_count": 117,
   "files": [
     {
       "bytes": 460,
@@ -14,10 +14,10 @@
       "sha256": "sha256:9ad3b3aefd72bfc971eb0bd21472f595059bbabf27251fe5af329bbe1541eea2"
     },
     {
-      "bytes": 15732,
+      "bytes": 15983,
       "mode": "0644",
       "path": "COMPATIBILITY.md",
-      "sha256": "sha256:80edde3fe4df5dc40bad814e04a8a43888a5c2ccbf4ad5493c1ccc01b2952754"
+      "sha256": "sha256:384cac1f809c7cfee09d43092f7fa8d969f9b34e713e50d0a1f1f1c4b4d41961"
     },
     {
       "bytes": 1064,
@@ -32,10 +32,10 @@
       "sha256": "sha256:a24f390ef47e71f319717e3d2b6508e9be438abb4fb06505c97d194ceb825545"
     },
     {
-      "bytes": 19428,
+      "bytes": 20918,
       "mode": "0644",
       "path": "README.md",
-      "sha256": "sha256:59315e394ab4653317ebc98f090e19398f1b0f500a6066e2671d094b26f0f77d"
+      "sha256": "sha256:ee712e13d7a28faa6f97d5d318c2977320d6498e0f8b4f803ad3f74aa551128e"
     },
     {
       "bytes": 16929,
@@ -200,10 +200,10 @@
       "sha256": "sha256:103a769a7d4255c9c3294ea970e17bc600eaa0ee684c283f6bc6cc566aa1273f"
     },
     {
-      "bytes": 12158,
+      "bytes": 24782,
       "mode": "0644",
       "path": "hooks/kimiflow_core/model_adapter.py",
-      "sha256": "sha256:db55286d1987b8f8f0a3df67c6e22e5ef7f78df57d941203527fab08e399c4f3"
+      "sha256": "sha256:5252a996fb627ce43063ca6f0ca0abc2326ba1dfd1cd5b6f8fcbe467a90619dd"
     },
     {
       "bytes": 2255,
@@ -242,10 +242,10 @@
       "sha256": "sha256:8259f8f05f45a3239f3a54f6c5f0abe8c454ccf501a48011b365995dcf65ddff"
     },
     {
-      "bytes": 30582,
+      "bytes": 36444,
       "mode": "0644",
       "path": "hooks/kimiflow_core/runner.py",
-      "sha256": "sha256:1617b1d7fda07702b3ea1bbcae78602a357536ac054216a767f72b95635919e7"
+      "sha256": "sha256:0e2712d36d9c97661cfe09e4494a43680b3cc45c6208e391a956362b3823adf3"
     },
     {
       "bytes": 11255,
@@ -662,6 +662,18 @@
       "sha256": "sha256:c74e6222121d35be202201c4ad11e9542c5faf13c21ea7165e97c1626026fb16"
     },
     {
+      "bytes": 8319,
+      "mode": "0644",
+      "path": "references/adapter-protocol-v1.schema.json",
+      "sha256": "sha256:3deb4b1bb48118147a979fe95f9036dd8b99de6954adb75f594a7440c96e227b"
+    },
+    {
+      "bytes": 4145,
+      "mode": "0644",
+      "path": "references/adapter-protocol.md",
+      "sha256": "sha256:f4b3a306ce073fb42ed0a24bfd0709af8c074955b7d04c57041d9bab1893ce89"
+    },
+    {
       "bytes": 963,
       "mode": "0644",
       "path": "references/frontend-quality-flagship.md",
@@ -692,6 +704,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:34539f8ddf9ce547dabd3f10dd09f8808905bec5fc0463c2d2ed120a39984889",
+  "runtime_fingerprint": "sha256:30aaeee90e021fa08266e16a7ed0e25071dad87b64968f594f4b5753bc5ce559",
   "schema_version": 1
 }

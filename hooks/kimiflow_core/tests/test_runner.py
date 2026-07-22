@@ -135,6 +135,16 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn("secret task text", json.dumps(receipt))
         self.assertEqual(stat.S_IMODE(os.stat(runner.receipt_path(self.root)).st_mode), 0o600)
 
+    def test_default_codex_adapter_stays_default(self):
+        args = runner._parser().parse_args(["run", "build it"])
+        self.assertEqual(args.adapter, "codex")
+        self.assertFalse(args.events_jsonl)
+        self.assertEqual(args.model_role, [])
+        self.assertEqual(args.require_feature, [])
+        self.assertIsInstance(runner._adapter_from_args(args), runner.CodexExecAdapter)
+        self.assertIn("$kimiflow", runner._initial_prompt("build it"))
+        self.assertNotIn("$kimiflow", runner._initial_prompt("build it", workflow_aware=True))
+
     def test_run_continues_same_thread_until_terminal_outcome(self):
         adapter = FakeAdapter(
             start_action=self.write_active,
@@ -213,6 +223,9 @@ class RunnerTests(unittest.TestCase):
             runner.run_task(self.root, "must not start", adapter=adapter)
         self.assertEqual(ctx.exception.status, "adapter_incompatible")
         self.assertEqual(adapter.starts, [])
+
+    def test_compatible_adapter_preflight_is_successful(self):
+        self.assertEqual(runner.exit_code({"status": "compatible"}), 0)
 
     def test_continuation_prompt_carries_bounded_execution_decision(self):
         prompt = runner._continuation_prompt(

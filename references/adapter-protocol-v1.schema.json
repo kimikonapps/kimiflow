@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kimikonapps/kimiflow/references/adapter-protocol-v1.schema.json",
+  "title": "Kimiflow command-adapter protocol v1",
+  "type": "object",
+  "$defs": {
+    "identity": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+    },
+    "sessionId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:-]{8,128}$"
+    },
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "files": {"const": true},
+        "shell": {"const": true},
+        "tests": {"const": true},
+        "resume": {"const": true},
+        "gates": {"const": true}
+      },
+      "required": ["files", "shell", "tests", "resume", "gates"],
+      "additionalProperties": false
+    },
+    "features": {
+      "type": "object",
+      "properties": {
+        "workflow_context": {"type": "boolean"},
+        "model_roles": {"type": "boolean"},
+        "structured_events": {"type": "boolean"},
+        "root_confinement": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "adapterInfo": {
+      "type": "object",
+      "properties": {
+        "schema_version": {"const": 1},
+        "name": {"$ref": "#/$defs/identity"},
+        "host": {"$ref": "#/$defs/identity"},
+        "capabilities": {"$ref": "#/$defs/capabilities"},
+        "features": {"$ref": "#/$defs/features"}
+      },
+      "required": ["schema_version", "name", "host", "capabilities"],
+      "additionalProperties": true
+    },
+    "modelRouting": {
+      "type": "object",
+      "properties": {
+        "default_model": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\u0000-\\u001F\\u007F]+$"},
+        "roles": {
+          "type": "object",
+          "properties": {
+            "top": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\u0000-\\u001F\\u007F]+$"},
+            "balanced": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\u0000-\\u001F\\u007F]+$"},
+            "cheap": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\u0000-\\u001F\\u007F]+$"},
+            "cross_family_top": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\u0000-\\u001F\\u007F]+$"}
+          },
+          "minProperties": 1,
+          "additionalProperties": false
+        }
+      },
+      "required": ["roles"],
+      "additionalProperties": false
+    },
+    "workflowContext": {
+      "type": "object",
+      "properties": {
+        "schema_version": {"const": 1},
+        "name": {"const": "kimiflow"},
+        "plugin_root": {"type": "string", "minLength": 1},
+        "skill": {"const": "SKILL.md"},
+        "phase_manifest": {"const": "phases/PHASES.json"},
+        "run_bridge": {"const": "hooks/run-bridge.sh"}
+      },
+      "required": ["schema_version", "name", "plugin_root", "skill", "phase_manifest", "run_bridge"],
+      "additionalProperties": false
+    },
+    "usage": {
+      "type": "object",
+      "properties": {
+        "model_calls": {"type": "integer", "minimum": 0},
+        "tool_calls": {"type": "integer", "minimum": 0},
+        "input_tokens": {"type": "integer", "minimum": 0},
+        "output_tokens": {"type": "integer", "minimum": 0}
+      },
+      "required": ["model_calls", "tool_calls", "input_tokens", "output_tokens"],
+      "additionalProperties": false
+    },
+    "turnRequest": {
+      "type": "object",
+      "properties": {
+        "schema_version": {"const": 1},
+        "action": {"enum": ["start", "resume"]},
+        "root": {"type": "string", "minLength": 1},
+        "session_id": {"anyOf": [{"$ref": "#/$defs/sessionId"}, {"type": "null"}]},
+        "host": {"$ref": "#/$defs/identity"},
+        "adapter": {"$ref": "#/$defs/identity"},
+        "prompt": {"type": "string", "minLength": 1},
+        "model": {"anyOf": [{"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\u0000-\\u001F\\u007F]+$"}, {"type": "null"}]},
+        "required_capabilities": {
+          "const": ["files", "shell", "tests", "resume", "gates"]
+        },
+        "workflow_context": {"$ref": "#/$defs/workflowContext"},
+        "model_routing": {"$ref": "#/$defs/modelRouting"}
+      },
+      "required": ["schema_version", "action", "root", "session_id", "host", "adapter", "prompt", "model", "required_capabilities"],
+      "additionalProperties": false
+    },
+    "runResult": {
+      "type": "object",
+      "properties": {
+        "schema_version": {"const": 1},
+        "type": {"const": "run.result"},
+        "result": {
+          "type": "object",
+          "properties": {
+            "schema_version": {"const": 1},
+            "status": {"type": "string", "minLength": 1},
+            "error": {"type": "string"}
+          },
+          "required": ["schema_version", "status"],
+          "additionalProperties": true
+        }
+      },
+      "required": ["schema_version", "type", "result"],
+      "additionalProperties": false
+    },
+    "event": {
+      "oneOf": [
+        {"type": "object", "properties": {"type": {"const": "session.started"}, "session_id": {"$ref": "#/$defs/sessionId"}}, "required": ["type", "session_id"], "additionalProperties": true},
+        {"type": "object", "properties": {"type": {"const": "message"}, "text": {"type": "string", "minLength": 1, "maxLength": 65536}}, "required": ["type", "text"], "additionalProperties": true},
+        {"type": "object", "properties": {"type": {"enum": ["turn.failed", "error"]}}, "required": ["type"], "additionalProperties": true},
+        {"type": "object", "properties": {"type": {"const": "turn.completed"}, "usage": {"$ref": "#/$defs/usage"}}, "required": ["type"], "additionalProperties": true},
+        {"type": "object", "properties": {"type": {"const": "phase.changed"}, "phase": {"type": "integer", "minimum": 0, "maximum": 7}, "status": {"enum": ["started", "completed", "blocked"]}, "label": {"type": "string", "minLength": 1, "maxLength": 240}}, "required": ["type", "phase", "status"], "additionalProperties": true},
+        {"type": "object", "$comment": "Runtime additionally requires total >= current when total is present.", "properties": {"type": {"const": "progress"}, "current": {"type": "integer", "minimum": 0, "maximum": 1000000000}, "total": {"type": "integer", "minimum": 0, "maximum": 1000000000}, "label": {"type": "string", "minLength": 1, "maxLength": 240}}, "required": ["type", "current"], "additionalProperties": true},
+        {"type": "object", "properties": {"type": {"const": "tool.started"}, "tool": {"$ref": "#/$defs/identity"}, "duration_ms": {"type": "integer", "minimum": 0, "maximum": 86400000}, "label": {"type": "string", "minLength": 1, "maxLength": 240}}, "required": ["type", "tool"], "additionalProperties": true},
+        {"type": "object", "properties": {"type": {"const": "tool.completed"}, "tool": {"$ref": "#/$defs/identity"}, "status": {"enum": ["passed", "failed", "cancelled"]}, "duration_ms": {"type": "integer", "minimum": 0, "maximum": 86400000}, "label": {"type": "string", "minLength": 1, "maxLength": 240}}, "required": ["type", "tool", "status"], "additionalProperties": true},
+        {"type": "object", "properties": {"type": {"const": "test.completed"}, "name": {"type": "string", "minLength": 1, "maxLength": 240}, "status": {"enum": ["passed", "failed", "skipped"]}, "duration_ms": {"type": "integer", "minimum": 0, "maximum": 86400000}}, "required": ["type", "name", "status"], "additionalProperties": true},
+        {"type": "object", "properties": {"type": {"const": "user_input.requested"}, "kind": {"$ref": "#/$defs/identity"}, "summary": {"type": "string", "minLength": 1, "maxLength": 500}}, "required": ["type", "kind", "summary"], "additionalProperties": true},
+        {"type": "object", "$comment": "Runtime additionally requires after_tokens <= before_tokens.", "properties": {"type": {"const": "context.compacted"}, "before_tokens": {"type": "integer", "minimum": 0, "maximum": 10000000000}, "after_tokens": {"type": "integer", "minimum": 0, "maximum": 10000000000}}, "required": ["type", "before_tokens", "after_tokens"], "additionalProperties": true}
+      ]
+    }
+  },
+  "oneOf": [
+    {"$ref": "#/$defs/adapterInfo"},
+    {"$ref": "#/$defs/turnRequest"},
+    {"$ref": "#/$defs/event"},
+    {"$ref": "#/$defs/runResult"}
+  ]
+}

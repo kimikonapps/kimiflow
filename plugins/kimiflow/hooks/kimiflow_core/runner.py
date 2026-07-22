@@ -86,6 +86,9 @@ def _validate_receipt(root, value):
         raise RunnerError("invalid_receipt", "runner receipt has an invalid turn limit", 2)
     if "final_recovery_used" in value and not isinstance(value.get("final_recovery_used"), bool):
         raise RunnerError("invalid_receipt", "runner receipt has an invalid recovery marker", 2)
+    adapter_contract = value.get("adapter_contract")
+    if adapter_contract is not None and not re.fullmatch(r"sha256:[0-9a-f]{64}", adapter_contract):
+        raise RunnerError("invalid_receipt", "runner receipt has an invalid adapter contract", 2)
     usage = value.get("usage")
     if usage is not None:
         if not isinstance(usage, dict) or usage.get("status") not in ("available", "unavailable"):
@@ -281,7 +284,14 @@ def _read_changed_outcome(root, baseline, run_hint=None):
     return None
 
 
-def _initial_prompt(task):
+def _initial_prompt(task, workflow_aware=False):
+    if workflow_aware:
+        return (
+            "Execute the canonical Kimiflow workflow supplied by this turn's workflow_context. "
+            "Run it autonomously through its mechanical finish. Do not ask for routine continuation or "
+            "confirmation; pause only for a material decision through Kimiflow's typed wait/park contract."
+            "\n\nRequest:\n" + task.strip()
+        )
     return (
         "Use $kimiflow for the request below. Run it autonomously through its mechanical finish. "
         "Do not ask for routine continuation or confirmation; pause only for a material decision through "
@@ -313,16 +323,24 @@ def _continuation_prompt(status):
     )
 
 
-def _parked_resume_prompt(run, message):
+def _parked_resume_prompt(run, message, workflow_aware=False):
     slug = os.path.basename(run.rstrip("/"))
+    if workflow_aware:
+        return "Resume the canonical Kimiflow run %s using the supplied workflow_context.\n\nUser decision/input: %s" % (
+            slug, message.strip(),
+        )
     return "$kimiflow --resume %s\n\nUser decision/input: %s" % (slug, message.strip())
 
 
-def _interrupted_resume_prompt():
+def _interrupted_resume_prompt(workflow_aware=False):
+    start_instruction = (
+        "start the canonical Kimiflow workflow supplied by workflow_context for the original request now"
+        if workflow_aware else "start $kimiflow for the original request now"
+    )
     return (
         "Continue the explicit Kimiflow task already present in this coding-agent session. If interruption happened "
-        "before its active run was created, start $kimiflow for the original request now; otherwise continue "
-        "the existing run autonomously. Do not ask for routine confirmation."
+        "before its active run was created, %s; otherwise continue the existing run autonomously. "
+        "Do not ask for routine confirmation." % start_instruction
     )
 
 
@@ -354,9 +372,9 @@ def _merge_usage(current, delta, initialize=False):
     }}
 
 
-def _new_receipt(root, thread_id, adapter_info):
+def _new_receipt(root, thread_id, adapter_info, adapter_contract=None):
     now = iso_now()
-    return {
+    result = {
         "schema_version": 1,
         "host": adapter_info["host"],
         "adapter": adapter_info["name"],
@@ -372,6 +390,9 @@ def _new_receipt(root, thread_id, adapter_info):
         "started_at": now,
         "updated_at": now,
     }
+    if adapter_contract is not None:
+        result["adapter_contract"] = adapter_contract
+    return result
 
 
 def _update_receipt(root, receipt, status=None, **updates):
@@ -454,7 +475,7 @@ def _final_recovery_prompt(status):
     )
 
 
-def _drive(root, adapter, receipt, turn, baseline):
+def _drive(root, adapter, receipt, turn, baseline, workflow_aware=False):
     retries = 0
     while True:
         receipt = _update_receipt(
@@ -462,6 +483,9 @@ def _drive(root, adapter, receipt, turn, baseline):
             usage=_merge_usage(receipt.get("usage"), turn.usage, initialize=receipt["turns"] == 0),
         )
         while turn.returncode != 0:
+            if turn.error_code == "event_sink_failed":
+                _update_receipt(root, receipt, "transport_error", error_code=turn.error_code)
+                raise RunnerError("transport_error", "coding-agent event consumer closed", 1)
             if retries >= TRANSPORT_RETRIES:
                 receipt = _update_receipt(root, receipt, "transport_error", error_code=turn.error_code or "adapter_exit_%s" % turn.returncode)
                 raise RunnerError("transport_error", "coding-agent transport failed after automatic retries", 1)
@@ -470,7 +494,14 @@ def _drive(root, adapter, receipt, turn, baseline):
                 turn = adapter.resume(
                     root,
                     receipt["thread_id"],
-                    "Recover the explicit Kimiflow task after a transport/tool failure. If no active run exists yet, start $kimiflow for the original request; otherwise choose another safe in-scope strategy and continue autonomously.",
+                    (
+                        "Recover the explicit Kimiflow task after a transport/tool failure. If no active run exists yet, "
+                        + (
+                            "start the canonical workflow supplied by workflow_context for the original request; "
+                            if workflow_aware else "start $kimiflow for the original request; "
+                        )
+                        + "otherwise choose another safe in-scope strategy and continue autonomously."
+                    ),
                     lambda value: _ensure_same_thread(value, receipt["thread_id"]),
                 )
             except KeyboardInterrupt:
@@ -530,6 +561,20 @@ def _ensure_same_thread(value, expected):
         raise RunnerError("thread_mismatch", "coding-agent adapter resumed a different session", 1)
 
 
+def _adapter_contract(adapter):
+    if not hasattr(adapter, "contract_fingerprint"):
+        return None
+    value = adapter.contract_fingerprint()
+    if value is not None and not re.fullmatch(r"sha256:[0-9a-f]{64}", value):
+        raise RunnerError("adapter_incompatible", "adapter returned an invalid contract fingerprint", 2)
+    return value
+
+
+def _workflow_aware(adapter_info):
+    features = adapter_info.get("features") if isinstance(adapter_info.get("features"), dict) else {}
+    return features.get("workflow_context") is True
+
+
 def run_task(root, task, adapter=None):
     root = _resolve_project_root(root)
     if not isinstance(task, str) or not task.strip():
@@ -539,6 +584,11 @@ def run_task(root, task, adapter=None):
         adapter_info = model_adapter.info_for(adapter)
     except model_adapter.AdapterError as exc:
         raise RunnerError("adapter_incompatible", str(exc), 2)
+    try:
+        adapter_contract = _adapter_contract(adapter)
+    except model_adapter.AdapterError as exc:
+        raise RunnerError("adapter_incompatible", str(exc), 2)
+    workflow_aware = _workflow_aware(adapter_info)
     current = _active_status(root)
     if current.get("present") is True:
         raise RunnerError("active_run_exists", "an active Kimiflow run already exists; use its owning session or terminal resume", 1)
@@ -549,18 +599,18 @@ def run_task(root, task, adapter=None):
         if holder["receipt"] is not None:
             _ensure_same_thread(thread_id, holder["receipt"]["thread_id"])
             return
-        holder["receipt"] = _new_receipt(root, thread_id, adapter_info)
+        holder["receipt"] = _new_receipt(root, thread_id, adapter_info, adapter_contract)
         write_receipt(root, holder["receipt"])
 
     try:
-        turn = adapter.start(root, _initial_prompt(task), capture)
+        turn = adapter.start(root, _initial_prompt(task, workflow_aware=workflow_aware), capture)
     except KeyboardInterrupt:
         return _record_interruption(root, holder["receipt"])
     if holder["receipt"] is None and turn.thread_id:
         capture(turn.thread_id)
     if holder["receipt"] is None:
         raise RunnerError("thread_missing", "coding-agent adapter did not emit a resumable session ID", 1)
-    return _drive(root, adapter, holder["receipt"], turn, baseline)
+    return _drive(root, adapter, holder["receipt"], turn, baseline, workflow_aware=workflow_aware)
 
 
 def resume_task(root, message=None, adapter=None):
@@ -575,6 +625,13 @@ def resume_task(root, message=None, adapter=None):
         raise RunnerError("adapter_incompatible", str(exc), 2)
     if adapter_info["name"] != receipt.get("adapter") or adapter_info["host"] != receipt.get("host"):
         raise RunnerError("adapter_mismatch", "resume requires the same adapter and host", 2)
+    try:
+        adapter_contract = _adapter_contract(adapter)
+    except model_adapter.AdapterError as exc:
+        raise RunnerError("adapter_incompatible", str(exc), 2)
+    if adapter_contract != receipt.get("adapter_contract"):
+        raise RunnerError("adapter_mismatch", "resume requires the same negotiated adapter contract", 2)
+    workflow_aware = _workflow_aware(adapter_info)
     current = _active_status(root)
     waiting = current.get("awaiting_user") is True or receipt.get("status") == "parked"
     if waiting and (not isinstance(message, str) or not message.strip()):
@@ -586,9 +643,11 @@ def resume_task(root, message=None, adapter=None):
             raise RunnerError("receipt_mismatch", "receipt and active run do not match", 1)
         prompt = message.strip() if waiting else _continuation_prompt(current)
     elif receipt.get("status") == "parked":
-        prompt = _parked_resume_prompt(receipt.get("active_run") or "", message)
+        prompt = _parked_resume_prompt(
+            receipt.get("active_run") or "", message, workflow_aware=workflow_aware,
+        )
     elif receipt.get("status") in {"running", "interrupted", "transport_error"}:
-        prompt = _interrupted_resume_prompt()
+        prompt = _interrupted_resume_prompt(workflow_aware=workflow_aware)
     elif receipt.get("status") == "exhausted" and current.get("present") is True:
         prompt = _continuation_prompt(current)
     else:
@@ -611,7 +670,7 @@ def resume_task(root, message=None, adapter=None):
         )
     except KeyboardInterrupt:
         return _record_interruption(root, receipt)
-    return _drive(root, adapter, receipt, turn, baseline)
+    return _drive(root, adapter, receipt, turn, baseline, workflow_aware=workflow_aware)
 
 
 def runner_status(root):
@@ -624,7 +683,7 @@ def runner_status(root):
 
 def exit_code(result):
     status = result.get("status") if isinstance(result, dict) else "error"
-    if status in ("done", "idle", "embedded_active"):
+    if status in ("done", "idle", "embedded_active", "compatible"):
         return 0
     if status in RESUMABLE_WAIT_STATES:
         return 3
@@ -637,17 +696,45 @@ def _add_adapter_arguments(parser):
     parser.add_argument("--adapter", choices=("codex", "command"), default="codex")
     parser.add_argument("--adapter-command")
     parser.add_argument("--model")
+    parser.add_argument("--model-role", action="append", default=[])
+    parser.add_argument("--require-feature", action="append", default=[])
+    parser.add_argument("--events-jsonl", action="store_true")
 
 
-def _adapter_from_args(args):
+def _model_roles(values):
+    result = {}
+    for value in values or ():
+        if not isinstance(value, str) or "=" not in value:
+            raise RunnerError("model_role_invalid", "--model-role requires ROLE=MODEL", 2)
+        role, model = value.split("=", 1)
+        if role in result:
+            raise RunnerError("model_role_invalid", "--model-role may declare each role only once", 2)
+        result[role] = model
+    try:
+        return model_adapter.normalize_model_roles(result)
+    except model_adapter.AdapterError as exc:
+        raise RunnerError("model_role_invalid", str(exc), 2)
+
+
+def _adapter_from_args(args, event_sink=None):
     if args.adapter == "codex":
-        if args.adapter_command:
-            raise RunnerError("adapter_ambiguous", "--adapter-command requires --adapter command", 2)
+        if args.adapter_command or args.model_role or args.require_feature or args.events_jsonl:
+            raise RunnerError(
+                "adapter_ambiguous",
+                "--adapter-command, --model-role, --require-feature, and --events-jsonl require --adapter command",
+                2,
+            )
         return CodexExecAdapter()
     if not args.adapter_command:
         raise RunnerError("adapter_command_missing", "--adapter command requires --adapter-command", 2)
     try:
-        return model_adapter.CommandAgentAdapter(args.adapter_command, model=args.model)
+        return model_adapter.CommandAgentAdapter(
+            args.adapter_command,
+            model=args.model,
+            model_roles=_model_roles(args.model_role),
+            required_features=args.require_feature,
+            event_sink=event_sink,
+        )
     except model_adapter.AdapterError as exc:
         raise RunnerError("adapter_incompatible", str(exc), 2)
 
@@ -669,26 +756,62 @@ def _parser():
     status = subparsers.add_parser("status", help="show runner and shared active-run status")
     status.add_argument("--root")
     status.add_argument("--pretty", action="store_true")
+    check = subparsers.add_parser("adapter-check", help="validate a command adapter without starting a model turn")
+    check.add_argument("--adapter-command", required=True)
+    check.add_argument("--model")
+    check.add_argument("--model-role", action="append", default=[])
+    check.add_argument("--require-feature", action="append", default=[])
+    check.add_argument("--pretty", action="store_true")
+    check.set_defaults(adapter="command", events_jsonl=False)
     return parser
 
 
 def main(argv=None):
     args = _parser().parse_args(argv)
+    events_jsonl = getattr(args, "events_jsonl", False)
+
+    def emit_event(event):
+        sys.stdout.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n")
+        sys.stdout.flush()
+
     try:
         if args.command == "run":
             if args.task and args.prompt:
                 raise RunnerError("task_ambiguous", "use either the positional task or --prompt", 2)
-            result = run_task(args.root, args.prompt or args.task or "", adapter=_adapter_from_args(args))
+            result = run_task(
+                args.root, args.prompt or args.task or "",
+                adapter=_adapter_from_args(args, emit_event if events_jsonl else None),
+            )
         elif args.command == "resume":
-            result = resume_task(args.root, message=args.message, adapter=_adapter_from_args(args))
+            result = resume_task(
+                args.root, message=args.message,
+                adapter=_adapter_from_args(args, emit_event if events_jsonl else None),
+            )
+        elif args.command == "adapter-check":
+            adapter = _adapter_from_args(args)
+            info = model_adapter.info_for(adapter)
+            result = {
+                "schema_version": 1,
+                "status": "compatible",
+                "adapter": info,
+                "adapter_contract": _adapter_contract(adapter),
+            }
         else:
             result = runner_status(args.root)
         code = exit_code(result)
     except RunnerError as exc:
         result = {"schema_version": 1, "status": exc.status, "error": exc.message}
         code = exc.code
+    except model_adapter.AdapterError as exc:
+        result = {"schema_version": 1, "status": "adapter_incompatible", "error": str(exc)}
+        code = 2
+    if events_jsonl:
+        result = {"schema_version": 1, "type": "run.result", "result": result}
     output = json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None, separators=None if args.pretty else (",", ":"))
-    sys.stdout.write(output + "\n")
+    try:
+        sys.stdout.write(output + "\n")
+    except BrokenPipeError:
+        return code or 1
     return code
 
 

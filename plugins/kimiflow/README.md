@@ -109,7 +109,7 @@ kimiflow status --pretty
 ```
 
 An existing local or remote coding-agent harness can use the same lifecycle through the versioned JSON-stdio
-adapter contract:
+adapter contract. This path is additive: normal Kimiflow users do not need KimiTalk or another app host.
 
 ```bash
 kimiflow run --adapter command --adapter-command my-agent-harness --model qwen-local \
@@ -118,7 +118,28 @@ kimiflow run --adapter command --adapter-command my-agent-harness --model qwen-l
 
 The harness must advertise file, shell, test, resume, and gate capabilities. Kimiflow keeps the workflow,
 mechanical gates, active-run ownership, bounded turn limit, and usage receipt provider-neutral; the adapter owns
-only model transport and tool execution.
+only model transport and tool execution. App hosts can additionally negotiate canonical workflow context,
+abstract `top`/`balanced`/`cheap`/`cross_family_top` model roles, bounded structured events, and root confinement.
+Kimiflow never hard-codes Qwen, Ollama, vLLM, or another provider.
+
+Validate an app harness without starting a model turn, then opt into its features explicitly:
+
+```bash
+kimiflow adapter-check --adapter-command my-agent-harness \
+  --require-feature workflow_context --require-feature model_roles \
+  --require-feature structured_events --require-feature root_confinement
+
+kimiflow run --adapter command --adapter-command my-agent-harness \
+  --require-feature workflow_context --require-feature model_roles \
+  --require-feature structured_events --require-feature root_confinement \
+  --model-role top=qwen-local --model-role balanced=qwen-coder-local \
+  --events-jsonl --root /path/to/project "implement the requested feature"
+```
+
+Repeat the same feature/model arguments when manually resuming. A SHA-256 contract fingerprint prevents silent
+role or capability drift before the next coding turn. The complete v1 contract and schema live in
+[`references/adapter-protocol.md`](references/adapter-protocol.md) and
+[`references/adapter-protocol-v1.schema.json`](references/adapter-protocol-v1.schema.json).
 
 With the built-in adapter it launches the already authenticated Codex CLI in a `workspace-write` sandbox and
 resumes the same thread. Every adapter uses the same `.kimiflow/` state, gates, and memory; none adds a daemon,
@@ -127,8 +148,9 @@ an exhausted run stays explicitly resumable instead of claiming completion.
 
 Only a material Kimiflow wait or park exits with status 3. Answer it with
 `kimiflow resume --message "<decision>"`; interrupted or transport-failed runs can use `kimiflow resume` without
-a message while their active run remains open. The local receipt contains transport metadata only, never the
-task or transcript. `bash hooks/install-kimiflow-cli.sh --check` verifies the managed wrapper, and the installer
+a message while their active run remains open. The local receipt contains bounded transport metadata (including
+the existing canonical root/run identity), never the task, transcript, event payloads, workflow paths, model IDs,
+or user answers. `bash hooks/install-kimiflow-cli.sh --check` verifies the managed wrapper, and the installer
 refuses to overwrite an unrelated `kimiflow` executable.
 
 ### Unified local run control plane
