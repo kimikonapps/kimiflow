@@ -62,16 +62,17 @@ case "${1:-}" in
     printf 'LEARNING_REVIEW\tOPEN\tstatus=recorded\tfreshness=current\tpath=.kimiflow/demo/LEARNING-REVIEW.md\n'
     ;;
   evaluate-run)
-    root=""; run=""; terminal=""
+    root=""; run=""; terminal=""; write="false"
     while [ "$#" -gt 0 ]; do
       case "$1" in
         --root) shift; root="${1:-}" ;;
         --run) shift; run="${1:-}" ;;
         --terminal) shift; terminal="${1:-}" ;;
+        --write) write="true" ;;
       esac
       shift || true
     done
-    if [ "${KIMIFLOW_FAKE_EVALUATE_WRITES:-0}" = "1" ] && [ -n "$root" ] && [ -n "$run" ]; then
+    if [ "$write" = "true" ] && [ "${KIMIFLOW_FAKE_EVALUATE_WRITES:-0}" = "1" ] && [ -n "$root" ] && [ -n "$run" ]; then
       mkdir -p "$root/.kimiflow/project"
       printf '{"partial":true}\n' > "$root/.kimiflow/project/STRATEGY-OUTCOMES.jsonl"
       printf '{"partial":true}\n' > "$root/$run/OUTCOME-EVALUATION.json"
@@ -83,7 +84,7 @@ case "${1:-}" in
     classification="inconclusive"; promotable="false"
     if [ "$terminal" = "done" ]; then classification="verified_success"; promotable="true"; fi
     if [ "$terminal" = "failed" ]; then classification="verified_failure"; promotable="true"; fi
-    printf '{"schema_version":1,"status":"evaluated","written":true,"evaluation":{"id":"out_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","terminal":"%s","classification":"%s","promotable":%s}}\n' "$terminal" "$classification" "$promotable"
+    printf '{"schema_version":1,"status":"evaluated","written":%s,"evaluation":{"id":"out_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","terminal":"%s","classification":"%s","promotable":%s}}\n' "$write" "$terminal" "$classification" "$promotable"
     ;;
   *)
     printf 'fake-memory-router: unsupported command %s\n' "${1:-}" >&2
@@ -426,7 +427,7 @@ else
 fi
 [ -f "$REPO/.kimiflow/session/ACTIVE_RUN.json" ] && pass "failed_finish_keeps_active_session" || fail "failed_finish_keeps_active_session"
 [ -f "$REPO/.kimiflow/project/EXISTING.json" ] && pass "failed_finish_restores_existing_project_memory" || fail "failed_finish_restores_existing_project_memory"
-[ ! -f "$REPO/.kimiflow/project/SENTINEL.json" ] && pass "failed_finish_rolls_back_review_memory_write" || fail "failed_finish_rolls_back_review_memory_write"
+[ -f "$REPO/.kimiflow/project/SENTINEL.json" ] && pass "failed_finish_never_rewrites_review_memory" || fail "failed_finish_never_rewrites_review_memory"
 [ ! -f "$REPO/.kimiflow/demo/LEARNING-REVIEW.md" ] && pass "failed_finish_rolls_back_run_learning_review" || fail "failed_finish_rolls_back_run_learning_review"
 if grep -q '^Status: done' "$REPO/.kimiflow/demo/STATE.md"; then
   fail "failed_finish_does_not_mark_state_done"

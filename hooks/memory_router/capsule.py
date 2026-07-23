@@ -180,6 +180,8 @@ def portable_entry(root, row):
         return None, "invalid_source_id"
     if _jq_or(row.get("status"), "current") != "current":
         return None, "not_current"
+    if not rows.learning_is_durable(row):
+        return None, "not_durable"
     if _jq_or(row.get("sensitivity"), "normal") not in ("normal", "public"):
         return None, "sensitive"
     confidence = row.get("confidence")

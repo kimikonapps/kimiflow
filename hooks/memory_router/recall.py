@@ -5,6 +5,7 @@ MEMORY-USAGE.json. Behavioral port of the Bash cmd_recall (1826-2019) + its help
 (terms_json_from_query / jsonl_hits / write_recall_markdown / recall_json_path_for /
 write_recall_json) at kimiflow--v0.1.50. stdout is timestamp-free; only the written
 files carry the iso_now nondeterminism."""
+import contextlib
 import hashlib
 import heapq
 import json
@@ -12,7 +13,7 @@ import os
 import re
 import stat
 
-from . import (attribution, clock, contracts, outcomes, recall_index, store, text,
+from . import (attribution, clock, contracts, outcomes, recall_index, rows, store, text,
                usage_metrics, workspace_scope)
 from .cli import die, resolve_root, usage
 
@@ -621,13 +622,23 @@ def _pack_hits(source_hits, terms, max_hits, token_limit, initial_refs=(),
         if any(index in suppressed for index in members):
             duplicates += len(members)
             continue
-        representative = min(
-            members,
-            key=lambda index: (
-                -records[index][6] if locality is not None else 0,
-                rank[records[index][0]], records[index][2],
-            ),
-        )
+        if all(records[index][0] == "learnings" for index in members):
+            representative = min(
+                members,
+                key=lambda index: (
+                    0 if rows.learning_is_durable(records[index][1]) else 1,
+                    -records[index][6] if locality is not None else 0,
+                    records[index][2],
+                ),
+            )
+        else:
+            representative = min(
+                members,
+                key=lambda index: (
+                    -records[index][6] if locality is not None else 0,
+                    rank[records[index][0]], records[index][2],
+                ),
+            )
         source, hit, sequence, _, _, _, _ = records[representative]
         coverage = max(records[index][3] for index in members)
         local_rank = max(records[index][6] for index in members)
@@ -637,6 +648,19 @@ def _pack_hits(source_hits, terms, max_hits, token_limit, initial_refs=(),
         unique.sort(key=lambda item: (-item[3], rank[item[0]], item[2]))
     else:
         unique.sort(key=lambda item: (-item[4], -item[3], rank[item[0]], item[2]))
+    # Probationary learnings stay targeted-recallable, but may not consume a
+    # bounded slot ahead of durable project knowledge. Preserve the global
+    # source positions and the existing order within each maturity tier.
+    learning_positions = [
+        position for position, item in enumerate(unique)
+        if item[0] == "learnings"
+    ]
+    ordered_learning_hits = sorted(
+        (unique[position] for position in learning_positions),
+        key=lambda item: 0 if rows.learning_is_durable(item[1]) else 1,
+    )
+    for position, item in zip(learning_positions, ordered_learning_hits):
+        unique[position] = item
 
     selected = {source: [] for source in preference}
     used = 0
@@ -751,6 +775,11 @@ def recall_json(root, query, max_hits, targeted=False, strategies=False, mode=""
         return 1 if classification == "local" else 0
 
     def scoped_priority(source):
+        if source == "learnings":
+            return lambda hit: (
+                (2 if rows.learning_is_durable(hit) else 0)
+                + (1 if scope_active and locality(source, hit) else 0)
+            )
         if not scope_active:
             return None
         return lambda hit: locality(source, hit)
@@ -1295,7 +1324,7 @@ def run(argv):
             return die("recall: unknown argument: %s" % arg, 2)
         i += 1
 
-    root = resolve_root(root)
+    root = os.path.realpath(resolve_root(root))
     if query_file:
         if not os.path.isfile(query_file):
             return die("query file not found: %s" % query_file, 2)
@@ -1319,30 +1348,45 @@ def run(argv):
         return die("recall --max must be a number", 2)
     max_hits = int(max_raw)
 
-    obj = recall_json(
-        root,
-        query,
-        max_hits,
-        targeted=targeted,
-        strategies=strategies,
-        mode=mode,
-        refresh_index=bool(write_path),
-        scope_paths=requested_scope_paths,
-        scope_source=scope_source,
-        scope_state_receipt=scope_state_receipt,
-    )
-
     if write_path:
         if not write_path.startswith("/"):
             write_path = root + "/" + write_path
-        write_recall_markdown(write_path, obj)
-        write_recall_json(recall_json_path_for(write_path), obj)
-        usage_hits = (obj["sources"]["learnings"]["hits"]
-                      + obj["sources"]["index"]["hits"]
-                      + obj["sources"]["history"]["hits"])
-        if strategies:
-            usage_hits += obj["sources"]["strategies"]["hits"]
-        usage_metrics.update_usage_metrics(root, usage_hits, "recall")
+    usage_file = os.path.join(root, ".kimiflow", "project", "MEMORY-USAGE.json")
+    if write_path:
+        os.makedirs(os.path.dirname(usage_file), exist_ok=True)
+        usage_file = os.path.join(
+            os.path.realpath(os.path.dirname(usage_file)),
+            os.path.basename(usage_file),
+        )
+    usage_guard = (
+        store.path_lock(usage_file)
+        if write_path else contextlib.nullcontext()
+    )
+    with usage_guard:
+        obj = recall_json(
+            root,
+            query,
+            max_hits,
+            targeted=targeted,
+            strategies=strategies,
+            mode=mode,
+            refresh_index=bool(write_path),
+            scope_paths=requested_scope_paths,
+            scope_source=scope_source,
+            scope_state_receipt=scope_state_receipt,
+        )
+
+        if write_path:
+            write_recall_markdown(write_path, obj)
+            write_recall_json(recall_json_path_for(write_path), obj)
+            usage_hits = (obj["sources"]["learnings"]["hits"]
+                          + obj["sources"]["index"]["hits"]
+                          + obj["sources"]["history"]["hits"])
+            if strategies:
+                usage_hits += obj["sources"]["strategies"]["hits"]
+            usage_metrics.update_usage_metrics(
+                root, usage_hits, "recall", usage_file=usage_file
+            )
 
     contracts.json_print(obj, pretty)
     return 0

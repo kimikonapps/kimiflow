@@ -78,6 +78,17 @@ class HelperCase(unittest.TestCase):
         self.assertNotIn("learn_noev", ids)   # no evidence
         self.assertNotIn("learn_nv", ids)     # NOT VERIFIED
 
+    def test_probationary_learning_is_not_a_proposal_candidate(self):
+        path = os.path.join(self.root, ".kimiflow", "project", "LEARNINGS.jsonl")
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps({
+                "id": "learn_probation", "status": "current", "maturity": "probationary",
+                "kind": "project_rule_confirmed", "summary": "not proven twice",
+                "evidence": ["a.py"], "evidence_fingerprints": [],
+            }) + "\n")
+        ids = [row["id"] for row in propose.current_evidence_backed_rows(path)]
+        self.assertNotIn("learn_probation", ids)
+
     def test_candidates_type_mapping(self):
         rows = propose.current_evidence_backed_rows(
             os.path.join(self.root, ".kimiflow", "project", "LEARNINGS.jsonl"))

@@ -9,6 +9,7 @@ import secrets
 import stat
 import tempfile
 import threading
+import unicodedata
 
 try:
     import fcntl
@@ -21,6 +22,10 @@ class _ObjectPairs(list):
 
 
 class ConcurrentWriteError(RuntimeError):
+    pass
+
+
+class FileTooLargeError(ValueError):
     pass
 
 
@@ -45,7 +50,24 @@ def _anchor_current(anchor):
             and (pinned.st_dev, pinned.st_ino) == (current.st_dev, current.st_ino))
 
 
-def _file_snapshot_at(directory_descriptor, name):
+def _read_bounded(descriptor, max_bytes):
+    chunks = []
+    total = 0
+    while True:
+        limit = 65536 if max_bytes is None else min(65536, max_bytes + 1 - total)
+        if limit <= 0:
+            raise FileTooLargeError("local file exceeds size limit")
+        chunk = os.read(descriptor, limit)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+        if max_bytes is not None and total > max_bytes:
+            raise FileTooLargeError("local file exceeds size limit")
+    return b"".join(chunks)
+
+
+def _file_snapshot_at(directory_descriptor, name, max_bytes=None):
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(name, flags, dir_fd=directory_descriptor)
@@ -55,12 +77,9 @@ def _file_snapshot_at(directory_descriptor, name):
         before = os.fstat(descriptor)
         if not stat.S_ISREG(before.st_mode):
             return None
-        chunks = []
-        while True:
-            chunk = os.read(descriptor, 65536)
-            if not chunk:
-                break
-            chunks.append(chunk)
+        if max_bytes is not None and before.st_size > max_bytes:
+            raise FileTooLargeError("local file exceeds size limit")
+        data = _read_bounded(descriptor, max_bytes)
         after = os.fstat(descriptor)
         anchored = os.stat(name, dir_fd=directory_descriptor, follow_symlinks=False)
     except OSError:
@@ -77,7 +96,7 @@ def _file_snapshot_at(directory_descriptor, name):
     )
     receipt = (anchored.st_size, anchored.st_mtime_ns)
     return (
-        identity, b"".join(chunks), stat.S_IMODE(anchored.st_mode), receipt
+        identity, data, stat.S_IMODE(anchored.st_mode), receipt
     ) if stable else None
 
 
@@ -131,11 +150,13 @@ def _exchange_paths(source, target):
         raise OSError(number, os.strerror(number), target)
 
 
-def _file_snapshot(path):
+def _file_snapshot(path, max_bytes=None):
     """Read one stable path identity and payload without following a symlink."""
     anchor = _active_anchor(path)
     if anchor is not None:
-        return _file_snapshot_at(anchor["descriptor"], os.path.basename(path))
+        return _file_snapshot_at(
+            anchor["descriptor"], os.path.basename(path), max_bytes=max_bytes
+        )
     flags = os.O_RDONLY
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
@@ -145,12 +166,9 @@ def _file_snapshot(path):
         return None
     try:
         before = os.fstat(descriptor)
-        chunks = []
-        while True:
-            chunk = os.read(descriptor, 65536)
-            if not chunk:
-                break
-            chunks.append(chunk)
+        if max_bytes is not None and before.st_size > max_bytes:
+            raise FileTooLargeError("local file exceeds size limit")
+        data = _read_bounded(descriptor, max_bytes)
         after = os.fstat(descriptor)
         current = os.stat(path, follow_symlinks=False)
     except OSError:
@@ -167,7 +185,7 @@ def _file_snapshot(path):
     )
     mode = stat.S_IMODE(current.st_mode)
     receipt = (current.st_size, current.st_mtime_ns)
-    return (identity, b"".join(chunks), mode, receipt) if stable else None
+    return (identity, data, mode, receipt) if stable else None
 
 
 def local_file_snapshot(root, path):
@@ -260,7 +278,7 @@ def _same_source_generation(current, expected):
     return current[3] == expected[3]
 
 
-def stable_file_snapshot(path, missing_ok=False, allow_detached=False):
+def stable_file_snapshot(path, missing_ok=False, allow_detached=False, max_bytes=None):
     """Return a stable regular-file snapshot, distinguishing missing from unsafe."""
     anchor = _active_anchor(path)
     if anchor is not None:
@@ -288,7 +306,7 @@ def stable_file_snapshot(path, missing_ok=False, allow_detached=False):
             raise ValueError("unsafe local file: %s" % path) from exc
         if not stat.S_ISREG(info.st_mode):
             raise ValueError("unsafe local file: %s" % path)
-    snapshot = _file_snapshot(path)
+    snapshot = _file_snapshot(path, max_bytes=max_bytes)
     if snapshot is None:
         raise ConcurrentWriteError("local file changed while reading: %s" % path)
     return snapshot
@@ -353,9 +371,17 @@ def _temporary_file(path):
     raise OSError(errno.EEXIST, "cannot allocate atomic temporary file", path)
 
 
-def _restore_exchange_conflict(tmp, path, candidate_snapshot, max_rounds=4):
+def _restore_exchange_conflict(tmp, path, candidate_snapshot, max_rounds=4,
+                               max_bytes=None):
     """Restore through bounded exchanges while the canonical path always exists."""
-    current = _file_snapshot(path)
+    try:
+        current = _file_snapshot(path, max_bytes=max_bytes)
+    except FileTooLargeError:
+        # A post-publication writer owns the now-oversized canonical path.
+        # Preserve the displaced version too because it may contain a distinct
+        # concurrent/manual write.
+        _retain_conflict_copy(tmp)
+        return
     if current is None:
         recovery = _retain_conflict_copy(tmp)
         raise ConcurrentWriteError(
@@ -364,32 +390,61 @@ def _restore_exchange_conflict(tmp, path, candidate_snapshot, max_rounds=4):
         )
     if not _same_snapshot(current, candidate_snapshot):
         # A post-publication writer already owns the canonical path and wins.
-        try:
-            _unlink_path(tmp)
-        except OSError:
-            pass
+        _retain_conflict_copy(tmp)
         return
 
     expected_target = candidate_snapshot
     for _round in range(max_rounds):
-        desired = _file_snapshot(tmp)
-        target_before = _file_snapshot(path)
+        try:
+            desired = _file_snapshot(tmp, max_bytes=max_bytes)
+        except FileTooLargeError:
+            # The displaced pre-exchange writer is oversized. Promote it back
+            # without materializing its bytes if the candidate still owns path.
+            try:
+                target_before = _file_snapshot(path, max_bytes=max_bytes)
+            except FileTooLargeError:
+                target_before = None
+            if _same_snapshot(target_before, expected_target):
+                try:
+                    _exchange_paths(tmp, path)
+                except OSError:
+                    pass
+            _retain_conflict_copy(tmp)
+            return
+        try:
+            target_before = _file_snapshot(path, max_bytes=max_bytes)
+        except FileTooLargeError:
+            target_before = None
         if desired is None or target_before is None:
             break
         if not _same_snapshot(target_before, expected_target):
             # A writer between recovery rounds already owns the canonical path and
             # is newer than the version waiting at `tmp`.
-            try:
-                _unlink_path(tmp)
-            except OSError:
-                pass
+            _retain_conflict_copy(tmp)
             return
         try:
             _exchange_paths(tmp, path)
         except OSError:
             break
-        installed = _file_snapshot(path)
-        displaced = _file_snapshot(tmp)
+        try:
+            installed = _file_snapshot(path, max_bytes=max_bytes)
+        except FileTooLargeError:
+            # The oversized desired writer now owns the canonical path.
+            _retain_conflict_copy(tmp)
+            return
+        try:
+            displaced = _file_snapshot(tmp, max_bytes=max_bytes)
+        except FileTooLargeError:
+            # A newer oversized writer was displaced by this recovery round.
+            # Promote it back when our desired version still owns the target,
+            # and retain whatever that exchange displaces as explicit recovery.
+            if _same_snapshot(installed, desired):
+                try:
+                    _exchange_paths(tmp, path)
+                except OSError:
+                    pass
+            _retain_conflict_copy(tmp)
+            return
         if installed is None or displaced is None:
             break
         if _same_snapshot(installed, desired) and _same_snapshot(displaced, target_before):
@@ -400,10 +455,7 @@ def _restore_exchange_conflict(tmp, path, candidate_snapshot, max_rounds=4):
             return
         if not _same_snapshot(installed, desired):
             # A writer after the exchange owns the canonical path and wins.
-            try:
-                _unlink_path(tmp)
-            except OSError:
-                pass
+            _retain_conflict_copy(tmp)
             return
         # A writer immediately before the exchange is now preserved at `tmp` and is
         # newer than the installed target. The next bounded exchange promotes it.
@@ -416,33 +468,73 @@ def _restore_exchange_conflict(tmp, path, candidate_snapshot, max_rounds=4):
     )
 
 
+def _path_lock_key(path):
+    """Return the physical member of a path's cooperative lock identity."""
+    anchor = _active_anchor(path)
+    if anchor is not None:
+        physical = os.path.join(anchor["physical_path"], os.path.basename(path))
+    else:
+        physical = os.path.realpath(os.path.abspath(path))
+    return "path:" + unicodedata.normalize("NFC", physical).casefold()
+
+
+def _path_lock_keys(path):
+    """Bind both the lexical path and its current physical target.
+
+    The lexical member survives final-component symlink retargeting while the
+    physical member makes workspace-root aliases cooperate. Regular paths
+    collapse to one key.
+    """
+    lexical = os.path.abspath(path)
+    anchor = _active_anchor(path)
+    if anchor is not None:
+        physical = os.path.join(anchor["physical_path"], os.path.basename(path))
+    else:
+        physical = os.path.realpath(lexical)
+    return tuple(sorted({
+        "path:" + unicodedata.normalize("NFC", value).casefold()
+        for value in (lexical, physical)
+    }))
+
+
 @contextlib.contextmanager
 def path_lock(path):
-    """Serialize cooperating read/modify/write operations for one absolute path."""
-    key = os.path.abspath(path)
+    """Serialize cooperating operations across lexical and physical aliases."""
+    keys = _path_lock_keys(path)
     held = getattr(_LOCK_STATE, "held", set())
-    if key in held or fcntl is None:
+    if fcntl is None:
         yield
         return
+    if held.intersection(keys):
+        if set(keys).issubset(held):
+            yield
+            return
+        raise ConcurrentWriteError("path lock identity changed while held")
     lock_dir = os.path.join(
         tempfile.gettempdir(), "kimiflow-memory-router-locks-%s" % getattr(os, "getuid", lambda: 0)()
     )
     os.makedirs(lock_dir, mode=0o700, exist_ok=True)
-    lock_path = os.path.join(lock_dir, hashlib.sha256(os.fsencode(key)).hexdigest() + ".lock")
     flags = os.O_RDWR | os.O_CREAT
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
-    descriptor = os.open(lock_path, flags, 0o600)
+    descriptors = []
     try:
-        fcntl.flock(descriptor, fcntl.LOCK_EX)
-        _LOCK_STATE.held = held | {key}
+        for key in keys:
+            lock_path = os.path.join(
+                lock_dir, hashlib.sha256(os.fsencode(key)).hexdigest() + ".lock"
+            )
+            descriptor = os.open(lock_path, flags, 0o600)
+            descriptors.append(descriptor)
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+        _LOCK_STATE.held = held | set(keys)
         yield
     finally:
         _LOCK_STATE.held = held
-        try:
-            fcntl.flock(descriptor, fcntl.LOCK_UN)
-        finally:
-            os.close(descriptor)
+        for descriptor in reversed(descriptors):
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
 
 
 @contextlib.contextmanager
@@ -472,6 +564,7 @@ def local_path_guard(root, directory):
         info = os.fstat(current)
         anchor = {
             "path": directory,
+            "physical_path": os.path.realpath(directory),
             "descriptor": current,
             "identity": (info.st_dev, info.st_ino),
         }
@@ -577,7 +670,7 @@ def ensure_local_directory(root, directory, mode=0o700):
 
 
 def atomic_write(path, data, mode=0o644, refuse_symlink=True, expected=None,
-                 expected_snapshot=None, allow_detached=False):
+                 expected_snapshot=None, allow_detached=False, max_bytes=None):
     with path_lock(path):
         anchor = _active_anchor(path)
         if anchor is not None and not allow_detached and not _anchor_current(anchor):
@@ -595,7 +688,7 @@ def atomic_write(path, data, mode=0o644, refuse_symlink=True, expected=None,
                 raise ValueError("refusing to write through symlink: %s" % path)
         initial_snapshot = None
         if expected is not None:
-            initial_snapshot = _file_snapshot(path)
+            initial_snapshot = _file_snapshot(path, max_bytes=max_bytes)
             if (initial_snapshot is None
                     or initial_snapshot[1] != expected.encode("utf-8")
                     or (expected_snapshot is not None
@@ -617,12 +710,21 @@ def atomic_write(path, data, mode=0o644, refuse_symlink=True, expected=None,
                 _replace_path(tmp, path)
                 tmp = ""
             else:
-                candidate_snapshot = _file_snapshot(tmp)
+                candidate_snapshot = _file_snapshot(tmp, max_bytes=max_bytes)
                 if candidate_snapshot is None:
                     raise OSError(errno.EIO, "cannot snapshot prepared atomic write", tmp)
                 _exchange_paths(tmp, path)
-                displaced_snapshot = _file_snapshot(tmp)
-                installed_snapshot = _file_snapshot(path)
+                try:
+                    displaced_snapshot = _file_snapshot(tmp, max_bytes=max_bytes)
+                except FileTooLargeError:
+                    conflict_tmp = tmp
+                    tmp = ""
+                    _restore_exchange_conflict(
+                        conflict_tmp, path, candidate_snapshot,
+                        max_bytes=max_bytes,
+                    )
+                    raise ConcurrentWriteError("source changed during rewrite")
+                installed_snapshot = _file_snapshot(path, max_bytes=max_bytes)
                 if (
                     displaced_snapshot is None
                     or not _same_snapshot(displaced_snapshot, initial_snapshot)
@@ -631,17 +733,33 @@ def atomic_write(path, data, mode=0o644, refuse_symlink=True, expected=None,
                     conflict_tmp = tmp
                     tmp = ""
                     _restore_exchange_conflict(
-                        conflict_tmp, path, candidate_snapshot
+                        conflict_tmp, path, candidate_snapshot,
+                        max_bytes=max_bytes,
                     )
                     raise ConcurrentWriteError("source changed during rewrite")
                 if (anchor is not None and not allow_detached
                         and not _anchor_current(anchor)):
                     _exchange_paths(tmp, path)
-                    restored = _file_snapshot(path)
                     try:
-                        _unlink_path(tmp)
-                    except OSError:
-                        pass
+                        detached_displaced = _file_snapshot(
+                            tmp, max_bytes=max_bytes
+                        )
+                    except FileTooLargeError:
+                        detached_displaced = None
+                    try:
+                        restored = _file_snapshot(path, max_bytes=max_bytes)
+                    except FileTooLargeError:
+                        restored = None
+                    if (
+                        _same_snapshot(restored, initial_snapshot)
+                        and _same_snapshot(detached_displaced, candidate_snapshot)
+                    ):
+                        try:
+                            _unlink_path(tmp)
+                        except OSError:
+                            pass
+                    else:
+                        _retain_conflict_copy(tmp)
                     tmp = ""
                     if not _same_snapshot(restored, initial_snapshot):
                         raise ConcurrentWriteError(

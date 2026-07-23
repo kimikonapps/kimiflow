@@ -273,8 +273,13 @@ convention, test, and flow evidence. Later runs check affected sections and refr
 The map is optional, local by default, and never blocks normal work when absent.
 
 The local Memory Router stores bounded project facts, decisions, standards, run history, and
-evidence-backed learnings. Promotion happens only after successful verification and source-freshness
-checks. Changed evidence supersedes stale learning instead of silently keeping it active.
+evidence-backed learnings. New project learnings start `probationary`: they are available to targeted
+recall but stay out of always-on context, proposals, and portable/Vault handoffs. Two later verified
+helpful applications of the same fingerprinted learning content with still-current evidence make them
+`durable`; rewritten content cannot inherit old success, and a verified contradiction, content drift, or
+evidence drift demotes trust again. Missing maturity on older rows preserves their legacy durable behavior.
+The fingerprint covers every Recall-visible field except explicit lifecycle metadata, so a future field cannot
+silently inherit earlier verification.
 Completed runs also receive a local automatic outcome evaluation. Future matching runs see at most
 one verified success strategy and one evidenced failure strategy, both rechecked against current code.
 Recall now packs memory, facts, learnings, strategies, and history into one global context budget and
@@ -291,14 +296,28 @@ plan decision, then links it to verification and classifies it `helpful`, `neutr
 the existing outcome artifact. This adds no external telemetry, copied recall text, or user confirmation.
 
 Memory maintenance is preview-first and reversible. `memory-router.sh lifecycle` explains a bounded
-0–5 utility score; `lifecycle --write` quarantines only strictly parsed stale rows that are provably unused with
-a unique ID. An atomic path exchange verifies displaced source identity/mode and the installed candidate; bounded
+0–5 utility score and the verified-use state. Terminal runs invoke `lifecycle --write` automatically only after
+the terminal state commits and outcome persistence succeeds. A cooperative 20-second deadline rolls back the
+bounded learning and text-derivative transaction before the 30-second host timeout and is disarmed at successful derivative commit;
+any timeout or other curation error is reported
+without creating a user gate. Unchanged writes are byte-idempotent. It promotes/demotes trust metadata
+and quarantines only strictly parsed stale rows that are provably unused with a unique ID. Missing sealed Recall
+evidence fails curation closed; a legacy missing learning ID is recovered only from that sealed hit. Outcome
+persistence and lifecycle share one local ledger lock, reject duplicate-key rows, count each run once, and use
+serialized ledger order rather than editable timestamps for trust causality. Persisted Recall selection/usage and
+lifecycle also share the usage-ledger lock under one physical identity even through root aliases, so a just-used
+row cannot be quarantined by a race. Durable candidates
+rank ahead of locality before the bounded candidate window. Failed outcome persistence leaves
+the run resumable for an autonomous retry. An
+atomic path exchange verifies displaced source identity/mode and the installed candidate; bounded
 re-exchanges promote a later writer without ever removing the canonical path, while an unresolved race retains an
 explicit local recovery copy. Unsupported native exchange fails closed before mutation. Then
 `lifecycle --restore <id> --write` restores one row only while its evidence is still exact. For optional
 cross-project handoff, `capsule --write` creates a mode-0600 local privacy capsule containing at most 20
-fresh, allowlisted six-field projections. Vault sync uses the same projection and never exports source IDs,
+fresh, durable, allowlisted six-field projections. Vault sync uses the same projection and never exports source IDs,
 paths, evidence references, credential or JWT shapes, dotted/dotless emails, private/security rows, or unsafe content.
+The outcome writer retains the newest complete rows below the stricter lifecycle ceiling, so normal long-running
+projects do not eventually require manual ledger cleanup.
 
 An Obsidian Vault is optional. Without it, project-local memory and every quality gate continue to
 work. With authenticated Vault MCP tools, Kimiflow can recall and export curated, non-private

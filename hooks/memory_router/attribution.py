@@ -5,6 +5,8 @@ import os
 import re
 import stat
 
+from . import rows
+
 CONTRACT = 1
 SOURCE_ORDER = ("facts", "learnings", "strategies", "history", "index")
 _ID_RE = re.compile(r"^rec_[0-9a-f]{64}$")
@@ -248,6 +250,18 @@ def recall_hit_map(value):
             if identifier in result:
                 raise AttributionError("RECALL.json contains a recall_id collision")
             result[identifier] = {"source": source, "reference": hit_reference(hit)}
+            learning_id = hit.get("id")
+            if (source == "learnings" and isinstance(learning_id, str)
+                    and 0 < len(learning_id) <= 128):
+                result[identifier]["learning_id"] = learning_id
+                try:
+                    result[identifier]["learning_fingerprint"] = (
+                        rows.learning_content_fingerprint(hit)
+                    )
+                except ValueError as exc:
+                    raise AttributionError(
+                        "RECALL.json learning hit is not canonical JSON"
+                    ) from exc
     return result
 
 
@@ -271,6 +285,32 @@ def _resolve(root, run_dir):
     if os.path.commonpath((root, run_dir)) != root:
         raise AttributionError("attribution run is outside the repository")
     return root, run_dir
+
+
+def sealed_recall_hit_map(root, run_dir, expected_sha256, limit=2 * 1024 * 1024):
+    """Re-open the exact bounded RECALL artifact sealed into an outcome."""
+    if (
+        not isinstance(expected_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None
+    ):
+        raise AttributionError("sealed RECALL.json digest is invalid")
+    root, run_dir = _resolve(root, run_dir)
+    recall_path = os.path.join(run_dir, "RECALL.json")
+    try:
+        data = _read_bounded_nofollow(recall_path, limit)
+    except FileNotFoundError as exc:
+        raise AttributionError("sealed RECALL.json is missing") from exc
+    except AttributionError:
+        raise
+    except OSError as exc:
+        raise AttributionError("sealed RECALL.json is unsafe") from exc
+    if hashlib.sha256(data).hexdigest() != expected_sha256:
+        raise AttributionError("sealed RECALL.json no longer matches the outcome")
+    try:
+        value = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise AttributionError("sealed RECALL.json is malformed") from exc
+    return recall_hit_map(value), len(data)
 
 
 def _validate_evidence_path(root, relative, line_number):
@@ -441,6 +481,8 @@ def evaluate_json(root, run_dir, terminal, include_context=False):
             "decision_checks": check_status,
             "evidence": [contradiction] if contradiction else [],
         }
+        if "learning_id" in hits[identifier]:
+            item["learning_id"] = hits[identifier]["learning_id"]
         items.append(item)
     classifications = [item["classification"] for item in items]
     overall = "contradicted" if "contradicted" in classifications else (

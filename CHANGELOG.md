@@ -9,6 +9,10 @@ used by embedded installations, without maintaining a KimiTalk-specific fork.
 
 ### Added
 
+- Autonomous project-memory trust tiers: new learnings start probationary, verified decision-linked outcomes
+  promote them after repeated success, and contradictions or evidence drift demote them reversibly.
+- Nonblocking terminal memory curation receipts derived from the existing bounded outcome ledger, with no
+  additional model call, provider, or user approval; compact reason counts explain every changed learning.
 - Deterministic `kimiflow-runtime-<version>.zip` plus `kimiflow-update-v1.json`, binding version, pinned source
   commit, runtime fingerprint, artifact digest, adapter protocol, and named embedded/app-host profiles.
 - Offline artifact/draft verification and fixed-origin official publication verification; only the latter can
@@ -18,6 +22,35 @@ used by embedded installations, without maintaining a KimiTalk-specific fork.
 
 ### Changed
 
+- Always-on memory, proposals, Privacy Capsules, and provider sync now admit durable learnings only; probationary
+  rows stay available through targeted local recall and pre-contract rows remain backward-compatible.
+- Terminal curation starts only after terminal state commit and successful outcome persistence; rollback never
+  replaces the shared project-memory tree, so concurrent/manual memory writes remain authoritative.
+- Outcome persistence retains newest complete rows below the stricter lifecycle reader ceiling, preventing
+  long-running projects from stalling on normal ledger growth.
+- Verified-use streaks are bound to a stable fingerprint of the recalled learning's meaning and provenance;
+  rewritten or newly added Recall-visible fields cannot inherit an earlier version's successful outcomes.
+- Missing or digest-mismatched sealed Recall evidence now fails curation closed, so an unavailable later
+  contradiction can never be skipped in favor of older successful outcomes.
+- Legacy attribution items that omit `learning_id` derive it only from the exact sealed learning hit, so deleting
+  the optional field cannot hide a later contradiction.
+- Outcome persistence and lifecycle now share one ledger transaction lock, reject duplicate-key rows, count each
+  run once, and use serialized ledger order rather than editable timestamps for trust causality.
+- Explicit learning security scans are trusted only in the exact successful shape; every malformed or failed shape
+  is protected from automatic mutation. Durable maturity wins before locality both inside duplicate groups and
+  before the bounded scoped candidate window.
+- A persisted outcome failure leaves the active session resumable instead of retiring it with partial terminal
+  evidence; a later autonomous finish retry can complete the same run.
+- Durable learnings keep precedence over probationary learnings in the final global token pack, not only in the
+  per-source candidate window.
+- Persisted Recall and lifecycle serialize on the Usage ledger across selection/evaluation and mutation, preventing
+  a concurrent successful use from being quarantined as stale-unused; physical lock identity remains stable through
+  symlinked root aliases.
+- Automatic terminal curation has a cooperative 20-second rollback deadline inside a fixed 30-second host timeout,
+  with 8 MiB source/derivative and 4096-row source ceilings;
+  source/text derivatives are restored and a partial derived SQLite cache is invalidated before the nonblocking
+  `memory_curation_timeout` receipt. The deadline is disarmed at successful derivative commit, malformed prior text
+  derivatives fail before source mutation, and no-change writes leave derivative bytes untouched.
 - CI pins Python 3.9 on the full lane and Python 3.14 on portability through `setup-python@v6`.
 - The marketplace candidate excludes maintainer-only builders/publishers while carrying the public distribution
   contract and schema.

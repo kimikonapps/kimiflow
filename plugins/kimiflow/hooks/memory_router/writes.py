@@ -45,6 +45,8 @@ def _identity_match(row, kind, scope, topic, summary, evidence):
 
 def append_learning_row(root, kind, scope, topic, summary, evidence,
                         confidence, sensitivity, status):
+    project = os.path.join(root, ".kimiflow", "project")
+    os.makedirs(project, exist_ok=True)
     learnings = paths.rows_path_for_scope(root, scope)
     with store.path_lock(learnings):
         return _append_learning_row_locked(
@@ -55,9 +57,7 @@ def append_learning_row(root, kind, scope, topic, summary, evidence,
 
 def _append_learning_row_locked(root, kind, scope, topic, summary, evidence,
                                 confidence, sensitivity, status):
-    project = os.path.join(root, ".kimiflow", "project")
     learnings = paths.rows_path_for_scope(root, scope)
-    os.makedirs(project, exist_ok=True)
 
     # Gate scope widened from summary-only to summary+topic+evidence (audit fix B3-P3,
     # spec §12). Fields are newline-joined: the phrase windows use `.` (no DOTALL), so
@@ -127,6 +127,8 @@ def _append_learning_row_locked(root, kind, scope, topic, summary, evidence,
         "source_commit": src_commit,
         "status": status,
     }
+    if scope == "project" and status == "current":
+        new_row["maturity"] = "probationary"
 
     if status == "current" and file_exists:
         # Rewrite path: re-serialize parsed rows (with supersession marks) in place,

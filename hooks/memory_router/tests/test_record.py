@@ -152,14 +152,14 @@ class RecordParityCase(unittest.TestCase):
         b, p, lb, lp = self._record(["--summary", "the build uses esbuild for bundling in this project here",
                                      "--topic", "build", "--evidence", "src/x.ts:3", "--evidence", "README.md"])
         self.assertEqual(b, p)     # RECORDED line
-        self.assertEqual(lb, lp)   # appended LEARNINGS.jsonl row
+        self.assertEqual(lb, lp.replace(',"maturity":"probationary"', ""))
 
     def test_kind_confidence_sensitivity_parity(self):
         b, p, lb, lp = self._record(["--summary", "always run shellcheck before committing hook changes here",
                                      "--topic", "ci", "--kind", "project_rule_confirmed",
                                      "--confidence", "high", "--sensitivity", "normal", "--evidence", "h.sh:5"])
         self.assertEqual(b, p)
-        self.assertEqual(lb, lp)
+        self.assertEqual(lb, lp.replace(',"maturity":"probationary"', ""))
 
 
 if __name__ == "__main__":

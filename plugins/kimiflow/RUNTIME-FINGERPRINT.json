@@ -26,16 +26,16 @@
       "sha256": "sha256:b796986e145d409f27c8ec0edaaf223ee51bdbbc2fa4477fe2d6c0984d5adf5b"
     },
     {
-      "bytes": 18627,
+      "bytes": 20919,
       "mode": "0644",
       "path": "README.de.md",
-      "sha256": "sha256:a24f390ef47e71f319717e3d2b6508e9be438abb4fb06505c97d194ceb825545"
+      "sha256": "sha256:3de925276c628f360788e835a9d545139975e1d5ec31a0bff85aab8321719d62"
     },
     {
-      "bytes": 21657,
+      "bytes": 23445,
       "mode": "0644",
       "path": "README.md",
-      "sha256": "sha256:40477bbe1238b69aa522256e57982bcc1567479c085fbcb63e391e28d3d7daa0"
+      "sha256": "sha256:0fb73cea15cc5f6465a334d299466438c145e43e9569294b0a8827993101537f"
     },
     {
       "bytes": 16929,
@@ -158,10 +158,10 @@
       "sha256": "sha256:0a7f95d4ea04bd64f22a08a92f1845d79cc05d220da8612179b369b17c68080e"
     },
     {
-      "bytes": 143085,
+      "bytes": 151870,
       "mode": "0644",
       "path": "hooks/kimiflow_core/active_run.py",
-      "sha256": "sha256:b7ed101a483d3dd7025f20933eb54c201450681d3edae45688d4119e2621295e"
+      "sha256": "sha256:688179a96a673a85a3861f4ab4fa2f3e524f5450386a3d7ea7a70a17e448c5d8"
     },
     {
       "bytes": 714,
@@ -302,16 +302,16 @@
       "sha256": "sha256:ab327a13f430a8ef0173565ac8221d367f4f9cdf602af810cde31b19d1a35f30"
     },
     {
-      "bytes": 19563,
+      "bytes": 21445,
       "mode": "0644",
       "path": "hooks/memory_router/attribution.py",
-      "sha256": "sha256:28748716ecf1a92998e00958b8ac4d74c92c4d789ab2154a71dac984885f778e"
+      "sha256": "sha256:e27b135e856c8720a8381dd5d0cc1c796e5e870f3483b42f72be48a6d5508399"
     },
     {
-      "bytes": 12016,
+      "bytes": 12093,
       "mode": "0644",
       "path": "hooks/memory_router/capsule.py",
-      "sha256": "sha256:b3bddc292446f8c5d785ad7e1cbbd5f8ba47c25887eb8446dd726a9a5e1cd7e3"
+      "sha256": "sha256:77a37ae5097a50d1ae3a861058174ed5411d678b2fa3f6f491770188e5094eef"
     },
     {
       "bytes": 4284,
@@ -374,16 +374,16 @@
       "sha256": "sha256:9f897a994bb668aa84647f978e066211251b66756f9f19ebabcfb5f336a92b6e"
     },
     {
-      "bytes": 11026,
+      "bytes": 46398,
       "mode": "0644",
       "path": "hooks/memory_router/lifecycle.py",
-      "sha256": "sha256:063f795210c47e9746bd087f7d4311d19bee7da8445c9bd96fc9abd6ab0354b5"
+      "sha256": "sha256:2e744ca535c03c65746c7c80cc60ae86dff6b3067cf6a84e3dbe56d949deac96"
     },
     {
-      "bytes": 6243,
+      "bytes": 6320,
       "mode": "0644",
       "path": "hooks/memory_router/memory_md.py",
-      "sha256": "sha256:20f68f2a65355eca157f4e350bdafef0dccab3430c33b591d8bcf085adb82cfb"
+      "sha256": "sha256:a5907c09a6217250f119688a91cf235b3dba35701a4f57021a0f59b0ac1ad7f2"
     },
     {
       "bytes": 3001,
@@ -392,10 +392,10 @@
       "sha256": "sha256:cb682ddbfcf66df8ae75aba6d31bb936de1ccbc92fd970738c08af1f2542781a"
     },
     {
-      "bytes": 25298,
+      "bytes": 26108,
       "mode": "0644",
       "path": "hooks/memory_router/outcomes.py",
-      "sha256": "sha256:7a5c73e0a2e4d3838911e26ca449d674f5be4621a800cdd892398033de48c7dd"
+      "sha256": "sha256:dbe11d0921de61b7f51d5445662ee240a67fdd15687db16c702d43774e13fd79"
     },
     {
       "bytes": 715,
@@ -404,22 +404,22 @@
       "sha256": "sha256:173d287f8a93cbbb618d5c4a588fe68831c8bd47aba56c60e7749bebddacc1f1"
     },
     {
-      "bytes": 17442,
+      "bytes": 17513,
       "mode": "0644",
       "path": "hooks/memory_router/propose.py",
-      "sha256": "sha256:10ebe9f4ec67f609975dda8f6a3716807abd65a82db4d60131dd3e1fbea2ae93"
+      "sha256": "sha256:f6d93377260751bf06c978439ad074109d77c3a692e83a17080d6e80f7596236"
     },
     {
-      "bytes": 45846,
+      "bytes": 45913,
       "mode": "0644",
       "path": "hooks/memory_router/provider.py",
-      "sha256": "sha256:2247dafd40f386789ab80f6a17368e86379ab42c4bdd13a1683fa86ff0aee829"
+      "sha256": "sha256:8e5e4602f27ded4748ec263cd52ec3ddcee5f25c1f9baf943c6ab56a9e116392"
     },
     {
-      "bytes": 52336,
+      "bytes": 54252,
       "mode": "0644",
       "path": "hooks/memory_router/recall.py",
-      "sha256": "sha256:cba5b0aa781260bc0982b368955bde8e06cab720c9f60a2ba6462a667887ee8d"
+      "sha256": "sha256:712133aacd274c6c504246864d3142a322d3407ce09ad3c3a4424d5f0acbb902"
     },
     {
       "bytes": 30621,
@@ -440,10 +440,10 @@
       "sha256": "sha256:b05b36c91db3cca3c9f96fccf12497501b6791cf5ffdf06c08978c9638593058"
     },
     {
-      "bytes": 6252,
+      "bytes": 7654,
       "mode": "0644",
       "path": "hooks/memory_router/rows.py",
-      "sha256": "sha256:cd2df91abb1a99687224965c7936316f09d2e188af6e23c931603eae6be71bce"
+      "sha256": "sha256:aa96bb694bbd2f8bc94a58a7cb8c6d1f63eda53cf712c8ef66325b1bc7e2cd94"
     },
     {
       "bytes": 6969,
@@ -464,10 +464,10 @@
       "sha256": "sha256:0ff7d3f072245179d1c81c0beef945d56cb19ae89db357e5076ef1ebca6cd1a6"
     },
     {
-      "bytes": 29006,
+      "bytes": 34122,
       "mode": "0644",
       "path": "hooks/memory_router/store.py",
-      "sha256": "sha256:692d986b4e084486a592cdbf104402d7ed8b357216ab04de721efe35c6e9b489"
+      "sha256": "sha256:e5d0adecb6de4a11ab4af1b22ba96872c08c4ce978106601fdb89b7f68aa4d1f"
     },
     {
       "bytes": 31353,
@@ -482,10 +482,10 @@
       "sha256": "sha256:c4af45b1eec036db8273e666e28bf310dbcacda603311ff6ad51de4229c45997"
     },
     {
-      "bytes": 4536,
+      "bytes": 5065,
       "mode": "0644",
       "path": "hooks/memory_router/usage_metrics.py",
-      "sha256": "sha256:8b3160b26da7cce6ab2f483ec6de9f703e5b5cd4acd4845118d2497a2be4b0e3"
+      "sha256": "sha256:0888b783ef021711cc7dddff6151246ade3ff3a5eaf45eefc6625f9b0a3c508a"
     },
     {
       "bytes": 26060,
@@ -494,10 +494,10 @@
       "sha256": "sha256:0a6d70c06bc4d56ca4df98f347bb3469891c0f30ed01231b613c70db66bc3320"
     },
     {
-      "bytes": 6389,
+      "bytes": 6485,
       "mode": "0644",
       "path": "hooks/memory_router/writes.py",
-      "sha256": "sha256:b0ca4f3bfc60778799154ac971bdfad8d308578a7830882ef0a633eae8f4f054"
+      "sha256": "sha256:7fd0a3949414cfc4d49ca95c69d19a8a86442b9757706a95101aa9cc109868d7"
     },
     {
       "bytes": 18637,
@@ -656,10 +656,10 @@
       "sha256": "sha256:4299dba5f63b615c658f93fdbfd5131d614451640dc386b6353a24666fdd1cb4"
     },
     {
-      "bytes": 168443,
+      "bytes": 173652,
       "mode": "0644",
       "path": "reference.md",
-      "sha256": "sha256:c74e6222121d35be202201c4ad11e9542c5faf13c21ea7165e97c1626026fb16"
+      "sha256": "sha256:dff578b18797d07d4ef3435bd4a884b880b68c49d714aea5d9dbc6e86a194c7e"
     },
     {
       "bytes": 8319,
@@ -716,6 +716,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:e03141b7bf43a768b8c84a9d0c79ba118a98385ccbb3c97fb89a028a501a2312",
+  "runtime_fingerprint": "sha256:37961cdf24f861da69e923197cc0415dabeb3f802cc57e76d1002f30bd3414dc",
   "schema_version": 1
 }

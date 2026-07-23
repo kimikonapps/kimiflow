@@ -5,6 +5,7 @@ import shutil
 import stat
 import subprocess
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -232,6 +233,122 @@ class OutcomeEvaluationCase(OutcomeFixture):
         self.assertEqual(_read_text(outside), "sentinel\n")
         self.assertEqual(_read_bytes(artifact_path), before_artifact)
 
+    def test_persistence_retains_a_bounded_newest_ledger_without_babysitting(self):
+        base = self.evaluate()
+        runs = []
+        with mock.patch.object(outcomes, "_LEDGER_RETAIN_ROWS", 2):
+            for index in range(3):
+                run_rel = ".kimiflow/retention-%d" % index
+                os.makedirs(os.path.join(self.root, run_rel))
+                evaluation = dict(
+                    base,
+                    id="out_" + str(index + 1) * 64,
+                    run=run_rel,
+                    evaluated_at="2026-07-2%dT00:00:00Z" % index,
+                )
+                outcomes.persist_evaluation(
+                    self.root, os.path.join(self.root, run_rel), evaluation,
+                )
+                runs.append(run_rel)
+
+        ledger = store.read_jsonl(os.path.join(
+            self.root, ".kimiflow", "project", "STRATEGY-OUTCOMES.jsonl"
+        ))
+        self.assertEqual([row["run"] for row in ledger], runs[-2:])
+
+    def test_persistence_rejects_duplicate_key_ledger_without_rewriting_it(self):
+        evaluation = self.evaluate()
+        project = os.path.join(self.root, ".kimiflow", "project")
+        os.makedirs(project, exist_ok=True)
+        ledger_path = os.path.join(project, "STRATEGY-OUTCOMES.jsonl")
+        malformed = b'{"run":".kimiflow/first","run":".kimiflow/second"}\n'
+        with open(ledger_path, "wb") as handle:
+            handle.write(malformed)
+
+        with self.assertRaises(outcomes.OutcomeError):
+            outcomes.persist_evaluation(self.root, self.run_dir, evaluation)
+
+        self.assertEqual(_read_bytes(ledger_path), malformed)
+
+    def test_concurrent_persistence_serializes_complete_ledger_transaction(self):
+        first = self.evaluate()
+        second_run = ".kimiflow/concurrent-second"
+        os.makedirs(os.path.join(self.root, second_run))
+        second = dict(
+            first,
+            id="out_" + "f" * 64,
+            run=second_run,
+            evaluated_at="2026-07-24T00:00:00Z",
+        )
+        original_strict = outcomes._strict_ledger
+        first_read = threading.Event()
+        release_first = threading.Event()
+        second_done = threading.Event()
+        call_lock = threading.Lock()
+        calls = [0]
+        errors = []
+
+        def interleaved_read(path):
+            value = original_strict(path)
+            with call_lock:
+                calls[0] += 1
+                number = calls[0]
+            if number == 1:
+                first_read.set()
+                release_first.wait(5)
+            return value
+
+        def persist(run, evaluation, done=None):
+            try:
+                outcomes.persist_evaluation(self.root, run, evaluation)
+            except BaseException as exc:  # pragma: no cover - asserted below
+                errors.append(exc)
+            finally:
+                if done is not None:
+                    done.set()
+
+        with mock.patch.object(outcomes, "_strict_ledger", side_effect=interleaved_read):
+            first_thread = threading.Thread(
+                target=persist,
+                args=(self.run_dir, first),
+            )
+            second_thread = threading.Thread(
+                target=persist,
+                args=(os.path.join(self.root, second_run), second, second_done),
+            )
+            first_thread.start()
+            self.assertTrue(first_read.wait(2))
+            second_thread.start()
+            second_done.wait(0.2)
+            release_first.set()
+            first_thread.join(5)
+            second_thread.join(5)
+
+        self.assertEqual(errors, [])
+        ledger = store.read_jsonl(os.path.join(
+            self.root, ".kimiflow", "project", "STRATEGY-OUTCOMES.jsonl"
+        ))
+        self.assertEqual(
+            {row["run"] for row in ledger},
+            {first["run"], second["run"]},
+        )
+
+    def test_ledger_byte_retention_keeps_newest_complete_rows_and_rejects_one_oversize(self):
+        first = {"run": ".kimiflow/first", "payload": "a" * 20}
+        second = {"run": ".kimiflow/second", "payload": "b" * 20}
+        second_size = len((json.dumps(
+            second, ensure_ascii=False, allow_nan=False, sort_keys=True,
+            separators=(",", ":"),
+        ) + "\n").encode("utf-8"))
+        with mock.patch.object(outcomes, "_LEDGER_RETAIN_BYTES", second_size):
+            retained, encoded = outcomes._retained_ledger([first, second])
+        self.assertEqual(retained, [second])
+        self.assertEqual(json.loads(encoded), second)
+
+        with mock.patch.object(outcomes, "_LEDGER_RETAIN_BYTES", second_size - 1):
+            with self.assertRaisesRegex(outcomes.OutcomeError, "retention limit"):
+                outcomes._retained_ledger([second])
+
     def test_active_contract_receipt_is_embedded_and_evidence_fingerprinted(self):
         hit = {"id": "learn_active", "summary": "do not copy SECRET_RECALL_TEXT", "evidence": ["app.py:1"]}
         identifier = attribution.recall_id("learnings", "app.py:1", hit)
@@ -263,6 +380,36 @@ class OutcomeEvaluationCase(OutcomeFixture):
         self.assertEqual(receipt["applied_ids"], [identifier])
         self.assertNotIn("SECRET_RECALL_TEXT", json.dumps(receipt))
         self.assertIn(self.run_rel + "/RECALL.json", evaluation["evidence"])
+
+    def test_active_contract_must_be_complete_before_success_is_promotable(self):
+        hit = {"id": "learn_active", "summary": "use current evidence", "evidence": ["app.py:1"]}
+        identifier = attribution.recall_id("learnings", "app.py:1", hit)
+        hit["recall_id"] = identifier
+        self.write(
+            "RECALL.json",
+            json.dumps({"schema_version": 2, "attribution": {"contract": 1}, "sources": {
+                "learnings": {"count": 1, "hits": [hit]},
+            }}) + "\n",
+        )
+        self.write(
+            "PLAN.md",
+            "Strategy: Reuse the verified local evidence gate.\n"
+            "Strategy evidence: none\n"
+            "<!-- kimiflow:recall-attribution contract=1 -->\n"
+            "Applied recall IDs: %s\n"
+            "Decision D1: use current evidence\n"
+            "Recall D1: %s\n" % (identifier, identifier),
+        )
+        self.write(
+            "VERIFICATION.md",
+            "<!-- kimiflow:verification outcome=passed criteria=passed regression=passed -->\n",
+        )
+
+        evaluation = self.evaluate()
+
+        self.assertEqual(evaluation["recall_attribution"]["status"], "inconclusive")
+        self.assertEqual(evaluation["classification"], "inconclusive")
+        self.assertIs(evaluation["promotable"], False)
 
     def test_contradiction_fingerprint_is_sealed_before_post_validation_swap(self):
         hit = {"id": "learn_active", "summary": "old route", "evidence": ["app.py:1"]}

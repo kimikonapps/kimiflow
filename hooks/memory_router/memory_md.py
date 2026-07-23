@@ -5,7 +5,7 @@ filter to current + publish-safe, prioritize, truncate to a word budget by
 shrinking the item count, and render markdown."""
 import os
 
-from . import clock, store
+from . import clock, rows as row_policy, store
 
 
 def _int_env(name, default):
@@ -74,6 +74,7 @@ def write_bounded_memory(root):
             entry for entry in entries
             if entry[2].get("status", "current") == "current"
             and entry[2].get("sensitivity", "normal") not in ("security", "private")
+            and row_policy.learning_is_durable(entry[2])
         ]
         # sort_by([-_usage_count, confidence_rank, -_row_index]) ascending.
         selected.sort(key=lambda e: (-e[1], _confidence_rank(e[2]), -e[0]))

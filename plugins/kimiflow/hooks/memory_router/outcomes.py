@@ -34,6 +34,8 @@ _ECONOMIC_FIELDS = (
     "net_estimated_tokens_saved", "observed_input_tokens", "observed_output_tokens",
     "observed_total_tokens",
 )
+_LEDGER_RETAIN_BYTES = 4 * 1024 * 1024
+_LEDGER_RETAIN_ROWS = 2048
 
 
 class OutcomeError(ValueError):
@@ -346,6 +348,10 @@ def evaluate_json(root, run, terminal):
         if recall_attribution["contract"] == 1
         else _recall_signals(run_dir, evidence_id)
     )
+    attribution_complete = (
+        recall_attribution["contract"] == 0
+        or recall_attribution["status"] == "complete"
+    )
     positive = all((
         terminal == "done",
         bool(strategy),
@@ -357,6 +363,7 @@ def evaluate_json(root, run, terminal):
         verify == {"outcome": "passed", "criteria": "passed", "regression": "passed"},
         review.get("status") == "clean",
         learning.get("status") == "open",
+        attribution_complete,
     ))
     explicit_failure = (
         verify.get("outcome") == "failed"
@@ -494,14 +501,25 @@ def _strict_ledger(path):
     for line in content.split("\n"):
         if not line.strip():
             continue
-        try:
-            value = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise OutcomeError("strategy outcome ledger is malformed") from exc
-        if not isinstance(value, dict):
-            raise OutcomeError("strategy outcome ledger contains a non-object row")
+        value = store.parse_json_object_strict(line)
+        if value is None:
+            raise OutcomeError("strategy outcome ledger is malformed")
         result.append(value)
     return result
+
+
+def _retained_ledger(rows_in):
+    encoded = [contracts.dumps(row) + "\n" for row in rows_in]
+    if encoded and len(encoded[-1].encode("utf-8")) > _LEDGER_RETAIN_BYTES:
+        raise OutcomeError("new strategy outcome exceeds ledger retention limit")
+    start = max(0, len(encoded) - _LEDGER_RETAIN_ROWS)
+    retained_bytes = sum(
+        len(line.encode("utf-8")) for line in encoded[start:]
+    )
+    while start < len(encoded) and retained_bytes > _LEDGER_RETAIN_BYTES:
+        retained_bytes -= len(encoded[start].encode("utf-8"))
+        start += 1
+    return rows_in[start:], "".join(encoded[start:])
 
 
 def persist_evaluation(root, run, evaluation):
@@ -514,31 +532,32 @@ def persist_evaluation(root, run, evaluation):
     _safe_directory(project)
     ledger_path = os.path.join(root, LEDGER_REL)
     artifact_path = os.path.join(run_dir, ARTIFACT_NAME)
-    snapshots = {
-        ledger_path: _snapshot_file(ledger_path),
-        artifact_path: _snapshot_file(artifact_path),
-    }
-    current = [
-        row for row in _strict_ledger(ledger_path)
-        if row.get("run") != run_rel
-    ]
-    if evaluation.get("promotable") is True:
-        current.append(evaluation)
-    ledger_text = "".join(contracts.dumps(row) + "\n" for row in current)
-    artifact_text = contracts.dumps(evaluation, pretty=True) + "\n"
-    try:
-        store.atomic_write(ledger_path, ledger_text, mode=0o600, refuse_symlink=True)
-        store.atomic_write(artifact_path, artifact_text, mode=0o600, refuse_symlink=True)
-    except BaseException:
-        rollback_error = None
-        for path in (ledger_path, artifact_path):
-            try:
-                _atomic_restore(path, snapshots[path])
-            except BaseException as exc:
-                rollback_error = rollback_error or exc
-        if rollback_error is not None:
-            raise OutcomeError("outcome write failed and rollback was incomplete") from rollback_error
-        raise
+    with store.path_lock(ledger_path):
+        snapshots = {
+            ledger_path: _snapshot_file(ledger_path),
+            artifact_path: _snapshot_file(artifact_path),
+        }
+        current = [
+            row for row in _strict_ledger(ledger_path)
+            if row.get("run") != run_rel
+        ]
+        if evaluation.get("promotable") is True:
+            current.append(evaluation)
+        current, ledger_text = _retained_ledger(current)
+        artifact_text = contracts.dumps(evaluation, pretty=True) + "\n"
+        try:
+            store.atomic_write(ledger_path, ledger_text, mode=0o600, refuse_symlink=True)
+            store.atomic_write(artifact_path, artifact_text, mode=0o600, refuse_symlink=True)
+        except BaseException:
+            rollback_error = None
+            for path in (ledger_path, artifact_path):
+                try:
+                    _atomic_restore(path, snapshots[path])
+                except BaseException as exc:
+                    rollback_error = rollback_error or exc
+            if rollback_error is not None:
+                raise OutcomeError("outcome write failed and rollback was incomplete") from rollback_error
+            raise
     return {"written": True, "ledger_count": len(current)}
 
 

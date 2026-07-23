@@ -507,6 +507,8 @@ def _sync_base_candidates(source_rows, manifest):
     for row in source_rows:
         if _jq_or(row.get("status"), "current") != "current":
             continue
+        if not rows.learning_is_durable(row):
+            continue
         sensitivity = _jq_or(row.get("sensitivity"), "normal")
         if sensitivity in ("security", "private"):
             continue

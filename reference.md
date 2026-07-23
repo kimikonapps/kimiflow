@@ -1179,8 +1179,13 @@ Decision. Legacy applies only when the marker token is entirely absent; malforme
 unknown, or unlinked declarations fail closed. Retrieval and textual citation do not count as use.
 
 At terminal evaluation, `hooks/memory_router/attribution.py` joins those IDs to exact Decision checks and writes a
-small `recall_attribution` object inside the existing `OUTCOME-EVALUATION.json`. It contains IDs, source/status,
-and local evidence references only—never recall summaries, prompts, or secrets. `helpful` requires `done`, a fully
+small `recall_attribution` object inside the existing `OUTCOME-EVALUATION.json`. For validated Learning hits it
+also carries the source `learning_id`; other sources never gain one. It contains IDs, source/status,
+and local evidence references only—never recall summaries, prompts, or secrets. Lifecycle reopens the bounded
+fingerprint-sealed `RECALL.json` and requires that each `learning_id` still belongs to that exact `recall_id`;
+a detached or substituted ID fails closed. It also derives a SHA-256 over the learning's meaning/provenance
+fields while excluding mutable lifecycle state. Only outcomes with the same content fingerprint may form a
+success streak, so rewritten content cannot inherit an earlier version's verified use. `helpful` requires `done`, a fully
 green Verification receipt, and passed linked checks. A failed linked check or exact current
 `Recall contradiction <rec_id>: <repo-relative-path>:<positive-line>` is `contradicted`; the referenced regular,
 non-symlink file and non-empty in-range line are fingerprinted, and contradiction deterministically overrides a
@@ -1189,7 +1194,7 @@ with incomplete Verification remain `neutral/inconclusive`, so safe closure stay
 declared valid ID count under Contract 1; marker-free old runs retain the previous substring heuristic.
 
 **Post-run learning loop (required before `Status: done`):** after verify/review and before closing `STATE.md`,
-run `memory-router.sh review-run --run .kimiflow/<slug> --write` — writes `LEARNING-REVIEW.md`, appends durable
+run `memory-router.sh review-run --run .kimiflow/<slug> --write` — writes `LEARNING-REVIEW.md`, appends probationary
 rows to `LEARNINGS.jsonl`, refreshes bounded `MEMORY.md`+`MEMORY-INDEX.json`+optional
 `RECALL.sqlite`+lifecycle/usage metadata+`RUN-LIFECYCLE.json`/`.md`, refreshes proposal state, returns
 pending/approved/applied/rejected counts. Then run `memory-router.sh verify-run --run .kimiflow/<slug>`;
@@ -1198,12 +1203,25 @@ but the reason must be written to `LEARNING-REVIEW.md` and verified. Summaries f
 
 **Automatic outcome and strategy loop:** Phase 3 records exact-one `Strategy: <12–240 safe one-line
 characters>` plus `Strategy evidence: <out_<64 lowercase hex>|none>`. Phase 6 keeps one exact receipt:
-`<!-- kimiflow:verification outcome=<passed|failed> criteria=<passed|failed|not_run> regression=<passed|failed|not_run> -->`. `active-run.sh finish --write` automatically runs `evaluate-run` after
-learning verification inside the same rollback boundary; `park|fail|abort` evaluate best-effort and never add
-a user stop. Every terminal run gets `.kimiflow/<slug>/OUTCOME-EVALUATION.json`. Only a fully verified `done`
+`<!-- kimiflow:verification outcome=<passed|failed> criteria=<passed|failed|not_run> regression=<passed|failed|not_run> -->`. `active-run.sh finish --write` prevalidates `evaluate-run` after
+learning verification, commits terminal state, then persists the matching evaluation; `park|fail|abort` commit
+terminal state before evaluating best-effort and never add a user stop. Only after successful outcome persistence
+does it invoke local `lifecycle --write` best-effort and store a bounded `memory_curation` receipt in
+`SESSION-OUTCOME.json`; the receipt carries action counts, one deduplicated `changed_count`, and bounded
+fixed-vocabulary `reason_counts`. The local lifecycle subprocess receives a cooperative 20-second deadline inside
+the fixed 30-second host timeout; 8 MiB source/derivative and 4096-row source ceilings bound the transaction while
+leaving time to restore its source/text-derivative transaction and invalidate a
+partial SQLite cache. Timeout and other curation errors remain visible but never block terminal completion or
+request approval.
+Project memory is never restored by replacing its whole shared tree; each router command owns its atomic writes,
+while pre-commit terminal rollback is limited to owned run/global artifacts. Each successful evaluation writes
+`.kimiflow/<slug>/OUTCOME-EVALUATION.json`. Only a fully verified `done`
 run becomes `verified_success`; `verified_failure` additionally requires terminal `failed` plus an exact failed
 verification receipt or BLOCKER/HIGH in the latest numeric code-review finding. Abort, park, unsafe/missing
 strategy text and incomplete/stale evidence remain `inconclusive`.
+If the persisted finish evaluation fails or differs from its prevalidated identity/classification, finish writes
+the bounded failure receipt but preserves the active owner; the same run can retry autonomously. It does not retire
+the workspace or invoke lifecycle curation from partial outcome state.
 
 Promotable rows are deduplicated by run in mode-0600
 `.kimiflow/project/STRATEGY-OUTCOMES.jsonl`; writes to the artifact and ledger roll back as one pair. Rows contain
@@ -1257,17 +1275,50 @@ file paths, Vault contents, or raw identifiers. `metrics --global` prints only t
 `metrics --global-purge` deletes the local global JSONL. `curate --write` folds these into `MEMORY-INDEX.json`
 with lifecycle data (stale/cold rows, the `KIMIFLOW_LEARNING_STALE_AFTER_DAYS` window).
 
-**Explainable memory lifecycle:** `lifecycle` is a bounded preview of current learning utility. Each row receives
+**Explainable memory lifecycle:** new current project learnings have `maturity=probationary`. They remain eligible
+for direct on-demand Recall, ranked after durable matches, but are omitted from bounded `MEMORY.md`, proposals,
+Privacy Capsules, and provider sync. Rows created before this contract have no maturity field and retain durable
+legacy behavior; an explicitly invalid maturity is protected from automatic trust changes.
+
+`lifecycle` is a bounded preview of current learning utility. Each row receives
 0–5 points: up to two for observed use, one for freshness, one for stored-current evidence, and one for
-medium/high confidence. `lifecycle --write` changes only strictly parsed current rows that are both stale and
-provably unused and whose
-non-empty ID is unique in the complete JSONL file; it marks them `quarantined`, keeps every unrelated byte-line
-and line terminator intact, refuses when Usage state is ambiguous/corrupt, and accepts a rewrite only when an
+medium/high confidence. Retrieval count remains a utility hint, never correctness evidence. The lifecycle strictly
+reads at most 4096 rows / 8 MiB from the existing verified `STRATEGY-OUTCOMES.jsonl` ledger. A probationary,
+normal/public, medium/high-confidence project row becomes durable only after two decision-linked `helpful` outcomes
+for the same learning-content fingerprint since its latest contradiction and an exact fresh evidence check. The
+fingerprint includes every Recall-visible field except the explicit lifecycle-only fields `maturity`, `status`,
+`curation`, `last_verified`, and `recall_id`, so future content cannot bypass drift detection.
+A latest `contradicted` outcome, learning-content drift, or drift from previously current stored evidence
+fingerprints demotes a durable row. The derived `curation` object stores only bounded counts, the content
+fingerprint, latest classification/time, and a mechanical reason—no prompt or recalled content.
+Every referenced sealed Recall artifact must still exist and match its recorded digest. Missing or mismatched
+evidence rejects the whole lifecycle evaluation instead of silently skipping a possibly contradictory outcome.
+For older contract-1 attribution items without `learning_id`, lifecycle derives the ID only from the exact sealed
+learning hit; omission therefore cannot erase a contradiction. Producer and lifecycle serialize their complete
+read/modify/write boundary with the same local ledger lock. Strict duplicate-key parsing, one row per run, and
+physical ledger order provide the causal sequence; `evaluated_at` remains explanatory metadata and cannot reorder
+trust. An explicit `security_scan` is trusted only in the exact shape `{"ok":true,"reasons":[]}`; every other
+explicit shape protects the row from automatic lifecycle change.
+Outcome persistence owns retention: it keeps the newest complete rows at or below 2048 rows / 4 MiB, leaving
+headroom for the strict reader and preventing normal long-running projects from reaching a permanent curation
+block. One individually oversized new outcome is rejected rather than truncating JSON or weakening validation.
+
+The same write may quarantine strictly parsed current rows that are both stale and provably unused and whose
+non-empty ID is unique in the complete JSONL file; it marks them `quarantined` with
+`curation.reason=stale_unused_quarantine`, keeps every unrelated byte-line and line terminator intact, refuses
+when Usage state is ambiguous/corrupt, and accepts a rewrite only when an
 atomic path exchange both displaces the exact source identity, mode and bytes and leaves the pinned Candidate installed.
+Persisted Recall holds the same Usage-ledger lock from selection through usage recording, while lifecycle holds it
+through evaluation and mutation. The shared writer canonicalizes the physical project identity, so symlinked root
+aliases cannot split the lock. This makes a concurrent use win before stale-unused quarantine. Durable learning
+candidates also rank ahead of scoped locality before the bounded candidate window.
 On conflict it performs bounded identity-checked re-exchanges: a later writer is promoted, the canonical path always
 exists, and persistent races or filesystem errors retain the extra version as an explicit local recovery copy.
 Unavailable exchange support refuses before publication rather than falling back to a weaker rewrite,
-then refreshes local derivatives without provider/network probes. It processes every eligible row while returning at
+then refreshes local derivatives without provider/network probes. If refresh fails, the source and prior text
+derivatives are restored and the rebuildable SQLite cache is invalidated; a cooperative deadline preserves rollback
+headroom before the hard host timeout and is disarmed immediately after a successful derivative commit. Invalid
+pre-existing text derivatives fail before source publication. A no-change write does not refresh derivatives. It processes every eligible row while returning at
 most 20 rows/IDs per result array plus total/omitted counts. It never deletes or archives data. `lifecycle --restore <id>` previews one restoration;
 adding `--write` restores exactly one quarantined row only when its evidence fingerprints still match current
 repo evidence. Missing, duplicated, non-quarantined, or drifted IDs fail closed without mutation.
@@ -1282,7 +1333,7 @@ credential shapes (including common GitHub token prefixes) and three-segment JWT
 paths, source learning IDs, the workspace basename, evidence references, and private/security material are
 rejected; provenance comparisons use Unicode normalization plus case-folding. Output reports aggregate omission
 reasons only. This command performs no network or external write.
-Provider sync consumes the same portable projection; its local manifest may retain source IDs solely to avoid
+Probationary or invalid-maturity rows are omitted. Provider sync consumes the same portable projection; its local manifest may retain source IDs solely to avoid
 resending, while `VAULT-SYNC.md` exposes only capsule IDs and portable fields. Export remains an explicit,
 reviewable handoff rather than an automatic cross-project import.
 

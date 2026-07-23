@@ -45,7 +45,7 @@ class WriteCase(unittest.TestCase):
         with open(p, "w", encoding="utf-8") as fh:
             fh.write(content)
 
-    def test_new_row_fields_and_key_order(self):
+    def test_new_project_learning_is_probationary_and_tier_boundaries_hold(self):
         rid = writes.append_learning_row(
             self.root, "pattern", "project", "build flow",
             "we fixed the build flow", [], "high", "low", "current",
@@ -57,7 +57,7 @@ class WriteCase(unittest.TestCase):
         self.assertEqual(list(row.keys()), [
             "id", "kind", "scope", "topic", "summary", "evidence",
             "evidence_fingerprints", "security_scan", "confidence",
-            "sensitivity", "last_verified", "source_commit", "status",
+            "sensitivity", "last_verified", "source_commit", "status", "maturity",
         ])
         self.assertEqual(row["kind"], "pattern")
         self.assertEqual(row["scope"], "project")
@@ -71,6 +71,29 @@ class WriteCase(unittest.TestCase):
         self.assertEqual(row["last_verified"], "2026-06-29")
         self.assertEqual(row["source_commit"], "abc1234")
         self.assertEqual(row["status"], "current")
+        self.assertEqual(row["maturity"], "probationary")
+
+    def test_first_write_creates_physical_lock_parent_before_locking(self):
+        real_lock = store.path_lock
+        observed = []
+
+        @contextlib.contextmanager
+        def checked_lock(path):
+            parent = os.path.dirname(path)
+            self.assertTrue(os.path.isdir(parent))
+            observed.append(store._path_lock_key(path))
+            with real_lock(path):
+                yield
+
+        with mock.patch.object(store, "path_lock", new=checked_lock):
+            writes.append_learning_row(
+                self.root, "pattern", "project", "first write",
+                "first write is serialized", [], "high", "low", "current",
+            )
+
+        self.assertGreaterEqual(len(observed), 1)
+        self.assertEqual(len(set(observed)), 1)
+        self.assertTrue(observed[0].startswith("path:"))
 
     def test_user_scope_id_and_path(self):
         rid = writes.append_learning_row(

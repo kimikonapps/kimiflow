@@ -11,7 +11,7 @@ import tracemalloc
 import unittest
 from unittest import mock
 
-from memory_router import recall, recall_index, usage_metrics, workspace_scope
+from memory_router import recall, recall_index, store, usage_metrics, workspace_scope
 from memory_router.__main__ import main
 
 TAG = "kimiflow--v0.1.50"
@@ -1335,6 +1335,153 @@ class RecallJsonCase(unittest.TestCase):
         o = self.obj("offline sync conflict resolution", max_hits=1)
         self.assertEqual(o["sources"]["facts"]["hits"][0]["path"], "src/best.py")
 
+    def test_durable_learning_ranks_before_probationary_but_both_remain_recallable(self):
+        rows = [
+            {"id": "probationary", "status": "current", "maturity": "probationary",
+             "summary": "offline sync probation strategy", "evidence": ["src/new.py:1"]},
+            {"id": "durable", "status": "current", "maturity": "durable",
+             "summary": "offline sync durable strategy", "evidence": ["src/proven.py:1"]},
+        ]
+        self.write("LEARNINGS.jsonl", "".join(json.dumps(row) + "\n" for row in rows))
+        preferred = self.obj("offline sync strategy", max_hits=1)
+        self.assertEqual(preferred["sources"]["learnings"]["hits"][0]["id"], "durable")
+        targeted = self.obj("offline sync strategy", max_hits=5, targeted=True)
+        self.assertEqual(
+            {row["id"] for row in targeted["sources"]["learnings"]["hits"]},
+            {"durable", "probationary"},
+        )
+
+    def test_final_pack_keeps_durable_before_more_relevant_probationary(self):
+        rows = [
+            {"id": "durable", "status": "current", "maturity": "durable",
+             "summary": "offline helper", "evidence": ["src/proven.py:1"]},
+            {"id": "probationary", "status": "current", "maturity": "probationary",
+             "summary": "offline sync conflict resolution",
+             "evidence": ["src/new.py:1"]},
+        ]
+        self.write("LEARNINGS.jsonl", "".join(
+            json.dumps(row) + "\n" for row in rows
+        ))
+
+        result = self.obj(
+            "offline sync conflict resolution",
+            max_hits=1,
+            targeted=True,
+        )
+
+        self.assertEqual(
+            result["sources"]["learnings"]["hits"][0]["id"],
+            "durable",
+        )
+
+    def test_scoped_all_learning_duplicate_keeps_durable_representative(self):
+        durable = {
+            "id": "durable",
+            "status": "current",
+            "maturity": "durable",
+            "summary": "offline sync invariant",
+            "evidence": ["src/shared.py:1"],
+        }
+        probationary = {
+            "id": "probationary",
+            "status": "current",
+            "maturity": "probationary",
+            "summary": "offline sync invariant",
+            "evidence": ["src/new.py:1"],
+        }
+
+        selected, _used, _duplicates, _omitted = recall._pack_hits(
+            {"learnings": [durable, probationary]},
+            ["offline", "sync"],
+            1,
+            1000,
+            locality=lambda _source, hit: (
+                1 if hit.get("id") == "probationary" else 0
+            ),
+        )
+
+        self.assertEqual(selected["learnings"], [durable])
+
+    def test_scoped_candidate_window_cannot_starve_shared_durable_learning(self):
+        package = os.path.join(self.root, "packages", "api")
+        os.makedirs(os.path.join(package, "src"))
+        with open(os.path.join(package, "package.json"), "w", encoding="utf-8") as handle:
+            handle.write("{}\n")
+        candidates = [
+            {
+                "id": "local-%02d" % index,
+                "status": "current",
+                "maturity": "probationary",
+                "summary": "offline sync strategy",
+                "evidence": ["packages/api/src/local-%02d.py:1" % index],
+            }
+            for index in range(20)
+        ]
+        candidates.append({
+            "id": "shared-durable",
+            "status": "current",
+            "maturity": "durable",
+            "summary": "offline sync strategy",
+            "evidence": ["manual:shared"],
+        })
+        self.write("LEARNINGS.jsonl", "".join(
+            json.dumps(row) + "\n" for row in candidates
+        ))
+
+        result = recall.recall_json(
+            self.root,
+            "offline sync strategy",
+            1,
+            targeted=True,
+            scope_paths=["packages/api/src/main.py"],
+        )
+
+        self.assertEqual(
+            result["sources"]["learnings"]["hits"][0]["id"],
+            "shared-durable",
+        )
+
+    def test_write_serializes_recall_and_usage_recording_on_usage_ledger(self):
+        self.write(
+            "LEARNINGS.jsonl",
+            json.dumps({
+                "id": "strategy",
+                "status": "current",
+                "summary": "offline sync strategy",
+                "evidence": ["manual:strategy"],
+            }) + "\n",
+        )
+        usage_path = usage_metrics.usage_lock_path(self.root)
+        real_lock = store.path_lock
+        usage_held = [False]
+
+        @contextlib.contextmanager
+        def tracked_lock(path):
+            with real_lock(path):
+                is_usage = os.path.abspath(path) == os.path.abspath(usage_path)
+                if is_usage:
+                    usage_held[0] = True
+                try:
+                    yield
+                finally:
+                    if is_usage:
+                        usage_held[0] = False
+
+        def checked_update(*_args, **_kwargs):
+            self.assertTrue(usage_held[0])
+
+        with mock.patch.object(store, "path_lock", new=tracked_lock), \
+                mock.patch.object(usage_metrics, "update_usage_metrics",
+                                  side_effect=checked_update), \
+                contextlib.redirect_stdout(io.StringIO()):
+            code = recall.run([
+                "--root", self.root,
+                "--query", "offline sync strategy",
+                "--write", "RECALL.md",
+            ])
+
+        self.assertEqual(code, 0)
+
     def test_emitted_mapping_keys_count_toward_global_budget(self):
         row = {"kind": "module", "path": "src/auth.py", "summary": "auth token"}
         row.update({("very_long_untrusted_key_%04d_" % i) + ("x" * 40): None
@@ -1523,7 +1670,7 @@ class RecallJsonCase(unittest.TestCase):
 
 class RecallRunCase(unittest.TestCase):
     def setUp(self):
-        self.root = tempfile.mkdtemp()
+        self.root = os.path.realpath(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
         self.project = os.path.join(self.root, ".kimiflow", "project")
         os.makedirs(self.project)
@@ -1539,6 +1686,75 @@ class RecallRunCase(unittest.TestCase):
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = recall.run(["--root", self.root] + argv)
         return code, out.getvalue(), err.getvalue()
+
+    def test_first_persisted_recall_creates_usage_parent_before_locking(self):
+        shutil.rmtree(self.project)
+        real_lock = store.path_lock
+        usage_parent_seen = []
+
+        @contextlib.contextmanager
+        def checked_lock(path):
+            if os.path.basename(path) == "MEMORY-USAGE.json":
+                usage_parent_seen.append(os.path.isdir(os.path.dirname(path)))
+            with real_lock(path):
+                yield
+
+        with mock.patch.object(store, "path_lock", new=checked_lock):
+            code, _out, _err = self.run_recall([
+                "--query", "first recall",
+                "--write", "RECALL.md",
+            ])
+
+        self.assertEqual(code, 0)
+        self.assertTrue(usage_parent_seen)
+        self.assertTrue(all(usage_parent_seen))
+
+    def test_persisted_recall_pins_workspace_before_alias_retarget(self):
+        with open(os.path.join(self.project, "LEARNINGS.jsonl"), "w",
+                  encoding="utf-8") as handle:
+            handle.write(json.dumps({
+                "id": "A", "status": "current",
+                "summary": "alpha strategy", "evidence": ["manual:a"],
+            }) + "\n")
+        other = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, other, ignore_errors=True)
+        other_project = os.path.join(other, ".kimiflow", "project")
+        os.makedirs(other_project)
+        with open(os.path.join(other_project, "LEARNINGS.jsonl"), "w",
+                  encoding="utf-8") as handle:
+            handle.write(json.dumps({
+                "id": "B", "status": "current",
+                "summary": "beta strategy", "evidence": ["manual:b"],
+            }) + "\n")
+        alias = self.root + "-alias"
+        os.symlink(self.root, alias)
+        self.addCleanup(lambda: os.path.lexists(alias) and os.unlink(alias))
+        real_lock = store.path_lock
+        retargeted = [False]
+
+        @contextlib.contextmanager
+        def retarget_before_lock(path):
+            if not retargeted[0]:
+                retargeted[0] = True
+                os.unlink(alias)
+                os.symlink(other, alias)
+            with real_lock(path):
+                yield
+
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(store, "path_lock", new=retarget_before_lock), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = recall.run([
+                "--root", alias, "--query", "alpha strategy",
+                "--write", "RECALL.md",
+            ])
+
+        self.assertEqual(code, 0, err.getvalue())
+        self.assertTrue(os.path.isfile(os.path.join(self.root, "RECALL.md")))
+        usage = store.read_json(os.path.join(self.project, "MEMORY-USAGE.json"))
+        self.assertIn("learning:A", usage["items"])
+        self.assertNotIn("learning:B", usage["items"])
+        self.assertFalse(os.path.exists(os.path.join(other, "RECALL.md")))
 
     def test_requires_query(self):
         code, _, err = self.run_recall([])
@@ -1799,6 +2015,44 @@ class UpdateUsageMetricsCase(unittest.TestCase):
         usage_metrics.update_usage_metrics(self.root, [{"id": "L1", "summary": "s"},
                                                        {"id": "L1", "summary": "s"}])
         self.assertEqual(self.load()["items"]["learning:L1"]["use_count"], 3)
+
+    def test_shared_usage_writer_locks_before_reading_current_state(self):
+        real_lock = store.path_lock
+        real_read = store.read_json
+        usage_path = usage_metrics.usage_lock_path(self.root)
+        usage_held = [False]
+
+        @contextlib.contextmanager
+        def tracked_lock(path):
+            with real_lock(path):
+                is_usage = os.path.abspath(path) == os.path.abspath(usage_path)
+                if is_usage:
+                    usage_held[0] = True
+                try:
+                    yield
+                finally:
+                    if is_usage:
+                        usage_held[0] = False
+
+        def checked_read(path):
+            self.assertTrue(usage_held[0])
+            return real_read(path)
+
+        with mock.patch.object(store, "path_lock", new=tracked_lock), \
+                mock.patch.object(store, "read_json", side_effect=checked_read):
+            usage_metrics.update_usage_metrics(
+                self.root, [{"id": "L1", "summary": "strategy"}]
+            )
+
+    def test_usage_lock_path_is_identical_through_root_alias(self):
+        alias = self.root + "-alias"
+        os.symlink(self.root, alias)
+        self.addCleanup(os.unlink, alias)
+
+        self.assertEqual(
+            usage_metrics.usage_lock_path(self.root),
+            usage_metrics.usage_lock_path(alias),
+        )
 
     def test_event_shape_and_estimated_tokens(self):
         usage_metrics.update_usage_metrics(self.root,

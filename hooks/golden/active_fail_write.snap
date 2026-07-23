@@ -1,12 +1,12 @@
 @@exit@@
 0
 @@stdout@@
-{"status":"failed","written":true,"run":".kimiflow/demo","outcome":{"schema_version":1,"outcome":"failed","reason":"failed","completed_at":"TIMESTAMP","learning_review":{"status":"not_promoted","reason":"session_not_finished"},"outcome_evaluation":{"status":"evaluated","id":"out_COMMIT365a10381bb0803d20e14b16","terminal":"failed","classification":"inconclusive","promotable":false,"strategy_recall_hits":0,"strategy_recall_used":false,"first_plan_success":true,"economics_result":null,"net_estimated_tokens_saved":null},"session_pins":{"mode":"feature","scope":"small","host":"codex","started_at":"TIMESTAMP","started_head":"COMMIT"},"workspace_retirement":{"status":"not-required"}}}
+{"status":"failed","written":true,"run":".kimiflow/demo","outcome":{"schema_version":1,"outcome":"failed","reason":"failed","completed_at":"TIMESTAMP","learning_review":{"status":"not_promoted","reason":"session_not_finished"},"outcome_evaluation":{"status":"evaluated","id":"out_COMMIT365a10381bb0803d20e14b16","terminal":"failed","classification":"inconclusive","promotable":false,"strategy_recall_hits":0,"strategy_recall_used":false,"first_plan_success":true,"economics_result":null,"net_estimated_tokens_saved":null},"memory_curation":{"status":"unchanged","written":false,"reason_counts":{},"promoted_count":0,"demoted_count":0,"quarantined_count":0,"metadata_updated_count":0,"protected_count":0,"outcome_signal_count":0,"changed_count":0},"session_pins":{"mode":"feature","scope":"small","host":"codex","started_at":"TIMESTAMP","started_head":"COMMIT"},"workspace_retirement":{"status":"not-required"}}}
 @@stderr@@
 @@files@@
 .kimiflow/demo/OUTCOME-EVALUATION.json	mode=600	hash=sha256:1412ba2460107e115a46bb04e8f192407572a366ec1603ed0f5fedd2c21ef95e
-.kimiflow/demo/RUN-SCORECARD.json	mode=600	hash=sha256:d27fe926d25916f6f4bdc8e9c110e87d8c08a0d10f690d37cc3487863537d481
-.kimiflow/demo/SESSION-OUTCOME.json	mode=600	hash=sha256:589d6a735531ae710d17e1943b104ba8e6aec93a0f75dbee2e1f6a64d9c866e1
+.kimiflow/demo/RUN-SCORECARD.json	mode=600	hash=sha256:a7827ff989475ebbf7d651ec4a102e92c6a9c6247ebfec7548aebfb0dbc3dc0e
+.kimiflow/demo/SESSION-OUTCOME.json	mode=600	hash=sha256:dd37fbc9dd12aadc3d660504d6ce3975c436c08e4793af062a1ff0a652a0d95e
 .kimiflow/demo/STATE.md	mode=600	hash=sha256:573a1c675fcd62c68718cc4226b86893c0ed6ec808008cee63be75cc6531eddd
 .kimiflow/project/FINDINGS.md	mode=644	hash=sha256:a2ed99a0a376d3147db54333f62ba30603ac43d8cf558ff240d9a724251cbf82
 .kimiflow/project/STRATEGY-OUTCOMES.jsonl	mode=600	hash=sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855

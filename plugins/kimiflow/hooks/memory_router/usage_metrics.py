@@ -52,10 +52,23 @@ def _token_count(value):
     return len([t for t in _WORD_SPLIT.sub(" ", text).split(" ") if t])
 
 
-def update_usage_metrics(root, hits, event_kind="recall"):
-    project = os.path.join(root, ".kimiflow", "project")
-    usage_file = os.path.join(project, _USAGE_FILE)
-    os.makedirs(project, exist_ok=True)
+def usage_lock_path(root):
+    """Return one physical lock identity for real and symlinked workspace roots."""
+    project = os.path.realpath(os.path.join(root, ".kimiflow", "project"))
+    return os.path.join(project, _USAGE_FILE)
+
+
+def update_usage_metrics(root, hits, event_kind="recall", usage_file=None):
+    if usage_file is None:
+        lexical_project = os.path.join(root, ".kimiflow", "project")
+        os.makedirs(lexical_project, exist_ok=True)
+        project = os.path.realpath(lexical_project)
+        usage_file = os.path.join(project, _USAGE_FILE)
+    with store.path_lock(usage_file):
+        _update_usage_metrics_locked(usage_file, hits, event_kind)
+
+
+def _update_usage_metrics_locked(usage_file, hits, event_kind):
     now = clock.iso_now()
 
     current = store.read_json(usage_file)

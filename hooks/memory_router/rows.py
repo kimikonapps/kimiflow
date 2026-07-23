@@ -5,10 +5,59 @@ fix in sanitize_evidence_ref, secret-value scan). These return Python objects
 (dict/list); serialization to stdout stays at the contracts.dumps boundary in the
 calling subcommand."""
 import hashlib
+import json
 import os
 import re
 
 from .paths import rel_path
+
+MATURITY_PROBATIONARY = "probationary"
+MATURITY_DURABLE = "durable"
+MATURITY_INVALID = "invalid"
+
+_LEARNING_LIFECYCLE_FIELDS = frozenset((
+    "maturity",
+    "status",
+    "curation",
+    "last_verified",
+    "recall_id",
+))
+
+
+def learning_maturity(row):
+    """Missing means durable for pre-tier rows; explicit invalid values fail closed."""
+    if "maturity" not in row:
+        return MATURITY_DURABLE
+    candidate = row.get("maturity")
+    return candidate if candidate in (
+        MATURITY_PROBATIONARY, MATURITY_DURABLE
+    ) else MATURITY_INVALID
+
+
+def learning_is_durable(row):
+    return learning_maturity(row) == MATURITY_DURABLE
+
+
+def learning_content_fingerprint(row):
+    """Bind verified use to meaning/provenance, excluding mutable lifecycle state."""
+    if not isinstance(row, dict):
+        raise ValueError("learning content fingerprint requires an object")
+    projection = {
+        field: value for field, value in row.items()
+        if field not in _LEARNING_LIFECYCLE_FIELDS
+    }
+    try:
+        encoded = json.dumps(
+            projection,
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("learning content is not canonical JSON") from exc
+    return hashlib.sha256(encoded).hexdigest()
+
 
 # memory_security_json patterns, lifted from Bash grep -E @ v0.1.50. The Bash lowercases
 # the text first (tr [:upper:][:lower:]); we lower() then search. Default re flags keep

@@ -240,6 +240,23 @@ class ReviewIndexFreshnessCase(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(index_run.call_count, 1)
 
+    def test_recorded_review_starts_probationary_without_proposals_or_always_on_copy(self):
+        code, output, _ = self.run_review(["--write"])
+        self.assertEqual(code, 0)
+        payload = json.loads(output)
+        self.assertEqual(payload["proposal_update"]["proposals"]["total"], 0)
+        learnings = os.path.join(
+            self.root, ".kimiflow", "project", "LEARNINGS.jsonl"
+        )
+        with open(learnings, "r", encoding="utf-8") as handle:
+            rows = [json.loads(line) for line in handle if line.strip()]
+        self.assertTrue(rows)
+        self.assertTrue(all(row["maturity"] == "probationary" for row in rows))
+        with open(os.path.join(
+                self.root, ".kimiflow", "project", "MEMORY.md"
+        ), "r", encoding="utf-8") as handle:
+            self.assertNotIn("explicit cache refresh", handle.read())
+
     def test_skipped_review_finishes_with_fresh_index(self):
         self.assertEqual(recall_index.build_recall_index(
             self.root, recall_index.recall_db_path(self.root)), 0)
@@ -282,6 +299,33 @@ def _norm(text):
     text = re.sub(r"((?:learn|user)_\d{8}_[a-z0-9-]+)_\d+", r"\1_PID", text)
     text = re.sub(r"\d{4}-\d{2}-\d{2}", "DAY", text)
     return text
+
+
+def _autonomous_maturity_json_norm(text):
+    """Strip the intentional post-v0.1.50 lifecycle/proposal divergence for parity."""
+    try:
+        value = json.loads(text)
+    except (TypeError, json.JSONDecodeError):
+        return text
+    if isinstance(value, dict):
+        value.pop("proposal_update", None)
+        value.pop("notification", None)
+        lifecycle = value.get("lifecycle") if isinstance(value.get("lifecycle"), dict) else value
+        if isinstance(lifecycle, dict):
+            lifecycle.pop("curation", None)
+            lifecycle.pop("proposals", None)
+            lifecycle.pop("next_actions", None)
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _autonomous_maturity_markdown_norm(text):
+    text = re.sub(
+        r"## Curation\n\n.*?(?=\n## Provider Sync)",
+        "## Curation\n\n<CURATION>\n",
+        text,
+        flags=re.DOTALL,
+    )
+    return re.sub(r"## Next Actions\n\n.*\Z", "## Next Actions\n\n<NEXT>\n", text, flags=re.DOTALL)
 
 
 # review-run-specific artifacts to ground, all relative to root (RECALL.sqlite excluded:
@@ -414,7 +458,11 @@ class ReviewParityCase(unittest.TestCase):
         bc, bo, be = self._bash(rb, kb, tail, extra)
         pc, po, pe = self._py(rp, kp, tail, extra)
         self.assertEqual(bc, pc, "exit")
-        self.assertEqual(_norm(bo), _norm(po), "stdout")
+        self.assertEqual(
+            _norm(_autonomous_maturity_json_norm(bo)),
+            _norm(_autonomous_maturity_json_norm(po)),
+            "stdout",
+        )
         self.assertEqual(_norm(be), _norm(pe), "stderr")
 
     def test_preview_parity(self):
@@ -445,7 +493,11 @@ class ReviewParityCase(unittest.TestCase):
         pc, po, pe = self._py(root, khome, tail)
         self.assertEqual(pc, 0, "py exit (stderr=%r)" % pe)
         py_arts = self._read_artifacts(root, khome)
-        self.assertEqual(_norm(bo), _norm(po), "stdout")
+        self.assertEqual(
+            _norm(_autonomous_maturity_json_norm(bo)),
+            _norm(_autonomous_maturity_json_norm(po)),
+            "stdout",
+        )
         self.assertEqual(_norm(be), _norm(pe), "stderr")
         for key in bash_arts:
             py_val = py_arts[key] or ""
@@ -453,7 +505,16 @@ class ReviewParityCase(unittest.TestCase):
                 # spec section 12: `scope` is an intentional port-era addition to the
                 # global row — strip it so the remaining bytes stay Bash-grounded.
                 py_val = re.sub(r'"scope":"[a-z]+",', "", py_val)
-            self.assertEqual(_norm(bash_arts[key] or ""), _norm(py_val), "artifact %s" % key)
+            bash_val = bash_arts[key] or ""
+            if key == ".kimiflow/project/LEARNINGS.jsonl":
+                py_val = py_val.replace(',"maturity":"probationary"', "")
+            elif key == "run/RUN-LIFECYCLE.json":
+                bash_val = _autonomous_maturity_json_norm(bash_val)
+                py_val = _autonomous_maturity_json_norm(py_val)
+            elif key == "run/RUN-LIFECYCLE.md":
+                bash_val = _autonomous_maturity_markdown_norm(bash_val)
+                py_val = _autonomous_maturity_markdown_norm(py_val)
+            self.assertEqual(_norm(bash_val), _norm(py_val), "artifact %s" % key)
 
     def test_skip_write_parity(self):
         self._compare_write(self._pop_one_candidate, ["--skip", "trivial run", "--write"])

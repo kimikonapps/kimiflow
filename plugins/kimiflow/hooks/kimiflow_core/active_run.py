@@ -99,6 +99,8 @@ ITEM_ACTION_OPERATIONS = {"append-item", "mark-built", "mark-accepted", "mark-re
 MAX_ITEM_MUTATION_REVISION = 1000000000000
 HOST_USAGE_RECEIPT = "HOST-USAGE.json"
 MAX_HOST_USAGE_BYTES = 64 * 1024
+MEMORY_CURATION_TIMEOUT_SECONDS = 30
+MEMORY_CURATION_DEADLINE_SECONDS = 20
 
 
 def usage():
@@ -118,7 +120,8 @@ def iso_now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def run_cmd(args, cwd=None, env=None, stderr_to_stdout=False, cwd_descriptor=None):
+def run_cmd(args, cwd=None, env=None, stderr_to_stdout=False, cwd_descriptor=None,
+            timeout=None):
     process_options = {}
     if cwd_descriptor is not None:
         process_options["pass_fds"] = (cwd_descriptor,)
@@ -132,6 +135,7 @@ def run_cmd(args, cwd=None, env=None, stderr_to_stdout=False, cwd_descriptor=Non
             stderr=subprocess.STDOUT if stderr_to_stdout else subprocess.PIPE,
             text=True,
             check=False,
+            timeout=timeout,
             **process_options,
         )
     except OSError as exc:
@@ -2286,12 +2290,6 @@ def read_run_snapshot(run_descriptor, name):
 
 def snapshot_finish(root, run_dir, snapshot, run_descriptor=None):
     os.makedirs(os.path.join(snapshot, "run"), exist_ok=True)
-    project = os.path.join(root, ".kimiflow/project")
-    if os.path.isdir(project):
-        shutil.copytree(project, os.path.join(snapshot, "project"))
-        write_text(os.path.join(snapshot, "project.present"), "present\n")
-    else:
-        write_text(os.path.join(snapshot, "project.present"), "absent\n")
     for name in FINISH_SNAPSHOT_NAMES:
         present = os.path.join(snapshot, "run", "%s.present" % name)
         try:
@@ -2322,15 +2320,10 @@ def snapshot_finish(root, run_dir, snapshot, run_descriptor=None):
         write_text(os.path.join(snapshot, "global-metrics.present"), "absent\n")
 
 
-def restore_finish(root, run_dir, snapshot, run_descriptor=None):
-    project = os.path.join(root, ".kimiflow/project")
-    if read_text(os.path.join(snapshot, "project.present")).strip() == "present":
-        shutil.rmtree(project, ignore_errors=True)
-        os.makedirs(os.path.join(root, ".kimiflow"), exist_ok=True)
-        shutil.copytree(os.path.join(snapshot, "project"), project)
-    else:
-        shutil.rmtree(project, ignore_errors=True)
+def restore_finish(root, run_dir, snapshot, run_descriptor=None, preserve_state=False):
     for name in FINISH_SNAPSHOT_NAMES:
+        if preserve_state and name == "STATE.md":
+            continue
         if read_text(os.path.join(snapshot, "run", "%s.present" % name)).strip() == "present":
             source = os.path.join(snapshot, "run", name)
             if run_descriptor is None:
@@ -2407,7 +2400,8 @@ def session_pins(active):
     return {key: active.get(key) for key in keys if key in active}
 
 
-def write_outcome(run_dir, outcome, reason, review, verify_line, outcome_evaluation=None, run_descriptor=None):
+def write_outcome(run_dir, outcome, reason, review, verify_line, outcome_evaluation=None,
+                  memory_curation=None, run_descriptor=None):
     value = {
         "schema_version": 1,
         "outcome": outcome,
@@ -2416,6 +2410,7 @@ def write_outcome(run_dir, outcome, reason, review, verify_line, outcome_evaluat
         "learning_review": review,
         "learning_verify": verify_line or None,
         "outcome_evaluation": outcome_evaluation,
+        "memory_curation": memory_curation,
     }
     payload = json_pretty(value) + "\n"
     if run_descriptor is None:
@@ -2488,18 +2483,24 @@ def pinned_router_environment(run_descriptor, run_rel):
     return environment
 
 
-def evaluate_terminal_outcome(router, root, run_rel, terminal, run_descriptor=None):
+def evaluate_terminal_outcome(router, root, run_rel, terminal, run_descriptor=None, write=True):
     if not (os.path.exists(router) and os.access(router, os.X_OK)):
         return {"status": "error", "exit_code": 1, "reason": "memory_router_unavailable"}, 1, ""
     pinned = run_descriptor is not None
-    proc = run_cmd([
+    command = [
         router,
         "evaluate-run",
         "--root", root,
         "--run", "." if pinned else run_rel,
         "--terminal", terminal,
-        "--write",
-    ], env=pinned_router_environment(run_descriptor, run_rel) if pinned else None, cwd_descriptor=run_descriptor)
+    ]
+    if write:
+        command.append("--write")
+    proc = run_cmd(
+        command,
+        env=pinned_router_environment(run_descriptor, run_rel) if pinned else None,
+        cwd_descriptor=run_descriptor,
+    )
     if proc.returncode != 0:
         return {
             "status": "error",
@@ -2521,7 +2522,7 @@ def evaluate_terminal_outcome(router, root, run_rel, terminal, run_descriptor=No
     valid_evaluation = (
         isinstance(payload, dict)
         and payload.get("status") == "evaluated"
-        and payload.get("written") is True
+        and payload.get("written") is write
         and isinstance(evaluation, dict)
         and re.fullmatch(r"out_[0-9a-f]{64}", str(evaluation.get("id", ""))) is not None
         and evaluation.get("terminal") == terminal
@@ -2550,6 +2551,131 @@ def evaluate_terminal_outcome(router, root, run_rel, terminal, run_descriptor=No
         "net_estimated_tokens_saved": economics.get("net_estimated_tokens_saved"),
     }
     return summary, 0, ""
+
+
+def curate_project_memory(router, root):
+    """Run deterministic local curation without turning it into a terminal gate."""
+    if not (os.path.exists(router) and os.access(router, os.X_OK)):
+        return {
+            "status": "error",
+            "exit_code": 1,
+            "reason": "memory_router_unavailable",
+        }
+    try:
+        environment = os.environ.copy()
+        environment["KIMIFLOW_LIFECYCLE_DEADLINE_SECONDS"] = str(
+            MEMORY_CURATION_DEADLINE_SECONDS
+        )
+        proc = run_cmd([
+            router,
+            "lifecycle",
+            "--root", root,
+            "--write",
+        ], env=environment, timeout=MEMORY_CURATION_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        return {
+            "status": "error",
+            "exit_code": 124,
+            "reason": "memory_curation_timeout",
+        }
+    if proc.returncode == 124:
+        return {
+            "status": "error",
+            "exit_code": 124,
+            "reason": "memory_curation_timeout",
+        }
+    if proc.returncode != 0:
+        return {
+            "status": "error",
+            "exit_code": proc.returncode or 1,
+            "reason": "memory_curation_failed",
+        }
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        payload = None
+    count_fields = (
+        "promoted_count", "demoted_count", "quarantined_count",
+        "metadata_updated_count", "protected_count", "outcome_signal_count",
+        "changed_count",
+    )
+    reason_counts = payload.get("reason_counts") if isinstance(payload, dict) else None
+    allowed_reasons = {
+        "verified_helpful_streak",
+        "verified_contradiction",
+        "evidence_drift",
+        "content_drift",
+        "awaiting_repeat_evidence",
+        "observed",
+        "stale_unused_quarantine",
+    }
+    valid = (
+        isinstance(payload, dict)
+        and payload.get("schema_version") == 1
+        and payload.get("status") in ("curated", "quarantined", "unchanged")
+        and isinstance(payload.get("written"), bool)
+        and all(
+            field in payload
+            and isinstance(payload[field], int)
+            and not isinstance(payload[field], bool)
+            and payload[field] >= 0
+            for field in count_fields
+        )
+        and isinstance(reason_counts, dict)
+        and len(reason_counts) <= len(allowed_reasons)
+        and all(
+            reason in allowed_reasons
+            and isinstance(count, int)
+            and not isinstance(count, bool)
+            and count > 0
+            for reason, count in reason_counts.items()
+        )
+    )
+    if valid:
+        mutation_event_count = sum(
+            payload[field] for field in (
+                "promoted_count", "demoted_count", "quarantined_count",
+                "metadata_updated_count",
+            )
+        )
+        changed_count = payload["changed_count"]
+        status = payload["status"]
+        valid = (
+            payload["written"] is (changed_count > 0)
+            and (changed_count > 0) is (mutation_event_count > 0)
+            and changed_count <= mutation_event_count
+            and sum(reason_counts.values()) == changed_count
+            and (
+            (status == "unchanged" and mutation_event_count == 0)
+            or (
+                status == "quarantined"
+                and payload["quarantined_count"] > 0
+                and payload["promoted_count"] == 0
+                and payload["demoted_count"] == 0
+                and payload["metadata_updated_count"] == 0
+            )
+            or (
+                status == "curated"
+                and (
+                    payload["promoted_count"] > 0
+                    or payload["demoted_count"] > 0
+                    or payload["metadata_updated_count"] > 0
+                )
+            )
+            )
+        )
+    if not valid:
+        return {
+            "status": "error",
+            "exit_code": 1,
+            "reason": "memory_curation_malformed",
+        }
+    return {
+        "status": payload["status"],
+        "written": payload["written"],
+        "reason_counts": reason_counts,
+        **{field: payload[field] for field in count_fields},
+    }
 
 
 def read_run_json(run_descriptor, name):
@@ -2746,12 +2872,13 @@ def cmd_finish(args):
                         restore_finish(root, run_dir, snapshot, run_descriptor=pinned["run_descriptor"])
                         sys.stderr.write(verify + ("\n" if verify else ""))
                         return verify_proc.returncode
-                    outcome_evaluation, evaluation_code, evaluation_stderr = evaluate_terminal_outcome(
+                    outcome_preview, evaluation_code, evaluation_stderr = evaluate_terminal_outcome(
                         router,
                         root,
                         run_rel,
                         "done",
                         run_descriptor=pinned["run_descriptor"],
+                        write=False,
                     )
                     if evaluation_code != 0:
                         restore_finish(root, run_dir, snapshot, run_descriptor=pinned["run_descriptor"])
@@ -2794,7 +2921,8 @@ def cmd_finish(args):
                         "",
                         review,
                         verify,
-                        outcome_evaluation,
+                        outcome_preview,
+                        {"status": "pending"},
                         run_descriptor=pinned["run_descriptor"],
                     )
                     update_terminal_state(pinned, "done", phase7_done=True)
@@ -2817,6 +2945,42 @@ def cmd_finish(args):
                         phase=7,
                     )
                     terminal_state_committed = True
+                    outcome_evaluation, persisted_code, _ = evaluate_terminal_outcome(
+                        router,
+                        root,
+                        run_rel,
+                        "done",
+                        run_descriptor=pinned["run_descriptor"],
+                        write=True,
+                    )
+                    stable_fields = ("id", "terminal", "classification", "promotable")
+                    if persisted_code == 0 and any(
+                        outcome_evaluation.get(field) != outcome_preview.get(field)
+                        for field in stable_fields
+                    ):
+                        outcome_evaluation = {
+                            "status": "error",
+                            "exit_code": 1,
+                            "reason": "outcome_evaluation_changed",
+                        }
+                        persisted_code = 1
+                    memory_curation = (
+                        curate_project_memory(router, root)
+                        if persisted_code == 0
+                        else {
+                            "status": "skipped",
+                            "reason": "outcome_evaluation_failed",
+                        }
+                    )
+                    outcome["outcome_evaluation"] = outcome_evaluation
+                    outcome["memory_curation"] = memory_curation
+                    if persisted_code != 0:
+                        write_run_text(
+                            pinned["run_descriptor"],
+                            "SESSION-OUTCOME.json",
+                            json_pretty(outcome) + "\n",
+                        )
+                        return persisted_code
                     if not terminal_run_name_matches(pinned):
                         die("terminal run directory changed before retirement", 2)
                     outcome["workspace_retirement"] = retire_terminal_worktree(
@@ -2864,48 +3028,115 @@ def cmd_terminal(command, args):
     terminal_active = load_active(root)
     ensure_terminal_run_path(run_dir, terminal_active)
     if opts["--write"]:
-        outcome_evaluation, _, _ = evaluate_terminal_outcome(
-            memory_router_path(),
-            root,
-            run_rel,
-            outcome,
+        snapshot = tempfile.mkdtemp(
+            prefix="kimiflow-terminal.",
+            dir=os.environ.get("TMPDIR") or "/tmp",
         )
+        terminal_state_committed = False
+        snapshot_complete = False
+        try:
+            with pinned_terminal_run(run_dir, terminal_active) as pinned:
+                try:
+                    snapshot_finish(
+                        root,
+                        run_dir,
+                        snapshot,
+                        run_descriptor=pinned["run_descriptor"],
+                    )
+                    snapshot_complete = True
+                    router = memory_router_path()
+                    outcome_json = {
+                        "schema_version": 1,
+                        "outcome": outcome,
+                        "reason": opts["--reason"],
+                        "completed_at": iso_now(),
+                        "learning_review": {
+                            "status": "not_promoted",
+                            "reason": "session_not_finished",
+                        },
+                        "outcome_evaluation": {"status": "pending"},
+                        "memory_curation": {"status": "pending"},
+                        "session_pins": session_pins(terminal_active),
+                    }
+                    scorecard.write_terminal(
+                        root,
+                        run_dir,
+                        terminal=outcome,
+                        run_descriptor=pinned["run_descriptor"],
+                        phase=7,
+                    )
+                    write_run_text(
+                        pinned["run_descriptor"],
+                        "SESSION-OUTCOME.json",
+                        json_pretty(outcome_json) + "\n",
+                    )
+                    update_terminal_state(pinned, state_status)
+                    terminal_state_committed = True
+                    outcome_evaluation, evaluation_code, _ = evaluate_terminal_outcome(
+                        router,
+                        root,
+                        run_rel,
+                        outcome,
+                        run_descriptor=pinned["run_descriptor"],
+                        write=True,
+                    )
+                    memory_curation = (
+                        curate_project_memory(router, root)
+                        if evaluation_code == 0
+                        else {
+                            "status": "skipped",
+                            "reason": "outcome_evaluation_failed",
+                        }
+                    )
+                    outcome_json["outcome_evaluation"] = outcome_evaluation
+                    outcome_json["memory_curation"] = memory_curation
+                    write_run_text(
+                        pinned["run_descriptor"],
+                        "SESSION-OUTCOME.json",
+                        json_pretty(outcome_json) + "\n",
+                    )
+                    if not terminal_run_name_matches(pinned):
+                        die("terminal run directory changed before retirement", 2)
+                    if command in ("fail", "abort"):
+                        outcome_json["workspace_retirement"] = retire_terminal_worktree(
+                            root,
+                            run_rel,
+                            run_descriptor=pinned["run_descriptor"],
+                        )
+                        write_run_text(
+                            pinned["run_descriptor"],
+                            "SESSION-OUTCOME.json",
+                            json_pretty(outcome_json) + "\n",
+                        )
+                    retire_active_session(root, pinned, state_status, run_rel)
+                except ActiveError:
+                    if snapshot_complete and not terminal_state_committed:
+                        restore_finish(
+                            root,
+                            run_dir,
+                            snapshot,
+                            run_descriptor=pinned["run_descriptor"],
+                            preserve_state=True,
+                        )
+                    raise
+        finally:
+            shutil.rmtree(snapshot, ignore_errors=True)
     else:
         outcome_evaluation = {"status": "preview"}
-    outcome_json = {
-        "schema_version": 1,
-        "outcome": outcome,
-        "reason": opts["--reason"],
-        "completed_at": iso_now(),
-        "learning_review": {"status": "not_promoted", "reason": "session_not_finished"},
-        "outcome_evaluation": outcome_evaluation,
-        "session_pins": session_pins(terminal_active),
-    }
-    if opts["--write"]:
-        with pinned_terminal_run(run_dir, terminal_active) as pinned:
-            scorecard.write_terminal(
-                root,
-                run_dir,
-                terminal=outcome,
-                run_descriptor=pinned["run_descriptor"],
-                phase=7,
-            )
-            write_run_text(pinned["run_descriptor"], "SESSION-OUTCOME.json", json_pretty(outcome_json) + "\n")
-            update_terminal_state(pinned, state_status)
-            if not terminal_run_name_matches(pinned):
-                die("terminal run directory changed before retirement", 2)
-            if command in ("fail", "abort"):
-                outcome_json["workspace_retirement"] = retire_terminal_worktree(
-                    root,
-                    run_rel,
-                    run_descriptor=pinned["run_descriptor"],
-                )
-                write_run_text(
-                    pinned["run_descriptor"],
-                    "SESSION-OUTCOME.json",
-                    json_pretty(outcome_json) + "\n",
-                )
-            retire_active_session(root, pinned, state_status, run_rel)
+        memory_curation = {"status": "preview"}
+        outcome_json = {
+            "schema_version": 1,
+            "outcome": outcome,
+            "reason": opts["--reason"],
+            "completed_at": iso_now(),
+            "learning_review": {
+                "status": "not_promoted",
+                "reason": "session_not_finished",
+            },
+            "outcome_evaluation": outcome_evaluation,
+            "memory_curation": memory_curation,
+            "session_pins": session_pins(terminal_active),
+        }
     json_print({"status": outcome, "written": opts["--write"] is True, "run": run_rel, "outcome": outcome_json}, opts["--pretty"])
 
 

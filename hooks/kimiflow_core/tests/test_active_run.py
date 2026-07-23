@@ -434,17 +434,23 @@ class TestOutcomeEvaluation(unittest.TestCase):
                 "case \"$1\" in\n"
                 "review-run)\n"
                 "  if [ \"${KIMIFLOW_TEST_MUTATE_AFFECTED:-0}\" = 1 ]; then printf 'mutated during learning\\n' > \"$3/tracked.txt\"; fi\n"
-                "  if [ \"${KIMIFLOW_TEST_REVIEW_WRITE:-0}\" = 1 ]; then mkdir -p \"$3/.kimiflow/project\"; printf partial > \"$3/.kimiflow/project/STRATEGIES.jsonl\"; printf partial > \"$3/$5/LEARNING-REVIEW.md\"; fi\n"
+                "  if [ \"${KIMIFLOW_TEST_REVIEW_RUN_WRITE:-0}\" = 1 ]; then printf partial > \"$3/$5/LEARNING-REVIEW.md\"; fi\n"
                 "  if [ \"${KIMIFLOW_TEST_REVIEW_FAIL:-0}\" = 1 ]; then exit 29; fi\n"
                 "  printf '%s\\n' '{\"status\":\"skipped\",\"written\":true}'; exit 0 ;;\n"
                 "verify-run) printf '%s\\n' 'LEARNING_REVIEW OPEN'; exit 0 ;;\n"
                 "evaluate-run)\n"
-                "  root=; run=; terminal=; shift\n"
-                "  while [ \"$#\" -gt 0 ]; do case \"$1\" in --root) shift; root=$1 ;; --run) shift; run=$1 ;; --terminal) shift; terminal=$1 ;; esac; shift; done\n"
-                "  if [ \"${KIMIFLOW_TEST_EVALUATE_WRITE:-0}\" = 1 ]; then mkdir -p \"$root/.kimiflow/project\"; printf partial > \"$root/.kimiflow/project/STRATEGY-OUTCOMES.jsonl\"; printf partial > \"$root/$run/OUTCOME-EVALUATION.json\"; fi\n"
+                "  root=; run=; terminal=; write=false; shift\n"
+                "  while [ \"$#\" -gt 0 ]; do case \"$1\" in --root) shift; root=$1 ;; --run) shift; run=$1 ;; --terminal) shift; terminal=$1 ;; --write) write=true ;; esac; shift; done\n"
+                "  if [ \"${KIMIFLOW_TEST_EVALUATE_WRITE:-0}\" = 1 ] && [ \"$write\" = true ]; then mkdir -p \"$root/.kimiflow/project\"; printf partial > \"$root/.kimiflow/project/STRATEGY-OUTCOMES.jsonl\"; printf partial > \"$root/$run/OUTCOME-EVALUATION.json\"; fi\n"
                 "  if [ \"${KIMIFLOW_TEST_EVALUATE_FAIL:-0}\" = 1 ]; then exit 23; fi\n"
+                "  if [ \"${KIMIFLOW_TEST_EVALUATE_FAIL_WRITE:-0}\" = 1 ] && [ \"$write\" = true ]; then exit 24; fi\n"
                 "  if [ \"${KIMIFLOW_TEST_EVALUATE_MALFORMED:-0}\" = 1 ]; then printf '%s\\n' '{\"status\":\"evaluated\",\"written\":false,\"evaluation\":{}}'; exit 0; fi\n"
-                "  printf '{\"status\":\"evaluated\",\"written\":true,\"evaluation\":{\"id\":\"out_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"terminal\":\"%s\",\"classification\":\"verified_success\",\"promotable\":true}}\\n' \"$terminal\"; exit 0 ;;\n"
+                "  printf '{\"status\":\"evaluated\",\"written\":%s,\"evaluation\":{\"id\":\"out_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"terminal\":\"%s\",\"classification\":\"verified_success\",\"promotable\":true}}\\n' \"$write\" \"$terminal\"; exit 0 ;;\n"
+                "lifecycle)\n"
+                "  if [ \"${KIMIFLOW_TEST_CURATION_FAIL:-0}\" = 1 ]; then exit 31; fi\n"
+                "  if [ \"${KIMIFLOW_TEST_CURATION_MALFORMED:-0}\" = 1 ]; then printf '%s\\n' '{}'; exit 0; fi\n"
+                "  if [ \"${KIMIFLOW_TEST_CURATION_WRITE:-0}\" = 1 ]; then mkdir -p \"$3/.kimiflow/project\"; printf curated > \"$3/.kimiflow/project/CURATION-WRITE\"; fi\n"
+                "  printf '%s\\n' '{\"schema_version\":1,\"status\":\"curated\",\"written\":true,\"promoted_count\":1,\"demoted_count\":0,\"quarantined_count\":0,\"metadata_updated_count\":1,\"protected_count\":0,\"outcome_signal_count\":1,\"changed_count\":1,\"reason_counts\":{\"verified_helpful_streak\":1}}'; exit 0 ;;\n"
                 "*) exit 2 ;;\n"
                 "esac\n"
             )
@@ -483,11 +489,185 @@ class TestOutcomeEvaluation(unittest.TestCase):
         self.assertEqual(rc, 0)
         result = json.loads(out)
         self.assertEqual(result["outcome"]["outcome_evaluation"]["classification"], "verified_success")
+        self.assertEqual(
+            result["outcome"]["memory_curation"]["reason_counts"],
+            {"verified_helpful_streak": 1},
+        )
         self.assertFalse(os.path.exists(active_run.active_file(self.repo)))
         with open(self.router_log, "r", encoding="utf-8") as handle:
             self.assertIn("evaluate-run --root %s --run . --terminal done --write" % (
                 self.repo,
             ), handle.read())
+
+    def test_finish_records_nonblocking_memory_curation_receipt(self):
+        with mock.patch.dict(os.environ, {"KIMIFLOW_TEST_CURATION_FAIL": "1"}):
+            rc, out = run_main(["finish", "--root", self.repo, "--write"])
+        self.assertEqual(rc, 0)
+        receipt = json.loads(out)["outcome"]["memory_curation"]
+        self.assertEqual(receipt["status"], "error")
+        self.assertEqual(receipt["reason"], "memory_curation_failed")
+        self.assertFalse(os.path.exists(active_run.active_file(self.repo)))
+
+    def test_finish_keeps_owner_resumable_when_persisted_outcome_fails(self):
+        with mock.patch.dict(
+            os.environ,
+            {"KIMIFLOW_TEST_EVALUATE_FAIL_WRITE": "1"},
+        ):
+            rc, out = run_main(["finish", "--root", self.repo, "--write"])
+
+        self.assertEqual(rc, 24)
+        self.assertEqual(out, "")
+        self.assertTrue(os.path.isfile(active_run.active_file(self.repo)))
+        with open(
+            os.path.join(self.run_dir, "SESSION-OUTCOME.json"),
+            "r",
+            encoding="utf-8",
+        ) as handle:
+            receipt = json.load(handle)
+        self.assertEqual(receipt["memory_curation"], {
+            "status": "skipped",
+            "reason": "outcome_evaluation_failed",
+        })
+
+        rc, out = run_main(["finish", "--root", self.repo, "--write"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            json.loads(out)["outcome"]["outcome_evaluation"]["classification"],
+            "verified_success",
+        )
+        self.assertFalse(os.path.exists(active_run.active_file(self.repo)))
+
+    def test_memory_curation_timeout_is_nonblocking_and_bounded(self):
+        with mock.patch.object(
+            active_run,
+            "run_cmd",
+            side_effect=subprocess.TimeoutExpired(["memory-router"], 30),
+        ) as runner:
+            receipt = active_run.curate_project_memory(self.router, self.repo)
+
+        self.assertEqual(receipt, {
+            "status": "error",
+            "exit_code": 124,
+            "reason": "memory_curation_timeout",
+        })
+        self.assertEqual(
+            runner.call_args.kwargs["timeout"],
+            active_run.MEMORY_CURATION_TIMEOUT_SECONDS,
+        )
+        self.assertEqual(
+            runner.call_args.kwargs["env"]["KIMIFLOW_LIFECYCLE_DEADLINE_SECONDS"],
+            str(active_run.MEMORY_CURATION_DEADLINE_SECONDS),
+        )
+
+    def test_memory_curation_receipt_rejects_missing_or_inconsistent_counts(self):
+        base = {
+            "schema_version": 1,
+            "status": "unchanged",
+            "written": False,
+            "promoted_count": 0,
+            "demoted_count": 0,
+            "quarantined_count": 0,
+            "metadata_updated_count": 0,
+            "protected_count": 0,
+            "outcome_signal_count": 0,
+            "changed_count": 0,
+            "reason_counts": {},
+        }
+        malformed = []
+        missing = dict(base)
+        missing.pop("promoted_count")
+        malformed.append(missing)
+        inconsistent = dict(base, status="curated", written=False, promoted_count=1)
+        malformed.append(inconsistent)
+        wrong_status = dict(base, status="quarantined", written=True)
+        malformed.append(wrong_status)
+        missing_reason = dict(
+            base,
+            status="curated",
+            written=True,
+            promoted_count=1,
+            metadata_updated_count=1,
+            changed_count=1,
+        )
+        malformed.append(missing_reason)
+        unknown_reason = dict(
+            missing_reason,
+            reason_counts={"model_says_so": 1},
+        )
+        malformed.append(unknown_reason)
+        for payload in malformed:
+            with self.subTest(payload=payload), mock.patch.object(
+                active_run,
+                "run_cmd",
+                return_value=subprocess.CompletedProcess(
+                    [], 0, stdout=json.dumps(payload), stderr="",
+                ),
+            ):
+                receipt = active_run.curate_project_memory(self.router, self.repo)
+            self.assertEqual(receipt["status"], "error")
+            self.assertEqual(receipt["reason"], "memory_curation_malformed")
+
+    def test_park_rolls_back_curation_when_terminal_state_write_fails(self):
+        project_write = os.path.join(
+            self.repo,
+            ".kimiflow",
+            "project",
+            "CURATION-WRITE",
+        )
+        with mock.patch.dict(
+            os.environ,
+            {"KIMIFLOW_TEST_CURATION_WRITE": "1"},
+        ), mock.patch.object(
+            active_run,
+            "update_terminal_state",
+            side_effect=active_run.ActiveError("state write failed", 41),
+        ):
+            rc, _ = run_main([
+                "park",
+                "--root", self.repo,
+                "--reason", "test rollback",
+                "--write",
+            ])
+        self.assertEqual(rc, 41)
+        self.assertFalse(os.path.exists(project_write))
+        self.assertTrue(os.path.exists(active_run.active_file(self.repo)))
+        self.assertFalse(os.path.exists(os.path.join(
+            self.run_dir,
+            "SESSION-OUTCOME.json",
+        )))
+
+    def test_park_rollback_never_overwrites_concurrent_project_write(self):
+        learnings = os.path.join(
+            self.repo,
+            ".kimiflow",
+            "project",
+            "LEARNINGS.jsonl",
+        )
+        concurrent = '{"id":"manual-global","scope":"global"}\n'
+
+        def append_then_fail(*_args, **_kwargs):
+            os.makedirs(os.path.dirname(learnings), exist_ok=True)
+            with open(learnings, "a", encoding="utf-8") as handle:
+                handle.write(concurrent)
+            raise active_run.ActiveError("state write failed", 41)
+
+        with mock.patch.dict(
+            os.environ,
+            {"KIMIFLOW_TEST_CURATION_WRITE": "1"},
+        ), mock.patch.object(
+            active_run,
+            "update_terminal_state",
+            side_effect=append_then_fail,
+        ):
+            rc, _ = run_main([
+                "park",
+                "--root", self.repo,
+                "--reason", "test concurrent rollback",
+                "--write",
+            ])
+        self.assertEqual(rc, 41)
+        with open(learnings, "r", encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), concurrent)
 
     def test_same_run_restart_preserves_immutable_selectors_and_frontend_pin(self):
         active_path = active_run.active_file(self.repo)
@@ -650,18 +830,15 @@ class TestOutcomeEvaluation(unittest.TestCase):
         )))
         self.assertFalse(os.path.exists(os.path.join(self.run_dir, "OUTCOME-EVALUATION.json")))
 
-    def test_failing_review_restores_partial_learning_writes(self):
+    def test_failing_review_restores_partial_run_artifacts(self):
         with mock.patch.dict(os.environ, {
-            "KIMIFLOW_TEST_REVIEW_WRITE": "1",
+            "KIMIFLOW_TEST_REVIEW_RUN_WRITE": "1",
             "KIMIFLOW_TEST_REVIEW_FAIL": "1",
         }):
             rc, _ = run_main(["finish", "--root", self.repo, "--write"])
 
         self.assertEqual(rc, 29)
         self.assertTrue(os.path.isfile(active_run.active_file(self.repo)))
-        self.assertFalse(os.path.exists(os.path.join(
-            self.repo, ".kimiflow", "project", "STRATEGIES.jsonl"
-        )))
         self.assertFalse(os.path.exists(os.path.join(self.run_dir, "LEARNING-REVIEW.md")))
 
     def test_terminal_serialization_failure_restores_learning_writes(self):
@@ -1749,7 +1926,7 @@ class TestTerminalWorktreeRetirement(unittest.TestCase):
                 "#!/bin/sh\n"
                 "if [ \"$1\" = review-run ]; then printf '%s\\n' '{\"status\":\"skipped\"}'; exit 0; fi\n"
                 "if [ \"$1\" = verify-run ]; then printf '%s\\n' OPEN; exit 0; fi\n"
-                "if [ \"$1\" = evaluate-run ]; then printf '%s\\n' '{\"status\":\"evaluated\",\"written\":true,\"evaluation\":{\"id\":\"out_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"terminal\":\"done\",\"classification\":\"verified_success\",\"promotable\":true}}'; exit 0; fi\n"
+                "if [ \"$1\" = evaluate-run ]; then written=false; for arg in \"$@\"; do [ \"$arg\" = --write ] && written=true; done; printf '{\"status\":\"evaluated\",\"written\":%s,\"evaluation\":{\"id\":\"out_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"terminal\":\"done\",\"classification\":\"verified_success\",\"promotable\":true}}\\n' \"$written\"; exit 0; fi\n"
                 "exit 2\n"
             )
         os.chmod(router, 0o700)
@@ -1776,7 +1953,7 @@ class TestTerminalWorktreeRetirement(unittest.TestCase):
                 "#!/bin/sh\n"
                 "if [ \"$1\" = review-run ]; then printf '%s\\n' '{\"status\":\"skipped\"}'; exit 0; fi\n"
                 "if [ \"$1\" = verify-run ]; then printf '%s\\n' OPEN; exit 0; fi\n"
-                "if [ \"$1\" = evaluate-run ]; then printf '%s\\n' '{\"status\":\"evaluated\",\"written\":true,\"evaluation\":{\"id\":\"out_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"terminal\":\"done\",\"classification\":\"verified_success\",\"promotable\":true}}'; exit 0; fi\n"
+                "if [ \"$1\" = evaluate-run ]; then written=false; for arg in \"$@\"; do [ \"$arg\" = --write ] && written=true; done; printf '{\"status\":\"evaluated\",\"written\":%s,\"evaluation\":{\"id\":\"out_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"terminal\":\"done\",\"classification\":\"verified_success\",\"promotable\":true}}\\n' \"$written\"; exit 0; fi\n"
                 "exit 2\n"
             )
         os.chmod(router, 0o700)

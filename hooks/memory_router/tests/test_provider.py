@@ -241,6 +241,7 @@ class SyncStatusCase(_RootCase):
         learnings = self.learnings([
             self.safe("L1", fp),
             self.safe("Lpriv", fp, sensitivity="private"),
+            self.safe("Lprobation", fp, maturity="probationary"),
             self.safe("Lnoev", fp, evidence=[]),
             self.safe("Lnv", fp, evidence=["NOT VERIFIED"]),
             self.safe("Lstale", stale),

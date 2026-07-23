@@ -76,11 +76,24 @@ class WriteBoundedMemoryCase(MemoryMdBase):
             {"id": "old", "topic": "drop1", "summary": "s", "status": "superseded"},
             {"id": "sec", "topic": "drop2", "summary": "s", "status": "current", "sensitivity": "security"},
             {"id": "prv", "topic": "drop3", "summary": "s", "status": "current", "sensitivity": "private"},
+            {"id": "probation", "topic": "drop4", "summary": "s", "status": "current",
+             "maturity": "probationary"},
         ])
         memory_md.write_bounded_memory(self.root)
         bullets = self.bullets("MEMORY.md")
         self.assertEqual(len(bullets), 1)
         self.assertIn("keep", bullets[0])
+
+    def test_missing_maturity_is_durable_legacy_but_probationary_is_on_demand_only(self):
+        self.write_rows("LEARNINGS.jsonl", [
+            {"id": "legacy", "topic": "legacy", "summary": "kept", "status": "current"},
+            {"id": "new", "topic": "new", "summary": "omitted", "status": "current",
+             "maturity": "probationary"},
+        ])
+        memory_md.write_bounded_memory(self.root)
+        rendered = self.read_md("MEMORY.md")
+        self.assertIn("legacy", rendered)
+        self.assertNotIn("omitted", rendered)
 
     def test_sort_confidence_then_recency(self):
         # No usage weighting: high before medium before low; ties by recency (later wins).

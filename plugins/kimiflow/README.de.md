@@ -225,8 +225,15 @@ Konventions-, Test- und Flow-Evidence anlegen. Spätere Runs prüfen betroffene 
 stale Abschnitte. Die Map ist optional, lokal und blockiert normale Arbeit nicht.
 
 Der Memory Router speichert begrenzte Projektfakten, Entscheidungen, Standards, Run-Historie und
-evidence-basierte Learnings. Promotion erfolgt erst nach erfolgreicher Verifikation und
-Source-Freshness-Prüfung. Geänderte Evidence ersetzt alte Learnings.
+evidence-basierte Learnings. Neue projektlokale Learnings beginnen als `probationary`: Sie bleiben
+gezielt abrufbar, gelangen aber noch nicht in Always-on-Memory, Vorschläge, Provider-Sync oder portable
+Capsules. Erst zwei verifiziert hilfreiche Anwendungen bei weiterhin exakter Source-Evidence machen sie
+`durable`; diese Anwendungen sind zusätzlich an einen Fingerabdruck desselben Learning-Inhalts gebunden, sodass
+umgeschriebener Inhalt keinen alten Erfolg erbt. Widerspruch, Inhalts- oder Evidence-Drift stuft Vertrauen
+reversibel zurück. Bestehende Zeilen ohne
+Maturity-Feld behalten ihr bisheriges dauerhaftes Verhalten.
+Der Fingerabdruck umfasst jedes Recall-sichtbare Feld außer expliziten Lifecycle-Metadaten, sodass auch ein
+künftiges Feld keine frühere Verifikation stillschweigend erben kann.
 Abgeschlossene Runs erhalten außerdem eine automatische lokale Outcome-Evaluation. Künftige passende
 Runs sehen höchstens eine verifizierte Erfolgsstrategie und eine belegte Fehlstrategie; beide werden
 gegen den aktuellen Code erneut geprüft.
@@ -246,8 +253,23 @@ bestehenden Outcome-Artefakt als `helpful`, `neutral` oder `contradicted`. Dafü
 Telemetrie noch kopierte Recall-Texte oder eine neue User-Bestätigung.
 
 Memory-Pflege ist Preview-first und reversibel. `memory-router.sh lifecycle` erklärt einen begrenzten
-Utility-Score von 0–5; `lifecycle --write` quarantänisiert nur strikt gelesene stale Zeilen, die nachweislich nie
-verwendet wurden und eine eindeutige ID haben. Der atomare Pfad-Exchange prüft Identität/Mode der verdrängten Quelle
+Utility-Score von 0–5, Promotionen, Rückstufungen und Quarantäne-Kandidaten. Erst nachdem der
+Terminal-Status atomar geschrieben und die Outcome-Auswertung erfolgreich persistiert wurde, führt
+Kimiflow diese Kuratierung automatisch und modellfrei aus und schreibt nur einen kompakten
+`memory_curation`-Beleg. Eine kooperative 20-Sekunden-Deadline rollt die auf 8 MiB und 4096 Quellzeilen
+begrenzte Learning-/Text-Derivate-Transaktion vor dem 30-Sekunden-Host-Timeout zurück und wird beim erfolgreichen Derivate-Commit deaktiviert; Timeout oder andere
+Curation-Fehler bleiben sichtbar, halten den abgeschlossenen
+Run aber nicht an. Writes ohne Änderung bleiben byte-identisch.
+`lifecycle --write` wertet dafür das bestehende verifizierte Outcome-Ledger strikt und begrenzt aus und
+quarantänisiert stale Zeilen nur, wenn sie nachweislich nie verwendet wurden und eine eindeutige ID haben.
+Fehlende versiegelte Recall-Evidence sperrt die Kuratierung; eine fehlgeschlagene Outcome-Persistenz lässt
+den Run für einen autonomen Abschlussversuch wiederaufnehmbar. Producer und Lifecycle teilen sich einen lokalen
+Ledger-Lock, lehnen Duplicate-Keys ab, zählen jeden Run nur einmal und verwenden die serialisierte Ledger-Reihenfolge
+statt veränderbarer Zeitstempel für die Vertrauenskausalität. Persistierter Recall und Lifecycle teilen zusätzlich
+den Usage-Ledger-Lock mit derselben physischen Identität auch über Root-Aliase, sodass ein gerade verwendetes
+Learning nicht gleichzeitig quarantänisiert werden kann.
+Durable Candidates gewinnen bereits vor dem begrenzten Candidate-Fenster gegen bloße Lokalität.
+Der atomare Pfad-Exchange prüft Identität/Mode der verdrängten Quelle
 und den installierten Candidate; begrenzte Re-Exchanges befördern spätere Writer, ohne den kanonischen Pfad zu
 entfernen. Ein ungelöster Race behält eine lokale Recovery-Kopie. Nicht verfügbare native Exchange-Unterstützung
 sperrt den Write vor der Mutation. `lifecycle --restore <id> --write` stellt genau eine Zeile nur
@@ -256,6 +278,8 @@ Für optionale projektübergreifende Übergaben erzeugt `capsule --write` eine l
 mit höchstens 20 frischen, erlaubten Sechs-Feld-Projektionen. Vault-Sync nutzt dieselbe Projektion und
 exportiert weder Source-IDs, Pfade, Evidence-Referenzen, Credential-/JWT-Formen, E-Mails, private/security Zeilen noch
 unsichere Inhalte.
+Der Outcome-Writer hält die neuesten vollständigen Zeilen unterhalb des strengeren Lifecycle-Limits, damit lange
+laufende Projekte keine manuelle Ledger-Bereinigung benötigen.
 
 Ein Obsidian Vault ist optional. Ohne ihn funktionieren lokales Memory und alle Gates weiter. Mit
 authentifizierten Vault-MCP-Tools kann Kimiflow kuratierte, nicht-private projektübergreifende

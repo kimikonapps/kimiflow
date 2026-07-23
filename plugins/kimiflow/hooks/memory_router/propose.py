@@ -3,7 +3,7 @@ apply). Behavioral port of the Bash cmd_propose (3822-3929) + its helpers (3555-
 kimiflow--v0.1.50. Reuses rows.evidence_fingerprints_json, store.read_jsonl, clock, paths."""
 import os
 
-from . import clock, contracts, paths, store
+from . import clock, contracts, paths, rows, store
 from .cli import die, resolve_root, usage
 from .rows import evidence_fingerprints_json
 
@@ -42,6 +42,8 @@ def current_evidence_backed_rows(learnings):
         if _jq_or(r.get("status"), "current") != "current":
             continue
         if _jq_or(r.get("sensitivity"), "normal") == "security":
+            continue
+        if not rows.learning_is_durable(r):
             continue
         evidence = _jq_or(r.get("evidence"), [])
         if not (isinstance(evidence, list) and len(evidence) > 0):

@@ -205,7 +205,7 @@ class AttributionContractCase(unittest.TestCase):
                 attribution._validate_evidence_path(self.root, "branch/current.py", 1)
         self.assertTrue(swapped)
 
-    def test_receipt_classifies_helpful_neutral_and_contradicted_without_content(self):
+    def test_learning_attribution_preserves_source_id_only_after_sealed_application(self):
         helpful_hit = self.hit(summary="SECRET_RECALL_CONTENT")
         neutral_hit = self.hit(source="history", summary="another secret")
         helpful = helpful_hit["recall_id"]
@@ -226,6 +226,9 @@ class AttributionContractCase(unittest.TestCase):
             {item["recall_id"]: item["classification"] for item in receipt["items"]},
             {helpful: "contradicted", neutral: "helpful"},
         )
+        by_id = {item["recall_id"]: item for item in receipt["items"]}
+        self.assertEqual(by_id[helpful]["learning_id"], "learn_native")
+        self.assertNotIn("learning_id", by_id[neutral])
         serialized = json.dumps(receipt)
         self.assertNotIn("SECRET_RECALL_CONTENT", serialized)
         self.assertNotIn("another secret", serialized)
