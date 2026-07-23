@@ -4,11 +4,19 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-The canonical runtime-distribution update: external app hosts can discover and verify the same Kimiflow release
-used by embedded installations, without maintaining a KimiTalk-specific fork.
+_No unreleased changes._
+
+## 0.2.16
+
+The portable convergence release: external hosts can verify the canonical Kimiflow runtime, project memory
+curates itself from bounded evidence, and risk-shaped planning/review converges without silently losing intent.
 
 ### Added
 
+- Risk-shaped convergence contracts with AC-bound implementation slices, critical failure classes, typed
+  falsifiers, and one final whole-intent replay instead of a second workflow controller.
+- Digest-bound review evidence and a durable unresolved-finding ledger: a clean later review cannot erase an
+  earlier reproduced defect without matching negative evidence.
 - Autonomous project-memory trust tiers: new learnings start probationary, verified decision-linked outcomes
   promote them after repeated success, and contradictions or evidence drift demote them reversibly.
 - Nonblocking terminal memory curation receipts derived from the existing bounded outcome ledger, with no
