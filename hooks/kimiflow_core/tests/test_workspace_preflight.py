@@ -41,11 +41,11 @@ class WorkspacePreflightCase(unittest.TestCase):
         self.git(self.repo, "worktree", "add", "-b", name, path)
         return os.path.realpath(path)
 
-    def write_run(self, slug="run-a", status="active"):
+    def write_run(self, slug="run-a", status="active", schema=4):
         run = os.path.join(self.repo, ".kimiflow", slug)
         os.makedirs(run, exist_ok=True)
         with open(os.path.join(run, "STATE.md"), "w", encoding="utf-8") as handle:
-            handle.write("Flow schema: 4\nStatus: %s\n" % status)
+            handle.write("Flow schema: %s\nStatus: %s\n" % (schema, status))
         return ".kimiflow/%s" % slug
 
     def test_status_inventories_current_and_linked_worktrees(self):
@@ -744,6 +744,13 @@ class WorkspacePreflightCase(unittest.TestCase):
         self.write_run(status="done")
         with self.assertRaises(wp.WorkspaceError):
             wp.register(self.repo, linked, run, write=True)
+
+    def test_register_accepts_schema5_primary_run(self):
+        linked = self.add_tree("schema-five")
+        run = self.write_run(schema=5)
+        result = wp.register(self.repo, linked, run, write=True)
+        self.assertEqual(result["status"], "registered")
+        self.assertEqual(result["entry"]["run"], run)
 
     def test_register_refuses_symlinked_primary_run_state(self):
         linked = self.add_tree("state-link")

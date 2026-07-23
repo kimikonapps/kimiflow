@@ -720,6 +720,43 @@ if state_text is None:
 state_lines = state_text.splitlines(keepends=True)
 contract_values = state_values(state_lines, "Conformance contract")
 if not contract_values:
+    schema_probe_values = state_values(state_lines, "Flow schema")
+    if len(schema_probe_values) > 1:
+        emit("CLOSED", "malformed", ["flow_schema_duplicate"])
+    schema_probe = (
+        schema_probe_values[0].strip()
+        if len(schema_probe_values) == 1
+        else ""
+    )
+    mode_probe_values = state_values(state_lines, "Mode")
+    if len(mode_probe_values) > 1:
+        emit("CLOSED", "malformed", ["conformance_mode_duplicate"])
+    mode_probe = (
+        mode_probe_values[0].strip().lower().split(" ", 1)[0]
+        if len(mode_probe_values) == 1
+        else ""
+    )
+    scope_probe_values = state_values(state_lines, "Scope")
+    if len(scope_probe_values) > 1:
+        emit("CLOSED", "malformed", ["conformance_scope_duplicate"])
+    scope_probe = (
+        scope_probe_values[0].strip().lower().split(" ", 1)[0]
+        if len(scope_probe_values) == 1
+        else ""
+    )
+    convergence_probe_values = state_values(
+        state_lines,
+        "Convergence contract",
+    )
+    if len(convergence_probe_values) > 1:
+        emit("CLOSED", "malformed", ["convergence_contract_duplicate"])
+    if (
+        len(convergence_probe_values) == 1
+        and convergence_probe_values[0].strip() != "1"
+    ):
+        emit("CLOSED", "malformed", ["convergence_contract_invalid"])
+    active_probe = None
+    active_probe_matches = False
     root_probe = run(["git", "-C", os.path.dirname(os.path.dirname(run_dir)), "rev-parse", "--show-toplevel"])
     if root_probe.returncode == 0:
         root_probe_path = os.path.realpath(os.fsdecode(root_probe.stdout).strip())
@@ -731,12 +768,31 @@ if not contract_values:
             except json.JSONDecodeError:
                 active_probe = None
             expected_probe_run = os.path.relpath(run_dir, root_probe_path).replace(os.sep, "/")
-            if (
+            active_probe_matches = (
                 isinstance(active_probe, dict)
                 and active_probe.get("run") == expected_probe_run
-                and str(active_probe.get("conformance_contract") or "").strip()
-            ):
+            )
+            if active_probe_matches and str(
+                active_probe.get("conformance_contract") or ""
+            ).strip():
                 emit("CLOSED", "malformed", ["active_conformance_contract_mismatch"])
+    schema_requires_contract = (
+        schema_probe.isdigit()
+        and int(schema_probe) >= 5
+        and mode_probe in ("feature", "fix")
+        and scope_probe != "trivial"
+    )
+    convergence_requires_contract = bool(convergence_probe_values)
+    active_convergence_requires_contract = (
+        active_probe_matches
+        and str(active_probe.get("convergence_contract") or "").strip()
+    )
+    if (
+        schema_requires_contract
+        or convergence_requires_contract
+        or active_convergence_requires_contract
+    ):
+        emit("CLOSED", "malformed", ["conformance_contract_missing"])
     emit("OPEN", "not-required", ["conformance_contract_absent"])
 if len(contract_values) != 1:
     emit("CLOSED", "malformed", ["conformance_contract_duplicate"])
@@ -750,9 +806,20 @@ scope = one_state(state_lines, "Scope", errors).lower().split(" ", 1)[0]
 basis = one_state(state_lines, "Conformance basis", errors)
 started_head = one_state(state_lines, "Run started head", errors, required=not plan_only)
 architecture_state = one_state(state_lines, "Architecture deliberation", errors, required=False).lower().split(" ", 1)[0]
+build_risk = one_state(state_lines, "Build risk", errors, required=False).lower().split(" ", 1)[0]
 intent_contract = one_state(state_lines, "Intent contract", errors, required=False).strip()
 affected = affected_paths(state_lines, errors)
-if schema != "4":
+convergence_values = state_values(state_lines, "Convergence contract")
+convergence_contract = ""
+if len(convergence_values) > 1:
+    errors.append("convergence_contract_duplicate")
+elif convergence_values:
+    convergence_contract = convergence_values[0].strip()
+    if convergence_contract != "1":
+        errors.append("convergence_contract_invalid")
+elif schema == "5":
+    errors.append("convergence_contract_missing")
+if schema not in ("4", "5"):
     errors.append("flow_schema_invalid")
 if mode not in ("feature", "fix"):
     errors.append("conformance_mode_invalid")
@@ -760,6 +827,13 @@ if scope not in ("small", "large"):
     errors.append("conformance_scope_invalid")
 if architecture_state not in ("", "active", "off"):
     errors.append("architecture_deliberation_unresolved")
+if build_risk not in ("", "none", "required"):
+    errors.append("build_risk_invalid")
+if convergence_contract == "1":
+    if architecture_state not in ("active", "off"):
+        errors.append("convergence_architecture_state_missing")
+    if build_risk not in ("none", "required"):
+        errors.append("convergence_build_risk_missing")
 if basis != "pending" and not re.fullmatch(r"[0-9a-f]{64}", basis):
     errors.append("conformance_basis_invalid")
 for rel in affected:
@@ -803,6 +877,24 @@ root_probe = run(["git", "-C", os.path.dirname(os.path.dirname(run_dir)), "rev-p
 if root_probe.returncode == 0:
     root = os.path.realpath(os.fsdecode(root_probe.stdout).strip())
     validate_intent_authority(root, run_dir, run_descriptor, intent_contract, intent, requirements, errors)
+    active_path = os.path.join(root, ".kimiflow", "session", "ACTIVE_RUN.json")
+    if os.path.lexists(active_path):
+        active_text = read_text(active_path)
+        try:
+            active_selector = json.loads(active_text) if active_text is not None else None
+        except json.JSONDecodeError:
+            active_selector = None
+        expected_run = os.path.relpath(run_dir, root).replace(os.sep, "/")
+        if isinstance(active_selector, dict) and active_selector.get("run") == expected_run:
+            pinned_convergence = str(
+                active_selector.get("convergence_contract") or ""
+            ).strip()
+            if (
+                "convergence_contract" in active_selector
+                or schema == "5"
+                or convergence_contract
+            ) and pinned_convergence != convergence_contract:
+                errors.append("active_convergence_contract_mismatch")
 elif intent_contract == "3":
     errors.append("git_root_missing")
 evidence_headings = {
@@ -876,6 +968,184 @@ if decision_count:
     if unexpected:
         errors.append("decision_id_unexpected:D%s" % unexpected[0])
 
+slice_count = 0
+failure_count = 0
+convergence_risk = ""
+slice_rows = {}
+failure_rows = {}
+if convergence_contract == "1":
+    convergence_markers = [
+        line for line in plan_lines if line.startswith("<!-- kimiflow:convergence ")
+    ]
+    if len(convergence_markers) != 1:
+        errors.append(
+            "convergence_marker_%s"
+            % ("missing" if not convergence_markers else "duplicate")
+        )
+    else:
+        convergence_match = re.fullmatch(
+            r"<!-- kimiflow:convergence contract=1 "
+            r"risk=(routine|critical) slices=([0-9]+) failures=([0-9]+) -->",
+            convergence_markers[0],
+        )
+        if not convergence_match:
+            errors.append("convergence_marker_malformed")
+        else:
+            convergence_risk, raw_slices, raw_failures = convergence_match.groups()
+            slice_count = int(raw_slices)
+            failure_count = int(raw_failures)
+            if slice_count < 1 or slice_count > 8:
+                errors.append("convergence_slice_count_invalid")
+            if failure_count < 0 or failure_count > 5:
+                errors.append("convergence_failure_count_invalid")
+
+    expected_risk = (
+        "critical"
+        if architecture_state == "active" or build_risk == "required"
+        else "routine"
+    )
+    if convergence_risk and convergence_risk != expected_risk:
+        errors.append("convergence_risk_mismatch")
+    if expected_risk == "routine" and failure_count != 0:
+        errors.append("routine_failure_model_forbidden")
+    if expected_risk == "critical" and not (1 <= failure_count <= 5):
+        errors.append("critical_failure_model_missing")
+
+    slice_labels = ("Slice", "AC", "Paths", "Check", "Depends")
+    slice_field_ids = []
+    for line in plan_lines:
+        match = re.match(
+            r"^(Slice|AC|Paths|Check|Depends) S([0-9]+):(?: (.*))?$",
+            line,
+        )
+        if match:
+            slice_field_ids.append(int(match.group(2)))
+    covered_acceptance = set()
+    for ident in range(1, slice_count + 1):
+        row = {}
+        for label in slice_labels:
+            pattern = re.compile(r"^%s S%s:(?: (.*))?$" % (label, ident))
+            values = [
+                (match.group(1) or "").strip()
+                for line in plan_lines
+                for match in [pattern.fullmatch(line)]
+                if match
+            ]
+            code = "%s_S%s" % (label.lower(), ident)
+            if len(values) != 1:
+                errors.append(
+                    "%s_%s" % (code, "missing" if not values else "duplicate")
+                )
+                row[label] = ""
+            elif not values[0]:
+                errors.append("%s_empty" % code)
+                row[label] = ""
+            else:
+                row[label] = values[0]
+        slice_rows[ident] = row
+        ac_values = [
+            value.strip()
+            for value in row.get("AC", "").split(",")
+            if value.strip()
+        ]
+        if not ac_values or len(ac_values) != len(set(ac_values)):
+            errors.append("ac_S%s_invalid" % ident)
+        for ac in ac_values:
+            if not re.fullmatch(r"AC-[0-9]+", ac) or ac not in acceptance_criteria:
+                errors.append("ac_S%s_missing:%s" % (ident, ac or "empty"))
+            else:
+                covered_acceptance.add(ac)
+        paths = [
+            value.strip()
+            for value in row.get("Paths", "").split(",")
+            if value.strip()
+        ]
+        if not paths or len(paths) != len(set(paths)):
+            errors.append("paths_S%s_invalid" % ident)
+        for rel in paths:
+            if not safe_relative_path(rel):
+                errors.append("path_S%s_invalid" % ident)
+            elif rel not in affected:
+                errors.append("path_S%s_not_affected" % ident)
+        if not re.fullmatch(r"(?:command|verifier) :: .+", row.get("Check", "")):
+            errors.append("check_S%s_invalid" % ident)
+        depends = row.get("Depends", "")
+        if depends == "none":
+            dependencies = []
+        else:
+            dependencies = [
+                value.strip() for value in depends.split(",") if value.strip()
+            ]
+            if not dependencies or len(dependencies) != len(set(dependencies)):
+                errors.append("depends_S%s_invalid" % ident)
+            for dependency in dependencies:
+                dep_match = re.fullmatch(r"S([0-9]+)", dependency)
+                if not dep_match or int(dep_match.group(1)) >= ident:
+                    errors.append("depends_S%s_not_prior:%s" % (ident, dependency))
+        if ident == 1 and depends != "none":
+            errors.append("depends_S1_not_none")
+    expected_slice_ids = set(range(1, slice_count + 1))
+    unexpected_slice_ids = sorted(set(slice_field_ids) - expected_slice_ids)
+    if unexpected_slice_ids:
+        errors.append("slice_id_unexpected:S%s" % unexpected_slice_ids[0])
+    for ac in sorted(acceptance_criteria - covered_acceptance):
+        errors.append("slice_ac_coverage_missing:%s" % ac)
+
+    failure_labels = ("Failure class", "Invariant", "AC", "Falsifier", "Reset")
+    failure_field_ids = []
+    for line in plan_lines:
+        match = re.match(
+            r"^(Failure class|Invariant|AC|Falsifier|Reset) F([0-9]+):(?: (.*))?$",
+            line,
+        )
+        if match:
+            failure_field_ids.append(int(match.group(2)))
+    failure_classes = set()
+    for ident in range(1, failure_count + 1):
+        row = {}
+        for label in failure_labels:
+            pattern = re.compile(r"^%s F%s:(?: (.*))?$" % (label, ident))
+            values = [
+                (match.group(1) or "").strip()
+                for line in plan_lines
+                for match in [pattern.fullmatch(line)]
+                if match
+            ]
+            code = "%s_F%s" % (
+                label.lower().replace(" ", "_"),
+                ident,
+            )
+            if len(values) != 1:
+                errors.append(
+                    "%s_%s" % (code, "missing" if not values else "duplicate")
+                )
+                row[label] = ""
+            elif not values[0]:
+                errors.append("%s_empty" % code)
+                row[label] = ""
+            else:
+                row[label] = values[0]
+        failure_rows[ident] = row
+        failure_class = row.get("Failure class", "")
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", failure_class):
+            errors.append("failure_class_F%s_invalid" % ident)
+        elif failure_class in failure_classes:
+            errors.append("failure_class_F%s_duplicate" % ident)
+        else:
+            failure_classes.add(failure_class)
+        ac = row.get("AC", "")
+        if not re.fullmatch(r"AC-[0-9]+", ac) or ac not in acceptance_criteria:
+            errors.append("ac_F%s_missing" % ident)
+        if not re.fullmatch(
+            r"(?:command|verifier) :: .+",
+            row.get("Falsifier", ""),
+        ):
+            errors.append("falsifier_F%s_invalid" % ident)
+    expected_failure_ids = set(range(1, failure_count + 1))
+    unexpected_failure_ids = sorted(set(failure_field_ids) - expected_failure_ids)
+    if unexpected_failure_ids:
+        errors.append("failure_id_unexpected:F%s" % unexpected_failure_ids[0])
+
 if errors:
     emit("CLOSED", "plan-contract", errors)
 if plan_only:
@@ -928,12 +1198,94 @@ receipt_match = re.fullmatch(
 )
 if receipt and not receipt_match:
     errors.append("conformance_receipt_malformed")
+
+slice_checks = {}
+failure_checks = {}
+if convergence_contract == "1":
+    convergence_receipts = [
+        line
+        for line in verification_lines
+        if line.startswith("<!-- kimiflow:convergence-verification ")
+    ]
+    expected_convergence_receipt = (
+        "<!-- kimiflow:convergence-verification contract=1 "
+        "risk=%s slices=%s failures=%s -->"
+        % (convergence_risk, slice_count, failure_count)
+    )
+    if len(convergence_receipts) != 1:
+        errors.append(
+            "convergence_verification_%s"
+            % ("missing" if not convergence_receipts else "duplicate")
+        )
+    elif convergence_receipts[0] != expected_convergence_receipt:
+        errors.append("convergence_verification_mismatch")
+
+    for line in verification_lines:
+        match = re.fullmatch(
+            r"Slice check S([0-9]+): (passed|failed) :: (.+)",
+            line,
+        )
+        if match:
+            ident = int(match.group(1))
+            slice_checks.setdefault(ident, []).append(
+                (match.group(2), match.group(3).strip())
+            )
+        match = re.fullmatch(
+            r"Falsifier check F([0-9]+): (passed|failed) :: (.+)",
+            line,
+        )
+        if match:
+            ident = int(match.group(1))
+            failure_checks.setdefault(ident, []).append(
+                (match.group(2), match.group(3).strip())
+            )
+    for ident in range(1, slice_count + 1):
+        values = slice_checks.get(ident, [])
+        if len(values) != 1:
+            errors.append(
+                "slice_check_S%s_%s"
+                % (ident, "missing" if not values else "duplicate")
+            )
+            continue
+        planned = slice_rows[ident]["Check"]
+        if values[0][1] != planned:
+            errors.append("slice_check_S%s_mismatch" % ident)
+    unexpected_slice_checks = sorted(
+        set(slice_checks) - set(range(1, slice_count + 1))
+    )
+    if unexpected_slice_checks:
+        errors.append("slice_check_S%s_unexpected" % unexpected_slice_checks[0])
+    for ident in range(1, failure_count + 1):
+        values = failure_checks.get(ident, [])
+        if len(values) != 1:
+            errors.append(
+                "falsifier_check_F%s_%s"
+                % (ident, "missing" if not values else "duplicate")
+            )
+            continue
+        planned = failure_rows[ident]["Falsifier"]
+        if values[0][1] != planned:
+            errors.append("falsifier_check_F%s_mismatch" % ident)
+    unexpected_failure_checks = sorted(
+        set(failure_checks) - set(range(1, failure_count + 1))
+    )
+    if unexpected_failure_checks:
+        errors.append(
+            "falsifier_check_F%s_unexpected" % unexpected_failure_checks[0]
+        )
 if errors:
     emit("CLOSED", "receipt-contract", errors)
 
 status, diff_status, strategy_status, architecture_status, research_status, scope_status, receipt_decisions, receipt_checks, verifier, _source = receipt_match.groups()
 if status == "converged" and generic[0] != "<!-- kimiflow:verification outcome=passed criteria=passed regression=passed -->":
     errors.append("verification_not_passed")
+if status == "converged" and convergence_contract == "1":
+    for ident, values in slice_checks.items():
+        if len(values) == 1 and values[0][0] != "passed":
+            errors.append("slice_check_S%s_not_passed" % ident)
+    for ident, values in failure_checks.items():
+        if len(values) == 1 and values[0][0] != "passed":
+            errors.append("falsifier_check_F%s_not_passed" % ident)
 if status != "converged" and generic_match.group(1) != "failed":
     errors.append("verification_failure_receipt_required")
 required_failure = {
@@ -1036,6 +1388,8 @@ if os.path.lexists(active_path):
         }
         if "conformance_contract" in active:
             selectors["conformance_contract"] = contract_values[0].strip()
+        if "convergence_contract" in active or convergence_contract:
+            selectors["convergence_contract"] = convergence_contract
         for key, expected in selectors.items():
             if str(active.get(key) or "").strip() != expected:
                 errors.append("active_%s_mismatch" % key)

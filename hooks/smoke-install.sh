@@ -166,6 +166,18 @@ if grep -q 'Conformance contract: 1' "$ROOT/phases/phase-0-setup.md" \
 else
   bad "adaptive implementation conformance wiring incomplete"
 fi
+if grep -q 'Flow schema: 5' "$ROOT/phases/phase-0-setup.md" \
+  && grep -q 'Convergence contract: 1' "$ROOT/phases/phase-0-setup.md" \
+  && grep -q 'kimiflow:convergence contract=1 risk=' "$ROOT/phases/phase-3-plan.md" \
+  && grep -q 'finding-contract 1' "$ROOT/phases/phase-4-review-approval.md" \
+  && grep -q 'root-class-repeated' "$ROOT/hooks/resolve-review-gate.sh" \
+  && grep -q 'kimiflow:convergence-verification contract=1 risk=' "$ROOT/phases/phase-6-verify.md" \
+  && grep -q 'convergence_contract' "$ROOT/hooks/kimiflow_core/active_run.py" \
+  && grep -q 'schema-4+ run' "$ROOT/hooks/kimiflow_core/workspace_preflight.py"; then
+  ok "risk-shaped convergence wiring"
+else
+  bad "risk-shaped convergence wiring incomplete"
+fi
 if [ -x "$ROOT/hooks/red-green-gate.sh" ] && bash -n "$ROOT/hooks/red-green-gate.sh" 2>/dev/null; then ok "red-green gate helper ok"; else bad "red-green gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-red-green-gate.sh" ] && bash -n "$ROOT/hooks/test-red-green-gate.sh" 2>/dev/null; then ok "red-green gate test ok"; else bad "red-green gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/frontend-quality-gate.sh" ] && bash -n "$ROOT/hooks/frontend-quality-gate.sh" 2>/dev/null; then ok "frontend quality gate helper ok"; else bad "frontend quality gate helper missing/not-exec/bad"; fi
@@ -262,11 +274,11 @@ grep -q 'active-run.sh' "$ROOT/reference.md" && ok "reference documents active s
 grep -q 'Active Session Contract' "$ROOT/SKILL.md" && ok "canonical skill documents Active Session Contract" || bad "missing Active Session Contract in SKILL.md"
 grep -q 'Current-State Pulse / Gate' "$ROOT/SKILL.md" && ok "canonical skill documents Current-State Pulse / Gate" || bad "missing Current-State Pulse / Gate in SKILL.md"
 grep -q 'discovery-gate.sh' "$ROOT/SKILL.md" && ok "canonical skill documents Discovery Gate" || bad "missing Discovery Gate in SKILL.md"
-grep -q 'Flow schema: 4' "$ROOT/phases/phase-0-setup.md" && ok "new runs declare flow schema 4" || bad "phase 0 missing flow schema 4"
+grep -q 'Flow schema: 5' "$ROOT/phases/phase-0-setup.md" && ok "new runs declare flow schema 5" || bad "phase 0 missing flow schema 5"
 grep -q -- '--state .kimiflow/<slug>/STATE.md' "$ROOT/phases/phase-4-review-approval.md" && ok "Build risk reads durable STATE" || bad "Phase 4 does not bind Build risk to STATE"
 grep -q 'No routine Human Gate here' "$ROOT/phases/phase-1-clarify.md" && ok "fixes skip early confirmation stop" || bad "Phase 1 still requires an early fix confirmation"
 grep -q 'Schema-3 runs retain their legacy' "$ROOT/phases/phase-4-review-approval.md" && ok "schema3 Preview stays resumable" || bad "Phase 4 missing schema3 compatibility"
-grep -q 'Schema 4 does this automatically under the original build authority' "$ROOT/phases/phase-7-review-commit.md" && ok "schema4_atomic_commit_contract" || bad "Phase 7 missing schema4 atomic commit"
+grep -q 'Schema 4+ does this automatically under the original build authority' "$ROOT/phases/phase-7-review-commit.md" && ok "schema4_atomic_commit_contract" || bad "Phase 7 missing schema4+ atomic commit"
 grep -q 'Clean-tree verification checkpoint' "$ROOT/phases/phase-5-build.md" \
   && grep -q 'STATE-backed `started_head`' "$ROOT/phases/phase-7-review-commit.md" \
   && ok "schema4_clean_tree_verification_checkpoint" || bad "clean-tree verification checkpoint/review basis missing"

@@ -250,6 +250,18 @@ sed -i.bak 's/Review epoch cap: 3/Review epoch cap: 4/' "$WORK/STATE.md" && rm "
 af "$(run --round 2 --expect B --epoch-start 2 --cap 3 --gate plan)" 3 malformed "epoch_state_mismatch_rejected"
 receipt plan 1 2 3
 af "$(run --round 2 --expect B --epoch-start 2 --cap 3 --gate plan)" 3 open-findings "epoch_matching_receipt_allows_new_strategy"
+printf 'Review epoch cap: 3\n' >> "$WORK/STATE.md"
+af "$(run --round 2 --expect B --epoch-start 2 --cap 3 --gate plan)" 3 malformed "epoch_duplicate_state_selector_rejected"
+
+# A recovered epoch is replayable after OPEN/clean transitions STATE to Recovery: clean.
+reset
+put r1-B.md "FINDING HIGH src/a:1 :: unresolved"
+put r2-B.md "NONE"
+baseline plan
+change_basis plan "valid recovered plan replay"
+receipt plan 1 2 3
+sed -i.bak 's/Recovery: active/Recovery: clean/' "$WORK/STATE.md" && rm "$WORK/STATE.md.bak"
+af "$(run --round 2 --expect B --epoch-start 2 --cap 3 --gate plan)" 1 OPEN "epoch_clean_state_replays_open"
 
 # Recovery fingerprints are recomputed from basis bytes and chained through prior receipts.
 reset
@@ -337,5 +349,153 @@ af "$(run --round 1 --expect B --epoch-start x --cap 2)" 3 malformed "epoch_nonn
 af "$(run --round 1 --expect B --epoch-start 0 --cap 2)" 3 malformed "epoch_zero_malformed"
 af "$(run --round 1 --expect B --epoch-start 2 --cap 3)" 3 malformed "epoch_after_round_malformed"
 af "$(run --round 2 --expect B --epoch-start 2 --cap 1)" 3 malformed "epoch_after_cap_malformed"
+
+# Finding Contract 1 binds material findings to typed, digest-pinned run-local evidence.
+evidence() {
+  local name="$1" class="$2" verify="$3" outcome="$4" detail="${5:-decisive result}" file
+  mkdir -p "$WORK/review-evidence"
+  file="$WORK/review-evidence/$name"
+  printf 'REVIEW_EVIDENCE class=%s :: verify=%s :: outcome=%s :: %s\n' \
+    "$class" "$verify" "$outcome" "$detail" > "$file"
+  printf 'review-evidence/%s@%s' "$name" "$(hash_file "$file")"
+}
+enable_finding_contract() {
+  printf 'Convergence contract: 1\n' > "$WORK/STATE.md"
+}
+
+reset
+enable_finding_contract
+put r1-B.md "NONE"
+af "$(run --round 1 --expect B)" 3 malformed "contracted_state_requires_finding_flag"
+af "$(run --round 1 --expect B --finding-contract 1)" 1 OPEN "contracted_initial_clean_opens"
+
+reset
+printf 'Convergence contract:\nConvergence contract: 1\n' > "$WORK/STATE.md"
+put r1-B.md "NONE"
+af "$(run --round 1 --expect B)" 3 malformed "duplicate_convergence_selector_cannot_disable_contract"
+
+reset
+enable_finding_contract
+ev1="$(evidence r1-B-1.txt rollback-atomicity 'command:test -f rollback.log' reproduced)"
+put r1-B.md "FINDING HIGH src/a:1 :: rollback is partial :: class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$ev1"
+out="$(run --round 1 --expect B --finding-contract 1)"
+af "$out" 3 open-findings "contracted_reproduced_finding_blocks"
+
+reset
+enable_finding_contract
+put r1-B.md "FINDING HIGH src/a:1 :: speculative :: class=made-up :: verify=looks-wrong :: evidence=review-evidence/x@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+af "$(run --round 1 --expect B --finding-contract 1)" 3 malformed "contracted_untyped_verify_rejected"
+
+reset
+enable_finding_contract
+outside="$WORK/outside.txt"
+printf 'REVIEW_EVIDENCE class=escape :: verify=command:true :: outcome=reproduced :: outside\n' > "$outside"
+outside_hash="$(hash_file "$outside")"
+put r1-B.md "FINDING HIGH src/a:1 :: escape :: class=escape :: verify=command:true :: evidence=review-evidence/../../outside.txt@$outside_hash"
+af "$(run --round 1 --expect B --finding-contract 1)" 3 malformed "contracted_traversal_evidence_rejected"
+
+reset
+enable_finding_contract
+mkdir -p "$WORK/review-evidence"
+printf 'REVIEW_EVIDENCE class=linked :: verify=command:true :: outcome=reproduced :: linked\n' > "$WORK/linked.txt"
+ln -s "$WORK/linked.txt" "$WORK/review-evidence/linked.txt"
+linked_hash="$(hash_file "$WORK/linked.txt")"
+put r1-B.md "FINDING HIGH src/a:1 :: linked :: class=linked :: verify=command:true :: evidence=review-evidence/linked.txt@$linked_hash"
+af "$(run --round 1 --expect B --finding-contract 1)" 3 malformed "contracted_symlink_evidence_rejected"
+
+reset
+enable_finding_contract
+mkdir -p "$WORK/outside-evidence"
+printf 'REVIEW_EVIDENCE class=parent-linked :: verify=command:true :: outcome=reproduced :: linked parent\n' > "$WORK/outside-evidence/value.txt"
+mkdir -p "$WORK/review-evidence"
+ln -s "$WORK/outside-evidence" "$WORK/review-evidence/nested"
+parent_link_hash="$(hash_file "$WORK/outside-evidence/value.txt")"
+put r1-B.md "FINDING HIGH src/a:1 :: linked parent :: class=parent-linked :: verify=command:true :: evidence=review-evidence/nested/value.txt@$parent_link_hash"
+af "$(run --round 1 --expect B --finding-contract 1)" 3 malformed "contracted_symlink_parent_evidence_rejected"
+
+reset
+enable_finding_contract
+mutable_ev="$(evidence mutable.txt mutable-defect 'verifier:inspect transaction trace' reproduced)"
+put r1-B.md "FINDING HIGH src/a:1 :: mutable :: class=mutable-defect :: verify=verifier:inspect transaction trace :: evidence=$mutable_ev"
+printf 'changed\n' >> "$WORK/review-evidence/mutable.txt"
+af "$(run --round 1 --expect B --finding-contract 1)" 3 malformed "contracted_mutated_evidence_rejected"
+
+reset
+enable_finding_contract
+r1_ev="$(evidence repeated-r1.txt rollback-atomicity 'command:test -f rollback.log' reproduced)"
+r2_ev="$(evidence repeated-r2.txt rollback-atomicity 'command:test -f rollback.log' reproduced)"
+put r1-B.md "FINDING HIGH src/a:1 :: first ref :: class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$r1_ev"
+put r2-B.md "FINDING HIGH src/b:9 :: moved ref :: class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$r2_ev"
+af "$(run --round 2 --expect B --cap 5 --finding-contract 1)" 3 root-class-repeated "contracted_repeated_root_class_resets_strategy"
+
+reset
+enable_finding_contract
+r1_ev="$(evidence resolve-r1.txt rollback-atomicity 'command:test -f rollback.log' reproduced)"
+put r1-B.md "FINDING HIGH src/a:1 :: first ref :: class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$r1_ev"
+put r2-B.md "NONE"
+af "$(run --round 2 --expect B --cap 5 --finding-contract 1)" 3 unproven-resolution "contracted_none_cannot_waive_prior_finding"
+resolved_ev="$(evidence resolve-r2.txt rollback-atomicity 'command:test -f rollback.log' not_reproduced 'fresh command exits nonzero')"
+put r2-B.md "RESOLVED class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$resolved_ev"
+af "$(run --round 2 --expect B --cap 5 --finding-contract 1)" 1 OPEN "contracted_negative_receipt_opens"
+
+reset
+enable_finding_contract
+baseline plan
+epoch_ev="$(evidence epoch-r2.txt rollback-atomicity 'command:test -f rollback.log' reproduced)"
+put r1-B.md "NONE"
+put r2-B.md "FINDING HIGH src/a:1 :: failed strategy :: class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$epoch_ev"
+put r3-B.md "NONE"
+change_basis plan "recovered contracted strategy"
+receipt plan 2 3 4
+af "$(run --round 3 --expect B --epoch-start 3 --cap 4 --gate plan --finding-contract 1)" 3 unproven-resolution "contracted_strategy_reset_preserves_unresolved_class"
+epoch_resolved="$(evidence epoch-r3.txt rollback-atomicity 'command:test -f rollback.log' not_reproduced 'fresh command exits nonzero')"
+put r3-B.md "RESOLVED class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$epoch_resolved"
+af "$(run --round 3 --expect B --epoch-start 3 --cap 4 --gate plan --finding-contract 1)" 1 OPEN "contracted_strategy_reset_accepts_negative_receipt"
+
+reset
+enable_finding_contract
+baseline plan
+put r1-B.md "NONE"
+epoch_r2="$(evidence epoch-repeat-r2.txt rollback-atomicity 'command:test -f rollback.log' reproduced)"
+epoch_r3="$(evidence epoch-repeat-r3.txt rollback-atomicity 'command:test -f rollback.log' reproduced)"
+epoch_r4="$(evidence epoch-repeat-r4.txt rollback-atomicity 'command:test -f rollback.log' reproduced)"
+put r2-B.md "FINDING HIGH src/a:1 :: failed strategy :: class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$epoch_r2"
+put r3-B.md "FINDING HIGH src/b:2 :: first recovered evaluation :: class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$epoch_r3"
+put r4-B.md "FINDING HIGH src/c:3 :: repeated recovered evaluation :: class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$epoch_r4"
+change_basis plan "second recovered contracted strategy"
+receipt plan 2 3 5
+af "$(run --round 3 --expect B --epoch-start 3 --cap 5 --gate plan --finding-contract 1)" 3 open-findings "contracted_cross_epoch_debt_is_not_same_epoch_repeat"
+af "$(run --round 4 --expect B --epoch-start 3 --cap 5 --gate plan --finding-contract 1)" 3 root-class-repeated "contracted_second_same_epoch_repeat_resets"
+
+reset
+enable_finding_contract
+debt_ev="$(evidence debt-r1.txt rollback-atomicity 'command:test -f rollback.log' reproduced)"
+put r1-B.md "FINDING HIGH src/a:1 :: unresolved :: class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$debt_ev"
+put r2-B.md "NONE"
+put r3-B.md "NONE"
+af "$(run --round 2 --expect B --cap 5 --finding-contract 1)" 3 unproven-resolution "contracted_first_none_keeps_debt"
+af "$(run --round 3 --expect B --cap 5 --finding-contract 1)" 3 unproven-resolution "contracted_second_none_keeps_debt"
+
+reset
+enable_finding_contract
+r1_ev="$(evidence incomplete-r1.txt rollback-atomicity 'command:test -f rollback.log' reproduced)"
+resolved_ev="$(evidence incomplete-r2.txt rollback-atomicity 'command:test -f rollback.log' not_reproduced 'fresh command exits nonzero')"
+put r1-A.md "FINDING HIGH src/a:1 :: first ref :: class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$r1_ev"
+put r2-A.md "RESOLVED class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$resolved_ev"
+put r2-B.md "NONE"
+af "$(run --round 2 --expect A,B --cap 5 --finding-contract 1)" 3 incomplete "contracted_prior_round_requires_every_lens"
+
+reset
+enable_finding_contract
+r1_ev="$(evidence contradictory-r1.txt rollback-atomicity 'command:test -f rollback.log' reproduced)"
+r2_resolved_ev="$(evidence contradictory-r2-resolved.txt rollback-atomicity 'command:test -f rollback.log' not_reproduced 'first lens says resolved')"
+r2_reproduced_ev="$(evidence contradictory-r2-reproduced.txt rollback-atomicity 'command:test -f rollback.log' reproduced 'second lens still reproduces')"
+put r1-A.md "FINDING HIGH src/a:1 :: first ref :: class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$r1_ev"
+put r1-B.md "NONE"
+put r2-A.md "RESOLVED class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$r2_resolved_ev"
+put r2-B.md "FINDING HIGH src/b:2 :: contradictory ref :: class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$r2_reproduced_ev"
+put r3-A.md "NONE"
+put r3-B.md "NONE"
+af "$(run --round 3 --expect A,B --cap 5 --finding-contract 1)" 3 malformed "contracted_historical_contradiction_is_order_independent"
 
 echo "----"; if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi

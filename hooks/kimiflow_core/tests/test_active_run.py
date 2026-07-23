@@ -183,6 +183,106 @@ class TestExecutionControlIntegration(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(active_run.status_json(self.root)["execution_control"]["work_units"], sequence)
 
+    def test_schema5_requires_and_pins_convergence_contract(self):
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, "r", encoding="utf-8") as handle:
+            value = handle.read().replace("Flow schema: 4", "Flow schema: 5")
+        with open(state_path, "w", encoding="utf-8") as handle:
+            handle.write(value)
+
+        rc, _ = self.start()
+        self.assertEqual(rc, 1)
+        self.assertFalse(os.path.exists(active_run.active_file(self.root)))
+
+        with open(state_path, "a", encoding="utf-8") as handle:
+            handle.write("Convergence contract: 1\n")
+        rc, _ = self.start()
+        self.assertEqual(rc, 1)
+        self.assertFalse(os.path.exists(active_run.active_file(self.root)))
+
+        with open(state_path, "a", encoding="utf-8") as handle:
+            handle.write("Conformance contract: 1\n")
+        rc, _ = self.start()
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.active().get("convergence_contract"), "1")
+        self.assertEqual(self.active().get("conformance_contract"), "1")
+
+        with open(state_path, "r", encoding="utf-8") as handle:
+            lines = handle.readlines()
+        with open(state_path, "w", encoding="utf-8") as handle:
+            handle.writelines(
+                line
+                for line in lines
+                if not line.startswith("Convergence contract:")
+            )
+        rc, _ = self.start()
+        self.assertEqual(rc, 1)
+        self.assertEqual(self.active().get("convergence_contract"), "1")
+
+    def test_duplicate_flow_schema_cannot_downgrade_schema5_start(self):
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, "a", encoding="utf-8") as handle:
+            handle.write("Flow schema: 5\n")
+
+        rc, _ = self.start()
+
+        self.assertEqual(rc, 1)
+        self.assertFalse(os.path.exists(active_run.active_file(self.root)))
+
+    def test_schema5_refuses_removed_pinned_conformance_contract(self):
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, "r", encoding="utf-8") as handle:
+            value = handle.read().replace("Flow schema: 4", "Flow schema: 5")
+        with open(state_path, "w", encoding="utf-8") as handle:
+            handle.write(
+                value
+                + "Convergence contract: 1\n"
+                + "Conformance contract: 1\n"
+            )
+        rc, _ = self.start()
+        self.assertEqual(rc, 0)
+
+        with open(state_path, "r", encoding="utf-8") as handle:
+            lines = handle.readlines()
+        with open(state_path, "w", encoding="utf-8") as handle:
+            handle.writelines(
+                line
+                for line in lines
+                if not line.startswith(("Conformance contract:", "Conformance basis:"))
+            )
+
+        rc, _ = self.start()
+        self.assertEqual(rc, 1)
+        self.assertEqual(self.active().get("conformance_contract"), "1")
+
+    def test_schema5_audit_does_not_require_convergence_contracts(self):
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, "r", encoding="utf-8") as handle:
+            value = (
+                handle.read()
+                .replace("Flow schema: 4", "Flow schema: 5")
+                .replace("Mode: feature", "Mode: audit")
+            )
+        with open(state_path, "w", encoding="utf-8") as handle:
+            handle.write(value)
+
+        rc, _ = run_main([
+            "start",
+            "--run",
+            self.run_rel,
+            "--root",
+            self.root,
+            "--mode",
+            "audit",
+            "--scope",
+            "large",
+            "--write",
+        ])
+
+        self.assertEqual(rc, 0)
+        self.assertIsNone(self.active().get("conformance_contract"))
+        self.assertNotIn("convergence_contract", self.active())
+
     def test_explicit_failure_event_takes_precedence_over_no_progress_recovery(self):
         rc, _ = self.start()
         self.assertEqual(rc, 0)
@@ -797,6 +897,26 @@ class TestOutcomeEvaluation(unittest.TestCase):
         self.assertTrue(os.path.isfile(active_run.active_file(self.repo)))
         self.assertFalse(os.path.exists(self.router_log))
 
+    def test_finish_refuses_schema5_convergence_without_conformance(self):
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, "r", encoding="utf-8") as handle:
+            value = handle.read().replace("Flow schema: 4", "Flow schema: 5")
+        with open(state_path, "w", encoding="utf-8") as handle:
+            handle.write(value + "Convergence contract: 1\n")
+        active_path = active_run.active_file(self.repo)
+        with open(active_path, "r", encoding="utf-8") as handle:
+            active = json.load(handle)
+        active["flow_schema"] = "5"
+        active["convergence_contract"] = "1"
+        with open(active_path, "w", encoding="utf-8") as handle:
+            json.dump(active, handle)
+
+        rc, _ = run_main(["finish", "--root", self.repo, "--write"])
+
+        self.assertEqual(rc, 1)
+        self.assertTrue(os.path.isfile(active_path))
+        self.assertFalse(os.path.exists(self.router_log))
+
     def test_finish_rechecks_conformance_after_learning_steps(self):
         self.enable_conformance("current")
         gate = os.path.join(self.temp, "conformance-gate-recheck")
@@ -913,7 +1033,7 @@ class TestOutcomeEvaluation(unittest.TestCase):
         rows = active_run.read_items(active_run.items_path(self.run_dir))
         self.assertEqual(rows[0]["title"], "late item")
 
-    def test_parked_run_preserves_conformance_pin_on_resume(self):
+    def test_parked_run_refuses_removed_conformance_pin_on_resume(self):
         self.enable_conformance("current")
         rc, _ = run_main([
             "park", "--root", self.repo, "--reason", "resume fixture", "--write",
@@ -932,10 +1052,8 @@ class TestOutcomeEvaluation(unittest.TestCase):
             "start", "--run", self.run_rel, "--root", self.repo, "--write",
         ])
 
-        self.assertEqual(rc, 0)
-        with open(active_run.active_file(self.repo), "r", encoding="utf-8") as handle:
-            resumed = json.load(handle)
-        self.assertEqual(resumed.get("conformance_contract"), "1")
+        self.assertEqual(rc, 1)
+        self.assertFalse(os.path.exists(active_run.active_file(self.repo)))
 
     def test_terminal_outcome_evaluation_is_best_effort(self):
         for command, expected in (("park", "parked"), ("fail", "failed"), ("abort", "aborted")):

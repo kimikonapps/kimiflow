@@ -101,6 +101,52 @@ EOF
   printf 'changed\n' > "$REPO/src/a.txt"
 }
 
+enable_routine_convergence() {
+  cat >> "$RUN/STATE.md" <<'EOF'
+Convergence contract: 1
+Architecture deliberation: off
+Build risk: none
+EOF
+  cat >> "$RUN/PLAN.md" <<'EOF'
+<!-- kimiflow:convergence contract=1 risk=routine slices=1 failures=0 -->
+Slice S1: Preserve the selected decision.
+AC S1: AC-1
+Paths S1: src/a.txt
+Check S1: command :: test -s src/a.txt
+Depends S1: none
+EOF
+  cat >> "$RUN/VERIFICATION.md" <<'EOF'
+<!-- kimiflow:convergence-verification contract=1 risk=routine slices=1 failures=0 -->
+Slice check S1: passed :: command :: test -s src/a.txt
+EOF
+}
+
+enable_critical_convergence() {
+  cat >> "$RUN/STATE.md" <<'EOF'
+Convergence contract: 1
+Architecture deliberation: active
+Build risk: none
+EOF
+  cat >> "$RUN/PLAN.md" <<'EOF'
+<!-- kimiflow:convergence contract=1 risk=critical slices=1 failures=1 -->
+Slice S1: Preserve the selected decision.
+AC S1: AC-1
+Paths S1: src/a.txt
+Check S1: command :: test -s src/a.txt
+Depends S1: none
+Failure class F1: empty-delivery
+Invariant F1: The delivered file remains substantive.
+AC F1: AC-1
+Falsifier F1: command :: test -s src/a.txt
+Reset F1: Return to research and replace the delivery strategy.
+EOF
+  cat >> "$RUN/VERIFICATION.md" <<'EOF'
+<!-- kimiflow:convergence-verification contract=1 risk=critical slices=1 failures=1 -->
+Slice check S1: passed :: command :: test -s src/a.txt
+Falsifier check F1: passed :: command :: test -s src/a.txt
+EOF
+}
+
 run_gate() { "$SCRIPT" "$RUN" "$@"; }
 
 out="$("$SCRIPT" "$WORK/missing")"
@@ -124,6 +170,71 @@ out="$(run_gate)"
 assert_status "$out" OPEN "absent_contract_is_legacy_open"
 assert_contains "$out" "not-required" "legacy_open_reason"
 
+reset_repo
+cat > "$RUN/STATE.md" <<'EOF'
+Flow schema: 4
+Flow schema: 5
+Mode: feature
+Scope: small
+EOF
+out="$(run_gate)"
+assert_status "$out" CLOSED "duplicate_flow_schema_cannot_downgrade_contract"
+assert_contains "$out" "flow_schema_duplicate" "duplicate_flow_schema_detail"
+
+reset_repo
+cat > "$RUN/STATE.md" <<'EOF'
+Flow schema: 5
+Mode: feature
+Mode: audit
+Scope: small
+EOF
+out="$(run_gate)"
+assert_status "$out" CLOSED "duplicate_mode_cannot_disable_schema5_contract"
+assert_contains "$out" "conformance_mode_duplicate" "duplicate_mode_detail"
+
+reset_repo
+cat > "$RUN/STATE.md" <<'EOF'
+Flow schema: 5
+Mode: feature
+Scope: small
+Scope: trivial
+EOF
+out="$(run_gate)"
+assert_status "$out" CLOSED "duplicate_scope_cannot_change_schema5_contract"
+assert_contains "$out" "conformance_scope_duplicate" "duplicate_scope_detail"
+
+reset_repo
+cat > "$RUN/STATE.md" <<'EOF'
+Flow schema: 5
+Mode: feature
+Scope: small
+Convergence contract: 1
+EOF
+out="$(run_gate)"
+assert_status "$out" CLOSED "schema5_convergence_cannot_omit_conformance"
+assert_contains "$out" "conformance_contract_missing" "schema5_missing_conformance_detail"
+
+reset_repo
+cat > "$RUN/STATE.md" <<'EOF'
+Flow schema: 5
+Mode: audit
+Scope: small
+EOF
+out="$(run_gate)"
+assert_status "$out" OPEN "schema5_nonwrite_without_contract_is_not_required"
+assert_contains "$out" "not-required" "schema5_nonwrite_reason"
+
+reset_repo
+cat > "$RUN/STATE.md" <<'EOF'
+Flow schema: 4
+Mode: feature
+Scope: small
+Convergence contract: 1
+EOF
+out="$(run_gate)"
+assert_status "$out" CLOSED "convergence_cannot_exist_without_conformance"
+assert_contains "$out" "conformance_contract_missing" "orphan_convergence_detail"
+
 mkdir -p "$REPO/.kimiflow/session"
 cat > "$REPO/.kimiflow/session/ACTIVE_RUN.json" <<EOF
 {"run":".kimiflow/demo","mode":"feature","scope":"small","started_head":"$START","conformance_contract":"1"}
@@ -136,6 +247,100 @@ reset_repo
 write_contract small
 out="$(run_gate --plan)"
 assert_status "$out" OPEN "valid_plan_contract_opens"
+
+reset_repo
+write_contract small
+sed -i.bak 's/Flow schema: 4/Flow schema: 5/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+out="$(run_gate --plan)"
+assert_status "$out" CLOSED "schema5_requires_convergence_contract"
+assert_contains "$out" "convergence_contract_missing" "schema5_missing_convergence_detail"
+
+reset_repo
+write_contract small
+enable_routine_convergence
+out="$(run_gate --plan)"
+assert_status "$out" OPEN "routine_convergence_plan_opens"
+
+reset_repo
+write_contract small
+enable_routine_convergence
+sed -i.bak '/^Architecture deliberation:/d' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+out="$(run_gate --plan)"
+assert_status "$out" CLOSED "convergence_requires_resolved_architecture_state"
+assert_contains "$out" "convergence_architecture_state_missing" "convergence_architecture_state_detail"
+
+reset_repo
+write_contract small
+enable_routine_convergence
+sed -i.bak '/^Build risk:/d' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+out="$(run_gate --plan)"
+assert_status "$out" CLOSED "convergence_requires_resolved_build_risk"
+assert_contains "$out" "convergence_build_risk_missing" "convergence_build_risk_detail"
+
+reset_repo
+write_contract large
+enable_routine_convergence
+out="$(run_gate --plan)"
+assert_status "$out" OPEN "large_scope_alone_stays_routine"
+
+reset_repo
+write_contract small
+enable_routine_convergence
+sed -i.bak 's/Architecture deliberation: off/Architecture deliberation: active/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+out="$(run_gate --plan)"
+assert_status "$out" CLOSED "active_architecture_cannot_self_downgrade_risk"
+assert_contains "$out" "convergence_risk_mismatch" "active_architecture_risk_detail"
+
+reset_repo
+write_contract small
+enable_critical_convergence
+out="$(run_gate --plan)"
+assert_status "$out" OPEN "critical_convergence_plan_opens"
+sed -i.bak \
+  -e 's/failures=1/failures=0/' \
+  -e '/^Failure class F1:/d' \
+  -e '/^Invariant F1:/d' \
+  -e '/^AC F1:/d' \
+  -e '/^Falsifier F1:/d' \
+  -e '/^Reset F1:/d' \
+  "$RUN/PLAN.md" && rm "$RUN/PLAN.md.bak"
+out="$(run_gate --plan)"
+assert_status "$out" CLOSED "critical_failure_model_is_required"
+assert_contains "$out" "critical_failure_model_missing" "critical_failure_model_detail"
+
+reset_repo
+write_contract small
+enable_routine_convergence
+sed -i.bak '/^Depends S1:/d' "$RUN/PLAN.md" && rm "$RUN/PLAN.md.bak"
+out="$(run_gate --plan)"
+assert_status "$out" CLOSED "slice_contract_missing_field_closes"
+assert_contains "$out" "depends_S1_missing" "slice_contract_missing_field_detail"
+
+reset_repo
+write_contract small
+enable_routine_convergence
+sed -i.bak '/^Slice check S1:/d' "$RUN/VERIFICATION.md" && rm "$RUN/VERIFICATION.md.bak"
+out="$(run_gate --record)"
+assert_status "$out" CLOSED "convergence_final_requires_slice_check"
+assert_contains "$out" "slice_check_S1_missing" "convergence_slice_check_detail"
+
+reset_repo
+write_contract small
+enable_routine_convergence
+sed -i.bak \
+  's|Check S1: command :: test -s src/a.txt|Check S1: verifier :: test -s src/a.txt|' \
+  "$RUN/PLAN.md" && rm "$RUN/PLAN.md.bak"
+out="$(run_gate --record)"
+assert_status "$out" CLOSED "convergence_final_binds_check_method"
+assert_contains "$out" "slice_check_S1_mismatch" "convergence_check_method_detail"
+
+reset_repo
+write_contract small
+enable_critical_convergence
+sed -i.bak '/^Falsifier check F1:/d' "$RUN/VERIFICATION.md" && rm "$RUN/VERIFICATION.md.bak"
+out="$(run_gate --record)"
+assert_status "$out" CLOSED "critical_final_requires_falsifier_check"
+assert_contains "$out" "falsifier_check_F1_missing" "critical_falsifier_check_detail"
 
 reset_repo
 write_contract small

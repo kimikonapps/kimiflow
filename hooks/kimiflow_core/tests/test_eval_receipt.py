@@ -22,7 +22,13 @@ def valid_receipt():
         "failure_count": 1,
         "verdict": "PASS",
         "runs": [
-            {"id": "run-1", "passed": True, "rule_refs": ["reference.md:1470"]},
+            {
+                "id": "run-1",
+                "passed": True,
+                "rule_refs": [
+                    "reference.md §Review rubric (Phase 4 plan-gate · Phase 7 code-review)"
+                ],
+            },
             {"id": "run-2", "passed": True, "rule_refs": ["SKILL.md §Core principles (apply in ALL phases)"]},
             {"id": "run-3", "passed": False, "rule_refs": []},
         ],
@@ -151,7 +157,9 @@ class EvalReceiptCase(unittest.TestCase):
 
     def test_rule_sources_are_loaded_once_per_validation(self):
         value = valid_receipt()
-        value["runs"][1]["rule_refs"] = ["reference.md:1470"]
+        value["runs"][1]["rule_refs"] = [
+            "reference.md §Review rubric (Phase 4 plan-gate · Phase 7 code-review)"
+        ]
         with mock.patch.object(eval_receipt, "_git_blob_lines", wraps=eval_receipt._git_blob_lines) as load:
             eval_receipt.validate(value)
         paths = [call.args[1] for call in load.call_args_list]

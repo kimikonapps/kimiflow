@@ -195,6 +195,231 @@ class OutcomeEvaluationCase(OutcomeFixture):
         self.write("findings/r2-code-verified.md", "FINDING HIGH app.py:1 :: verified regression\n")
         self.assertEqual(self.evaluate("failed")["classification"], "verified_failure")
 
+    def test_forged_resolved_contract_round_is_not_clean(self):
+        self.write(
+            "findings/r2-code-verified.md",
+            "RESOLVED class=rollback-atomicity :: "
+            "verify=command:test -f rollback.log :: "
+            "evidence=review-evidence/resolve.txt@"
+            + ("a" * 64)
+            + "\n",
+        )
+
+        evaluation = self.evaluate()
+
+        self.assertEqual(evaluation["classification"], "inconclusive")
+        self.assertEqual(evaluation["signals"]["code_review"], "advisory")
+
+    def test_evidence_validated_resolved_contract_round_is_clean(self):
+        evidence_dir = os.path.join(self.run_dir, "review-evidence")
+        os.makedirs(evidence_dir, exist_ok=True)
+        reproduced = (
+            "REVIEW_EVIDENCE class=rollback-atomicity :: "
+            "verify=command:test -f rollback.log :: "
+            "outcome=reproduced :: failure reproduced\n"
+        )
+        resolved = (
+            "REVIEW_EVIDENCE class=rollback-atomicity :: "
+            "verify=command:test -f rollback.log :: "
+            "outcome=not_reproduced :: fresh command exits nonzero\n"
+        )
+        self.write("review-evidence/r1.txt", reproduced)
+        self.write("review-evidence/r2.txt", resolved)
+        reproduced_digest = hashlib.sha256(reproduced.encode("utf-8")).hexdigest()
+        resolved_digest = hashlib.sha256(resolved.encode("utf-8")).hexdigest()
+        self.write(
+            "findings/r1-code-verified.md",
+            "FINDING HIGH app.py:1 :: rollback is partial :: "
+            "class=rollback-atomicity :: "
+            "verify=command:test -f rollback.log :: "
+            "evidence=review-evidence/r1.txt@"
+            + reproduced_digest
+            + "\n",
+        )
+        self.write(
+            "findings/r2-code-verified.md",
+            "RESOLVED class=rollback-atomicity :: "
+            "verify=command:test -f rollback.log :: "
+            "evidence=review-evidence/r2.txt@"
+            + resolved_digest
+            + "\n",
+        )
+        with open(os.path.join(self.run_dir, "PLAN.md"), "rb") as handle:
+            strategy = hashlib.sha256(handle.read()).hexdigest()
+        self.write(
+            "RECOVERY.md",
+            "<!-- kimiflow:strategy gate=code epoch-start=1 fingerprint=%s -->\n"
+            % strategy,
+        )
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, "a", encoding="utf-8") as handle:
+            handle.write(
+                "Convergence contract: 1\n"
+                "Review gate: code\n"
+                "Review epoch start: 1\n"
+                "Review epoch cap: 3\n"
+            )
+
+        evaluation = self.evaluate()
+
+        self.assertEqual(evaluation["classification"], "verified_success")
+        self.assertEqual(evaluation["signals"]["code_review"], "clean")
+
+    def test_review_cap_from_state_cannot_be_extended_by_outcome_evaluation(self):
+        self.write("findings/r4-code-verified.md", "NONE\n")
+        with open(os.path.join(self.run_dir, "PLAN.md"), "rb") as handle:
+            strategy = hashlib.sha256(handle.read()).hexdigest()
+        self.write(
+            "RECOVERY.md",
+            "<!-- kimiflow:strategy gate=code epoch-start=1 fingerprint=%s -->\n"
+            % strategy,
+        )
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, "a", encoding="utf-8") as handle:
+            handle.write(
+                "Review gate: code\n"
+                "Review epoch start: 1\n"
+                "Review epoch cap: 3\n"
+            )
+
+        evaluation = self.evaluate()
+
+        self.assertEqual(evaluation["classification"], "inconclusive")
+        self.assertEqual(evaluation["signals"]["code_review"], "advisory")
+
+    def test_duplicate_review_cap_cannot_authorize_outcome_replay(self):
+        self.write("findings/r4-code-verified.md", "NONE\n")
+        with open(os.path.join(self.run_dir, "PLAN.md"), "rb") as handle:
+            strategy = hashlib.sha256(handle.read()).hexdigest()
+        self.write(
+            "RECOVERY.md",
+            "<!-- kimiflow:strategy gate=code epoch-start=1 fingerprint=%s -->\n"
+            % strategy,
+        )
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, "a", encoding="utf-8") as handle:
+            handle.write(
+                "Review gate: code\n"
+                "Review epoch start: 1\n"
+                "Review epoch cap: 4\n"
+                "Review epoch cap: 3\n"
+            )
+
+        evaluation = self.evaluate()
+
+        self.assertEqual(evaluation["classification"], "inconclusive")
+        self.assertEqual(evaluation["signals"]["code_review"], "advisory")
+
+    def test_contracted_review_requires_authoritative_epoch_fields(self):
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, "a", encoding="utf-8") as handle:
+            handle.write("Convergence contract: 1\n")
+
+        evaluation = self.evaluate()
+
+        self.assertEqual(evaluation["classification"], "inconclusive")
+        self.assertEqual(evaluation["signals"]["code_review"], "advisory")
+
+    def test_missing_epoch_recovery_receipt_cannot_promote_outcome(self):
+        evidence_dir = os.path.join(self.run_dir, "review-evidence")
+        os.makedirs(evidence_dir, exist_ok=True)
+        reproduced = (
+            "REVIEW_EVIDENCE class=rollback-atomicity :: "
+            "verify=command:test -f rollback.log :: "
+            "outcome=reproduced :: failure reproduced\n"
+        )
+        resolved = (
+            "REVIEW_EVIDENCE class=rollback-atomicity :: "
+            "verify=command:test -f rollback.log :: "
+            "outcome=not_reproduced :: fresh command exits nonzero\n"
+        )
+        self.write("review-evidence/r1.txt", reproduced)
+        self.write("review-evidence/r2.txt", resolved)
+        self.write(
+            "findings/r1-code-verified.md",
+            "FINDING HIGH app.py:1 :: rollback is partial :: "
+            "class=rollback-atomicity :: "
+            "verify=command:test -f rollback.log :: "
+            "evidence=review-evidence/r1.txt@"
+            + hashlib.sha256(reproduced.encode("utf-8")).hexdigest()
+            + "\n",
+        )
+        self.write(
+            "findings/r2-code-verified.md",
+            "RESOLVED class=rollback-atomicity :: "
+            "verify=command:test -f rollback.log :: "
+            "evidence=review-evidence/r2.txt@"
+            + hashlib.sha256(resolved.encode("utf-8")).hexdigest()
+            + "\n",
+        )
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, "a", encoding="utf-8") as handle:
+            handle.write(
+                "Convergence contract: 1\n"
+                "Review gate: code\n"
+                "Review epoch start: 2\n"
+                "Review epoch cap: 3\n"
+            )
+
+        evaluation = self.evaluate()
+
+        self.assertEqual(evaluation["classification"], "inconclusive")
+        self.assertEqual(evaluation["signals"]["code_review"], "advisory")
+
+    def test_completed_recovery_epoch_remains_clean_for_outcome_replay(self):
+        reproduced = (
+            "REVIEW_EVIDENCE class=rollback-atomicity :: "
+            "verify=command:test -f rollback.log :: "
+            "outcome=reproduced :: failure reproduced\n"
+        )
+        resolved = (
+            "REVIEW_EVIDENCE class=rollback-atomicity :: "
+            "verify=command:test -f rollback.log :: "
+            "outcome=not_reproduced :: fresh command exits nonzero\n"
+        )
+        self.write("review-evidence/r1.txt", reproduced)
+        self.write("review-evidence/r2.txt", resolved)
+        self.write(
+            "findings/r1-code-verified.md",
+            "FINDING HIGH app.py:1 :: rollback is partial :: "
+            "class=rollback-atomicity :: "
+            "verify=command:test -f rollback.log :: "
+            "evidence=review-evidence/r1.txt@"
+            + hashlib.sha256(reproduced.encode("utf-8")).hexdigest()
+            + "\n",
+        )
+        self.write(
+            "findings/r2-code-verified.md",
+            "RESOLVED class=rollback-atomicity :: "
+            "verify=command:test -f rollback.log :: "
+            "evidence=review-evidence/r2.txt@"
+            + hashlib.sha256(resolved.encode("utf-8")).hexdigest()
+            + "\n",
+        )
+        with open(os.path.join(self.run_dir, "PLAN.md"), "rb") as handle:
+            current = hashlib.sha256(handle.read()).hexdigest()
+        previous = "b" * 64
+        self.write(
+            "RECOVERY.md",
+            "<!-- kimiflow:strategy gate=code epoch-start=1 fingerprint=%s -->\n"
+            "<!-- kimiflow:recovery gate=code source-round=1 epoch-start=2 "
+            "cap=3 before=%s after=%s -->\n" % (previous, previous, current),
+        )
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, "a", encoding="utf-8") as handle:
+            handle.write(
+                "Convergence contract: 1\n"
+                "Review gate: code\n"
+                "Review epoch start: 2\n"
+                "Review epoch cap: 3\n"
+                "Strategy fingerprint: %s\n" % current
+            )
+
+        evaluation = self.evaluate()
+
+        self.assertEqual(evaluation["classification"], "verified_success")
+        self.assertEqual(evaluation["signals"]["code_review"], "clean")
+
     def test_persistence_is_private_deduplicated_and_safe(self):
         evaluation = self.evaluate()
         outcomes.persist_evaluation(self.root, self.run_dir, evaluation)

@@ -1757,6 +1757,13 @@ def cmd_start(args):
     prior_active = load_active(root) if same_active else {}
     resume_pins = parked_session_pins(run_dir) if not same_active else {}
     state_path = os.path.join(run_dir, "STATE.md")
+
+    def selector(label):
+        values = state.state_values(state_path, label)
+        if len(values) > 1:
+            die("%s selector is duplicated" % label.lower(), 1)
+        return values[0] if values else ""
+
     persisted_started_head = state.state_value(state_path, "Run started head").strip()
     existing_started_head = str(existing.get("started_head", "")).strip()
     if not re.fullmatch(r"(?:[0-9a-fA-F]{40,64}|NOT VERIFIED)", persisted_started_head):
@@ -1784,16 +1791,33 @@ def cmd_start(args):
         "last_checked_head": current_head,
         "affected_files_at_start": run_affected_paths(run_dir),
     }
-    persisted_conformance = state.state_value(state_path, "Conformance contract").strip()
+    persisted_conformance = selector("Conformance contract").strip()
+    conformance_was_pinned = same_active or bool(resume_pins)
     if same_active and "conformance_contract" in prior_active:
-        status["conformance_contract"] = prior_active.get("conformance_contract")
+        selected_conformance = str(
+            prior_active.get("conformance_contract") or ""
+        ).strip()
     elif "conformance_contract" in resume_pins:
-        status["conformance_contract"] = resume_pins.get("conformance_contract")
+        selected_conformance = str(
+            resume_pins.get("conformance_contract") or ""
+        ).strip()
     else:
-        status["conformance_contract"] = persisted_conformance or None
-    persisted_flow_schema = state.state_value(state_path, "Flow schema").strip().split(" ", 1)[0]
-    persisted_mode = state.state_value(state_path, "Mode").strip().lower().split(" ", 1)[0]
-    persisted_scope = state.state_value(state_path, "Scope").strip().lower().split(" ", 1)[0]
+        selected_conformance = persisted_conformance
+    if conformance_was_pinned and selected_conformance != persisted_conformance:
+        die("conformance contract selector changed during the run", 1)
+    if selected_conformance:
+        if selected_conformance != "1":
+            die(
+                "unsupported conformance contract: %s"
+                % selected_conformance,
+                1,
+            )
+        status["conformance_contract"] = "1"
+    else:
+        status["conformance_contract"] = None
+    persisted_flow_schema = selector("Flow schema").strip().split(" ", 1)[0]
+    persisted_mode = selector("Mode").strip().lower().split(" ", 1)[0]
+    persisted_scope = selector("Scope").strip().lower().split(" ", 1)[0]
     schema4_state = persisted_flow_schema.isdigit() and int(persisted_flow_schema) >= 4
     if schema4_state:
         selected_mode = str(active_mode or "").strip().lower()
@@ -1807,7 +1831,7 @@ def cmd_start(args):
         flow_schema = str(prior_active["flow_schema"])
     elif str(resume_pins.get("flow_schema", "")).isdigit():
         flow_schema = str(resume_pins["flow_schema"])
-    persisted_intent = state.state_value(state_path, "Intent contract").strip()
+    persisted_intent = selector("Intent contract").strip()
     if same_active and "intent_contract" in prior_active:
         selected_intent = str(prior_active.get("intent_contract") or "").strip()
     elif "intent_contract" in resume_pins:
@@ -1826,6 +1850,45 @@ def cmd_start(args):
     )
     if fresh_schema4_feature and selected_intent != "3":
         die("fresh non-trivial schema-4 feature runs require intent contract 3", 1)
+    persisted_convergence = selector("Convergence contract").strip()
+    convergence_was_pinned = same_active or bool(resume_pins)
+    if same_active and "convergence_contract" in prior_active:
+        selected_convergence = str(
+            prior_active.get("convergence_contract") or ""
+        ).strip()
+    elif "convergence_contract" in resume_pins:
+        selected_convergence = str(
+            resume_pins.get("convergence_contract") or ""
+        ).strip()
+    else:
+        selected_convergence = persisted_convergence
+    if convergence_was_pinned and selected_convergence != persisted_convergence:
+        die("convergence contract selector changed during the run", 1)
+    if selected_convergence:
+        if selected_convergence != "1":
+            die(
+                "unsupported convergence contract: %s"
+                % selected_convergence,
+                1,
+            )
+        status["convergence_contract"] = "1"
+    fresh_schema5_write = (
+        not same_active
+        and str(active_mode or "").strip().lower() in ("feature", "fix")
+        and str(active_scope or "").strip().lower() != "trivial"
+        and persisted_flow_schema.isdigit()
+        and int(persisted_flow_schema) >= 5
+    )
+    if fresh_schema5_write and selected_convergence != "1":
+        die(
+            "fresh non-trivial schema-5 write runs require convergence contract 1",
+            1,
+        )
+    if fresh_schema5_write and selected_conformance != "1":
+        die(
+            "fresh non-trivial schema-5 write runs require conformance contract 1",
+            1,
+        )
     if same_active and prior_active.get("intent_lock_digest"):
         status["intent_lock_digest"] = prior_active["intent_lock_digest"]
     elif resume_pins.get("intent_lock_digest"):
@@ -2392,7 +2455,8 @@ def parked_session_pins(run_dir):
 def session_pins(active):
     keys = (
         "mode", "scope", "host", "started_at", "started_head", "flow_schema",
-        "conformance_contract", "intent_contract", "intent_lock_digest",
+        "conformance_contract", "convergence_contract", "intent_contract",
+        "intent_lock_digest",
         "frontend_quality_contract", "frontend_quality_start_head",
     )
     if "execution_contract" in active:
@@ -2436,17 +2500,62 @@ def conformance_gate_path():
 
 def require_finish_conformance(run_dir, active):
     state_path = os.path.join(run_dir, "STATE.md")
-    current_contract = state.state_value(state_path, "Conformance contract").strip()
+
+    def selector(label):
+        values = state.state_values(state_path, label)
+        if len(values) > 1:
+            die(
+                "finish refused: conformance gate closed "
+                "(%s_duplicate)" % label.lower().replace(" ", "_"),
+                1,
+            )
+        return values[0] if values else ""
+
+    current_contract = selector("Conformance contract").strip()
+    current_convergence = selector("Convergence contract").strip()
+    if "convergence_contract" in active:
+        pinned_convergence = str(
+            active.get("convergence_contract") or ""
+        ).strip()
+        if current_convergence != pinned_convergence:
+            die(
+                "finish refused: conformance gate closed "
+                "(active_convergence_contract_mismatch)",
+                1,
+            )
+    flow_schema = selector("Flow schema").strip()
+    schema5 = flow_schema.isdigit() and int(flow_schema) >= 5
+    current_mode = selector("Mode").strip().lower().split(" ", 1)[0]
+    current_scope = selector("Scope").strip().lower().split(" ", 1)[0]
+    schema5_write = (
+        schema5
+        and current_mode in ("feature", "fix")
+        and current_scope != "trivial"
+    )
+    if schema5_write and current_convergence != "1":
+        die(
+            "finish refused: conformance gate closed "
+            "(convergence_contract_missing)",
+            1,
+        )
     if "conformance_contract" in active:
         pinned_contract = str(active.get("conformance_contract") or "").strip()
         if current_contract != pinned_contract:
             die("finish refused: conformance gate closed (active_conformance_contract_mismatch)", 1)
     if not current_contract:
+        if schema5_write or current_convergence or str(
+            active.get("convergence_contract") or ""
+        ).strip():
+            die(
+                "finish refused: conformance gate closed "
+                "(conformance_contract_missing)",
+                1,
+            )
         return
     selectors = {
-        "mode": state.state_value(state_path, "Mode").strip().lower().split(" ", 1)[0],
-        "scope": state.state_value(state_path, "Scope").strip().lower().split(" ", 1)[0],
-        "started_head": state.state_value(state_path, "Run started head").strip(),
+        "mode": current_mode,
+        "scope": current_scope,
+        "started_head": selector("Run started head").strip(),
     }
     for key, current in selectors.items():
         if str(active.get(key, "")) != current:

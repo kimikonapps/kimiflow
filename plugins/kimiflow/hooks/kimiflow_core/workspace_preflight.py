@@ -978,8 +978,15 @@ def register(root, path, run, write=False):
             raise WorkspaceError("worktree is not eligible for registration")
         primary = status["primary_root"]
         schema, status_value = safe_run_state(primary, run)
-        if schema.split(" ", 1)[0] != "4" or status_value.lower() != "active":
-            raise WorkspaceError("registration requires a primary schema-4 run")
+        schema_token = schema.split(" ", 1)[0]
+        if (
+            not schema_token.isdigit()
+            or int(schema_token) < 4
+            or status_value.lower() != "active"
+        ):
+            raise WorkspaceError(
+                "registration requires a primary versioned schema-4+ run"
+            )
         registry = read_registry(primary, registry_descriptor)
         if registry["entries"]:
             raise WorkspaceError("temporary worktree cap reached")

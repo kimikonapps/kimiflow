@@ -8,13 +8,15 @@
 # `FINDING <SEVERITY>` at column 0; <ref> and <reason> may be arbitrary UTF-8. Output is stable
 # reason-codes (the orchestrator localizes for display).
 #
-# Usage: resolve-review-gate.sh <findings-dir> --round <N> --expect <lensA,lensB> [--gate plan|code] [--epoch-start 1] [--cap 3]
+# Usage: resolve-review-gate.sh <findings-dir> --round <N> --expect <lensA,lensB> [--gate plan|code] [--epoch-start 1] [--cap 3] [--finding-contract 1]
 # Output (one TAB line, exit 0): <VERDICT>\t<open_count|->\t<reason_code>\t<detail>
-#   VERDICT ∈ {OPEN,CLOSED}; reason_code ∈ {clean,open-findings,incomplete,malformed,oscillation,reappeared,cap-reached}
+#   VERDICT ∈ {OPEN,CLOSED}; reason_code ∈ {clean,open-findings,incomplete,malformed,unproven-resolution,root-class-repeated,oscillation,reappeared,cap-reached}
 # R2 invariant targets: hooks/resolve-review-gate.sh; --round <N> --expect <lensCSV>; --expect code-verified
 set -u
 emit() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "${4:-}"; exit 0; }
-FINDING_RE='^FINDING (BLOCKER|HIGH|MEDIUM|LOW) .+ :: .+$'
+LEGACY_FINDING_RE='^FINDING (BLOCKER|HIGH|MEDIUM|LOW) .+ :: .+$'
+CONTRACT_FINDING_RE='^FINDING (BLOCKER|HIGH|MEDIUM|LOW) .+ :: .+ :: class=[a-z0-9][a-z0-9-]{0,63} :: verify=(command|verifier):[^[:cntrl:]]+ :: evidence=review-evidence/[A-Za-z0-9._/-]+@[a-f0-9]{64}$'
+CONTRACT_RESOLVED_RE='^RESOLVED class=[a-z0-9][a-z0-9-]{0,63} :: verify=(command|verifier):[^[:cntrl:]]+ :: evidence=review-evidence/[A-Za-z0-9._/-]+@[a-f0-9]{64}$'
 
 sha256_file() {
   if command -v shasum >/dev/null 2>&1; then
@@ -45,7 +47,25 @@ state_value() {
   ' "$file" 2>/dev/null
 }
 
-dir=""; round=""; expect=""; gate=""; cap=3; epoch_start=1; epoch_arg=false
+state_value_count() {
+  local file="$1" wanted="$2"
+  awk -v wanted="$wanted" '
+    {
+      line=$0
+      gsub(/\r/, "", line)
+      gsub(/\*\*/, "", line)
+      sub(/^[[:space:]]*-[[:space:]]*/, "", line)
+      pos=index(line, ":")
+      if (!pos) next
+      label=substr(line, 1, pos-1)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", label)
+      if (tolower(label) == tolower(wanted)) count++
+    }
+    END { print count + 0 }
+  ' "$file" 2>/dev/null
+}
+
+dir=""; round=""; expect=""; gate=""; cap=3; epoch_start=1; epoch_arg=false; finding_contract=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --round)       round="${2:-}";       shift 2 || shift ;;
@@ -53,6 +73,7 @@ while [ "$#" -gt 0 ]; do
     --gate)        gate="${2:-}";        shift 2 || shift ;;
     --cap)         cap="${2:-3}";         shift 2 || shift ;;
     --epoch-start) epoch_start="${2:-}"; epoch_arg=true; shift 2 || shift ;;
+    --finding-contract) finding_contract="${2:-}"; shift 2 || shift ;;
     -*)            shift ;;
     *)             [ -z "$dir" ] && dir="$1"; shift ;;
   esac
@@ -63,12 +84,87 @@ case "$epoch_start" in ''|*[!0-9]*) emit CLOSED - malformed "bad --epoch-start" 
 [ -n "$dir" ]    || emit CLOSED - malformed "missing findings-dir"
 [ -n "$expect" ] || emit CLOSED - malformed "missing --expect"
 case "$gate" in ''|plan|code) ;; *) emit CLOSED - malformed "bad --gate" ;; esac
+case "$finding_contract" in ''|1) ;; *) emit CLOSED - malformed "bad --finding-contract" ;; esac
 # Normalize base-10 so a zero-padded round (e.g. 08) can't trip octal arithmetic later.
 round=$((10#$round)); cap=$((10#$cap)); epoch_start=$((10#$epoch_start))
 if [ "$epoch_arg" = true ]; then
   [ "$epoch_start" -ge 1 ] && [ "$epoch_start" -le "$round" ] && [ "$epoch_start" -le "$cap" ] \
     || emit CLOSED - malformed "invalid --epoch-start ${epoch_start} for round ${round}, cap ${cap}"
 fi
+
+run_dir="$(dirname "${dir%/}")"
+state="$run_dir/STATE.md"
+state_finding_contract_count="$(state_value_count "$state" "Convergence contract")"
+state_finding_contract_count="${state_finding_contract_count:-0}"
+state_finding_contract="$(state_value "$state" "Convergence contract" | awk '{print $1}')"
+[ "$state_finding_contract_count" -le 1 ] \
+  || emit CLOSED - malformed "duplicate STATE convergence contract"
+if [ "$state_finding_contract_count" -eq 1 ]; then
+  [ "$state_finding_contract" = "1" ] \
+    || emit CLOSED - malformed "unsupported STATE convergence contract"
+  [ "$finding_contract" = "1" ] \
+    || emit CLOSED - malformed "finding contract missing for converged run"
+elif [ -n "$finding_contract" ] && [ "$finding_contract" != "1" ]; then
+  emit CLOSED - malformed "finding contract mismatch"
+fi
+contracted=false
+[ "$finding_contract" = "1" ] && contracted=true
+
+safe_evidence_path() {
+  local rel="$1"
+  case "$rel" in
+    review-evidence/*) ;;
+    *) return 1 ;;
+  esac
+  case "/$rel/" in
+    *"/../"*|*"/./"*|*"//"*) return 1 ;;
+  esac
+  return 0
+}
+
+validate_evidence() {
+  local class="$1" verify="$2" outcome="$3" spec="$4"
+  local rel="${spec%@*}" digest="${spec##*@}" full size actual content prefix parent cursor part
+  [ "$rel" != "$spec" ] || return 1
+  safe_evidence_path "$rel" || return 1
+  full="$run_dir/$rel"
+  parent="${rel%/*}"
+  cursor="$run_dir"
+  OLDIFS="$IFS"; IFS='/'; set -- $parent; IFS="$OLDIFS"
+  for part in "$@"; do
+    cursor="$cursor/$part"
+    [ -d "$cursor" ] && [ ! -L "$cursor" ] || return 1
+  done
+  [ -f "$full" ] && [ ! -L "$full" ] || return 1
+  size="$(wc -c < "$full" 2>/dev/null | tr -d '[:space:]')"
+  case "$size" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$size" -gt 0 ] && [ "$size" -le 8192 ] || return 1
+  [ "$(awk 'END { print NR + 0 }' "$full" 2>/dev/null)" -eq 1 ] || return 1
+  actual="$(sha256_file "$full")" || return 1
+  [ "$actual" = "$digest" ] || return 1
+  content="$(cat "$full")"
+  prefix="REVIEW_EVIDENCE class=${class} :: verify=${verify} :: outcome=${outcome} :: "
+  case "$content" in
+    "$prefix"?*) ;;
+    *) return 1 ;;
+  esac
+  return 0
+}
+
+parse_contract_line() {
+  local line="$1" expected_outcome="$2"
+  local evidence_spec before_evidence verify before_verify class
+  evidence_spec="${line##* :: evidence=}"
+  before_evidence="${line% :: evidence=*}"
+  verify="${before_evidence##* :: verify=}"
+  before_verify="${before_evidence% :: verify=*}"
+  case "$line" in
+    FINDING\ *) class="${before_verify##* :: class=}" ;;
+    RESOLVED\ *) class="${before_verify#RESOLVED class=}" ;;
+    *) return 1 ;;
+  esac
+  validate_evidence "$class" "$verify" "$expected_outcome" "$evidence_spec"
+}
 
 if [ "$epoch_arg" = true ] && [ -n "$gate" ]; then
   run_dir="$(dirname "${dir%/}")"
@@ -172,8 +268,20 @@ if [ "$epoch_arg" = true ] && [ "$epoch_start" -gt 1 ]; then
     source_lineno=0
     while IFS= read -r source_line || [ -n "$source_line" ]; do
       source_lineno=$((source_lineno + 1))
-      printf '%s\n' "$source_line" | grep -qE "$FINDING_RE" \
-        || emit CLOSED - malformed "recovery source r${marker_source}-${lens}.md:${source_lineno}"
+      if [ "$contracted" = true ]; then
+        if printf '%s\n' "$source_line" | grep -qE "$CONTRACT_FINDING_RE"; then
+          parse_contract_line "$source_line" reproduced \
+            || emit CLOSED - malformed "recovery evidence r${marker_source}-${lens}.md:${source_lineno}"
+        elif printf '%s\n' "$source_line" | grep -qE "$CONTRACT_RESOLVED_RE"; then
+          parse_contract_line "$source_line" not_reproduced \
+            || emit CLOSED - malformed "recovery evidence r${marker_source}-${lens}.md:${source_lineno}"
+        else
+          emit CLOSED - malformed "recovery source r${marker_source}-${lens}.md:${source_lineno}"
+        fi
+      else
+        printf '%s\n' "$source_line" | grep -qE "$LEGACY_FINDING_RE" \
+          || emit CLOSED - malformed "recovery source r${marker_source}-${lens}.md:${source_lineno}"
+      fi
     done < "$source_file"
   done
 
@@ -182,11 +290,16 @@ if [ "$epoch_arg" = true ] && [ "$epoch_start" -gt 1 ]; then
   state_cap="$(state_value "$state" "Review epoch cap")"
   state_fingerprint="$(state_value "$state" "Strategy fingerprint" | tr '[:upper:]' '[:lower:]')"
   state_recovery="$(state_value "$state" "Recovery" | tr '[:upper:]' '[:lower:]')"
+  for state_label in "Review gate" "Review epoch start" "Review epoch cap" "Strategy fingerprint" "Recovery"; do
+    [ "$(state_value_count "$state" "$state_label")" -eq 1 ] \
+      || emit CLOSED - malformed "missing or duplicate STATE ${state_label}"
+  done
   case "$state_start" in ''|*[!0-9]*) emit CLOSED - malformed "bad STATE review epoch start" ;; esac
   case "$state_cap" in ''|*[!0-9]*) emit CLOSED - malformed "bad STATE review epoch cap" ;; esac
   state_start=$((10#$state_start)); state_cap=$((10#$state_cap))
   [ "$state_gate" = "$gate" ] && [ "$state_start" -eq "$epoch_start" ] && [ "$state_cap" -eq "$cap" ] \
-    && [ "$state_fingerprint" = "$marker_after" ] && [ "$state_recovery" = "active" ] \
+    && [ "$state_fingerprint" = "$marker_after" ] \
+    && { [ "$state_recovery" = "active" ] || [ "$state_recovery" = "clean" ]; } \
     || emit CLOSED - malformed "recovery STATE mismatch"
 fi
 
@@ -217,8 +330,20 @@ EOF
   return 1
 }
 
+pair_value() {
+  local pairs="$1" target="$2"
+  printf '%s' "$pairs" | awk -F '\t' -v target="$target" '$1 == target { print substr($0, length($1) + 2); exit }'
+}
+
+pairs_without() {
+  local pairs="$1" target="$2"
+  printf '%s' "$pairs" | awk -F '\t' -v target="$target" '$1 != target && NF >= 2 { print $0 }'
+}
+
 open_count=0
 cur_ids=""   # newline-list of "<SEV> <ref>" identities for open findings this round
+cur_pairs="" # newline-list of "<class>\t<verify>" for contracted material findings
+resolved_pairs="" # newline-list of "<class>\t<verify>" for contracted negative receipts
 OLDIFS="$IFS"; IFS=','; set -- $expect; IFS="$OLDIFS"
 for lens in "$@"; do
   f="$dir/r${round}-${lens}.md"
@@ -230,27 +355,181 @@ for lens in "$@"; do
   lineno=0
   while IFS= read -r ln || [ -n "$ln" ]; do
     lineno=$((lineno + 1))
-    printf '%s\n' "$ln" | grep -qE "$FINDING_RE" || emit CLOSED - malformed "r${round}-${lens}.md:${lineno}"
+    if [ "$contracted" = true ]; then
+      if printf '%s\n' "$ln" | grep -qE "$CONTRACT_FINDING_RE"; then
+        parse_contract_line "$ln" reproduced \
+          || emit CLOSED - malformed "evidence r${round}-${lens}.md:${lineno}"
+      elif printf '%s\n' "$ln" | grep -qE "$CONTRACT_RESOLVED_RE"; then
+        parse_contract_line "$ln" not_reproduced \
+          || emit CLOSED - malformed "evidence r${round}-${lens}.md:${lineno}"
+        evidence_spec="${ln##* :: evidence=}"
+        before_evidence="${ln% :: evidence=*}"
+        verify="${before_evidence##* :: verify=}"
+        before_verify="${before_evidence% :: verify=*}"
+        class="${before_verify#RESOLVED class=}"
+        [ -z "$(pair_value "$resolved_pairs" "$class")" ] \
+          || emit CLOSED - malformed "duplicate resolution class ${class}"
+        resolved_pairs="${resolved_pairs}${class}	${verify}
+"
+        continue
+      else
+        emit CLOSED - malformed "r${round}-${lens}.md:${lineno}"
+      fi
+    else
+      printf '%s\n' "$ln" | grep -qE "$LEGACY_FINDING_RE" \
+        || emit CLOSED - malformed "r${round}-${lens}.md:${lineno}"
+    fi
     case "$ln" in
       'FINDING BLOCKER '*|'FINDING HIGH '*)
         open_count=$((open_count + 1))
         id="${ln#FINDING }"; id="${id%% :: *}"
         cur_ids="${cur_ids}${id}
 "
+        if [ "$contracted" = true ]; then
+          evidence_spec="${ln##* :: evidence=}"
+          before_evidence="${ln% :: evidence=*}"
+          verify="${before_evidence##* :: verify=}"
+          before_verify="${before_evidence% :: verify=*}"
+          class="${before_verify##* :: class=}"
+          [ -z "$(pair_value "$cur_pairs" "$class")" ] \
+            || emit CLOSED - malformed "duplicate material class ${class}"
+          cur_pairs="${cur_pairs}${class}	${verify}
+"
+        fi
         ;;
     esac
   done < "$f"
 done
 
-[ "$open_count" -eq 0 ] && emit OPEN 0 clean
-
-# ---- open_count > 0: anti-oscillation (cap → oscillation → reappeared → open-findings) ----
-[ "$round" -ge "$cap" ] && emit CLOSED "$open_count" cap-reached "round ${round} >= cap ${cap}"
-
 prev=$((round - 1))
 prev_files="$(expected_round_files "$prev")"
 prev_exists=false
 [ -n "$prev_files" ] && prev_exists=true
+prev_pairs=""
+debt_pairs=""
+
+if [ "$contracted" = true ] && [ "$prev" -ge 1 ]; then
+  history_round=1
+  while [ "$history_round" -le "$prev" ]; do
+    history_round_pairs=""
+    history_round_resolved_pairs=""
+    OLDIFS="$IFS"; IFS=','; set -- $expect; IFS="$OLDIFS"
+    for lens in "$@"; do
+      pf="$dir/r${history_round}-${lens}.md"
+      [ -f "$pf" ] || emit CLOSED - incomplete "missing r${history_round}-${lens}.md"
+      [ -s "$pf" ] || emit CLOSED - incomplete "empty r${history_round}-${lens}.md"
+      if [ "$(grep -c '' "$pf")" -eq 1 ] && [ "$(head -n1 "$pf")" = "NONE" ]; then
+        continue
+      fi
+      prior_lineno=0
+      while IFS= read -r prior_line || [ -n "$prior_line" ]; do
+        prior_lineno=$((prior_lineno + 1))
+        if printf '%s\n' "$prior_line" | grep -qE "$CONTRACT_FINDING_RE"; then
+          parse_contract_line "$prior_line" reproduced \
+            || emit CLOSED - malformed "prior evidence ${pf}:${prior_lineno}"
+          case "$prior_line" in
+            'FINDING BLOCKER '*|'FINDING HIGH '*)
+              prior_before_evidence="${prior_line% :: evidence=*}"
+              prior_verify="${prior_before_evidence##* :: verify=}"
+              prior_before_verify="${prior_before_evidence% :: verify=*}"
+              prior_class="${prior_before_verify##* :: class=}"
+              [ -z "$(pair_value "$history_round_pairs" "$prior_class")" ] \
+                || emit CLOSED - malformed "duplicate prior material class ${prior_class}"
+              [ -z "$(pair_value "$history_round_resolved_pairs" "$prior_class")" ] \
+                || emit CLOSED - malformed "prior class both reproduced and resolved ${prior_class}"
+              debt_verify="$(pair_value "$debt_pairs" "$prior_class")"
+              [ -z "$debt_verify" ] || [ "$debt_verify" = "$prior_verify" ] \
+                || emit CLOSED - malformed "prior finding method mismatch ${prior_class}"
+              history_round_pairs="${history_round_pairs}${prior_class}	${prior_verify}
+"
+              if [ -z "$debt_verify" ]; then
+                debt_pairs="${debt_pairs}${prior_class}	${prior_verify}
+"
+              fi
+              ;;
+          esac
+        elif printf '%s\n' "$prior_line" | grep -qE "$CONTRACT_RESOLVED_RE"; then
+          parse_contract_line "$prior_line" not_reproduced \
+            || emit CLOSED - malformed "prior evidence ${pf}:${prior_lineno}"
+          prior_before_evidence="${prior_line% :: evidence=*}"
+          prior_verify="${prior_before_evidence##* :: verify=}"
+          prior_before_verify="${prior_before_evidence% :: verify=*}"
+          prior_class="${prior_before_verify#RESOLVED class=}"
+          [ -z "$(pair_value "$history_round_pairs" "$prior_class")" ] \
+            || emit CLOSED - malformed "prior class both reproduced and resolved ${prior_class}"
+          [ -z "$(pair_value "$history_round_resolved_pairs" "$prior_class")" ] \
+            || emit CLOSED - malformed "duplicate prior resolution class ${prior_class}"
+          debt_verify="$(pair_value "$debt_pairs" "$prior_class")"
+          [ -n "$debt_verify" ] \
+            || emit CLOSED - malformed "unexpected prior resolution class ${prior_class}"
+          [ "$debt_verify" = "$prior_verify" ] \
+            || emit CLOSED - malformed "prior resolution method mismatch ${prior_class}"
+          debt_pairs="$(pairs_without "$debt_pairs" "$prior_class")"
+          [ -z "$debt_pairs" ] || debt_pairs="${debt_pairs}
+"
+          history_round_resolved_pairs="${history_round_resolved_pairs}${prior_class}	${prior_verify}
+"
+        else
+          emit CLOSED - malformed "prior findings ${pf}:${prior_lineno}"
+        fi
+      done < "$pf"
+    done
+    if [ "$history_round" -eq "$prev" ] && [ "$history_round" -ge "$epoch_start" ]; then
+      prev_pairs="$history_round_pairs"
+    fi
+    history_round=$((history_round + 1))
+  done
+fi
+
+if [ "$contracted" = true ]; then
+  while IFS="$(printf '\t')" read -r resolved_class resolved_verify; do
+    [ -n "$resolved_class" ] || continue
+    prior_verify="$(pair_value "$debt_pairs" "$resolved_class")"
+    [ -n "$prior_verify" ] \
+      || emit CLOSED - malformed "unexpected resolution class ${resolved_class}"
+    [ "$prior_verify" = "$resolved_verify" ] \
+      || emit CLOSED - malformed "resolution method mismatch ${resolved_class}"
+    [ -z "$(pair_value "$cur_pairs" "$resolved_class")" ] \
+      || emit CLOSED - malformed "class both reproduced and resolved ${resolved_class}"
+  done <<EOF
+$resolved_pairs
+EOF
+
+  while IFS="$(printf '\t')" read -r prior_class prior_verify; do
+    [ -n "$prior_class" ] || continue
+    current_verify="$(pair_value "$cur_pairs" "$prior_class")"
+    if [ -n "$current_verify" ]; then
+      [ "$current_verify" = "$prior_verify" ] \
+        || emit CLOSED "$open_count" root-class-repeated "${prior_class}:method-changed"
+      emit CLOSED "$open_count" root-class-repeated "$prior_class"
+    fi
+    resolved_verify="$(pair_value "$resolved_pairs" "$prior_class")"
+    [ "$resolved_verify" = "$prior_verify" ] \
+      || emit CLOSED "$open_count" unproven-resolution "$prior_class"
+  done <<EOF
+$prev_pairs
+EOF
+
+  while IFS="$(printf '\t')" read -r prior_class prior_verify; do
+    [ -n "$prior_class" ] || continue
+    current_verify="$(pair_value "$cur_pairs" "$prior_class")"
+    if [ -n "$current_verify" ]; then
+      [ "$current_verify" = "$prior_verify" ] \
+        || emit CLOSED - malformed "finding method mismatch ${prior_class}"
+      continue
+    fi
+    resolved_verify="$(pair_value "$resolved_pairs" "$prior_class")"
+    [ "$resolved_verify" = "$prior_verify" ] \
+      || emit CLOSED "$open_count" unproven-resolution "$prior_class"
+  done <<EOF
+$debt_pairs
+EOF
+fi
+
+[ "$open_count" -eq 0 ] && emit OPEN 0 clean
+
+# ---- open_count > 0: anti-oscillation (cap → oscillation → reappeared → open-findings) ----
+[ "$round" -ge "$cap" ] && emit CLOSED "$open_count" cap-reached "round ${round} >= cap ${cap}"
 
 if [ "$prev" -ge "$epoch_start" ] && [ "$prev_exists" = true ]; then
   prev_open=0

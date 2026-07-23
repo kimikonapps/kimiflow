@@ -53,16 +53,22 @@ def _safe_read(path, limit=1048576):
         return ""
 
 
-def _state_value(state_text, label):
+def _state_values(state_text, label):
     wanted = label.lower()
+    values = []
     for raw in state_text.split("\n"):
         plain = re.sub(r"^[ \t]*-[ \t]*", "", raw.replace("**", "")).strip()
         if ":" not in plain:
             continue
         key, value = plain.split(":", 1)
         if key.strip().lower() == wanted:
-            return value.strip()
-    return ""
+            values.append(value.strip())
+    return values
+
+
+def _state_value(state_text, label):
+    values = _state_values(state_text, label)
+    return values[0] if values else ""
 
 
 def _exact_plan_value(plan_text, label):
@@ -217,6 +223,76 @@ def _verification(run_dir):
     return _verification_content(_safe_read(os.path.join(run_dir, "VERIFICATION.md")))
 
 
+def _review_gate_clean(run_dir, round_number):
+    resolver = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "resolve-review-gate.sh",
+    )
+    if not os.path.isfile(resolver) or not os.access(resolver, os.X_OK):
+        return False
+    state_text = _safe_read(os.path.join(run_dir, "STATE.md"))
+    args = [
+        resolver,
+        os.path.join(run_dir, "findings"),
+        "--round",
+        str(round_number),
+        "--expect",
+        "code-verified",
+    ]
+    convergence_values = _state_values(state_text, "Convergence contract")
+    contracted = convergence_values == ["1"]
+    if contracted:
+        args.extend(("--finding-contract", "1"))
+    selector_values = (
+        _state_values(state_text, "Review gate"),
+        _state_values(state_text, "Review epoch start"),
+        _state_values(state_text, "Review epoch cap"),
+    )
+    if any(selector_values):
+        if any(len(values) != 1 for values in selector_values):
+            return False
+        review_gate = selector_values[0][0].lower()
+        epoch_start = selector_values[1][0]
+        epoch_cap = selector_values[2][0]
+        if (
+            review_gate != "code"
+            or not epoch_start.isdigit()
+            or not epoch_cap.isdigit()
+        ):
+            return False
+        start_number = int(epoch_start)
+        cap_number = int(epoch_cap)
+        if not 1 <= start_number <= round_number <= cap_number:
+            return False
+        args.extend((
+            "--gate",
+            "code",
+            "--epoch-start",
+            str(start_number),
+            "--cap",
+            str(cap_number),
+        ))
+    elif contracted:
+        return False
+    else:
+        args.extend(("--cap", str(max(3, round_number))))
+    try:
+        proc = subprocess.run(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except OSError:
+        return False
+    try:
+        lines = proc.stdout.decode("utf-8").splitlines()
+    except UnicodeDecodeError:
+        return False
+    fields = lines[0].split("\t") if len(lines) == 1 else []
+    return proc.returncode == 0 and fields[:3] == ["OPEN", "0", "clean"]
+
+
 def _latest_review(run_dir):
     findings = os.path.join(run_dir, "findings")
     candidates = []
@@ -232,7 +308,10 @@ def _latest_review(run_dir):
         return {"status": "missing", "round": 0, "path": "", "content": ""}
     round_number, name = max(candidates)
     content = _safe_read(os.path.join(findings, name))
-    status = "clean" if content.strip() == "NONE" else (
+    lines = [line for line in content.splitlines() if line]
+    resolution_only = bool(lines) and all(line.startswith("RESOLVED ") for line in lines)
+    clean_candidate = content.strip() == "NONE" or resolution_only
+    status = "clean" if clean_candidate and _review_gate_clean(run_dir, round_number) else (
         "blocking" if _FINDING_RE.search(content) else "advisory"
     )
     return {
