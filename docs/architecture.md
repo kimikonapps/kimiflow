@@ -67,6 +67,14 @@ Byte-Budgets fuer die immer geladene Prosa (`SKILL.md` <= 17,000 Bytes, Codex-Sk
 (`phases/*.md` jeweils <= 20,000 Bytes) und fuer die Launcher-Default-Ausgabe (JSON <= 8,000 Bytes,
 Pretty <= 12,000 Bytes auf einem sauberen Fixture-Repo).
 
+`hooks/build-runtime-release.sh` verpackt genau diesen Kandidaten byte-deterministisch und schreibt den
+oeffentlichen Update-Vertrag `kimiflow-update-v1.json`. Offline-Pruefung beweist nur Artefaktintegritaet;
+offizielle Kompatibilitaet verlangt feste GitHub-Origin-Reads, unveraenderliche Release-Assets und denselben
+gepinnten Tag-/Source-Commit. `hooks/publish-runtime-release.sh` ist die einzige Maintainer-Publikationsgrenze:
+isolierter Export des Release-Commits, Draft-Upload, Vorpruefung, Publish und feste Nachpruefung. Builder und
+Publisher werden nicht in den Laufzeitkandidaten kopiert. Externe Hosts konsumieren diese kanonische Runtime und
+implementieren danach optional den Adapter-Vertrag; sie besitzen keine zweite Kimiflow-Quelle.
+
 ## Wichtige Invarianten
 
 - Explizites Kimiflow startet den Flow, explizites direkt/direkt umgeht ihn; autorisierte substanzielle

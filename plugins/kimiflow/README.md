@@ -90,6 +90,12 @@ user-level wrapper installation is required. The marketplace publishes only the 
 maintainer state, eval inputs, and private workflow artifacts are excluded and the candidate carries a
 reproducible content fingerprint.
 
+That candidate is also published as a deterministic `kimiflow-runtime-<version>.zip` with
+`kimiflow-update-v1.json`. Independent hosts read one stable manifest, verify the official immutable GitHub
+release, check the pinned source/artifact digests and their named host profile, then install the same Kimiflow
+bytes. Offline or caller-supplied metadata proves artifact integrity only; it can never impersonate an official
+compatible update. See [`references/runtime-distribution.md`](references/runtime-distribution.md).
+
 For local development, register this checkout instead:
 
 ```bash
@@ -140,6 +146,8 @@ Repeat the same feature/model arguments when manually resuming. A SHA-256 contra
 role or capability drift before the next coding turn. The complete v1 contract and schema live in
 [`references/adapter-protocol.md`](references/adapter-protocol.md) and
 [`references/adapter-protocol-v1.schema.json`](references/adapter-protocol-v1.schema.json).
+Distribution and adapter execution are separate: a host first verifies the canonical runtime release, then
+negotiates the adapter contract. Kimiflow remains independently installable and neither side imports KimiTalk.
 
 With the built-in adapter it launches the already authenticated Codex CLI in a `workspace-write` sandbox and
 resumes the same thread. Every adapter uses the same `.kimiflow/` state, gates, and memory; none adds a daemon,

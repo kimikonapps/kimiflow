@@ -1,5 +1,5 @@
 {
-  "file_count": 117,
+  "file_count": 119,
   "files": [
     {
       "bytes": 460,
@@ -14,10 +14,10 @@
       "sha256": "sha256:54cfc6da1f4e158b2af3ab882c92a154ae4988e78f4e9c6209ff7232c566e1b0"
     },
     {
-      "bytes": 15983,
+      "bytes": 16592,
       "mode": "0644",
       "path": "COMPATIBILITY.md",
-      "sha256": "sha256:1ded62e9db7643fa366e175a38205da9b5a2dd946e42ccceea3d6ca118f57ca8"
+      "sha256": "sha256:5bab0212de036e81ecd8503cbeb3e9cf1db373b839b0d7e1c3402c6d40f128bb"
     },
     {
       "bytes": 1064,
@@ -32,10 +32,10 @@
       "sha256": "sha256:a24f390ef47e71f319717e3d2b6508e9be438abb4fb06505c97d194ceb825545"
     },
     {
-      "bytes": 20918,
+      "bytes": 21657,
       "mode": "0644",
       "path": "README.md",
-      "sha256": "sha256:ee712e13d7a28faa6f97d5d318c2977320d6498e0f8b4f803ad3f74aa551128e"
+      "sha256": "sha256:40477bbe1238b69aa522256e57982bcc1567479c085fbcb63e391e28d3d7daa0"
     },
     {
       "bytes": 16929,
@@ -668,10 +668,10 @@
       "sha256": "sha256:3deb4b1bb48118147a979fe95f9036dd8b99de6954adb75f594a7440c96e227b"
     },
     {
-      "bytes": 4145,
+      "bytes": 4409,
       "mode": "0644",
       "path": "references/adapter-protocol.md",
-      "sha256": "sha256:f4b3a306ce073fb42ed0a24bfd0709af8c074955b7d04c57041d9bab1893ce89"
+      "sha256": "sha256:f05e349a15d3761b5abb25429d81af577b85d5c939f890b30500338073412b0f"
     },
     {
       "bytes": 963,
@@ -692,6 +692,18 @@
       "sha256": "sha256:f948700f371b73bca0f5e54d738e89a31e220172be5294c36e361e85851e1c94"
     },
     {
+      "bytes": 2696,
+      "mode": "0644",
+      "path": "references/runtime-distribution.md",
+      "sha256": "sha256:abf1208b4145c7389cc98b275d8354869482198d7f30e93bc92ee1ecbe882aa1"
+    },
+    {
+      "bytes": 3729,
+      "mode": "0644",
+      "path": "references/runtime-release-v1.schema.json",
+      "sha256": "sha256:f1e7d6c42d0460d63aef67873456b6cb6c590be2f6cb75034351726353baa907"
+    },
+    {
       "bytes": 14975,
       "mode": "0644",
       "path": "skills/kimiflow/SKILL.md",
@@ -704,6 +716,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:c0c1baec8d21ef433de3f86fa0582ed1124a457471bd34e3c1d15bd86b585f8a",
+  "runtime_fingerprint": "sha256:e03141b7bf43a768b8c84a9d0c79ba118a98385ccbb3c97fb89a028a501a2312",
   "schema_version": 1
 }

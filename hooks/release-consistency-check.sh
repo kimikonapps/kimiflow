@@ -82,6 +82,9 @@ ver="$(jq -r '.version // empty' "$sot_file" 2>/dev/null || true)"
 say "source-of-truth version: $ver  (.claude-plugin/plugin.json)"
 
 fails=0
+runtime_tmp=""
+budget_tmp=""
+trap 'rm -rf "${runtime_tmp:-}" "${budget_tmp:-}"' EXIT
 
 # JSON manifest target: label, file, jq filter. Skip when the version field is absent/null/empty.
 check_json() {
@@ -156,6 +159,55 @@ else
   say "  skip  clean plugin candidate (builder absent)"
 fi
 
+# The independently installable runtime must be a deterministic derivative of the committed candidate.
+# This remains a manual release verdict: CI tests the mechanism over fixtures but does not require a release build.
+runtime_builder="$ROOT/hooks/build-runtime-release.sh"
+runtime_candidate="$ROOT/plugins/kimiflow"
+runtime_contract="$ROOT/references/runtime-release-v1.schema.json"
+if [ -f "$runtime_contract" ] ||
+   [ -e "$runtime_builder" ] ||
+   [ -f "$runtime_candidate/RUNTIME-FINGERPRINT.json" ]; then
+  if [ ! -x "$runtime_builder" ]; then
+    say "  FAIL  required runtime release builder is missing or not executable"
+    fails=$((fails+1))
+  elif [ ! -d "$runtime_candidate" ]; then
+    say "  FAIL  required runtime candidate is missing"
+    fails=$((fails+1))
+  elif ! command -v git >/dev/null 2>&1 ||
+       ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    say "  FAIL  deterministic runtime release requires a Git worktree"
+    fails=$((fails+1))
+  elif ! git -C "$ROOT" ls-files --error-unmatch plugins/kimiflow/RUNTIME-FINGERPRINT.json >/dev/null 2>&1; then
+    say "  FAIL  runtime candidate fingerprint is not tracked"
+    fails=$((fails+1))
+  elif [ -n "$(git -C "$ROOT" ls-files --others --exclude-standard -- plugins/kimiflow)" ]; then
+    say "  FAIL  runtime candidate has untracked release-input drift"
+    fails=$((fails+1))
+  elif ! git -C "$ROOT" diff --quiet -- plugins/kimiflow; then
+    say "  FAIL  runtime candidate has unstaged release-input drift"
+    fails=$((fails+1))
+  else
+    runtime_tmp="$(mktemp -d)"
+    source_commit="$(GIT_NO_REPLACE_OBJECTS=1 git -C "$ROOT" rev-parse HEAD^{commit})"
+    if "$runtime_builder" build --candidate "$runtime_candidate" --output "$runtime_tmp/a" --source-commit "$source_commit" >/dev/null 2>&1 &&
+       "$runtime_builder" build --candidate "$runtime_candidate" --output "$runtime_tmp/b" --source-commit "$source_commit" >/dev/null 2>&1 &&
+       cmp -s "$runtime_tmp/a/kimiflow-update-v1.json" "$runtime_tmp/b/kimiflow-update-v1.json" &&
+       cmp -s "$runtime_tmp/a/"kimiflow-runtime-*.zip "$runtime_tmp/b/"kimiflow-runtime-*.zip &&
+       "$runtime_builder" verify \
+         --manifest "$runtime_tmp/a/kimiflow-update-v1.json" \
+         --archive "$runtime_tmp/a/"kimiflow-runtime-*.zip >/dev/null 2>&1; then
+      say "  ok    deterministic runtime release + offline integrity"
+    else
+      say "  FAIL  deterministic runtime release or offline integrity"
+      fails=$((fails+1))
+    fi
+    rm -rf "$runtime_tmp"
+    runtime_tmp=""
+  fi
+else
+  say "  skip  deterministic runtime release (builder, candidate, or Git absent)"
+fi
+
 # A tagged version may legitimately have no pending notes. Once source commits exist after that
 # tag, however, an empty Unreleased section would make a later release silently omit its changes.
 if command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -207,7 +259,6 @@ fi
 launcher="$ROOT/hooks/launcher-status.sh"
 if [ -x "$launcher" ]; then
   budget_tmp="$(mktemp -d)"
-  trap 'rm -rf "$budget_tmp"' EXIT
   budget_repo="$budget_tmp/repo"
   budget_home="$budget_tmp/home"
   mkdir -p "$budget_repo" "$budget_home"

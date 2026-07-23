@@ -10,3 +10,6 @@ __pycache__/
 
 # Subagent-driven-development scratch (briefs, reports, diffs, ledger — transient)
 .superpowers/
+
+# Reproducible release output (rebuilt from the committed runtime candidate)
+dist/

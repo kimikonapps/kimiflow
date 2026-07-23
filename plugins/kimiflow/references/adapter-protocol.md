@@ -5,6 +5,9 @@ Codex or Claude Code and the built-in `kimiflow run` Codex adapter do not use or
 such as KimiTalk can implement it without becoming a Kimiflow dependency.
 
 Machine-readable schema: [`adapter-protocol-v1.schema.json`](adapter-protocol-v1.schema.json).
+Release discovery and artifact trust are deliberately separate from this execution protocol. App hosts consume
+the canonical manifest described in [`runtime-distribution.md`](runtime-distribution.md); they do not vendor or
+fork Kimiflow to implement this adapter.
 
 ## Handshake
 

@@ -4,7 +4,23 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+The canonical runtime-distribution update: external app hosts can discover and verify the same Kimiflow release
+used by embedded installations, without maintaining a KimiTalk-specific fork.
+
+### Added
+
+- Deterministic `kimiflow-runtime-<version>.zip` plus `kimiflow-update-v1.json`, binding version, pinned source
+  commit, runtime fingerprint, artifact digest, adapter protocol, and named embedded/app-host profiles.
+- Offline artifact/draft verification and fixed-origin official publication verification; only the latter can
+  declare a host compatible.
+- A fail-closed immutable-release publisher and tracked maintainer release procedure using draft upload,
+  pre-publication verification, and post-publication tag/asset/source verification.
+
+### Changed
+
+- CI pins Python 3.9 on the full lane and Python 3.14 on portability through `setup-python@v6`.
+- The marketplace candidate excludes maintainer-only builders/publishers while carrying the public distribution
+  contract and schema.
 
 ## 0.2.15
 

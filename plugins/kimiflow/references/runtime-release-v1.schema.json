@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kimikonapps/kimiflow/references/runtime-release-v1.schema.json",
+  "title": "Kimiflow runtime release manifest v1",
+  "type": "object",
+  "properties": {
+    "schema_version": {"const": 1},
+    "product": {"const": "kimiflow"},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"},
+    "channel": {"const": "stable"},
+    "source": {
+      "type": "object",
+      "properties": {"commit": {"type": "string", "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"}},
+      "required": ["commit"],
+      "additionalProperties": false
+    },
+    "update_source": {
+      "type": "object",
+      "properties": {
+        "type": {"const": "github_releases"},
+        "repository": {"const": "kimikonapps/kimiflow"},
+        "api": {"const": "https://api.github.com/repos/kimikonapps/kimiflow/releases"},
+        "manifest_asset": {"const": "kimiflow-update-v1.json"}
+      },
+      "required": ["type", "repository", "api", "manifest_asset"],
+      "additionalProperties": false
+    },
+    "release": {
+      "type": "object",
+      "properties": {
+        "tag": {"type": "string", "pattern": "^kimiflow--v[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"},
+        "immutable_required": {"const": true}
+      },
+      "required": ["tag", "immutable_required"],
+      "additionalProperties": false
+    },
+    "contracts": {
+      "type": "object",
+      "properties": {
+        "runtime_manifest": {"const": 1},
+        "adapter_protocol": {
+          "type": "object",
+          "properties": {"min": {"const": 1}, "max": {"const": 1}},
+          "required": ["min", "max"],
+          "additionalProperties": false
+        },
+        "features": {
+          "const": ["model_roles", "root_confinement", "structured_events", "workflow_context"]
+        },
+        "host_profiles": {
+          "type": "object",
+          "properties": {
+            "embedded": {
+              "type": "object",
+              "properties": {"required_features": {"const": []}},
+              "required": ["required_features"],
+              "additionalProperties": false
+            },
+            "app_host": {
+              "type": "object",
+              "properties": {
+                "required_features": {
+                  "const": ["model_roles", "root_confinement", "structured_events", "workflow_context"]
+                }
+              },
+              "required": ["required_features"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["embedded", "app_host"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["runtime_manifest", "adapter_protocol", "features", "host_profiles"],
+      "additionalProperties": false
+    },
+    "artifact": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string", "pattern": "^kimiflow-runtime-[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?\\.zip$"},
+        "content_type": {"const": "application/zip"},
+        "root": {"const": "kimiflow"},
+        "bytes": {"type": "integer", "minimum": 1, "maximum": 16777216},
+        "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "runtime_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "runtime_manifest": {"const": "RUNTIME-FINGERPRINT.json"}
+      },
+      "required": ["name", "content_type", "root", "bytes", "sha256", "runtime_fingerprint", "runtime_manifest"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["schema_version", "product", "version", "channel", "source", "update_source", "release", "contracts", "artifact"],
+  "additionalProperties": false
+}

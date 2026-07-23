@@ -10,6 +10,9 @@ CANDIDATE="$WORK/kimiflow"
 "$ROOT/hooks/build-plugin-candidate.sh" --write --output "$CANDIDATE" >/dev/null
 [ -f "$CANDIDATE/RUNTIME-FINGERPRINT.json" ]
 jq -e '.schema_version == 1 and (.runtime_fingerprint | test("^sha256:[0-9a-f]{64}$")) and .file_count == (.files | length)' "$CANDIDATE/RUNTIME-FINGERPRINT.json" >/dev/null
+[ ! -e "$CANDIDATE/hooks/build-runtime-release.sh" ]
+[ ! -e "$CANDIDATE/hooks/publish-runtime-release.sh" ]
+[ ! -e "$CANDIDATE/hooks/kimiflow_core/runtime_release.py" ]
 printf 'must not ship\n' > "$tracked_source"
 "$ROOT/hooks/build-plugin-candidate.sh" --write --output "$CANDIDATE" >/dev/null
 [ ! -e "$CANDIDATE/hooks/.candidate-untracked-fixture" ]
@@ -100,6 +103,24 @@ if "$SMOKE_ROOT/hooks/smoke-install.sh" >"$WORK/missing-runtime-smoke.log" 2>&1;
   exit 1
 fi
 "$ROOT/hooks/build-plugin-candidate.sh" --check --output "$CANDIDATE" >/dev/null
+
+# Candidate validity follows executable-bit classes, not checkout umask noise.
+find "$CANDIDATE" -type d -exec chmod 0700 {} +
+while IFS= read -r rel; do
+  [ -n "$rel" ] || continue
+  case "$(jq -r --arg rel "$rel" '.files[] | select(.path == $rel) | .mode' "$CANDIDATE/RUNTIME-FINGERPRINT.json")" in
+    0755) chmod 0700 "$CANDIDATE/$rel" ;;
+    0644) chmod 0600 "$CANDIDATE/$rel" ;;
+  esac
+done < <(jq -r '.files[].path' "$CANDIDATE/RUNTIME-FINGERPRINT.json")
+chmod 0600 "$CANDIDATE/RUNTIME-FINGERPRINT.json"
+"$ROOT/hooks/build-plugin-candidate.sh" --check --output "$CANDIDATE" >/dev/null
+
+chmod 0700 "$CANDIDATE/RUNTIME-FINGERPRINT.json"
+if "$ROOT/hooks/build-plugin-candidate.sh" --check --output "$CANDIDATE" >/dev/null 2>&1; then
+  echo "candidate checker accepted executable runtime fingerprint" >&2; exit 1
+fi
+"$ROOT/hooks/build-plugin-candidate.sh" --write --output "$CANDIDATE" >/dev/null
 
 unsafe="$WORK/unmanaged/kimiflow"
 mkdir -p "$unsafe"

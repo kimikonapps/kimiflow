@@ -54,10 +54,13 @@ def included(path):
         or path.startswith("hooks/smoke-")
         or path in {
             "hooks/build-plugin-candidate.sh",
+            "hooks/build-runtime-release.sh",
             "hooks/ci-test-plan.sh",
+            "hooks/publish-runtime-release.sh",
             "hooks/release-consistency-check.sh",
             "hooks/kimiflow_core/ci_test_plan.py",
             "hooks/kimiflow_core/render.py",
+            "hooks/kimiflow_core/runtime_release.py",
         }
     ):
         return False
@@ -191,6 +194,8 @@ else:
     with open(os.path.join(output, "RUNTIME-FINGERPRINT.json"), "rb") as handle:
         if handle.read() != manifest_payload:
             raise SystemExit("build-plugin-candidate: runtime fingerprint manifest drift")
+    if os.stat(os.path.join(output, "RUNTIME-FINGERPRINT.json")).st_mode & 0o111:
+        raise SystemExit("build-plugin-candidate: runtime fingerprint manifest is executable")
     forbidden = (".git/", ".kimiflow/", ".superpowers/", "docs/superpowers/", "__pycache__/")
     if any(rel.startswith(forbidden) or rel.endswith((".pyc", ".pyo")) for rel in actual):
         raise SystemExit("build-plugin-candidate: forbidden private or generated path")

@@ -194,9 +194,90 @@ printf '# Changelog\n\n## Unreleased\n\n### Changed\n\n- runtime repair\n\n## 0.
 run "$F"
 [ "$RC" -eq 0 ] && pass "post_tag_change_with_note_passes" || fail "post_tag_change_with_note: rc=$RC :: $OUT"
 
+make_runtime_fixture() {
+  local d="$1" v="$2" variant="${3:-stable}"
+  make_fixture "$d" "$v"
+  mkdir -p "$d/hooks" "$d/plugins/kimiflow" "$d/references"
+  printf '{"schema_version":1}\n' >"$d/plugins/kimiflow/RUNTIME-FINGERPRINT.json"
+  printf '{"$schema":"https://json-schema.org/draft/2020-12/schema"}\n' >"$d/references/runtime-release-v1.schema.json"
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$d/hooks/build-plugin-candidate.sh"
+  cat >"$d/hooks/build-runtime-release.sh" <<EOF
+#!/usr/bin/env bash
+set -eu
+command_name="\$1"
+shift
+if [ "\$command_name" = build ]; then
+  while [ "\$#" -gt 0 ]; do
+    case "\$1" in --output) output="\$2"; shift 2 ;; *) shift ;; esac
+  done
+  mkdir -p "\$output"
+  printf '{"ok":true}\\n' >"\$output/kimiflow-update-v1.json"
+  if [ "$variant" = stable ]; then
+    printf 'stable\\n' >"\$output/kimiflow-runtime-${v}.zip"
+  else
+    counter=0
+    [ ! -f "$d/runtime-counter" ] || counter="\$(cat "$d/runtime-counter")"
+    counter=\$((counter + 1))
+    printf '%s\\n' "\$counter" >"$d/runtime-counter"
+    printf '%s\\n' "\$counter" >"\$output/kimiflow-runtime-${v}.zip"
+  fi
+elif [ "\$command_name" = verify ]; then
+  exit 0
+else
+  exit 2
+fi
+EOF
+  chmod +x "$d/hooks/build-plugin-candidate.sh" "$d/hooks/build-runtime-release.sh"
+  git -C "$d" init -q
+  git -C "$d" config user.email kimiflow@example.test
+  git -C "$d" config user.name "kimiflow test"
+  git -C "$d" add .
+  git -C "$d" commit -q -m runtime
+}
+
+# AC-6.1 deterministic runtime packaging contributes to the manual release verdict.
+F="$TMP/c14"; make_runtime_fixture "$F" "0.1.0" "stable"
+run "$F"
+{ [ "$RC" -eq 0 ] && printf '%s' "$OUT" | grep -qF 'deterministic runtime release'; } \
+  && pass "runtime_release_reproducible" || fail "runtime_release_reproducible: rc=$RC :: $OUT"
+
+# AC-6.2 byte drift across identical builds blocks release.
+F="$TMP/c15"; make_runtime_fixture "$F" "0.1.0" '${RANDOM}'
+run "$F"
+{ [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF 'deterministic runtime release or offline integrity'; } \
+  && pass "runtime_release_nondeterminism_detected" || fail "runtime_release_nondeterminism: rc=$RC :: $OUT"
+
+# AC-6.3 every runtime candidate input must already be represented in the Git index.
+F="$TMP/c16"; make_runtime_fixture "$F" "0.1.0" "stable"
+printf 'untracked release input\n' >"$F/plugins/kimiflow/new-runtime-file.txt"
+run "$F"
+{ [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF 'untracked release-input drift'; } \
+  && pass "runtime_release_untracked_input_detected" || fail "runtime_release_untracked_input: rc=$RC :: $OUT"
+
+# AC-6.4 once the distribution contract exists, its builder is a mandatory release gate.
+F="$TMP/c17"; make_runtime_fixture "$F" "0.1.0" "stable"
+chmod -x "$F/hooks/build-runtime-release.sh"
+run "$F"
+{ [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF 'required runtime release builder'; } \
+  && pass "runtime_release_builder_required" || fail "runtime_release_builder_required: rc=$RC :: $OUT"
+
+# AC-6.5 removing both runtime inputs cannot hide the still-declared distribution contract.
+F="$TMP/c18"; make_runtime_fixture "$F" "0.1.0" "stable"
+rm "$F/hooks/build-runtime-release.sh" "$F/plugins/kimiflow/RUNTIME-FINGERPRINT.json"
+run "$F"
+{ [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF 'required runtime release builder'; } \
+  && pass "runtime_release_contract_cannot_skip_gate" || fail "runtime_release_contract_skip: rc=$RC :: $OUT"
+
 # NOTE: real-repo version consistency is verified MANUALLY before a release
 # (`bash hooks/release-consistency-check.sh`), NOT asserted here — this unit test must stay a
 # logic test over fixtures so CI never becomes a de-facto release-consistency gate (INTENT: kein CI-Gate).
 
 printf -- '----\n'
-if [ "$FAILS" -eq 0 ]; then echo "release-consistency-check tests: PASS"; exit 0; else echo "release-consistency-check tests: $FAILS FAIL"; exit 1; fi
+if [ "$FAILS" -eq 0 ]; then
+  echo "ok   test_release_runtime_asset_gate"
+  echo "release-consistency-check tests: PASS"
+  exit 0
+else
+  echo "release-consistency-check tests: $FAILS FAIL"
+  exit 1
+fi
