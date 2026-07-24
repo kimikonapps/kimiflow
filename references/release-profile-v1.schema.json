@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kimikonapps/kimiflow/references/release-profile-v1.schema.json",
+  "title": "Kimiflow project release profile v1",
+  "oneOf": [
+    {"$ref": "#/$defs/profile"},
+    {"$ref": "#/$defs/audit"}
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+    },
+    "cwd": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?:\\.|(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+)$"
+    },
+    "argv": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      }
+    },
+    "probe": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "argv": {"$ref": "#/$defs/argv"},
+        "cwd": {"$ref": "#/$defs/cwd"},
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600
+        }
+      },
+      "required": ["id", "argv", "cwd", "timeout_seconds"],
+      "additionalProperties": false
+    },
+    "checkStep": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "kind": {"const": "check"},
+        "argv": {"$ref": "#/$defs/argv"},
+        "cwd": {"$ref": "#/$defs/cwd"},
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600
+        }
+      },
+      "required": ["id", "kind", "argv", "cwd", "timeout_seconds"],
+      "additionalProperties": false
+    },
+    "effectStep": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "kind": {"const": "effect"},
+        "scope": {"enum": ["local", "remote"]},
+        "argv": {"$ref": "#/$defs/argv"},
+        "cwd": {"$ref": "#/$defs/cwd"},
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "precondition": {"$ref": "#/$defs/probe"},
+        "postcondition": {"$ref": "#/$defs/probe"}
+      },
+      "required": [
+        "id",
+        "kind",
+        "scope",
+        "argv",
+        "cwd",
+        "timeout_seconds",
+        "precondition",
+        "postcondition"
+      ],
+      "additionalProperties": false
+    },
+    "controlSource": {
+      "type": "object",
+      "properties": {
+        "path": {"$ref": "#/$defs/path"},
+        "digest_mode": {"enum": ["file", "package-scripts"]},
+        "sha256": {"$ref": "#/$defs/digest"}
+      },
+      "required": ["path", "digest_mode", "sha256"],
+      "additionalProperties": false
+    },
+    "profile": {
+      "type": "object",
+      "properties": {
+        "schema_version": {"const": 1},
+        "document_type": {"const": "release_profile"},
+        "id": {"$ref": "#/$defs/id"},
+        "control_sources": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {"$ref": "#/$defs/controlSource"}
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "oneOf": [
+              {"$ref": "#/$defs/checkStep"},
+              {"$ref": "#/$defs/effectStep"}
+            ]
+          }
+        },
+        "final_checks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {"$ref": "#/$defs/probe"}
+        }
+      },
+      "required": [
+        "schema_version",
+        "document_type",
+        "id",
+        "control_sources",
+        "steps",
+        "final_checks"
+      ],
+      "additionalProperties": false
+    },
+    "probeAttestation": {
+      "type": "object",
+      "properties": {
+        "probe_id": {"$ref": "#/$defs/id"},
+        "read_only": {"const": true},
+        "evidence_path": {"$ref": "#/$defs/path"}
+      },
+      "required": ["probe_id", "read_only", "evidence_path"],
+      "additionalProperties": false
+    },
+    "finding": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "severity": {"enum": ["high", "medium", "low"]},
+        "evidence_path": {"$ref": "#/$defs/path"},
+        "claim": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "recommendation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "disposition": {"enum": ["accepted", "deferred", "not_applicable"]}
+      },
+      "required": [
+        "id",
+        "severity",
+        "evidence_path",
+        "claim",
+        "recommendation",
+        "disposition"
+      ],
+      "additionalProperties": false
+    },
+    "audit": {
+      "type": "object",
+      "properties": {
+        "schema_version": {"const": 1},
+        "document_type": {"const": "release_audit"},
+        "profile_sha256": {"$ref": "#/$defs/digest"},
+        "discovery_sha256": {"$ref": "#/$defs/digest"},
+        "control_set_sha256": {"$ref": "#/$defs/digest"},
+        "failure_sha256": {
+          "oneOf": [
+            {"$ref": "#/$defs/digest"},
+            {"type": "null"}
+          ]
+        },
+        "verdict": {"const": "passed"},
+        "probe_attestations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 80,
+          "items": {"$ref": "#/$defs/probeAttestation"}
+        },
+        "findings": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {"$ref": "#/$defs/finding"}
+        }
+      },
+      "required": [
+        "schema_version",
+        "document_type",
+        "profile_sha256",
+        "discovery_sha256",
+        "control_set_sha256",
+        "failure_sha256",
+        "verdict",
+        "probe_attestations",
+        "findings"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

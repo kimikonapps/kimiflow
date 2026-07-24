@@ -2,7 +2,7 @@
   "name": "kimiflow",
   "interface": {
     "displayName": "kimiflow",
-    "shortDescription": "Kimiflow feature & bug-fix loop: full/grill/plan/build/quick/review/audit/fix, adaptive discovery, project intelligence, repo docs, findings"
+    "shortDescription": "Kimiflow feature, bug-fix & release loop: full/grill/plan/build/quick/review/audit/fix/release, project intelligence, repo docs, findings"
   },
   "plugins": [
     {

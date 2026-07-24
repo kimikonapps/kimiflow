@@ -47,6 +47,7 @@ jobs:
           jq -e . .claude-plugin/marketplace.json > /dev/null
           jq -e . .codex-plugin/plugin.json > /dev/null
           jq -e . .agents/plugins/marketplace.json > /dev/null
+          jq -e . references/release-profile-v1.schema.json > /dev/null
           jq -e . references/runtime-release-v1.schema.json > /dev/null
 
       - name: Claude install smoke-test (structural) — hard gate

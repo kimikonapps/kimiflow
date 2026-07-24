@@ -26,9 +26,9 @@ mv="$(jq -r '.plugins[0].version' "$ROOT/.claude-plugin/marketplace.json" 2>/dev
 if [ -n "$pv" ] && [ "$pv" = "$mv" ]; then ok "version consistent ($pv)"; else bad "version mismatch: plugin=$pv marketplace=$mv"; fi
 jq -e '((.description // "") | test("code-review ensembles"))' "$ROOT/.claude-plugin/plugin.json" >/dev/null 2>&1 \
   && ok "Claude plugin describes code-review ensembles" || bad "Claude plugin description missing code-review ensembles"
-jq -e '((.description // "") | test("full/grill/plan/build/quick/review/audit/fix"))' "$ROOT/.claude-plugin/plugin.json" >/dev/null 2>&1 \
+jq -e '((.description // "") | test("full/grill/plan/build/quick/review/audit/fix/release"))' "$ROOT/.claude-plugin/plugin.json" >/dev/null 2>&1 \
   && ok "Claude plugin describes natural mode aliases" || bad "Claude plugin description missing natural mode aliases"
-jq -e '((.metadata.description // "") + " " + (.plugins[0].description // "") | test("full/grill/plan/build/quick/review/audit/fix"))' "$ROOT/.claude-plugin/marketplace.json" >/dev/null 2>&1 \
+jq -e '((.metadata.description // "") + " " + (.plugins[0].description // "") | test("full/grill/plan/build/quick/review/audit/fix/release"))' "$ROOT/.claude-plugin/marketplace.json" >/dev/null 2>&1 \
   && ok "Claude marketplace describes natural mode aliases" || bad "Claude marketplace missing natural mode aliases"
 
 echo "== capability display sync (Claude) =="
@@ -73,7 +73,9 @@ grep -q 'Launcher / menu' "$ROOT/SKILL.md" && ok "canonical skill documents Laun
 grep -q 'Launcher mode' "$ROOT/reference.md" && ok "reference documents Launcher mode" || bad "missing Launcher mode in reference.md"
 grep -q 'Natural mode aliases' "$ROOT/SKILL.md" && ok "canonical skill documents natural mode aliases" || bad "missing natural mode aliases in SKILL.md"
 grep -q 'Natural mode aliases' "$ROOT/reference.md" && ok "reference documents natural mode aliases" || bad "missing natural mode aliases in reference.md"
-for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'kimiflow review' 'kimiflow audit' 'kimiflow fix' 'kimiflow quick'; do
+grep -q 'full|grill|plan|build|quick|review|audit|fix|release' "$ROOT/SKILL.md" && ok "canonical skill maps release alias" || bad "canonical skill missing release alias"
+grep -q 'full|grill|plan|build|quick|review|audit|fix|release' "$ROOT/phases/phase-0-setup.md" && ok "Phase 0 normalizes release alias" || bad "Phase 0 missing release alias"
+for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'kimiflow review' 'kimiflow audit' 'kimiflow fix' 'kimiflow quick' 'kimiflow release'; do
   grep -q "$term" "$ROOT/README.md" && ok "README documents mode alias: $term" || bad "README missing mode alias: $term"
 done
 grep -q 'full.*does not create an approval stop' "$ROOT/SKILL.md" && ok "full mode follows material-risk decisions" || bad "full mode still forces approval"

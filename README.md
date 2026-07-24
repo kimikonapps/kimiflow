@@ -185,6 +185,17 @@ not create a Program or Project Delta pay no model-context cost. See
 [`references/program-v1.schema.json`](references/program-v1.schema.json) and
 [`reference.md`](reference.md#optional-project-continuity-and-program-scheduling).
 
+### Optional project release profiles
+
+An explicit `kimiflow release` or “Release Flow” can use a local, provider-neutral release profile under
+`.kimiflow/release/`. Kimiflow discovers tracked release controls, binds a model audit to their exact digests,
+and reuses that audit until a control changes or a real release failure occurs. One request authorizes one
+serial release run; mutating steps require mechanical preconditions and postconditions, uncertain effects are
+never blindly replayed, real failures require an audit bound to the exact failure receipt, and project final
+checks must pass. Audit improvement findings are evidence-bound
+advisories and never modify a live publication. Projects that never invoke release mode load no release
+profile context.
+
 ## Demo
 
 ![Kimiflow launcher and gated feature/fix flow](docs/demo/kimiflow.gif)
@@ -206,6 +217,7 @@ The same modes work with `/kimiflow` in Claude Code and `$kimiflow` in Codex.
 | `kimiflow build` | Implement an approved prepared plan. |
 | `kimiflow review` | Read-only review of an existing feature or current diff. |
 | `kimiflow audit` | Read-only cleanup/refactoring audit before selecting a slice. |
+| `kimiflow release` | Import/re-audit if needed, then execute one explicit project release profile. |
 
 Useful explicit forms:
 
@@ -216,6 +228,7 @@ Useful explicit forms:
 /kimiflow <request> --prepare
 /kimiflow --resume <slug>
 /kimiflow --project-map quick
+/kimiflow release
 ```
 
 Kimiflow first proves where the product goal, actor, visible behavior, boundaries, and success came

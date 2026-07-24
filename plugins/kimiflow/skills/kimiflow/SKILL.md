@@ -1,6 +1,6 @@
 ---
 name: kimiflow
-description: "Codex port of the Kimiflow feature and bug-fix loop. Use automatically only for actionable implementation requests for substantial feature work that crosses product surfaces/subsystems, adds material integration/data/security/public-API/architecture risk, or needs real discovery. Discussion, ideation, recommendations, explanations, status requests, and wish formulations stay direct/read-only. Explicit Kimiflow always starts it; explicit direct or direkt always bypasses it. Do not auto-trigger for fixes, reviews, refactors, cleanup, docs/config, or small low-risk features."
+description: "Codex port of the Kimiflow feature/fix/release loop. Use automatically only for actionable implementation requests for substantial feature work that crosses product surfaces/subsystems, adds material integration/data/security/public-API/architecture risk, or needs real discovery. Discussion, ideation, recommendations, explanations, status requests, and wish formulations stay direct/read-only. Explicit Kimiflow always starts it; explicit direct or direkt always bypasses it. Do not auto-trigger for fixes, reviews, refactors, cleanup, docs/config, or small low-risk features."
 ---
 
 # Kimiflow For Codex
@@ -20,13 +20,11 @@ Treat these as explicit Kimiflow requests:
 - `$kimiflow`
 - `@kimiflow`
 - `$kimiflow --launcher` / `$kimiflow --menu`
-- `$kimiflow full|grill|plan|build|quick|review|audit|fix`
-- `$kimiflow <feature-or-bug>`
-- `@kimiflow <feature-or-bug>`
-- `kimiflow full`, `kimiflow grill`, `kimiflow plan`, `kimiflow build`, `kimiflow quick`, `kimiflow review`, `kimiflow audit`, `kimiflow fix`
+- `$kimiflow full|grill|plan|build|quick|review|audit|fix|release`
+- `$kimiflow <task>`
+- `kimiflow full`, `kimiflow grill`, `kimiflow plan`, `kimiflow build`, `kimiflow quick`, `kimiflow review`, `kimiflow audit`, `kimiflow fix`, `kimiflow release`
 - `run kimiflow ...`
 - `with kimiflow ...`
-- `build/fix this through the Kimiflow gates`
 
 ## Host Map
 
@@ -42,7 +40,7 @@ Apply the canonical Kimiflow workflow from `$KIMIFLOW_PLUGIN_ROOT/SKILL.md` with
 
 - `/kimiflow` in user-facing text means `$kimiflow` or an explicit "run Kimiflow" prompt in Codex.
 - `/kimiflow`, `/kimiflow --launcher`, and `/kimiflow --menu` mean `$kimiflow`, `$kimiflow --launcher`, and `$kimiflow --menu` in Codex. Empty or vague explicit Kimiflow invocations open the context-aware launcher and must use `$KIMIFLOW_PLUGIN_ROOT/hooks/launcher-status.sh` for the status snapshot.
-- `/kimiflow full|grill|plan|build|quick|review|audit|fix` maps directly to Codex. `full` forces the strict loop but no approval by itself; `grill|plan|review|audit` are no-code modes until later build authority/selection; `quick` proves product intent or asks one small batch and normally uses a no-worker Discovery pulse; `fix` diagnoses first and pauses only for a material decision; `review` maps to existing-feature/current-change review.
+- `/kimiflow full|grill|plan|build|quick|review|audit|fix|release` maps directly to Codex. `full` forces the strict loop but no approval by itself; `grill|plan|review|audit` are no-code modes until later build authority/selection; `quick` proves product intent or asks one small batch and normally uses a no-worker Discovery pulse; `fix` diagnoses first and pauses only for a material decision; `review` maps to existing-feature/current-change review; `release` authorizes one project-profile release.
 - `/kimiflow --project-map <quick|skip>` means `$kimiflow --project-map <quick|skip>` in Codex. Missing maps, per-section staleness checks, `coverage`-based Phase-2 depth (`compressed|targeted|full`), recommended-but-skippable delta refreshes, focus selection, storage targets, and Improve/Docs publishing use the same canonical Project Map rules and `hooks/project-map-status.sh`. Repo docs are publish-safe derivatives only; raw `.kimiflow/project/` maps and sensitive findings stay local/private unless the user explicitly overrides that policy.
 - Kimiflow's Project-Map auto-refresh and lookup use the same `$KIMIFLOW_PLUGIN_ROOT/hooks/project-map-status.sh` in Codex with `KIMIFLOW_HOST=codex`. Phase 7 runs `project-map-status.sh refresh --changed` after verify (re-stamps touched sections to `current`, prunes deleted members, adopts new files by prefix with `NEW-FILE` hints, re-indexes `.sh` `symbols`); Map Bootstrap runs `index-symbols` after writing sections; Phase 2 runs `$KIMIFLOW_PLUGIN_ROOT/hooks/suggest-affected-sections.sh --intent <file>|--text "<terms>"` to rank candidate sections and feed their `paths` to `coverage --affected`. The non-blocking Stop nudge `$KIMIFLOW_PLUGIN_ROOT/hooks/map-staleness-nudge.sh` surfaces residual staleness (rate-limited, USER-visible `systemMessage`, never blocks). All are recommended-but-skippable; raw map facts stay local. → reference.md "Project Map Bootstrap".
 - `/kimiflow --verify-feature <feature-or-path>` means `$kimiflow --verify-feature <feature-or-path>` in Codex. Existing feature checks run the canonical Phase-7 code-review ensemble from `reference.md` read-only over the named path or current diff: candidate lens output is verified by the Codex orchestrator before it is promoted to findings, and no code is edited.

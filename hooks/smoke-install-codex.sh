@@ -27,11 +27,11 @@ jq -e '((.interface.longDescription // "") + " " + (.interface.shortDescription 
   && ok "codex plugin describes project intelligence" || bad "codex plugin description does not mention project intelligence"
 jq -e '((.interface.longDescription // "") + " " + (.description // "")) | test("code-review ensemble")' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
   && ok "codex plugin describes code-review ensemble" || bad "codex plugin description does not mention code-review ensemble"
-jq -e '((.interface.longDescription // "") + " " + (.interface.shortDescription // "") + " " + (.description // "") + " " + ((.interface.defaultPrompt // []) | join(" "))) | test("full/grill/plan/build/quick/review/audit/fix"; "i") and test("kimiflow full"; "i") and test("grill"; "i") and test("plan"; "i")' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
+jq -e '((.interface.longDescription // "") + " " + (.interface.shortDescription // "") + " " + (.description // "") + " " + ((.interface.defaultPrompt // []) | join(" "))) | test("full/grill/plan/build/quick/review/audit/fix/release"; "i") and test("kimiflow full"; "i") and test("kimiflow release"; "i") and test("grill"; "i") and test("plan"; "i")' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
   && ok "codex plugin exposes natural mode aliases" || bad "codex plugin natural mode aliases missing"
 jq -e '.name == "kimiflow" and (.plugins[] | select(.name == "kimiflow" and .source.source == "local" and .source.path == "./plugins/kimiflow"))' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
   && ok "codex marketplace entry" || bad "codex marketplace entry"
-jq -e '[.. | strings] | join(" ") | test("full/grill/plan/build/quick/review/audit/fix"; "i")' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
+jq -e '[.. | strings] | join(" ") | test("full/grill/plan/build/quick/review/audit/fix/release"; "i")' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
   && ok "codex marketplace describes natural mode aliases" || bad "codex marketplace missing natural mode aliases"
 jq -e '.hooks == "./hooks/hooks.json"' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
   && ok "codex manifest pins loaded hook contract" || bad "codex manifest hook path missing"
@@ -71,11 +71,13 @@ grep -q 'Launcher / menu' "$ROOT/SKILL.md" && ok "canonical Launcher mode presen
 grep -q 'Launcher mode' "$ROOT/reference.md" && ok "canonical Launcher mode documented" || bad "canonical Launcher mode docs missing"
 grep -q 'Natural mode aliases' "$ROOT/SKILL.md" && ok "canonical natural mode aliases present" || bad "canonical natural mode aliases missing"
 grep -q 'Natural mode aliases' "$ROOT/reference.md" && ok "canonical natural mode aliases documented" || bad "canonical natural mode aliases docs missing"
-grep -q 'full|grill|plan|build|quick|review|audit|fix' "$SKILL" && ok "Codex wrapper maps natural mode aliases" || bad "Codex wrapper missing natural mode aliases"
-for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'kimiflow quick' 'kimiflow review' 'kimiflow audit' 'kimiflow fix'; do
+grep -q 'full|grill|plan|build|quick|review|audit|fix|release' "$ROOT/SKILL.md" && ok "canonical skill maps release alias" || bad "canonical skill missing release alias"
+grep -q 'full|grill|plan|build|quick|review|audit|fix|release' "$ROOT/phases/phase-0-setup.md" && ok "Phase 0 normalizes release alias" || bad "Phase 0 missing release alias"
+grep -q 'full|grill|plan|build|quick|review|audit|fix|release' "$SKILL" && ok "Codex wrapper maps natural mode aliases" || bad "Codex wrapper missing natural mode aliases"
+for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'kimiflow quick' 'kimiflow review' 'kimiflow audit' 'kimiflow fix' 'kimiflow release'; do
   grep -q "$term" "$SKILL" && ok "Codex wrapper documents plain alias: $term" || bad "Codex wrapper missing plain alias: $term"
 done
-for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'kimiflow review' 'kimiflow audit' 'kimiflow fix' 'kimiflow quick'; do
+for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'kimiflow review' 'kimiflow audit' 'kimiflow fix' 'kimiflow quick' 'kimiflow release'; do
   grep -q "$term" "$ROOT/README.md" && ok "README documents mode alias: $term" || bad "README missing mode alias: $term"
 done
 grep -q 'full.*does not create an approval stop' "$ROOT/SKILL.md" && ok "full mode follows material-risk decisions" || bad "full mode still forces approval"

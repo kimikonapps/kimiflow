@@ -140,6 +140,17 @@ Program beziehungsweise Project Delta entsteht kein zusätzlicher Modell-Kontext
 [`references/program-v1.schema.json`](references/program-v1.schema.json) und
 [`reference.md`](reference.md#optional-project-continuity-and-program-scheduling).
 
+### Optionale projektspezifische Release-Profile
+
+Ein ausdrückliches `kimiflow release` oder „Release Flow“ kann ein lokales, provider-neutrales Profil unter
+`.kimiflow/release/` verwenden. Kimiflow erkennt getrackte Release-Controls, bindet ein Modell-Audit an deren
+exakte Digests und verwendet es weiter, bis sich ein Control ändert oder ein echter Release-Fehler auftritt.
+Ein Auftrag autorisiert genau einen seriellen Release-Lauf; mutierende Schritte brauchen mechanische Vor- und
+Nachbedingungen, unklare Effekte werden nie blind wiederholt und projektspezifische Final-Checks müssen
+bestehen. Nach echten Fehlern muss das neue Audit an den exakten Fehlerbeleg gebunden sein.
+Audit-Verbesserungen bleiben evidenzgebundene Hinweise und verändern keine laufende Veröffentlichung.
+Ohne Release-Auftrag wird kein Profil-Kontext geladen.
+
 ## Demo
 
 ![Kimiflow-Launcher und gegateter Feature-/Fix-Flow](docs/demo/kimiflow.gif)
@@ -161,6 +172,7 @@ Die Modi funktionieren mit `/kimiflow` in Claude Code und `$kimiflow` in Codex g
 | `kimiflow build` | Einen freigegebenen vorbereiteten Plan umsetzen. |
 | `kimiflow review` | Bestehendes Feature oder aktuellen Diff read-only prüfen. |
 | `kimiflow audit` | Cleanup-/Refactoring-Audit vor Auswahl eines Slices. |
+| `kimiflow release` | Bei Bedarf importieren/neu auditieren und genau einen Projekt-Release ausführen. |
 
 Explizite Formen:
 
@@ -171,6 +183,7 @@ Explizite Formen:
 /kimiflow <auftrag> --prepare
 /kimiflow --resume <slug>
 /kimiflow --project-map quick
+/kimiflow release
 ```
 
 Kimiflow belegt zuerst, woher Produktziel, Nutzer, sichtbares Verhalten, Grenzen und Erfolgskriterien

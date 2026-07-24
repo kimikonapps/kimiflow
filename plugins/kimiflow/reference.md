@@ -1733,6 +1733,51 @@ Mutations require `--write` and one per-Program lock; previews never reconcile o
 
 The Program Engine is deliberately a mechanical serial scheduler: it never creates an agent, run, process loop, branch or worktree. A person or host chooses when to invoke the next selected run; ordinary single-run Kimiflow remains standalone and unchanged.
 
+## Project Release Profile
+
+This is an explicit, optional path for “Release Flow”/`kimiflow release`; it is not loaded by ordinary feature,
+fix, review, or audit runs. State stays local below `.kimiflow/release/`, no credentials or command logs are
+persisted, and no provider, daemon, hosted service, or paid API is required.
+
+1. Run `hooks/release-profile.sh status`. `import_required` or `audit_required` means the agent runs
+   `hooks/release-profile.sh discover --write` and reads only the bounded tracked sources listed in
+   `DISCOVERY.json`. Discovery stores path/kind/role/size/digest, never source contents, untracked files, secret
+   paths, or `.kimiflow/`. If a discovered release control directly invokes another tracked local executable or
+   interpreter script, rerun discovery with one bounded `--include <repo-relative-path>` per direct input; this is
+   autonomous model work, not a user prompt. Package manifests expose a projected `scripts` digest so release
+   behavior is bound without treating version/product fields as immutable controls.
+2. The model writes local candidate `release_profile` and `release_audit` documents following
+   `references/release-profile-v1.schema.json`. Controls declare `digest_mode=file|package-scripts`; every direct
+   local executable/interpreter script must be a selected full-file control, while mutable version/changelog
+   product fields stay outside projected package controls. Every non-mutating check and effect pre/postcondition
+   gets an exact read-only audit attestation. `failure_sha256` is `null` on first import/control drift and must
+   equal the unique occurrence-bound status receipt after a real failure, so an earlier audit cannot be
+   replayed. Improvement findings may be empty; each nonempty finding cites a discovered evidence path and
+   remains advisory, never executable.
+3. Run `hooks/release-profile.sh validate --candidate <file> --audit <file>`, then the same `adopt ... --write`.
+   Adoption rejects stale discovery/control digests, unsafe paths, embedded credential-like values, shell
+   strings, known mutating probe forms, incomplete probe coverage, evidence-less findings, and untracked/unbound
+   direct command inputs. Ambiguous shell-expanded package-script inputs must first move behind a tracked,
+   explicitly bound wrapper. One atomic `PROFILE.json` binds profile, audit, discovery, and control-set digests.
+4. An explicit release request supplies one-run authority to
+   `hooks/release-profile.sh run --authorize --write`. If status shows a completed prior generation and the
+   user requested the next release, add `--new`. A nonterminal generation resumes without `--new`; no routine
+   user confirmation is added.
+
+Execution is serial under one local lock. A check is replayable only after a fresh audit following failure. An
+effect first runs its attested precondition, durably records `started`, executes once, and then runs its
+postcondition. Resume of `started` executes only the postcondition, never the effect. Any real command failure
+first creates `FAILURE.json`, then durably marks the run blocked, and requires an audit bound to that exact
+failure receipt; a changed profile cannot replace a run with a started effect. A nonzero effect whose
+postcondition already proves success may become complete only after that fresh audit, without replay.
+Completion requires at least one project-specific final check and stores only exit codes, byte counts, and
+SHA-256 evidence in `RUN.json`.
+
+The core proves state/evidence integrity, not the semantics of an arbitrary project executable. It rejects known
+mutating probe argv and requires model audit coverage; stronger remote guarantees should use provider-enforced
+read-only credentials and attestations. A live release never edits its own release controls. Audit recommendations
+are implemented later as a normal verified code change, then rediscovered and re-audited.
+
 ## Code mandate (Phase 3 directive · Phase 5 build · Phase 7 review)
 
 - **Minimum-complete simplicity:** build the smallest complete solution for the approved behavior and verified `required` constraints. Every task, file, abstraction, and test maps to an `AC-N`; unsupported structure is deleted. Research chooses current implementation technique but never adds product scope. No speculative abstractions/configurability, optional providers, future-proofing, or error handling for impossible cases. Prefer a flat linear plan and the smallest architecture that fits the evidenced target: does this need to exist at all? → stdlib → native platform → one line before fifty.
