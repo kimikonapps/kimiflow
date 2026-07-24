@@ -2007,15 +2007,8 @@ class LifecycleCase(unittest.TestCase):
             [other_row],
         )
 
-    def test_lock_identity_ignores_root_spelling_on_case_insensitive_filesystems(self):
+    def test_lock_identity_casefolds_root_spelling_portably(self):
         alternate = self.root.swapcase()
-        try:
-            same_directory = os.path.samefile(self.root, alternate)
-        except OSError:
-            self.skipTest("case-sensitive filesystem")
-        if not same_directory:
-            self.skipTest("case-sensitive filesystem")
-
         name = "STRATEGY-OUTCOMES.jsonl"
         self.assertEqual(
             store._path_lock_key(os.path.join(self.project, name)),
