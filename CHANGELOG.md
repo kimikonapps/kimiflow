@@ -6,6 +6,20 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.17
+
+The project-continuity release: Kimiflow can re-plan falsified build assumptions immediately, carry verified
+architecture changes into relevant future runs, and schedule large multi-run programs deterministically.
+
+### Added
+
+- Evidence-bound Phase 5 re-planning for falsified strategy, architecture, or research assumptions; ordinary test
+  failures stay in the build phase.
+- Path-scoped project-delta receipts with commit and test evidence, plus selective context generation that excludes
+  irrelevant or stale architecture state.
+- An optional serial `PROGRAM.json` dependency engine with schema validation, cycle detection, deterministic
+  `next-ready` selection, crash-safe activation recovery, and completion-evidence linkage.
+
 ## 0.2.16
 
 The portable convergence release: external hosts can verify the canonical Kimiflow runtime, project memory
