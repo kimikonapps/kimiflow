@@ -20,7 +20,7 @@
       "name": "understand",
       "file": "phases/phase-2-understand.md",
       "reference_sections": ["Understand & research (Phase 2)", "Adaptive Architecture Deliberation", "Project memory & standards (Phase 2 read · Phase 7 append)", "Memory recall (Phase 2)", "Current-State Pulse / Gate (Phase 2)", "Vault conventions (Phase 2)"],
-      "context": {"required": ["STATE.md"], "feature": ["INTENT.md"], "fix": ["PROBLEM.md", "BUG-REPRO.md"], "audit": ["AUDIT-INTENT.md"], "optional": ["CURRENT-STATE.md", "RECALL.md", "STANDARDS-CONTEXT.md"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
+      "context": {"required": ["STATE.md"], "feature": ["INTENT.md"], "fix": ["PROBLEM.md", "BUG-REPRO.md"], "audit": ["AUDIT-INTENT.md"], "optional": ["CURRENT-STATE.md", "RECALL.md", "STANDARDS-CONTEXT.md", "PROJECT-DELTA-CONTEXT.md"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     },
     {
       "id": 3,
@@ -80,6 +80,10 @@
       {"from": "phase_6", "event": "phase_done", "to": "phase_7", "action": "run_phase"},
       {"from": "phase_7", "event": "phase_done", "to": "done", "action": "finish_run"},
       {"from": "phase_4", "event": "plan_recovery", "to": "phase_2", "action": "recover_plan_strategy"},
+      {"from": "phase_5", "event": "verification_failed", "to": "phase_5", "action": "recover_build"},
+      {"from": "phase_5", "event": "strategy_drift", "to": "phase_2", "action": "recover_plan_strategy"},
+      {"from": "phase_5", "event": "architecture_falsified", "to": "phase_2", "action": "recover_plan_strategy"},
+      {"from": "phase_5", "event": "research_stale", "to": "phase_2", "action": "recover_plan_strategy"},
       {"from": "phase_6", "event": "verification_failed", "to": "phase_5", "action": "recover_build"},
       {"from": "phase_6", "event": "code_gap", "to": "phase_5", "action": "recover_build"},
       {"from": "phase_6", "event": "scope_drift", "to": "phase_5", "action": "recover_build"},

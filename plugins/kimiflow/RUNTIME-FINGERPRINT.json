@@ -1,5 +1,5 @@
 {
-  "file_count": 119,
+  "file_count": 126,
   "files": [
     {
       "bytes": 460,
@@ -26,16 +26,16 @@
       "sha256": "sha256:b796986e145d409f27c8ec0edaaf223ee51bdbbc2fa4477fe2d6c0984d5adf5b"
     },
     {
-      "bytes": 20919,
+      "bytes": 22100,
       "mode": "0644",
       "path": "README.de.md",
-      "sha256": "sha256:3de925276c628f360788e835a9d545139975e1d5ec31a0bff85aab8321719d62"
+      "sha256": "sha256:5962af7fb2daf9ed92afaf385ef51f7ae3d7c2ea937d8b486be84de13136a1fb"
     },
     {
-      "bytes": 23445,
+      "bytes": 24552,
       "mode": "0644",
       "path": "README.md",
-      "sha256": "sha256:0fb73cea15cc5f6465a334d299466438c145e43e9569294b0a8827993101537f"
+      "sha256": "sha256:1e705a5fdb3d38831064eef0119b142093e9117a16f5a0c4b03df89539c97d85"
     },
     {
       "bytes": 16573,
@@ -72,6 +72,12 @@
       "mode": "0755",
       "path": "hooks/behavior-eval-receipt.sh",
       "sha256": "sha256:91bb07d91179f003798a8be115697d6787c29c798aa7d0df45ac479cebe7b447"
+    },
+    {
+      "bytes": 310,
+      "mode": "0755",
+      "path": "hooks/build-replan.sh",
+      "sha256": "sha256:c711d73dbee075fa31a2a52d1b3a7e98d15ff4f22f0a7e807f51c522d93b752b"
     },
     {
       "bytes": 29792,
@@ -170,6 +176,12 @@
       "sha256": "sha256:cb400951fc9a0d86c5f967af63c06fe57899725cfec088db1a19782930f92ef2"
     },
     {
+      "bytes": 13082,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/build_replan.py",
+      "sha256": "sha256:cd37de085b12738a662b3b2cd3c8a3d42951edfd3e57a85ab7259e8e62f8d34a"
+    },
+    {
       "bytes": 422,
       "mode": "0644",
       "path": "hooks/kimiflow_core/contracts.py",
@@ -188,10 +200,10 @@
       "sha256": "sha256:bdf7f70e364ed1dfc3e8c5ceb50c7fcab64af04eb780fb9007de9f262da87006"
     },
     {
-      "bytes": 18152,
+      "bytes": 19181,
       "mode": "0644",
       "path": "hooks/kimiflow_core/flow_graph.py",
-      "sha256": "sha256:139ba52f818d85809c7c5380687c0aec4964acac8bbc262b62a908e684ddbd34"
+      "sha256": "sha256:51e35c7a280a65bf4bc2d500efa84cb8f9cb0d89111e0793e662838c0b5502d3"
     },
     {
       "bytes": 37274,
@@ -212,16 +224,22 @@
       "sha256": "sha256:d3839b6e4c646b9c2b8bf2ae84c97798b88abcdcd271b17817efb1d33a68c739"
     },
     {
-      "bytes": 11466,
+      "bytes": 11942,
       "mode": "0644",
       "path": "hooks/kimiflow_core/phase_context.py",
-      "sha256": "sha256:4f83a4e20249469b4cde9d6a1e9955a5b8e660b009c5df96d350ecc343476938"
+      "sha256": "sha256:c6e323a03cb3325763a439f6099e40883fa7b833992f3949e7f04e5b859f9402"
     },
     {
       "bytes": 14221,
       "mode": "0644",
       "path": "hooks/kimiflow_core/phase_reads.py",
       "sha256": "sha256:0fa9bf8578ac75f3233609182f38ca2c0e8d8dd89e7dabbe49ba9a1e05b431f5"
+    },
+    {
+      "bytes": 55587,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/program_engine.py",
+      "sha256": "sha256:d10beac3beb6ef5e11b52c3965bf45a9bcb27b634ac29d0597938639ad01fd08"
     },
     {
       "bytes": 24685,
@@ -404,6 +422,12 @@
       "sha256": "sha256:173d287f8a93cbbb618d5c4a588fe68831c8bd47aba56c60e7749bebddacc1f1"
     },
     {
+      "bytes": 20962,
+      "mode": "0644",
+      "path": "hooks/memory_router/project_delta.py",
+      "sha256": "sha256:273257d7ff58e5cf6b63aa438aafebb63d7bf07d0f5566b136f477d9fd2b7573"
+    },
+    {
       "bytes": 17513,
       "mode": "0644",
       "path": "hooks/memory_router/propose.py",
@@ -464,10 +488,10 @@
       "sha256": "sha256:0ff7d3f072245179d1c81c0beef945d56cb19ae89db357e5076ef1ebca6cd1a6"
     },
     {
-      "bytes": 34122,
+      "bytes": 34690,
       "mode": "0644",
       "path": "hooks/memory_router/store.py",
-      "sha256": "sha256:e5d0adecb6de4a11ab4af1b22ba96872c08c4ce978106601fdb89b7f68aa4d1f"
+      "sha256": "sha256:42cbb3ba21fa91b2c5057a60c89b03acc488e97ec7935b168d04a015dbf53cbe"
     },
     {
       "bytes": 31353,
@@ -504,6 +528,18 @@
       "mode": "0755",
       "path": "hooks/plan-blocker-gate.sh",
       "sha256": "sha256:809cc96b5428b2224fa59620a3d8f9f37045deadb49fc7d730ad70ae04365432"
+    },
+    {
+      "bytes": 325,
+      "mode": "0755",
+      "path": "hooks/program-engine.sh",
+      "sha256": "sha256:422443764870efaf90bef104e8f671d017668203c0ab5417cc3d87a638434504"
+    },
+    {
+      "bytes": 334,
+      "mode": "0755",
+      "path": "hooks/project-delta.sh",
+      "sha256": "sha256:ae307f5cb3978d79dfd250bd47e761b0c26cda32716cd4433af9b3ae3ae7e91d"
     },
     {
       "bytes": 420,
@@ -602,10 +638,10 @@
       "sha256": "sha256:69b1dd90595aecb844c9473889a41c65df9cc01a3005719e2cd8d0bb41dddba2"
     },
     {
-      "bytes": 8256,
+      "bytes": 8713,
       "mode": "0644",
       "path": "phases/PHASES.json",
-      "sha256": "sha256:61e448cd0fd5186e533478f5a1c1500c8017ba54a5c84480560acb94a7d1591f"
+      "sha256": "sha256:1f4414bc99ddb57753c5a941861bf87e0d15071f592a7c9e9eda735c18a33d54"
     },
     {
       "bytes": 15060,
@@ -656,10 +692,10 @@
       "sha256": "sha256:3e246f370d3cd5263d7659a23f9bd949284831114995165bc8598998fb835c16"
     },
     {
-      "bytes": 177107,
+      "bytes": 183743,
       "mode": "0644",
       "path": "reference.md",
-      "sha256": "sha256:733f297d040d7af9fda275f1a378b988c588a7308bc52b644c2724f1fc7b03d4"
+      "sha256": "sha256:40a703b1f165779bf96c4377c02e6dcf77103ce6559ca2f06e3bc4ed9fe5bee2"
     },
     {
       "bytes": 8319,
@@ -692,6 +728,12 @@
       "sha256": "sha256:f948700f371b73bca0f5e54d738e89a31e220172be5294c36e361e85851e1c94"
     },
     {
+      "bytes": 5350,
+      "mode": "0644",
+      "path": "references/program-v1.schema.json",
+      "sha256": "sha256:7e114a7a141e40c6c5b10a49f4fb2e942f18a7eb3867c4c7f4bcff1c358623bc"
+    },
+    {
       "bytes": 2696,
       "mode": "0644",
       "path": "references/runtime-distribution.md",
@@ -716,6 +758,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:e7ad3acee375535359c3051ada35f1fd64c798a76e2647cd87bfc5a2d896d083",
+  "runtime_fingerprint": "sha256:98f6369978bfc3d6bee0b04a434140cf989006ea96f6f802f6bb9425292fa3a0",
   "schema_version": 1
 }

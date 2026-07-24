@@ -32,6 +32,13 @@ _RECOVERY_TRANSITIONS = {
     ("phase_6", "research_stale", "phase_2", "recover_plan_strategy"),
     ("phase_7", "review_failed", "phase_5", "recover_build"),
 }
+_PHASE5_REPLAN_TRANSITIONS = {
+    ("phase_5", "verification_failed", "phase_5", "recover_build"),
+    ("phase_5", "strategy_drift", "phase_2", "recover_plan_strategy"),
+    ("phase_5", "architecture_falsified", "phase_2", "recover_plan_strategy"),
+    ("phase_5", "research_stale", "phase_2", "recover_plan_strategy"),
+}
+_PHASE5_REPLAN_EVENTS = {"strategy_drift", "architecture_falsified", "research_stale"}
 _CONFORMANCE_RECOVERY_EVENTS = {
     "code_gap",
     "scope_drift",
@@ -262,6 +269,8 @@ def load_graph():
         normalized_transitions.append(row)
 
     required = set(_RECOVERY_TRANSITIONS)
+    if manifest_schema >= 3:
+        required.update(_PHASE5_REPLAN_TRANSITIONS)
     for idx in range(8):
         required.add(
             (
@@ -428,6 +437,20 @@ def resolve_transition(run_dir, active=None, stale=None, item_counts=None, event
             return _payload(
                 graph, "invalid_state", current_node, "repair_state", current_node, event, "transition_missing"
             )
+        if current_node == "phase_5" and event in _PHASE5_REPLAN_EVENTS:
+            from . import build_replan
+
+            evidence = build_replan.verify_receipt(run_dir, event)
+            if not evidence.get("valid"):
+                return _payload(
+                    graph,
+                    "ready",
+                    current_node,
+                    "recover_build",
+                    current_node,
+                    event,
+                    "replan_evidence:%s" % evidence.get("reason", "invalid"),
+                )
         return _payload(
             graph, "ready", current_node, edge["action"], edge["to"], event, "event:%s" % event
         )

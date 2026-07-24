@@ -83,6 +83,28 @@ class PhaseContextTests(unittest.TestCase):
         with_policy = phase_context.compile_shadow(self.root, self.run, 3)["composite_basis"]
         self.assertNotEqual(with_source, with_policy)
 
+    def test_stale_project_delta_context_is_not_selected(self):
+        manifest = os.path.join(self.plugin, "phases", "PHASES.json")
+        with open(manifest, encoding="utf-8") as handle:
+            value = json.load(handle)
+        value["phases"][3]["context"]["optional"].append(
+            "PROJECT-DELTA-CONTEXT.md"
+        )
+        with open(manifest, "w", encoding="utf-8") as handle:
+            json.dump(value, handle)
+        self.write(
+            "PROJECT-DELTA-CONTEXT.md",
+            "<!--kimiflow:project-delta-context;schema=1;"
+            "rows=111111111111111111111111;"
+            "paths_sha256=1111111111111111111111111111111111111111111111111111111111111111;"
+            "max_words=120-->\n",
+        )
+
+        shadow = phase_context.compile_shadow(self.root, self.run, 3)
+
+        names = {row["name"] for row in shadow["selection"]}
+        self.assertNotIn("PROJECT-DELTA-CONTEXT.md", names)
+
     def test_mode_selected_artifact_is_required(self):
         os.unlink(os.path.join(self.run, "INTENT.md"))
         with self.assertRaisesRegex(phase_context.PhaseContextError, "artifact_missing:INTENT.md"):

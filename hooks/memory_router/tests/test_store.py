@@ -1,4 +1,5 @@
 import json, os, shutil, tempfile, unittest
+from unittest import mock
 from memory_router import store
 
 class TestStore(unittest.TestCase):
@@ -11,6 +12,15 @@ class TestStore(unittest.TestCase):
         store.atomic_write(p, "hello\n")
         with open(p) as f:
             self.assertEqual(f.read(), "hello\n")
+
+    def test_durable_atomic_write_fsyncs_file_and_parent(self):
+        p = os.path.join(self.d, "durable.txt")
+        real_fsync = os.fsync
+        with mock.patch.object(store.os, "fsync", wraps=real_fsync) as fsync:
+            store.atomic_write(p, "durable\n", durable=True)
+        self.assertGreaterEqual(fsync.call_count, 2)
+        with open(p, encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), "durable\n")
 
     def test_atomic_write_leaves_no_tmp_siblings(self):
         p = os.path.join(self.d, "out.txt")

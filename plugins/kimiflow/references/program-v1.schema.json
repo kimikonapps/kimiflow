@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kimiflow.local/schemas/program-v1.schema.json",
+  "title": "Kimiflow Program v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "goal",
+    "status",
+    "acceptance",
+    "tasks",
+    "checks",
+    "activation"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+    "goal": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "status": {"enum": ["active", "completed", "failed", "parked"]},
+    "acceptance": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,63}$"},
+          "description": {"type": "string", "minLength": 1, "maxLength": 1000}
+        }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 512,
+      "items": {"$ref": "#/$defs/task"}
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {"$ref": "#/$defs/check"}
+    },
+    "activation": {
+      "description": "Durable pending/active/terminal-finalization ownership binding with an explicit activation linearization and acknowledgement stage.",
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["task_id", "claim_digest", "linearized", "acknowledged"],
+          "properties": {
+            "task_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+            "claim_digest": {"$ref": "#/$defs/sha256"},
+            "linearized": {"type": "boolean"},
+            "acknowledged": {"type": "boolean"}
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "commit": {"type": "string", "pattern": "^[a-f0-9]{40,64}$"},
+    "completion_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run",
+        "claim_sha256",
+        "intent_sha256",
+        "state_sha256",
+        "verification_sha256",
+        "commit"
+      ],
+      "properties": {
+        "run": {"type": "string", "pattern": "^\\.kimiflow/[a-z][a-z0-9-]{0,63}$"},
+        "claim_sha256": {"$ref": "#/$defs/sha256"},
+        "intent_sha256": {"$ref": "#/$defs/sha256"},
+        "state_sha256": {"$ref": "#/$defs/sha256"},
+        "verification_sha256": {
+          "oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+        },
+        "commit": {"$ref": "#/$defs/commit"}
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "goal",
+        "order",
+        "depends_on",
+        "run",
+        "intent_sha256",
+        "status",
+        "completion_evidence"
+      ],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+        "goal": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "order": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "depends_on": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}
+        },
+        "run": {"type": "string", "pattern": "^\\.kimiflow/[a-z][a-z0-9-]{0,63}$"},
+        "intent_sha256": {"$ref": "#/$defs/sha256"},
+        "status": {"enum": ["pending", "ready", "active", "completed", "failed", "parked"]},
+        "completion_evidence": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/completion_evidence"}]
+        }
+      }
+    },
+    "check_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "program_id",
+        "check_id",
+        "contract_sha256",
+        "argv_sha256",
+        "task_evidence_sha256",
+        "head",
+        "exit_code",
+        "output_sha256"
+      ],
+      "properties": {
+        "program_id": {"type": "string"},
+        "check_id": {"type": "string"},
+        "contract_sha256": {"$ref": "#/$defs/sha256"},
+        "argv_sha256": {"$ref": "#/$defs/sha256"},
+        "task_evidence_sha256": {"$ref": "#/$defs/sha256"},
+        "head": {"$ref": "#/$defs/commit"},
+        "exit_code": {"type": "integer"},
+        "output_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "acceptance_refs", "argv", "status", "receipt"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+        "acceptance_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string"}
+        },
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {"type": "string", "minLength": 1, "maxLength": 2000}
+        },
+        "status": {"enum": ["pending", "passed", "failed"]},
+        "receipt": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/check_receipt"}]
+        }
+      }
+    }
+  }
+}

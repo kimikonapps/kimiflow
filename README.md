@@ -171,6 +171,20 @@ Phase context stays in shadow mode and never replaces the current phase file plu
 sections. The complete `reference.md` is not preloaded. Terminal scorecards remain
 readable through an explicit safe run path after the Active Run has retired.
 
+### Optional continuity for architecture changes and multi-run programs
+
+Normal single-run Kimiflow stays unchanged. For larger work, three explicit local commands are available:
+
+- `hooks/build-replan.sh` sends Phase 5 back to planning only with current evidence that a PLAN assumption is false; normal test failures stay in Build.
+- `hooks/project-delta.sh` records a verified architecture change after a successful committed run and injects it later only when current affected paths intersect.
+- `hooks/program-engine.sh` validates a `.kimiflow/programs/<name>/PROGRAM.json` DAG and selects one deterministic next-ready run.
+
+The Program Engine is deliberately serial and mechanical. It journals and durably acknowledges activation,
+claims each run exclusively, binds terminal evidence and final checks, but never starts an agent, run, branch, or worktree. Projects that do
+not create a Program or Project Delta pay no model-context cost. See
+[`references/program-v1.schema.json`](references/program-v1.schema.json) and
+[`reference.md`](reference.md#optional-project-continuity-and-program-scheduling).
+
 ## Demo
 
 ![Kimiflow launcher and gated feature/fix flow](docs/demo/kimiflow.gif)

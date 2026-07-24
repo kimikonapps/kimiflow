@@ -124,6 +124,22 @@ Netzwerkdienst oder Provider. Der Phase Context bleibt Shadow-Evidenz und ersetz
 plus deren exakt zugewiesene Referenzabschnitte; `reference.md` wird nicht vollständig vorgeladen.
 Terminale Scorecards bleiben nach dem Ende des Active Run über einen expliziten sicheren Run-Pfad lesbar.
 
+### Optionale Kontinuität für Architekturänderungen und Multi-Run-Programme
+
+Der normale einzelne Kimiflow-Run bleibt unverändert. Für größere Vorhaben gibt es drei explizite lokale
+Kommandos:
+
+- `hooks/build-replan.sh` springt aus Phase 5 nur mit aktueller Evidence für eine widerlegte PLAN-Annahme zurück; normale Testfehler bleiben im Build.
+- `hooks/project-delta.sh` speichert nach einem erfolgreichen committeten Run eine verifizierte Architekturänderung und lädt sie später nur bei passenden betroffenen Pfaden.
+- `hooks/program-engine.sh` validiert einen DAG unter `.kimiflow/programs/<name>/PROGRAM.json` und wählt genau einen deterministischen nächsten Run.
+
+Die Program Engine bleibt absichtlich seriell und mechanisch. Sie journalisiert und bestätigt Aktivierungen
+dauerhaft, bindet einen Run exklusiv sowie terminale Evidence und finale Checks, startet aber nie Agent, Run,
+Branch oder Worktree. Ohne
+Program beziehungsweise Project Delta entsteht kein zusätzlicher Modell-Kontext. Details:
+[`references/program-v1.schema.json`](references/program-v1.schema.json) und
+[`reference.md`](reference.md#optional-project-continuity-and-program-scheduling).
+
 ## Demo
 
 ![Kimiflow-Launcher und gegateter Feature-/Fix-Flow](docs/demo/kimiflow.gif)

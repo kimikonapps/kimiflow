@@ -148,6 +148,18 @@ def _selection_names(policy, mode):
     return list(policy["required"]) + list(policy.get(mode, [])) + list(policy["optional"])
 
 
+def _optional_artifact_current(root, name, payload, state_payload):
+    if name != "PROJECT-DELTA-CONTEXT.md":
+        return True
+    from memory_router import project_delta
+
+    return project_delta.context_payload_current(
+        root,
+        payload,
+        project_delta.affected_paths_from_state(state_payload),
+    )
+
+
 def _compile_descriptor(root, run_descriptor, phase):
     entry = phase_reads.phase_entry(root, phase)
     policy = entry["context"]
@@ -177,6 +189,10 @@ def _compile_descriptor(root, run_descriptor, phase):
             run_descriptor, name, policy["max_file_bytes"], required=name in required
         )
         if payload is None:
+            continue
+        if name not in required and not _optional_artifact_current(
+            root, name, payload, state_payload
+        ):
             continue
         total += len(payload)
         if total > policy["max_total_bytes"]:

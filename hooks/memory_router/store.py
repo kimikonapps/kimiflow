@@ -670,7 +670,8 @@ def ensure_local_directory(root, directory, mode=0o700):
 
 
 def atomic_write(path, data, mode=0o644, refuse_symlink=True, expected=None,
-                 expected_snapshot=None, allow_detached=False, max_bytes=None):
+                 expected_snapshot=None, allow_detached=False, max_bytes=None,
+                 durable=False):
     with path_lock(path):
         anchor = _active_anchor(path)
         if anchor is not None and not allow_detached and not _anchor_current(anchor):
@@ -701,6 +702,9 @@ def atomic_write(path, data, mode=0o644, refuse_symlink=True, expected=None,
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 handle.write(data)
+                if durable:
+                    handle.flush()
+                    os.fsync(handle.fileno())
             tmp_anchor = _active_anchor(tmp)
             if tmp_anchor is not None:
                 os.chmod(os.path.basename(tmp), mode, dir_fd=tmp_anchor["descriptor"])
@@ -774,6 +778,16 @@ def atomic_write(path, data, mode=0o644, refuse_symlink=True, expected=None,
             if (anchor is not None and not allow_detached
                     and not _anchor_current(anchor)):
                 raise ConcurrentWriteError("local path parent changed")
+            if durable:
+                if anchor is not None:
+                    os.fsync(anchor["descriptor"])
+                else:
+                    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+                    directory = os.open(os.path.dirname(path) or ".", flags)
+                    try:
+                        os.fsync(directory)
+                    finally:
+                        os.close(directory)
         finally:
             if tmp:
                 try:

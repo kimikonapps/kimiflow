@@ -28,6 +28,10 @@ def flow_contract():
     transitions.extend(
         [
             {"from": "phase_4", "event": "plan_recovery", "to": "phase_2", "action": "recover_plan_strategy"},
+            {"from": "phase_5", "event": "verification_failed", "to": "phase_5", "action": "recover_build"},
+            {"from": "phase_5", "event": "strategy_drift", "to": "phase_2", "action": "recover_plan_strategy"},
+            {"from": "phase_5", "event": "architecture_falsified", "to": "phase_2", "action": "recover_plan_strategy"},
+            {"from": "phase_5", "event": "research_stale", "to": "phase_2", "action": "recover_plan_strategy"},
             {"from": "phase_6", "event": "verification_failed", "to": "phase_5", "action": "recover_build"},
             {"from": "phase_6", "event": "code_gap", "to": "phase_5", "action": "recover_build"},
             {"from": "phase_6", "event": "scope_drift", "to": "phase_5", "action": "recover_build"},
@@ -144,6 +148,15 @@ class TestFlowGraph(unittest.TestCase):
 
         self.write_manifest(schema_version=3)
         self.assertEqual(flow_graph.load_graph()["manifest_schema_version"], 3)
+        missing_phase5_replan = flow_contract()
+        missing_phase5_replan["transitions"] = [
+            row
+            for row in missing_phase5_replan["transitions"]
+            if not (row["from"] == "phase_5" and row["event"] == "strategy_drift")
+        ]
+        self.write_manifest(missing_phase5_replan, schema_version=3)
+        with self.assertRaises(flow_graph.FlowGraphError):
+            flow_graph.load_graph()
 
         duplicate = flow_contract()
         duplicate["transitions"].append(dict(duplicate["transitions"][0]))
@@ -203,6 +216,24 @@ class TestFlowGraph(unittest.TestCase):
             stale_routed = self.resolve(event=event, stale={"risk": "needs_revalidation"})
             self.assertEqual((stale_routed["action"], stale_routed["target_node"]), ("recover_plan_strategy", "phase_2"))
 
+        self.write_state(current=5)
+        with mock.patch(
+            "kimiflow_core.build_replan.verify_receipt",
+            return_value={"valid": False, "reason": "receipt_missing"},
+        ):
+            for event in ("strategy_drift", "architecture_falsified", "research_stale"):
+                routed = self.resolve(event=event)
+                self.assertEqual((routed["action"], routed["target_node"]), ("recover_build", "phase_5"))
+                self.assertEqual(routed["reason"], "replan_evidence:receipt_missing")
+        with mock.patch(
+            "kimiflow_core.build_replan.verify_receipt",
+            return_value={"valid": True, "reason": "current"},
+        ):
+            routed = self.resolve(event="architecture_falsified")
+            self.assertEqual((routed["action"], routed["target_node"]), ("recover_plan_strategy", "phase_2"))
+        ordinary = self.resolve(event="verification_failed")
+        self.assertEqual((ordinary["action"], ordinary["target_node"]), ("recover_build", "phase_5"))
+
         stale = self.resolve(event="verification_failed", stale={"risk": "needs_revalidation"})
         self.assertEqual(stale["action"], "revalidate_then_refresh_baseline")
 
@@ -224,6 +255,12 @@ class TestFlowGraph(unittest.TestCase):
         self.write_state(current=2)
         early_item = self.resolve(counts={"pending": 1, "built": 0, "rejected": 0, "open": 1})
         self.assertEqual((early_item["action"], early_item["target_node"]), ("run_phase", "phase_2"))
+
+    def test_phase5_ordinary_failure_stays_local(self):
+        self.write_state(current=5)
+        routed = self.resolve(event="verification_failed")
+        self.assertEqual(routed["current_node"], "phase_5")
+        self.assertEqual((routed["action"], routed["target_node"]), ("recover_build", "phase_5"))
 
     def test_legacy_manifest_preserves_coarse_action(self):
         self.write_manifest(schema_version=1)
