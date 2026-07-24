@@ -5,19 +5,19 @@
       "bytes": 511,
       "mode": "0644",
       "path": ".claude-plugin/plugin.json",
-      "sha256": "sha256:133f4989606028732661ccf9e7215e999d8f330f204bd7f7cdd0a4df417ed506"
+      "sha256": "sha256:80cfcbf4dadd818846ffa93b86e866a8e86948ae4e03e1758fd1b0d1dab709a7"
     },
     {
       "bytes": 3614,
       "mode": "0644",
       "path": ".codex-plugin/plugin.json",
-      "sha256": "sha256:624e0f46aaec52fede4a48c827e3cbbb8494c5264ed17d8478ba45503d3bbb16"
+      "sha256": "sha256:7ac1302facc5ea600734e4aa51bef9c7a2eaf3843f84aa213474cef25c77754f"
     },
     {
       "bytes": 16592,
       "mode": "0644",
       "path": "COMPATIBILITY.md",
-      "sha256": "sha256:ed742c8060c5c310b674fd43adc35b00e467defce3e289f82697d37a937fda71"
+      "sha256": "sha256:e2d600319a43ff54201fc953617098d35f4e0478239f7c67e87b25c2266c3c75"
     },
     {
       "bytes": 1064,
@@ -776,6 +776,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:0f116f0d542365d56bef70256037ffd3fe32608965cbd7c4c83e22aad3786124",
+  "runtime_fingerprint": "sha256:392f4118ea579233ac16bd5169d3e9701c6b83f77b7f390bd206ff0702613ae8",
   "schema_version": 1
 }

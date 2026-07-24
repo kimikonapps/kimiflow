@@ -4,6 +4,23 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.18
+
+The audited project-release release: Kimiflow can learn, verify, and safely replay each repository's own release
+process without coupling normal feature or fix runs to a provider, hosted service, or global workflow.
+
+### Added
+
+- Optional provider-neutral project release profiles with bounded tracked-source discovery, digest-bound model
+  audits, one-run authorization, serial effect receipts, mechanical preconditions/postconditions, failure-bound
+  re-audits, and crash-safe resume.
+- A natural `kimiflow release` / “Release Flow” route that loads release context only on demand and keeps project
+  state local while ordinary Kimiflow use remains unchanged.
+- Positive command grammars and isolated probe environments that reject unsafe shell/interpreter forms, remote
+  Git transports, helper-capable commands, environment injection, and unbound local command inputs.
+
 ### Fixed
 
 - The immutable-release publisher now tolerates bounded GitHub list-consistency delay after asset upload while
