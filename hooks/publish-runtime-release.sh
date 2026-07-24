@@ -120,11 +120,21 @@ ARCHIVE="$OUTPUT/kimiflow-runtime-${TAG#kimiflow--v}.zip"
 }
 
 RELEASE_LIST="$WORK/releases.json"
-gh api \
-  -H "Accept: application/vnd.github+json" \
-  -H "X-GitHub-Api-Version: 2026-03-10" \
-  --paginate "repos/$REPOSITORY/releases?per_page=100" >"$RELEASE_LIST"
-MATCH_COUNT="$(jq -s --arg tag "$TAG" '[.[] | if type == "array" then .[] else . end | select(.tag_name == $tag)] | length' "$RELEASE_LIST")"
+refresh_release_list() {
+  gh api \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2026-03-10" \
+    --paginate "repos/$REPOSITORY/releases?per_page=100" >"$RELEASE_LIST"
+}
+
+release_match_count() {
+  jq -s --arg tag "$TAG" \
+    '[.[] | if type == "array" then .[] else . end | select(.tag_name == $tag)] | length' \
+    "$RELEASE_LIST"
+}
+
+refresh_release_list
+MATCH_COUNT="$(release_match_count)"
 [ "$MATCH_COUNT" -le 1 ] || {
   echo "publish-runtime-release: duplicate release metadata for tag" >&2
   exit 1
@@ -150,15 +160,22 @@ gh release upload "$TAG" "$MANIFEST" "$ARCHIVE" \
   --clobber
 
 DRAFT_JSON="$WORK/draft-release.json"
-gh api \
-  -H "Accept: application/vnd.github+json" \
-  -H "X-GitHub-Api-Version: 2026-03-10" \
-  --paginate "repos/$REPOSITORY/releases?per_page=100" >"$RELEASE_LIST"
-MATCH_COUNT="$(jq -s --arg tag "$TAG" '[.[] | if type == "array" then .[] else . end | select(.tag_name == $tag)] | length' "$RELEASE_LIST")"
-[ "$MATCH_COUNT" -eq 1 ] || {
-  echo "publish-runtime-release: draft release metadata is missing or duplicated" >&2
-  exit 1
-}
+METADATA_ATTEMPT=1
+while :; do
+  refresh_release_list
+  MATCH_COUNT="$(release_match_count)"
+  [ "$MATCH_COUNT" -le 1 ] || {
+    echo "publish-runtime-release: duplicate draft release metadata after upload" >&2
+    exit 1
+  }
+  [ "$MATCH_COUNT" -ne 1 ] || break
+  [ "$METADATA_ATTEMPT" -lt 5 ] || {
+    echo "publish-runtime-release: draft release metadata is still missing after bounded retry" >&2
+    exit 1
+  }
+  METADATA_ATTEMPT=$((METADATA_ATTEMPT + 1))
+  sleep 1
+done
 jq -se --arg tag "$TAG" \
   '[.[] | if type == "array" then .[] else . end | select(.tag_name == $tag)][0]' \
   "$RELEASE_LIST" >"$DRAFT_JSON"

@@ -74,7 +74,7 @@ if [ "$1" = api ]; then
       [ ! -f "$count_file" ] || count="$(cat "$count_file")"
       count=$((count + 1))
       printf '%s\n' "$count" >"$count_file"
-      if [ "$count" -eq 1 ]; then
+      if [ "$count" -le 2 ]; then
         printf '[]\n'
       else
         printf '[{"id":123,"tag_name":"kimiflow--v1.2.3","draft":true}]\n'
@@ -101,6 +101,7 @@ PATH="$BIN:$PATH" PUBLISH_TEST_LOG="$LOG" PUBLISH_TEST_SOURCE="$SOURCE" PUBLISH_
 
 grep -q '^draft_verified$' "$LOG"
 grep -q '^published_verified$' "$LOG"
+[ "$(cat "$STATE/release-list-count")" -eq 3 ]
 draft_line="$(grep -n 'release create' "$LOG" | cut -d: -f1)"
 upload_line="$(grep -n 'release upload' "$LOG" | cut -d: -f1)"
 verify_line="$(grep -n '^draft_verified$' "$LOG" | cut -d: -f1)"
@@ -157,6 +158,7 @@ publisher_line="$(grep -nF 'Run `hooks/publish-runtime-release.sh --tag' "$ROOT/
 [ "$push_line" -lt "$publisher_line" ]
 
 printf 'ok   immutable_draft_publish_order\n'
+printf 'ok   transient_release_metadata_visibility_retried\n'
 printf 'ok   mutable_repository_rejected_prepublication\n'
 printf 'ok   remote_tag_mismatch_rejected_prepublication\n'
 printf 'ok   replacement_refs_cannot_change_exported_candidate\n'

@@ -4,7 +4,10 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Fixed
+
+- The immutable-release publisher now tolerates bounded GitHub list-consistency delay after asset upload while
+  still rejecting duplicate or persistently missing draft metadata.
 
 ## 0.2.17
 
