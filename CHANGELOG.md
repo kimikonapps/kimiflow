@@ -6,6 +6,28 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.20
+
+The adaptive-execution and workspace-routing release: Kimiflow can select proven lower-cost execution paths,
+retrieve bounded structural code context, and isolate concurrent write runs without weakening its evidence gates.
+
+### Added
+
+- Capability-negotiated adaptive execution profiles with runtime-bound evaluation evidence, terminal outcome
+  revocation, deterministic independent audit sampling, and privacy-safe model identity binding.
+- Optional large-run code intelligence with root- and snapshot-confined provider contracts, Shadow-first retrieval
+  evaluation, strict token/quality budgets, and automatic fallback to the existing lexical path.
+- An autonomous one-slot worktree broker that routes a dirty or busy primary into one owned, locked worktree,
+  queues later runs FIFO, checks semantic/path collisions, reconciles safely, fast-forwards delivery, and retires
+  only ancestry-proven terminal work.
+
+### Fixed
+
+- Adapter conformance receipts now bind the exact runtime, policy, prompt, capability, model-profile, and baseline
+  identities required to trust an adaptive route.
+- Adaptive plan and verification contracts now fail closed when evidence is stale, incomplete, or incompatible,
+  while compact and unsupported-host paths retain their existing low-overhead behavior.
+
 ## 0.2.19
 
 The adaptive-control release: Kimiflow now spends context, model capacity, memory, and maintenance work only
