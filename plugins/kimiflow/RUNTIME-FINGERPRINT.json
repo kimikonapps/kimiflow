@@ -1,5 +1,5 @@
 {
-  "file_count": 144,
+  "file_count": 147,
   "files": [
     {
       "bytes": 511,
@@ -38,10 +38,10 @@
       "sha256": "sha256:e290a400d016f8c079c469501d4492c9c81e1f302b46ce2b6ede6d29a9352afb"
     },
     {
-      "bytes": 16996,
+      "bytes": 16998,
       "mode": "0644",
       "path": "SKILL.md",
-      "sha256": "sha256:789ed371e9e7b71ee1b36903cef5afe85c5db4dfc59bd25b472735ab90c7e6ee"
+      "sha256": "sha256:c6103d194cb3a8cbbe2f0dc8b85105afdd7faa36ca895a46f9d03f3e16617c36"
     },
     {
       "bytes": 5051,
@@ -116,10 +116,10 @@
       "sha256": "sha256:5d8cf287375475d042bd568f44b2ff4ad496d7e76e857572b6c3921d376440ce"
     },
     {
-      "bytes": 5231,
+      "bytes": 325,
       "mode": "0755",
       "path": "hooks/current-state-gate.sh",
-      "sha256": "sha256:b92a9a9db3fbca38e7be2e50a600ef43ab99401075739d9783b23a14923a91f9"
+      "sha256": "sha256:c3aeff33151de9d28e761e886f39ed7b3729f85263de89c68f8527f1f4665313"
     },
     {
       "bytes": 6387,
@@ -236,6 +236,12 @@
       "sha256": "sha256:a6574d8dff058ea51720728265daf560f6fa17a543bf102ef757d477014280be"
     },
     {
+      "bytes": 18275,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/current_state.py",
+      "sha256": "sha256:7951913ab6d1a32d4760a28996ce612c53c2f56aaaa9a080e24ad77b9495efb2"
+    },
+    {
       "bytes": 11020,
       "mode": "0644",
       "path": "hooks/kimiflow_core/eval_receipt.py",
@@ -312,6 +318,12 @@
       "mode": "0644",
       "path": "hooks/kimiflow_core/release_profile.py",
       "sha256": "sha256:53895944940ba8b8ef000f9a0c906bd9d8e0f7c3a73398573465f0bd3322d0c0"
+    },
+    {
+      "bytes": 33375,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/review_convergence.py",
+      "sha256": "sha256:f1002ddd61b50d85e22cea30d26391dea28afabc15f663e28bbdc295153aff45"
     },
     {
       "bytes": 15467,
@@ -476,10 +488,10 @@
       "sha256": "sha256:cb682ddbfcf66df8ae75aba6d31bb936de1ccbc92fd970738c08af1f2542781a"
     },
     {
-      "bytes": 28749,
+      "bytes": 29357,
       "mode": "0644",
       "path": "hooks/memory_router/outcomes.py",
-      "sha256": "sha256:70a0e2c1a09232ef40b6aaf121eab23f8fc0249ecd55b701f627a3ac51fe67a5"
+      "sha256": "sha256:4fc94fc2559c38c0163036e00df69a0143513a830c9c3cefb24a6ccf8d64a26d"
     },
     {
       "bytes": 715,
@@ -650,16 +662,22 @@
       "sha256": "sha256:fd9599494be0fddfc592907f7b4fc2b13ba89bce77baf8a96bb0946044a52955"
     },
     {
-      "bytes": 25438,
+      "bytes": 27470,
       "mode": "0755",
       "path": "hooks/resolve-review-gate.sh",
-      "sha256": "sha256:fd945d4a6c4caf52e3b8358ac252d8fb6ecabc42041ac6ab92630c4875efcd4d"
+      "sha256": "sha256:202a57784f95e9d6f2c6a954f11006a7afe243f371a9d2e954567ce8b190150c"
     },
     {
       "bytes": 4036,
       "mode": "0755",
       "path": "hooks/resolve-verbosity.sh",
       "sha256": "sha256:2ff0137f63206419dda99077d6595d6d3bb892e6fba634da0d48616f4d1e1d77"
+    },
+    {
+      "bytes": 351,
+      "mode": "0755",
+      "path": "hooks/review-convergence-gate.sh",
+      "sha256": "sha256:dc6fce8ec38a7b476adee7258de127dacb095317ac402051e23cdfffd46af223"
     },
     {
       "bytes": 305,
@@ -728,10 +746,10 @@
       "sha256": "sha256:ba0b772b778c0f2b7209ceb12199b285ffa3f2b2a6a607c6125d7411670aa90b"
     },
     {
-      "bytes": 15942,
+      "bytes": 16633,
       "mode": "0644",
       "path": "phases/phase-0-setup.md",
-      "sha256": "sha256:99c8dfddf64eda8de1555713cffe5df56dba0f1e1d5c18b4162f5fa7ec7b4781"
+      "sha256": "sha256:d5d59a9b2e08d4c52c01318fc60fa4e823c0d8a1c57545766315e5cf958e51a3"
     },
     {
       "bytes": 5040,
@@ -740,10 +758,10 @@
       "sha256": "sha256:3739aa87e5bb6cca375bf42345480a544ef2f19be331f52f6a6d3bb7e09154bc"
     },
     {
-      "bytes": 19632,
+      "bytes": 20115,
       "mode": "0644",
       "path": "phases/phase-2-understand.md",
-      "sha256": "sha256:5c5568b524f6bac747b0418d7b7a5afc9ac5103cb7ad2bc15a1e554e32096d13"
+      "sha256": "sha256:4725b304cb034b410e5f443de42de990bcff0ea30a0288a3d9c8b226a204e65f"
     },
     {
       "bytes": 9295,
@@ -758,10 +776,10 @@
       "sha256": "sha256:9f5e8dd1b89c8b997224056b1d6f951a1a6d128bfbaba3a003f92a689f5b5e9f"
     },
     {
-      "bytes": 5273,
+      "bytes": 5975,
       "mode": "0644",
       "path": "phases/phase-5-build.md",
-      "sha256": "sha256:551d46094362b5050e518d1d86b557a1b7505e794afed8ee6fad493d1b294a08"
+      "sha256": "sha256:61eb87f4439d84dd33fedc1bc4541815a2bff6667914f6ad443b0561141af838"
     },
     {
       "bytes": 9622,
@@ -770,16 +788,16 @@
       "sha256": "sha256:be46d70174cd6efddd14290f4c2c4e1b995a6125cc72797fdd61f2f5d707c85b"
     },
     {
-      "bytes": 17388,
+      "bytes": 19956,
       "mode": "0644",
       "path": "phases/phase-7-review-commit.md",
-      "sha256": "sha256:140c239e2fb97d73acfecd72e39fd40ece3c3695f4117f4e2613b876bab41f34"
+      "sha256": "sha256:9ddbe1c2c868933b8b8535917ae658df7f1196801f181dcff4ccaa8fa359a390"
     },
     {
-      "bytes": 196205,
+      "bytes": 203792,
       "mode": "0644",
       "path": "reference.md",
-      "sha256": "sha256:251af4540b67e24b29f772f5ff997cd43e6a96b04c793d136d7cd45db6048b62"
+      "sha256": "sha256:9cddf2115f801ec0f05c8d3fd2b6686ff970282d74abb78ba039fd9ab1cbfc22"
     },
     {
       "bytes": 1406,
@@ -854,10 +872,10 @@
       "sha256": "sha256:f1e7d6c42d0460d63aef67873456b6cb6c590be2f6cb75034351726353baa907"
     },
     {
-      "bytes": 14634,
+      "bytes": 14785,
       "mode": "0644",
       "path": "skills/kimiflow/SKILL.md",
-      "sha256": "sha256:0c0e6057723bb232a17c10e713cba0c465bbe74914460e971ecb2ec57e0e0d5b"
+      "sha256": "sha256:6bcb79831c32554dbf4ebc81cdc0db6b825e65ac4aa9645005f15d424442deb2"
     },
     {
       "bytes": 244,
@@ -866,6 +884,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:ff0d7a3439d670fed9dd81bb7d5de5350f3aeee77df42d4b1113dce2daf790ec",
+  "runtime_fingerprint": "sha256:3a339b3dd0798a0cc43331f2b33d9e039305eb72a86829f04c3d9f59df444e00",
   "schema_version": 1
 }

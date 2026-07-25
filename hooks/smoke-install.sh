@@ -132,8 +132,22 @@ if [ -x "$ROOT/hooks/suggest-affected-sections.sh" ] && bash -n "$ROOT/hooks/sug
 if [ -x "$ROOT/hooks/test-suggest-affected-sections.sh" ] && bash -n "$ROOT/hooks/test-suggest-affected-sections.sh" 2>/dev/null; then ok "suggest-affected test ok"; else bad "suggest-affected test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/map-staleness-nudge.sh" ] && bash -n "$ROOT/hooks/map-staleness-nudge.sh" 2>/dev/null; then ok "map staleness nudge helper ok"; else bad "map staleness nudge helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-map-staleness-nudge.sh" ] && bash -n "$ROOT/hooks/test-map-staleness-nudge.sh" 2>/dev/null; then ok "map staleness nudge test ok"; else bad "map staleness nudge test missing/not-exec/bad"; fi
-if [ -x "$ROOT/hooks/current-state-gate.sh" ] && bash -n "$ROOT/hooks/current-state-gate.sh" 2>/dev/null; then ok "current-state gate helper ok"; else bad "current-state gate helper missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/current-state-gate.sh" ] \
+  && bash -n "$ROOT/hooks/current-state-gate.sh" 2>/dev/null \
+  && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import current_state' 2>/dev/null; then
+  ok "current-state gate helper ok"
+else
+  bad "current-state gate helper missing/not-exec/unloadable"
+fi
 if [ -x "$ROOT/hooks/test-current-state-gate.sh" ] && bash -n "$ROOT/hooks/test-current-state-gate.sh" 2>/dev/null; then ok "current-state gate test ok"; else bad "current-state gate test missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/review-convergence-gate.sh" ] \
+  && bash -n "$ROOT/hooks/review-convergence-gate.sh" 2>/dev/null \
+  && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import review_convergence' 2>/dev/null; then
+  ok "review convergence gate helper ok"
+else
+  bad "review convergence gate helper missing/not-exec/unloadable"
+fi
+if [ -x "$ROOT/hooks/test-review-convergence-gate.sh" ] && bash -n "$ROOT/hooks/test-review-convergence-gate.sh" 2>/dev/null; then ok "review convergence gate test ok"; else bad "review convergence gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/discovery-gate.sh" ] && bash -n "$ROOT/hooks/discovery-gate.sh" 2>/dev/null; then ok "discovery gate helper ok"; else bad "discovery gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-discovery-gate.sh" ] && bash -n "$ROOT/hooks/test-discovery-gate.sh" 2>/dev/null; then ok "discovery gate test ok"; else bad "discovery gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/working-tree-gate.sh" ] && bash -n "$ROOT/hooks/working-tree-gate.sh" 2>/dev/null; then ok "working-tree gate helper ok"; else bad "working-tree gate helper missing/not-exec/bad"; fi
@@ -181,6 +195,8 @@ if grep -q 'Conformance contract: 1' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'kimiflow:decision-contract contract=1 decisions=<1..5>' "$ROOT/phases/phase-3-plan.md" \
   && grep -q 'kimiflow:conformance contract=1 status=' "$ROOT/phases/phase-6-verify.md" \
   && grep -q 'Conformance serialization preflight' "$ROOT/phases/phase-7-review-commit.md" \
+  && grep -q 'code-changing audit slice' "$ROOT/phases/phase-0-setup.md" \
+  && grep -q 'release-discovered product-code/config repair' "$ROOT/reference.md" \
   && grep -q 'conformance gate closed' "$ROOT/hooks/kimiflow_core/active_run.py" \
   && grep -q 'Implementation conformance (adaptive Phase 6)' "$ROOT/reference.md"; then
   ok "adaptive implementation conformance wiring"
@@ -192,6 +208,9 @@ if grep -q 'Flow schema: 5' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'kimiflow:convergence contract=1 risk=' "$ROOT/phases/phase-3-plan.md" \
   && grep -q 'finding-contract 1' "$ROOT/phases/phase-4-review-approval.md" \
   && grep -q 'root-class-repeated' "$ROOT/hooks/resolve-review-gate.sh" \
+  && grep -q 'review_snapshot_sha256' "$ROOT/hooks/kimiflow_core/review_convergence.py" \
+  && grep -q 'requires explicit --epoch-start' "$ROOT/hooks/resolve-review-gate.sh" \
+  && grep -q 'research_subject_sha256' "$ROOT/hooks/kimiflow_core/current_state.py" \
   && grep -q 'kimiflow:convergence-verification contract=1 risk=' "$ROOT/phases/phase-6-verify.md" \
   && grep -q 'convergence_contract' "$ROOT/hooks/kimiflow_core/active_run.py" \
   && grep -q 'schema-4+ run' "$ROOT/hooks/kimiflow_core/workspace_preflight.py"; then

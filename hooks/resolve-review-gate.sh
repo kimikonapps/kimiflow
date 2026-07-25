@@ -8,11 +8,12 @@
 # `FINDING <SEVERITY>` at column 0; <ref> and <reason> may be arbitrary UTF-8. Output is stable
 # reason-codes (the orchestrator localizes for display).
 #
-# Usage: resolve-review-gate.sh <findings-dir> --round <N> --expect <lensA,lensB> [--gate plan|code] [--epoch-start 1] [--cap 3] [--finding-contract 1]
+# Usage: resolve-review-gate.sh <findings-dir> --round <N> --expect <lensA,lensB> [--gate plan|code] [--epoch-start 1] [--cap 3] [--finding-contract 1] [--review-axes <axisCSV>]
 # Output (one TAB line, exit 0): <VERDICT>\t<open_count|->\t<reason_code>\t<detail>
 #   VERDICT ∈ {OPEN,CLOSED}; reason_code ∈ {clean,open-findings,incomplete,malformed,unproven-resolution,root-class-repeated,oscillation,reappeared,cap-reached}
 # R2 invariant targets: hooks/resolve-review-gate.sh; --round <N> --expect <lensCSV>; --expect code-verified
 set -u
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 emit() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "${4:-}"; exit 0; }
 LEGACY_FINDING_RE='^FINDING (BLOCKER|HIGH|MEDIUM|LOW) .+ :: .+$'
 CONTRACT_FINDING_RE='^FINDING (BLOCKER|HIGH|MEDIUM|LOW) .+ :: .+ :: class=[a-z0-9][a-z0-9-]{0,63} :: verify=(command|verifier):[^[:cntrl:]]+ :: evidence=review-evidence/[A-Za-z0-9._/-]+@[a-f0-9]{64}$'
@@ -65,15 +66,16 @@ state_value_count() {
   ' "$file" 2>/dev/null
 }
 
-dir=""; round=""; expect=""; gate=""; cap=3; epoch_start=1; epoch_arg=false; finding_contract=""
+dir=""; round=""; expect=""; gate=""; cap=3; cap_arg=false; epoch_start=1; epoch_arg=false; finding_contract=""; review_axes=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --round)       round="${2:-}";       shift 2 || shift ;;
     --expect)      expect="${2:-}";      shift 2 || shift ;;
     --gate)        gate="${2:-}";        shift 2 || shift ;;
-    --cap)         cap="${2:-3}";         shift 2 || shift ;;
+    --cap)         cap="${2:-3}";        cap_arg=true; shift 2 || shift ;;
     --epoch-start) epoch_start="${2:-}"; epoch_arg=true; shift 2 || shift ;;
     --finding-contract) finding_contract="${2:-}"; shift 2 || shift ;;
+    --review-axes) review_axes="${2:-}"; shift 2 || shift ;;
     -*)            shift ;;
     *)             [ -z "$dir" ] && dir="$1"; shift ;;
   esac
@@ -109,6 +111,37 @@ elif [ -n "$finding_contract" ] && [ "$finding_contract" != "1" ]; then
 fi
 contracted=false
 [ "$finding_contract" = "1" ] && contracted=true
+
+if [ "$contracted" = true ] && [ "$expect" = code-verified ] && [ "$gate" != code ]; then
+  emit CLOSED - malformed "contracted code review requires --gate code"
+fi
+
+if [ "$contracted" = true ] && [ "$gate" = code ]; then
+  [ "$expect" = code-verified ] \
+    || emit CLOSED - malformed "contracted code gate requires --expect code-verified"
+  [ "$epoch_arg" = true ] \
+    || emit CLOSED - malformed "contracted code gate requires explicit --epoch-start"
+  [ "$cap_arg" = true ] \
+    || emit CLOSED - malformed "contracted code gate requires explicit --cap"
+  [ -n "$review_axes" ] \
+    || emit CLOSED - incomplete "contracted code gate requires --review-axes"
+  [ -x "$SCRIPT_DIR/review-convergence-gate.sh" ] \
+    || emit CLOSED - malformed "review convergence gate unavailable"
+  preflight_out="$("$SCRIPT_DIR/review-convergence-gate.sh" preflight \
+    --run "$run_dir" --round "$round" 2>/dev/null)" \
+    || emit CLOSED - malformed "review trajectory preflight failed"
+  preflight_status="$(printf '%s\n' "$preflight_out" | awk -F '\t' 'NR == 1 { print $2 }')"
+  preflight_reason="$(printf '%s\n' "$preflight_out" | awk -F '\t' 'NR == 1 { sub(/^reason=/, "", $4); print $4 }')"
+  [ "$preflight_status" = OPEN ] \
+    || emit CLOSED - incomplete "review trajectory ${preflight_reason:-invalid}"
+  saturation_out="$("$SCRIPT_DIR/review-convergence-gate.sh" saturation \
+    --run "$run_dir" --round "$round" --axes "$review_axes" 2>/dev/null)" \
+    || emit CLOSED - malformed "review saturation preflight failed"
+  saturation_status="$(printf '%s\n' "$saturation_out" | awk -F '\t' 'NR == 1 { print $2 }')"
+  saturation_reason="$(printf '%s\n' "$saturation_out" | awk -F '\t' 'NR == 1 { sub(/^reason=/, "", $4); print $4 }')"
+  [ "$saturation_status" = OPEN ] \
+    || emit CLOSED - incomplete "review saturation ${saturation_reason:-invalid}"
+fi
 
 safe_evidence_path() {
   local rel="$1"

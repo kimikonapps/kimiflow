@@ -74,7 +74,9 @@ class OutcomeFixture(unittest.TestCase):
             "Scope: large\n"
             "Recovery: clean\n"
             "Phase 6: done\n"
-            "Run started head: %s\n" % self.started,
+            "Run started head: %s\n"
+            "Affected files:\n"
+            "- app.py\n" % self.started,
         )
         self.write(
             "INTENT.md",
@@ -122,6 +124,46 @@ class OutcomeFixture(unittest.TestCase):
 
     def evaluate(self, terminal="done"):
         return outcomes.evaluate_json(self.root, self.run_dir, terminal)
+
+    def write_saturation(self, round_number):
+        script = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "review-convergence-gate.sh",
+        )
+        result = subprocess.run(
+            [script, "basis", "--run", self.run_dir, "--base", self.started],
+            cwd=self.root,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        fields = json.loads(result.stdout)
+        candidate = "NONE\n"
+        self.write(
+            "code-review-candidates/r%s-spec-correctness.md" % round_number,
+            candidate,
+        )
+        with open(os.path.join(self.run_dir, "PLAN.md"), "rb") as handle:
+            plan_sha = hashlib.sha256(handle.read()).hexdigest()
+        self.write(
+            "review-saturation/r%s.json" % round_number,
+            json.dumps({
+                "schema_version": 1,
+                "round": round_number,
+                "plan_sha256": plan_sha,
+                "review_base_sha": fields["review_base_sha"],
+                "review_target_sha": fields["review_target_sha"],
+                "review_snapshot_sha256": fields["review_snapshot_sha256"],
+                "axes": ["spec-correctness"],
+                "candidate_files": [{
+                    "axis": "spec-correctness",
+                    "sha256": hashlib.sha256(candidate.encode("utf-8")).hexdigest(),
+                }],
+                "dispositions": [],
+                "carried_classes": [],
+            }) + "\n",
+        )
 
 
 class OutcomeEvaluationCase(OutcomeFixture):
@@ -259,6 +301,7 @@ class OutcomeEvaluationCase(OutcomeFixture):
                 "Review epoch start: 1\n"
                 "Review epoch cap: 3\n"
             )
+        self.write_saturation(2)
 
         evaluation = self.evaluate()
 
@@ -414,6 +457,7 @@ class OutcomeEvaluationCase(OutcomeFixture):
                 "Review epoch cap: 3\n"
                 "Strategy fingerprint: %s\n" % current
             )
+        self.write_saturation(2)
 
         evaluation = self.evaluate()
 

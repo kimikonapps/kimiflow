@@ -243,6 +243,22 @@ def _review_gate_clean(run_dir, round_number):
     contracted = convergence_values == ["1"]
     if contracted:
         args.extend(("--finding-contract", "1"))
+        receipt_text = _safe_read(os.path.join(
+            run_dir, "review-saturation", "r%s.json" % round_number
+        ))
+        try:
+            receipt = json.loads(receipt_text)
+        except json.JSONDecodeError:
+            return False
+        axes = receipt.get("axes") if isinstance(receipt, dict) else None
+        if (
+            not isinstance(axes, list)
+            or not axes
+            or len(axes) != len(set(axes))
+            or any(not isinstance(axis, str) or not axis for axis in axes)
+        ):
+            return False
+        args.extend(("--review-axes", ",".join(axes)))
     selector_values = (
         _state_values(state_text, "Review gate"),
         _state_values(state_text, "Review epoch start"),

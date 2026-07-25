@@ -71,6 +71,7 @@ hooks/test-active-run.sh
 hooks/test-clarify-gate.sh
 hooks/test-conformance-gate.sh
 hooks/test-current-state-gate.sh
+hooks/test-review-convergence-gate.sh
 hooks/test-discovery-gate.sh
 hooks/test-execution-control.sh
 hooks/test-frontend-quality-gate.sh

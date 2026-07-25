@@ -18,6 +18,7 @@ hash_file() {
 }
 reset() {
   rm -rf "$FD"
+  rm -rf "$WORK/code-review-candidates" "$WORK/review-saturation"
   rm -f "$WORK/STATE.md" "$WORK/RECOVERY.md" "$WORK/PLAN.md"
   mkdir -p "$FD"
   printf 'initial plan strategy\n' > "$WORK/PLAN.md"
@@ -368,6 +369,57 @@ enable_finding_contract
 put r1-B.md "NONE"
 af "$(run --round 1 --expect B)" 3 malformed "contracted_state_requires_finding_flag"
 af "$(run --round 1 --expect B --finding-contract 1)" 1 OPEN "contracted_initial_clean_opens"
+
+reset
+enable_finding_contract
+baseline code
+put r1-code-verified.md "NONE"
+af "$(run --round 1 --expect code-verified --gate code --epoch-start 1 --cap 3 --finding-contract 1)" 3 incomplete "contracted_code_requires_review_axes"
+af "$(run --round 1 --expect code-verified --gate code --epoch-start 1 --cap 3 --finding-contract 1 --review-axes spec-correctness)" 3 incomplete "contracted_code_requires_saturation"
+
+# A complete contracted code fixture proves that the resolver cannot bypass the convergence
+# gate by omitting --gate, --epoch-start, or --cap.
+CODE_ROOT="$WORK/code-repo"
+CODE_RUN="$CODE_ROOT/.kimiflow/demo"
+mkdir -p \
+  "$CODE_ROOT/src" \
+  "$CODE_RUN/findings" \
+  "$CODE_RUN/code-review-candidates" \
+  "$CODE_RUN/review-saturation"
+git -C "$CODE_ROOT" init -q
+git -C "$CODE_ROOT" config user.email kimiflow-test@example.invalid
+git -C "$CODE_ROOT" config user.name "Kimiflow Test"
+printf 'baseline\n' > "$CODE_ROOT/src/reviewed.py"
+git -C "$CODE_ROOT" add src/reviewed.py
+git -C "$CODE_ROOT" commit -qm baseline
+printf 'initial plan strategy\n' > "$CODE_RUN/PLAN.md"
+printf 'Convergence contract: 1\nAffected files:\n- src/reviewed.py\n' > "$CODE_RUN/STATE.md"
+printf '<!-- kimiflow:strategy gate=code epoch-start=1 fingerprint=%s -->\n' \
+  "$(hash_file "$CODE_RUN/PLAN.md")" > "$CODE_RUN/RECOVERY.md"
+printf 'NONE\n' > "$CODE_RUN/findings/r1-code-verified.md"
+printf 'NONE\n' > "$CODE_RUN/code-review-candidates/r1-spec-correctness.md"
+code_basis="$("$(dirname "$SCRIPT")/review-convergence-gate.sh" basis --run "$CODE_RUN" --base HEAD)"
+jq -n \
+  --arg plan_sha256 "$(hash_file "$CODE_RUN/PLAN.md")" \
+  --arg candidate_hash "$(hash_file "$CODE_RUN/code-review-candidates/r1-spec-correctness.md")" \
+  --argjson basis "$code_basis" \
+  '{
+    schema_version:1,
+    round:1,
+    plan_sha256:$plan_sha256,
+    review_base_sha:$basis.review_base_sha,
+    review_target_sha:$basis.review_target_sha,
+    review_snapshot_sha256:$basis.review_snapshot_sha256,
+    axes:["spec-correctness"],
+    candidate_files:[{axis:"spec-correctness",sha256:$candidate_hash}],
+    dispositions:[],
+    carried_classes:[]
+  }' > "$CODE_RUN/review-saturation/r1.json"
+code_run() { "$SCRIPT" "$CODE_RUN/findings" "$@"; }
+af "$(code_run --round 1 --expect code-verified --epoch-start 1 --cap 3 --finding-contract 1 --review-axes spec-correctness)" 3 malformed "contracted_code_requires_gate"
+af "$(code_run --round 1 --expect code-verified --gate code --cap 3 --finding-contract 1 --review-axes spec-correctness)" 3 malformed "contracted_code_requires_epoch"
+af "$(code_run --round 1 --expect code-verified --gate code --epoch-start 1 --finding-contract 1 --review-axes spec-correctness)" 3 malformed "contracted_code_requires_cap"
+af "$(code_run --round 1 --expect code-verified --gate code --epoch-start 1 --cap 3 --finding-contract 1 --review-axes spec-correctness)" 1 OPEN "contracted_code_rechecks_saturation"
 
 reset
 printf 'Convergence contract:\nConvergence contract: 1\n' > "$WORK/STATE.md"
