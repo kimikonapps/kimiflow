@@ -26,10 +26,18 @@ Optional v1 features are advertised under `features` and are off when absent:
   loads the workflow; the model does not need a native `$kimiflow` command.
 - `model_roles`: the host accepts abstract `top`, `balanced`, `cheap`, and `cross_family_top` mappings. Model and
   provider IDs remain host configuration, not Kimiflow policy.
+- `adaptive_model_routes`: requires `model_roles`; the host additionally accepts configured evaluation
+  candidates and policy metadata, and may attest one actually used distinct candidate on
+  `turn.completed.model_route`.
 - `structured_events`: the host may emit the bounded public event types in the schema.
 - `root_confinement`: the host declares that its file/shell tools are confined to the selected project policy.
   This is a trust boundary owned and enforced by the host; Kimiflow can require the declaration but cannot
   sandbox an external process from inside JSON-stdio.
+- `context_rollover`: requires `structured_events`; on resume, the host accepts one digest-bound retained-artifact
+  manifest, starts the turn from that bounded context, and emits `context.compacted` with the exact rollover
+  ID/current digest and measured before/after token counts. A stale identity never acknowledges a newer
+  rollover. The earlier token-only `context.compacted` form remains valid structured telemetry, but cannot
+  acknowledge a rollover.
 
 Use the mechanical preflight before a real model turn:
 
@@ -39,7 +47,8 @@ kimiflow adapter-check \
   --require-feature workflow_context \
   --require-feature model_roles \
   --require-feature structured_events \
-  --require-feature root_confinement
+  --require-feature root_confinement \
+  --require-feature context_rollover
 ```
 
 ## Start and resume
@@ -58,6 +67,7 @@ kimiflow run --adapter command \
   --require-feature model_roles \
   --require-feature structured_events \
   --require-feature root_confinement \
+  --require-feature context_rollover \
   --model-role top=qwen-local \
   --model-role balanced=qwen-coder-local \
   --events-jsonl \
@@ -68,6 +78,17 @@ kimiflow run --adapter command \
 Repeat the same adapter command, required features, model, and role mapping on `resume`. Kimiflow stores only a
 SHA-256 fingerprint of that optional negotiated contract and rejects drift before invoking another coding turn.
 Legacy adapters without optional features keep their original payload and resume behavior.
+
+When `model_roles` is configured, `model_routing.roles` contains the locally resolved production map. Without
+`adaptive_model_routes`, this remains the complete legacy v1 payload. With that feature,
+`model_routing.candidates` contains the configured evaluation pool. Lower-cost production roles stay mapped to
+`top` until distinct clean run outcomes earn eligibility; critical risk or a regression maps them back to `top`.
+The host may deliberately evaluate one configured `balanced` or `cheap` candidate and attest that exact route on
+`turn.completed.model_route = {role, model, baseline}`. Kimiflow accepts the attestation only when `model` equals
+the candidate for that role, `baseline` equals resolved `top`, the two identifiers differ, and measured usage is
+present. Only this route-bound usage can become an outcome sample. Terminal success/failure is then evaluated
+mechanically from the run; a failed run or any material review finding revokes the candidate before another
+production selection. This is advisory model selection—the host still owns every provider/model identifier.
 
 ## Event and privacy rules
 

@@ -11,7 +11,7 @@ import ssl
 import urllib.error
 import urllib.request
 
-from . import capsule, clock, contracts, rows, store
+from . import capsule, clock, contracts, rows, store, vault_namespace
 from .cli import die, resolve_root, usage
 
 _PROVIDER_PATH = ".kimiflow/project/VAULT-PROVIDER.json"
@@ -829,6 +829,8 @@ def run(argv):
     available = ""
     vault_path = ""
     query = ""
+    input_path = ""
+    run_path = ""
     write = False
     setup_host = "all"
     i = 0
@@ -849,6 +851,12 @@ def run(argv):
         elif arg == "--query":
             i += 1
             query = rest[i] if i < len(rest) else ""
+        elif arg == "--input":
+            i += 1
+            input_path = rest[i] if i < len(rest) else ""
+        elif arg == "--run":
+            i += 1
+            run_path = rest[i] if i < len(rest) else ""
         elif arg in ("--host", "--target"):
             i += 1
             setup_host = rest[i] if i < len(rest) else "all"
@@ -976,10 +984,15 @@ def run(argv):
         else:
             if not query:
                 query = "project memory recall"
+            try:
+                namespace_query = vault_namespace.query_contract(root, query, write=write)
+            except (ValueError, store.ConcurrentWriteError) as exc:
+                return die("provider: namespace: %s" % exc, 1)
             out = {
                 "schema_version": 1,
                 "status": "prefetch_handoff",
                 "query": query,
+                "namespace": namespace_query,
                 "path": ".kimiflow/project/VAULT-PREFETCH.md",
                 "provider": provider,
                 "direct_search_ready": _nav(provider, "health", "direct_search_ready") is True,
@@ -998,6 +1011,15 @@ def run(argv):
                 except (ValueError, store.ConcurrentWriteError) as exc:
                     return die("provider: %s; retry" % exc, 1)
                 out["written"] = True
+    elif action == "accept-results":
+        if not input_path or not run_path:
+            return die("provider accept-results requires --input and --run", 2)
+        try:
+            out = vault_namespace.accept_results(
+                root, run_path, input_path, write=write,
+            )
+        except (OSError, ValueError, store.ConcurrentWriteError) as exc:
+            return die("provider: results: %s" % exc, 1)
     elif action == "sync":
         provider = status_json(manifest)
         sync_path = project + "/VAULT-SYNC.md"
@@ -1072,7 +1094,7 @@ def run(argv):
                 out["provider"] = provider
     else:
         return die("provider action must be status, health, setup, detect, connect, "
-                   "configure, prefetch, or sync", 2)
+                   "configure, prefetch, accept-results, or sync", 2)
 
     contracts.json_print(out, pretty)
     return 0

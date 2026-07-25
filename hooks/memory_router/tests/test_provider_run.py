@@ -237,7 +237,14 @@ class ProviderParityCase(unittest.TestCase):
         rb, rp = self._fresh(), self._fresh()
         bc, bo, be = self._bash(rb, "bogus", [])
         pc, po, pe = self._py(rp, "bogus", [])
-        self.assertEqual((bc, _norm(be)), (pc, _norm(pe)))
+        self.assertEqual(bc, pc)
+        # The Python runtime intentionally extends the pinned Bash grammar with the
+        # namespace-bound result-ingestion action; the shared prefix remains stable.
+        shared = ("memory-router: provider action must be status, health, setup, detect, "
+                  "connect, configure, prefetch")
+        self.assertTrue(be.startswith(shared))
+        self.assertTrue(pe.startswith(shared))
+        self.assertIn("accept-results", pe)
 
     def _seed_configured(self, root):
         proj = os.path.join(root, ".kimiflow", "project")
@@ -255,9 +262,18 @@ class ProviderParityCase(unittest.TestCase):
         bc, bo, be = self._bash(rb, "prefetch", ["--write"])
         pc, po, pe = self._py(rp, "prefetch", ["--write"])
         self.assertEqual(bc, pc)
-        self.assertEqual(_norm(bo), _norm(po), "prefetch --write stdout")
+        bash_obj, python_obj = json.loads(_norm(bo)), json.loads(_norm(po))
+        namespace = python_obj.pop("namespace")
+        self.assertEqual(bash_obj, python_obj, "prefetch --write shared contract")
+        self.assertRegex(namespace["project_id"], r"^p_[0-9a-f]{24}$")
+        self.assertEqual(namespace["max_results"], 8)
+        self.assertEqual(namespace["query"], "project memory recall")
+        self.assertRegex(namespace["query_digest"], r"^sha256:[0-9a-f]{64}$")
         for rel in (".kimiflow/project/VAULT-PREFETCH.md", ".kimiflow/project/VAULT-PROVIDER.json"):
             self.assertEqual(_norm(self._read(rb, rel)), _norm(self._read(rp, rel)), rel)
+        self.assertTrue(os.path.isfile(
+            os.path.join(rp, ".kimiflow", "project", "VAULT-NAMESPACE.json")
+        ))
 
     def test_sync_write_empty(self):
         rb, rp = self._fresh(), self._fresh()

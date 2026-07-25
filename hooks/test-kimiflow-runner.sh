@@ -107,7 +107,7 @@ if [ "${1:-}" = "capabilities" ]; then
     printf '\377'
     exit 0
   fi
-  printf '%s\n' "{\"schema_version\":1,\"name\":\"app-fixture\",\"host\":\"kimitalk\",\"capabilities\":{\"files\":true,\"shell\":true,\"tests\":true,\"resume\":true,\"gates\":true},\"features\":{\"workflow_context\":true,\"model_roles\":true,\"structured_events\":true,\"root_confinement\":${APP_ROOT_CONFINEMENT:-true}}}"
+  printf '%s\n' "{\"schema_version\":1,\"name\":\"app-fixture\",\"host\":\"kimitalk\",\"capabilities\":{\"files\":true,\"shell\":true,\"tests\":true,\"resume\":true,\"gates\":true},\"features\":{\"workflow_context\":true,\"model_roles\":true,\"adaptive_model_routes\":true,\"structured_events\":true,\"root_confinement\":${APP_ROOT_CONFINEMENT:-true}}}"
   exit 0
 fi
 IFS= read -r payload
@@ -118,7 +118,10 @@ session="$(printf '%s\n' "$payload" | jq -r '.session_id // "kimitalk-session-12
 printf '%s\n' "$payload" | jq -e '
   .host == "kimitalk" and .adapter == "app-fixture"
   and .model_routing.roles.top == "qwen-local"
-  and .model_routing.roles.balanced == "qwen-coder-local"
+  and .model_routing.roles.balanced == "qwen-local"
+  and .model_routing.candidates.top == "qwen-local"
+  and .model_routing.candidates.balanced == "qwen-coder-local"
+  and .model_routing.policy.decisions.balanced.reason == "top_default"
   and .workflow_context.name == "kimiflow"
   and .workflow_context.skill == "SKILL.md"
   and .workflow_context.phase_manifest == "phases/PHASES.json"

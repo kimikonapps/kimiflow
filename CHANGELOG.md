@@ -4,7 +4,18 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Added
+
+- A local adaptive control plane that conservatively classifies scope, unresolved product intent, domain
+  complexity, and operational impact, with evidence-bound conditional plan and verification contracts.
+- Measured context rollover with exact adapter acknowledgement, adapter-attested evaluation model usage with
+  automatic terminal-outcome revocation, project-scoped Vault ingestion, and bounded verified retention for
+  explicitly terminal aged runs.
+
+### Changed
+
+- Phase transitions and the external adapter contract now carry the adaptive receipts into actual execution;
+  unsupported capabilities and no-trigger cases preserve the existing flow without a new user gate.
 
 ## 0.2.18
 

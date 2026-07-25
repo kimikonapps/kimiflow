@@ -16,7 +16,7 @@ import tempfile
 import threading
 from datetime import datetime, timezone
 
-from . import execution_control, flow_graph, phase_context, phase_reads, scorecard, state, workspace_preflight
+from . import adaptive_control, execution_control, flow_graph, phase_context, phase_reads, scorecard, state, workspace_preflight
 from .atomic import atomic_write
 
 try:
@@ -33,6 +33,7 @@ USAGE = """#!/usr/bin/env bash
 #   active-run.sh next-action [--root <path>] [--event <event>] [--pretty]
 #   active-run.sh observe [--root <path>] [--event <event>] [--outcome <outcome>] [--evidence <run-artifact>] [--model-calls N] [--tool-calls N] [--input-tokens N] [--output-tokens N] [--write] [--pretty]
 #   active-run.sh start --run <path> [--root <path>] [--mode <mode>] [--scope <scope>] [--host <host>] [--write] [--pretty]
+#   active-run.sh rescope --run <path> --classification <path> [--root <path>] [--write] [--pretty]
 #   active-run.sh conflict-check [--root <path>] [--path <path>]... [--pretty]
 #   active-run.sh append-item --title <text> [--kind <kind>] [--root <path>] [--write] [--pretty]
 #   active-run.sh mark-built|mark-accepted --id <id> [--root <path>] [--write] [--pretty]
@@ -2263,13 +2264,16 @@ def cmd_phase_read(args):
     except phase_reads.PhaseReadError as exc:
         die(str(exc), 2)
     shadow = {"status": "preview", "authoritative": False}
+    rollover = {"schema_version": 1, "status": "preview", "user_gate": False}
     if opts["--write"]:
+        active = _active_for_run(root, rel_path(root, run_dir))
+        previous_shadow = phase_context.load_stored_shadow(root, run_dir, active=active)
         try:
             shadow = phase_context.write_shadow(
                 root,
                 run_dir,
                 opts["--phase"],
-                active=_active_for_run(root, rel_path(root, run_dir)),
+                active=active,
             )
         except (OSError, ValueError, phase_context.PhaseContextError) as exc:
             shadow = phase_context.write_invalid_shadow(
@@ -2277,9 +2281,128 @@ def cmd_phase_read(args):
                 run_dir,
                 opts["--phase"],
                 str(exc),
-                active=_active_for_run(root, rel_path(root, run_dir)),
+                active=active,
             )
-    json_print({"status": "phase_read_recorded", "written": opts["--write"] is True, "run": rel_path(root, run_dir), "record": record, "context_shadow": shadow}, opts["--pretty"])
+        if previous_shadow is not None and shadow.get("status") == "current":
+            try:
+                scope = (active or {}).get("scope") or adaptive_control.classify(root, run_dir)["scope"]
+                pending = adaptive_control.pending_rollover(root, run_dir)
+                rollover = (
+                    adaptive_control.retarget_rollover(pending, shadow)
+                    if pending is not None
+                    else adaptive_control.decide_rollover(previous_shadow, shadow, scope)
+                )
+                adaptive_control.write_rollover(root, run_dir, rollover)
+            except (OSError, ValueError, adaptive_control.AdaptiveControlError) as exc:
+                rollover = {
+                    "schema_version": 1,
+                    "status": "invalid",
+                    "reason": str(exc)[:160],
+                    "user_gate": False,
+                }
+    json_print({
+        "status": "phase_read_recorded",
+        "written": opts["--write"] is True,
+        "run": rel_path(root, run_dir),
+        "record": record,
+        "context_shadow": shadow,
+        "context_rollover": rollover,
+    }, opts["--pretty"])
+
+
+def cmd_rescope(args):
+    opts = parse_options(
+        args,
+        "rescope",
+        {
+            "--root": "",
+            "--run": "",
+            "--classification": "",
+            "--write": False,
+            "--pretty": False,
+        },
+    )
+    if not opts["--run"] or not opts["--classification"]:
+        die("rescope requires --run and --classification", 2)
+    root = resolve_root(opts["--root"], strict=opts["--write"])
+    bind_owner_for_write(root, opts["--write"])
+    run_dir = resolve_run_dir(root, opts["--run"])
+    active = load_active(root)
+    run_rel = rel_path(root, run_dir)
+    if active.get("present") is not True or active.get("run") != run_rel:
+        die("rescope: run does not match active session", 1)
+    expected = os.path.realpath(
+        opts["--classification"]
+        if os.path.isabs(opts["--classification"])
+        else os.path.join(root, opts["--classification"])
+    )
+    if expected != os.path.join(os.path.realpath(run_dir), adaptive_control.CLASSIFICATION_NAME):
+        die("rescope: classification must be the run-local adaptive receipt", 2)
+    try:
+        classification = adaptive_control.load_classification(root, run_dir)
+    except (OSError, ValueError, adaptive_control.AdaptiveControlError) as exc:
+        die("rescope: %s" % exc, 1)
+    current = active.get("scope")
+    target = classification["scope"]
+    ranks = {"trivial": 0, "small": 1, "large": 2}
+    if current not in ranks:
+        die("rescope: active scope invalid", 1)
+    if ranks[target] < ranks[current]:
+        die("rescope: scope downgrade refused", 1)
+    if opts["--write"] and target != current:
+        def replace_scope(line):
+            plain = re.sub(r"^[ \t]*-[ \t]*", "", line.replace("**", ""))
+            return "Scope: %s" % target if re.match(r"^Scope:[ \t]*", plain, re.IGNORECASE) else None
+
+        with pinned_terminal_run(run_dir, active) as pinned:
+            latest = load_active(root)
+            if (
+                latest.get("present") is not True
+                or latest.get("run") != run_rel
+                or latest.get("scope") != current
+                or valid_owner(latest.get("owner")) != valid_owner(active.get("owner"))
+            ):
+                die("rescope: active session changed", 1)
+            rewrite_state_descriptor(
+                pinned,
+                [(replace_scope, "Scope: %s" % target)],
+            )
+            try:
+                refreshed = adaptive_control.write_classification(root, run_dir)
+                if refreshed["scope"] != target:
+                    die("rescope: refreshed classification changed scope", 1)
+                updated = dict(latest)
+                updated.pop("present", None)
+                updated["scope"] = target
+                updated["scope_classification_digest"] = refreshed["content_digest"]
+                updated["updated_at"] = iso_now()
+                write_active(root, updated)
+            except (ActiveError, OSError, ValueError, adaptive_control.AdaptiveControlError):
+                def restore_scope(line):
+                    plain = re.sub(r"^[ \t]*-[ \t]*", "", line.replace("**", ""))
+                    return "Scope: %s" % current if re.match(
+                        r"^Scope:[ \t]*", plain, re.IGNORECASE
+                    ) else None
+
+                rewrite_state_descriptor(
+                    pinned,
+                    [(restore_scope, "Scope: %s" % current)],
+                )
+                try:
+                    adaptive_control.write_classification(root, run_dir)
+                except (OSError, ValueError, adaptive_control.AdaptiveControlError):
+                    pass
+                raise
+    json_print(
+        {
+            "status": "scope_unchanged" if target == current else "scope_escalated",
+            "written": opts["--write"] is True and target != current,
+            "from": current,
+            "to": target,
+            "classification_digest": classification["content_digest"],
+        },
+        opts["--pretty"],
+    )
 
 
 def _active_for_run(root, run_rel):
@@ -3615,6 +3738,8 @@ def main(argv=None):
             cmd_observe(args)
         elif command == "start":
             cmd_start(args)
+        elif command == "rescope":
+            cmd_rescope(args)
         elif command == "conflict-check":
             cmd_conflict_check(args)
         elif command == "append-item":

@@ -36,6 +36,7 @@ from . import provider as _provider
 from . import recall as _recall
 from . import record as _record
 from . import review as _review
+from . import retention as _retention
 from . import runs as _runs
 from . import status as _status
 from . import standards as _standards
@@ -55,6 +56,7 @@ COMMANDS = {
     "recall": _recall.run,
     "record": _record.run,
     "review-run": _review.run,
+    "retention": _retention.run,
     "status": _status.run,
     "standards": _standards.run,
     "verify-run": _runs.run,

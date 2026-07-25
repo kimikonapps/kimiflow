@@ -11,7 +11,13 @@ import threading
 import unittest
 from unittest import mock
 
-from kimiflow_core import active_run, execution_control, scorecard, workspace_preflight
+from kimiflow_core import (
+    active_run,
+    adaptive_control,
+    execution_control,
+    scorecard,
+    workspace_preflight,
+)
 
 
 def run_main(args, stdin_text=None):
@@ -182,6 +188,39 @@ class TestExecutionControlIntegration(unittest.TestCase):
         rc, _ = self.start()
         self.assertEqual(rc, 0)
         self.assertEqual(active_run.status_json(self.root)["execution_control"]["work_units"], sequence)
+
+    def test_rescope_only_elevates_from_current_run_classification(self):
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, encoding="utf-8") as handle:
+            content = handle.read()
+        content = content.replace("Scope: large", "Scope: small").replace(
+            "Affected files: tracked.txt",
+            "Affected files:\n- schemas/account.json\n- workers/retention.py",
+        )
+        with open(state_path, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        with open(os.path.join(self.run_dir, "INTENT.md"), "w", encoding="utf-8") as handle:
+            handle.write("A durable schema and background retention job.\n")
+        rc, _ = run_main([
+            "start", "--run", self.run_rel, "--root", self.root,
+            "--scope", "small", "--write",
+        ])
+        self.assertEqual(rc, 0)
+        classification = adaptive_control.write_classification(self.root, self.run_dir)
+        self.assertEqual(classification["scope"], "large")
+        receipt = os.path.join(self.run_dir, adaptive_control.CLASSIFICATION_NAME)
+        rc, out = run_main([
+            "rescope", "--run", self.run_rel, "--root", self.root,
+            "--classification", receipt, "--write",
+        ])
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["status"], "scope_escalated")
+        self.assertEqual(self.active()["scope"], "large")
+        rc, _ = run_main([
+            "rescope", "--run", self.run_rel, "--root", self.root,
+            "--classification", os.path.join(self.root, "other.json"), "--write",
+        ])
+        self.assertEqual(rc, 2)
 
     def test_schema5_requires_and_pins_convergence_contract(self):
         state_path = os.path.join(self.run_dir, "STATE.md")

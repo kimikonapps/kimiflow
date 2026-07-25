@@ -14,7 +14,10 @@ from dataclasses import dataclass
 
 PROTOCOL_VERSION = 1
 CAPABILITY_KEYS = ("files", "shell", "tests", "resume", "gates")
-FEATURE_KEYS = ("workflow_context", "model_roles", "structured_events", "root_confinement")
+FEATURE_KEYS = (
+    "workflow_context", "model_roles", "structured_events", "root_confinement",
+    "context_rollover", "adaptive_model_routes",
+)
 MODEL_ROLE_KEYS = ("top", "balanced", "cheap", "cross_family_top")
 USAGE_KEYS = ("model_calls", "tool_calls", "input_tokens", "output_tokens")
 MAX_CAPABILITIES_BYTES = 64 * 1024
@@ -42,12 +45,19 @@ class TurnResult:
     session_id: str = ""
     error_code: str = ""
     usage: dict = None
+    context_compaction: dict = None
+    model_route: dict = None
 
-    def __init__(self, returncode, session_id="", error_code="", usage=None, thread_id=""):
+    def __init__(
+        self, returncode, session_id="", error_code="", usage=None, thread_id="",
+        context_compaction=None, model_route=None,
+    ):
         self.returncode = returncode
         self.session_id = session_id or thread_id
         self.error_code = error_code
         self.usage = usage
+        self.context_compaction = context_compaction
+        self.model_route = model_route
 
     @property
     def thread_id(self):
@@ -81,6 +91,20 @@ def validate_info(value):
             or any(not isinstance(item, bool) for item in features.values())
         ):
             raise AdapterError("adapter_features_invalid")
+        if (
+            features.get("context_rollover") is True
+            and features.get("structured_events") is not True
+        ):
+            raise AdapterError(
+                "adapter_features_invalid:context_rollover_requires_structured_events"
+            )
+        if (
+            features.get("adaptive_model_routes") is True
+            and features.get("model_roles") is not True
+        ):
+            raise AdapterError(
+                "adapter_features_invalid:adaptive_model_routes_requires_model_roles"
+            )
         result["features"] = {key: features[key] for key in FEATURE_KEYS if key in features}
     return result
 
@@ -170,6 +194,25 @@ def normalize_event(value, structured=False):
             if usage is None:
                 raise AdapterError("invalid_usage")
             result["usage"] = usage
+        if "model_route" in value:
+            route = value.get("model_route")
+            if (
+                not isinstance(route, dict)
+                or set(route) != {"role", "model", "baseline"}
+                or route.get("role") not in ("balanced", "cheap")
+            ):
+                raise AdapterError("invalid_model_route")
+            result["model_route"] = {
+                "role": route["role"],
+                "model": normalize_model(route.get("model")),
+                "baseline": normalize_model(route.get("baseline")),
+            }
+            if (
+                result["model_route"]["model"] is None
+                or result["model_route"]["baseline"] is None
+                or result["model_route"]["model"] == result["model_route"]["baseline"]
+            ):
+                raise AdapterError("invalid_model_route")
         return result
     if not structured:
         raise AdapterError("invalid_event")
@@ -234,7 +277,28 @@ def normalize_event(value, structured=False):
         after = _event_integer(value.get("after_tokens"), MAX_TOKEN_COUNT)
         if after > before:
             raise AdapterError("invalid_event")
-        return {"type": event_type, "before_tokens": before, "after_tokens": after}
+        rollover_id = value.get("rollover_id")
+        current_digest = value.get("current_digest")
+        if rollover_id is None and current_digest is None:
+            return {
+                "type": event_type,
+                "before_tokens": before,
+                "after_tokens": after,
+            }
+        if (
+            not isinstance(rollover_id, str)
+            or re.fullmatch(r"roll_[0-9a-f]{32}", rollover_id) is None
+            or not isinstance(current_digest, str)
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", current_digest) is None
+        ):
+            raise AdapterError("invalid_event")
+        return {
+            "type": event_type,
+            "rollover_id": rollover_id,
+            "current_digest": current_digest,
+            "before_tokens": before,
+            "after_tokens": after,
+        }
     raise AdapterError("invalid_event")
 
 
@@ -436,6 +500,7 @@ class CommandAgentAdapter:
         self.environ = environ
         self.stderr = stderr or sys.stderr
         self._info = None
+        self._context_rollover = None
         timeout_value = (os.environ if environ is None else environ).get(
             "KIMIFLOW_ADAPTER_TURN_TIMEOUT_SECONDS", str(DEFAULT_TURN_TIMEOUT_SECONDS),
         )
@@ -501,6 +566,22 @@ class CommandAgentAdapter:
         payload = json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         return "sha256:%s" % hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
+    def set_context_rollover(self, value):
+        from . import adaptive_control
+
+        try:
+            adaptive_control.validate_pending_rollover(value)
+        except adaptive_control.AdaptiveControlError:
+            raise AdapterError("context_rollover_invalid")
+        self._context_rollover = {
+            "schema_version": 1,
+            "rollover_id": value["rollover_id"],
+            "current_digest": value["current_digest"],
+            "phase": value.get("phase"),
+            "reason": value.get("reason"),
+            "retained": value.get("retained", []),
+        }
+
     def _invoke(self, action, root, session_id, prompt, on_session):
         info = self.info()
         payload = {
@@ -518,9 +599,47 @@ class CommandAgentAdapter:
         if features.get("workflow_context") is True:
             payload["workflow_context"] = workflow_context()
         if self.model_roles:
-            payload["model_routing"] = {"roles": dict(self.model_roles)}
+            if features.get("adaptive_model_routes") is True:
+                from . import adaptive_control
+
+                risk = adaptive_control.routing_risk(root)
+                try:
+                    policy = adaptive_control.resolve_model_roles(
+                        root, self.model_roles, risk=risk, write=True,
+                    )
+                except (OSError, ValueError, adaptive_control.AdaptiveControlError):
+                    baseline = self.model_roles.get("top")
+                    roles = dict(self.model_roles)
+                    if baseline:
+                        for role in ("balanced", "cheap"):
+                            if role in roles:
+                                roles[role] = baseline
+                    policy = {
+                        "schema_version": 1,
+                        "status": "fallback",
+                        "reason": "routing_policy_invalid",
+                        "roles": roles,
+                        "decisions": {},
+                        "risk": risk,
+                        "user_gate": False,
+                    }
+                payload["model_routing"] = {"roles": dict(policy["roles"])}
+                payload["model_routing"].update({
+                    "candidates": dict(self.model_roles),
+                    "policy": {
+                        "status": policy["status"],
+                        "risk": policy["risk"],
+                        "decisions": policy["decisions"],
+                    },
+                })
+            else:
+                payload["model_routing"] = {"roles": dict(self.model_roles)}
             if self.model is not None:
                 payload["model_routing"]["default_model"] = self.model
+        if action == "resume" and self._context_rollover is not None:
+            if features.get("context_rollover") is True:
+                payload["context_rollover"] = self._context_rollover
+            self._context_rollover = None
         argv = [self.executable, action, "--json"]
         proc = None
         timer = None
@@ -562,6 +681,8 @@ class CommandAgentAdapter:
         usage = None
         completed = False
         completion_event = None
+        context_compaction = None
+        model_route = None
         try:
             for raw, read_error in _bounded_binary_lines(proc.stdout):
                 if read_error:
@@ -593,7 +714,23 @@ class CommandAgentAdapter:
                         failed = "duplicate_turn_completed"
                     completed = True
                     usage = public.get("usage")
+                    model_route = public.get("model_route")
+                    if model_route is not None:
+                        routing = payload.get("model_routing")
+                        roles = routing.get("roles") if isinstance(routing, dict) else None
+                        candidates = (
+                            routing.get("candidates") if isinstance(routing, dict) else None
+                        )
+                        if (
+                            not isinstance(roles, dict)
+                            or not isinstance(candidates, dict)
+                            or model_route["model"] != candidates.get(model_route["role"])
+                            or model_route["baseline"] != roles.get("top")
+                        ):
+                            failed = "model_route_mismatch"
                     completion_event = public
+                elif event_type == "context.compacted":
+                    context_compaction = public
                 if self.event_sink is not None and event_type != "turn.completed":
                     try:
                         self.event_sink({"schema_version": PROTOCOL_VERSION, **public})
@@ -621,7 +758,14 @@ class CommandAgentAdapter:
             except (BrokenPipeError, OSError):
                 failed = "event_sink_failed"
                 returncode = 1
-        return TurnResult(returncode=returncode, session_id=observed, error_code=failed, usage=usage)
+        return TurnResult(
+            returncode=returncode,
+            session_id=observed,
+            error_code=failed,
+            usage=usage,
+            context_compaction=context_compaction,
+            model_route=model_route,
+        )
 
     def start(self, root, prompt, on_session):
         return self._invoke("start", root, "", prompt, on_session)

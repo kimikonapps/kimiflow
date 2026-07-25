@@ -12,8 +12,9 @@ und persistente Artefakte geerdet.
 | Canonical Engine | `docs/render/kimiflow/`, `phases/`, `reference.md`, `docs/kimiflow-scaling-knobs.md` | Definiert den duennen Always-loaded Driver, on-demand Phasenregeln, Scope-Regeln, Project Map, Review- und Commit-Kontrakt und rendert die Host-Skills. |
 | Host Packaging | `plugins/kimiflow/`, `SKILL.md`, `.claude-plugin/`, `.codex-plugin/`, `.agents/plugins/`, `skills/kimiflow/` | Baut einen allowlist-basierten Runtime-Kandidaten mit Inhalts-Fingerprint und macht dieselbe Engine fuer Claude Code und Codex installierbar. |
 | Optional Controller | `hooks/kimiflow-runner.sh`, `hooks/kimiflow_core/runner.py`, `hooks/kimiflow_core/model_adapter.py`, `hooks/install-kimiflow-cli.sh` | Fuehrt dieselbe Active-Run-Engine ueber den eingebauten Codex- oder einen versionierten JSON-stdio-Adapter aus; besitzt nur Transport-Metadaten und keine zweite Workflow- oder Memory-Logik. |
+| Adaptive Control | `hooks/adaptive-control.sh`, `hooks/kimiflow_core/adaptive_control.py` | Klassifiziert Scope/Intent/Domaene/Betrieb, entscheidet Context-Rollover und evidence-basierte Modellrouten; fehlende Capabilities fallen ohne User-Gate auf den bestehenden Flow zurueck. |
 | Mechanical Layer | `hooks/*.sh`, `hooks.json`, `hooks/hooks.json` | Implementiert Gate-Resolver, Host-Hooks, Installer und strukturelle Checks. |
-| Project Intelligence | `.kimiflow/project/`, `hooks/project-map-status.sh`, `hooks/memory-router.sh` | Baut lokale Projektkarten, erkennt Staleness, routet bounded Memory/Recall und trennt lokale Analyse von Repo-Doku. |
+| Project Intelligence | `.kimiflow/project/`, `hooks/project-map-status.sh`, `hooks/memory-router.sh` | Baut lokale Projektkarten, erkennt Staleness, routet bounded Memory/Recall, Vault-Namespaces und Run-Retention. |
 | Validation & Docs | `.github/workflows/ci.yml`, `docs/`, `examples/`, `evals/` | Verifiziert Packaging, Hooks und Verhalten; erklaert die Nutzung publish-safe. |
 
 ## Kontrollfluss
@@ -48,6 +49,13 @@ an den User zurueckgegeben; technische Turns laufen bis zum harten Turn-Limit pl
 Routinebestaetigung weiter. Zaehler bleiben `null`, wenn der Provider keine Usage liefert.
 `codex app-server` bleibt eine moegliche spaetere Transport-Alternative fuer einen echten Rich Client, ist aber
 keine Abhaengigkeit des schlanken CLI-Wegs.
+
+Adaptive Entscheidungen bleiben Teil dieser einen Engine. Der Scope-/Intent-Classifier darf Scope nur erhoehen
+und offene Produktentscheidungen nur zurueck an Intake routen. Kontext-Rollover braucht eine ausgehandelte
+Adapter-Capability sowie eine ID-/Digest-genaue Bestaetigung; sonst laeuft der bestehende aktuelle Kontext
+begrenzt weiter. Niedrigere Modellrollen werden erst durch vergleichbare lokale Outcome-Evidence freigegeben und
+bei Regression oder kritischem Risiko auf `top` zurueckgesetzt. Dadurch kann ein Host konkrete Modelle wechseln,
+ohne Kimiflow-State oder Qualitaetsregeln zu duplizieren.
 
 Ein optionaler App-Host erweitert Protokoll v1 nur ueber ausgehandelte Feature-Flags. Ohne diese Flags bleiben
 Prompt und Request des bestehenden Command-Adapters unveraendert. Mit `workflow_context` erhaelt der Host
@@ -87,6 +95,8 @@ implementieren danach optional den Adapter-Vertrag; sie besitzen keine zweite Ki
   Gates, Provider oder Worktree-Management weder duplizieren noch ersetzen.
 - App-Host-Funktionen sind opt-in; ihr Fehlen darf weder Installation noch normale Codex-, Claude- oder Legacy-CLI-Nutzung veraendern.
 - Project Intelligence persistiert lokale Projektkarten und bounded Memory unter `.kimiflow/project/`.
+- Vault-Kontext muss vor Run-Injektion den lokalen Projekt-Namespace-Vertrag passieren; Retention archiviert
+  nur alte terminale Runs und ersetzt niemals aktive Runs oder Learnings.
 - Repo-Doku ist ein kuratierter Publishing-Layer. Lokale Findings und sensible Arbeitsnotizen bleiben in
   `.kimiflow/project/` und werden nicht automatisch committed.
 

@@ -310,3 +310,21 @@ def load_current_shadow(root, run_dir, phase, active=None, run_descriptor=None):
     finally:
         if close_descriptor:
             os.close(descriptor)
+
+
+def load_stored_shadow(root, run_dir, active=None):
+    """Load the last persisted descriptor without recompiling another phase."""
+    descriptor = _open_run(root, run_dir, active=active)
+    try:
+        payload = _read_descriptor_file(descriptor, SHADOW_NAME, MAX_SHADOW_BYTES, required=False)
+    finally:
+        os.close(descriptor)
+    if payload is None:
+        return None
+    try:
+        value = json.loads(payload.decode("utf-8"))
+    except (UnicodeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(value, dict) or value.get("schema_version") != 1 or value.get("status") != "current":
+        return None
+    return value

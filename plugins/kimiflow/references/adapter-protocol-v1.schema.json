@@ -30,8 +30,32 @@
         "workflow_context": {"type": "boolean"},
         "model_roles": {"type": "boolean"},
         "structured_events": {"type": "boolean"},
-        "root_confinement": {"type": "boolean"}
+        "root_confinement": {"type": "boolean"},
+        "context_rollover": {"type": "boolean"},
+        "adaptive_model_routes": {"type": "boolean"}
       },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"context_rollover": {"const": true}},
+            "required": ["context_rollover"]
+          },
+          "then": {
+            "properties": {"structured_events": {"const": true}},
+            "required": ["structured_events"]
+          }
+        },
+        {
+          "if": {
+            "properties": {"adaptive_model_routes": {"const": true}},
+            "required": ["adaptive_model_routes"]
+          },
+          "then": {
+            "properties": {"model_roles": {"const": true}},
+            "required": ["model_roles"]
+          }
+        }
+      ],
       "additionalProperties": false
     },
     "adapterInfo": {
@@ -60,9 +84,65 @@
           },
           "minProperties": 1,
           "additionalProperties": false
+        },
+        "candidates": {
+          "type": "object",
+          "properties": {
+            "top": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\u0000-\\u001F\\u007F]+$"},
+            "balanced": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\u0000-\\u001F\\u007F]+$"},
+            "cheap": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\u0000-\\u001F\\u007F]+$"},
+            "cross_family_top": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\u0000-\\u001F\\u007F]+$"}
+          },
+          "minProperties": 1,
+          "additionalProperties": false
+        },
+        "policy": {
+          "type": "object",
+          "properties": {
+            "status": {"enum": ["resolved", "fallback"]},
+            "risk": {"enum": ["routine", "critical"]},
+            "decisions": {"type": "object"}
+          },
+          "required": ["status", "risk", "decisions"],
+          "additionalProperties": false
         }
       },
       "required": ["roles"],
+      "additionalProperties": false
+    },
+    "modelRoute": {
+      "type": "object",
+      "$comment": "Runtime additionally requires model != baseline and exact matches to model_routing.candidates[role] and model_routing.roles.top.",
+      "properties": {
+        "role": {"enum": ["balanced", "cheap"]},
+        "model": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\u0000-\\u001F\\u007F]+$"},
+        "baseline": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\u0000-\\u001F\\u007F]+$"}
+      },
+      "required": ["role", "model", "baseline"],
+      "additionalProperties": false
+    },
+    "rolloverArtifact": {
+      "type": "object",
+      "properties": {
+        "kind": {"enum": ["phase", "reference", "artifact"]},
+        "name": {"type": "string", "minLength": 1, "maxLength": 500, "pattern": "^[^\\u0000-\\u001F\\u007F]+$"},
+        "bytes": {"type": "integer", "minimum": 0, "maximum": 1048576},
+        "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      },
+      "required": ["kind", "name", "bytes", "sha256"],
+      "additionalProperties": false
+    },
+    "contextRollover": {
+      "type": "object",
+      "properties": {
+        "schema_version": {"const": 1},
+        "rollover_id": {"type": "string", "pattern": "^roll_[0-9a-f]{32}$"},
+        "current_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "phase": {"type": ["integer", "null"], "minimum": 0, "maximum": 7},
+        "reason": {"type": ["string", "null"]},
+        "retained": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/rolloverArtifact"}}
+      },
+      "required": ["schema_version", "rollover_id", "current_digest", "phase", "reason", "retained"],
       "additionalProperties": false
     },
     "workflowContext": {
@@ -104,7 +184,8 @@
           "const": ["files", "shell", "tests", "resume", "gates"]
         },
         "workflow_context": {"$ref": "#/$defs/workflowContext"},
-        "model_routing": {"$ref": "#/$defs/modelRouting"}
+        "model_routing": {"$ref": "#/$defs/modelRouting"},
+        "context_rollover": {"$ref": "#/$defs/contextRollover"}
       },
       "required": ["schema_version", "action", "root", "session_id", "host", "adapter", "prompt", "model", "required_capabilities"],
       "additionalProperties": false
@@ -133,14 +214,14 @@
         {"type": "object", "properties": {"type": {"const": "session.started"}, "session_id": {"$ref": "#/$defs/sessionId"}}, "required": ["type", "session_id"], "additionalProperties": true},
         {"type": "object", "properties": {"type": {"const": "message"}, "text": {"type": "string", "minLength": 1, "maxLength": 65536}}, "required": ["type", "text"], "additionalProperties": true},
         {"type": "object", "properties": {"type": {"enum": ["turn.failed", "error"]}}, "required": ["type"], "additionalProperties": true},
-        {"type": "object", "properties": {"type": {"const": "turn.completed"}, "usage": {"$ref": "#/$defs/usage"}}, "required": ["type"], "additionalProperties": true},
+        {"type": "object", "properties": {"type": {"const": "turn.completed"}, "usage": {"$ref": "#/$defs/usage"}, "model_route": {"$ref": "#/$defs/modelRoute"}}, "required": ["type"], "additionalProperties": true},
         {"type": "object", "properties": {"type": {"const": "phase.changed"}, "phase": {"type": "integer", "minimum": 0, "maximum": 7}, "status": {"enum": ["started", "completed", "blocked"]}, "label": {"type": "string", "minLength": 1, "maxLength": 240}}, "required": ["type", "phase", "status"], "additionalProperties": true},
         {"type": "object", "$comment": "Runtime additionally requires total >= current when total is present.", "properties": {"type": {"const": "progress"}, "current": {"type": "integer", "minimum": 0, "maximum": 1000000000}, "total": {"type": "integer", "minimum": 0, "maximum": 1000000000}, "label": {"type": "string", "minLength": 1, "maxLength": 240}}, "required": ["type", "current"], "additionalProperties": true},
         {"type": "object", "properties": {"type": {"const": "tool.started"}, "tool": {"$ref": "#/$defs/identity"}, "duration_ms": {"type": "integer", "minimum": 0, "maximum": 86400000}, "label": {"type": "string", "minLength": 1, "maxLength": 240}}, "required": ["type", "tool"], "additionalProperties": true},
         {"type": "object", "properties": {"type": {"const": "tool.completed"}, "tool": {"$ref": "#/$defs/identity"}, "status": {"enum": ["passed", "failed", "cancelled"]}, "duration_ms": {"type": "integer", "minimum": 0, "maximum": 86400000}, "label": {"type": "string", "minLength": 1, "maxLength": 240}}, "required": ["type", "tool", "status"], "additionalProperties": true},
         {"type": "object", "properties": {"type": {"const": "test.completed"}, "name": {"type": "string", "minLength": 1, "maxLength": 240}, "status": {"enum": ["passed", "failed", "skipped"]}, "duration_ms": {"type": "integer", "minimum": 0, "maximum": 86400000}}, "required": ["type", "name", "status"], "additionalProperties": true},
         {"type": "object", "properties": {"type": {"const": "user_input.requested"}, "kind": {"$ref": "#/$defs/identity"}, "summary": {"type": "string", "minLength": 1, "maxLength": 500}}, "required": ["type", "kind", "summary"], "additionalProperties": true},
-        {"type": "object", "$comment": "Runtime additionally requires after_tokens <= before_tokens.", "properties": {"type": {"const": "context.compacted"}, "before_tokens": {"type": "integer", "minimum": 0, "maximum": 10000000000}, "after_tokens": {"type": "integer", "minimum": 0, "maximum": 10000000000}}, "required": ["type", "before_tokens", "after_tokens"], "additionalProperties": true}
+        {"type": "object", "$comment": "Runtime additionally requires after_tokens <= before_tokens. Legacy token-only events remain valid telemetry; rollover acknowledgement requires both exact identity fields.", "properties": {"type": {"const": "context.compacted"}, "rollover_id": {"type": "string", "pattern": "^roll_[0-9a-f]{32}$"}, "current_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "before_tokens": {"type": "integer", "minimum": 0, "maximum": 10000000000}, "after_tokens": {"type": "integer", "minimum": 0, "maximum": 10000000000}}, "required": ["type", "before_tokens", "after_tokens"], "dependentRequired": {"rollover_id": ["current_digest"], "current_digest": ["rollover_id"]}, "additionalProperties": true}
       ]
     }
   },

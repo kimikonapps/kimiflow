@@ -241,11 +241,20 @@ mechanisiert die Evidence-Grenzen, ohne Allwissenheit vorzutäuschen.
 - Execution nutzt drei feste Qualitätsprofile mit expliziter Auswahlbegründung und einen kompakten lokalen Trace; bei hartem Druck fällt optionale Breite weg, nicht Verifikationsqualität.
 - Ein zweiter Planner erscheint nur bei echter Architektur- oder irreversibler Contract-Gabel.
 - Das Top-Modell behält Orchestrierung, Synthese, Planung, Review-Verdicts und riskante Diagnose.
+- Ein deterministischer Classifier erhöht den Scope anhand von Subsystem-, Daten-, Security-, Integrations- und
+  Irreversibilitäts-Evidence, beantwortet aber niemals eine offene Produktentscheidung.
+- Große, materiell veränderte Kontexte rollen nur bei gemessenem Druck um; kleine Runs bleiben unverändert.
+- Günstigere Modellrouten werden erst nach fünf vergleichbaren sauberen Outcomes freigeschaltet, bei Regression
+  entzogen und nie für kritische Arbeit verwendet.
 
 `small` und `quick` überspringen breiten Memory-Recall und den **Vault Pulse** standardmäßig. Ein
 ausdrücklicher Hinweis, dass ein ähnlicher Bug oder Fix schon existierte, löst stattdessen bei jedem
 Scope genau einen gezielten lokalen Recall mit höchstens fünf Treffern und ohne Provider-Suche aus.
 Current-State-Checks und Learning-Review bleiben bei jedem nicht-trivialen Run erhalten.
+
+Domänenkomplexität und Betriebswirkung sind getrennte konditionale Verträge. Wenn aktiv, braucht jeder eine
+typisierte Research-Zeile, einen AC-verknüpften Plan-Check und passende Verification-Evidence. Wenn inaktiv
+entsteht kein zusätzlicher Prompt-Overhead.
 
 ## Projektwissen und Memory
 
@@ -313,6 +322,10 @@ laufende Projekte keine manuelle Ledger-Bereinigung benötigen.
 Ein Obsidian Vault ist optional. Ohne ihn funktionieren lokales Memory und alle Gates weiter. Mit
 authentifizierten Vault-MCP-Tools kann Kimiflow kuratierte, nicht-private projektübergreifende
 Learnings abrufen oder exportieren. API-Keys landen nie in `.kimiflow/`.
+
+Vault-Reads sind an den Projekt-Namespace gebunden: Fremde Projektpfade und unsichere Felder werden vor der
+Run-Injektion verworfen, danach lokal dedupliziert und begrenzt. Alte terminale Run-Artefakte können nach einer
+sicheren Frist einzeln archiviert werden; aktive Runs und Learnings sind nie Retention-Kandidaten.
 
 Details: [`reference.md`](reference.md#memory-router--learning-loop-phase-2-recall--phase-7-learn) und
 [`reference.md`](reference.md#vault-conventions-phase-2).

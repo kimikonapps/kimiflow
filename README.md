@@ -287,11 +287,20 @@ mechanizes the evidence boundaries without pretending a tool can prove that no b
 - A second planner appears only for a real architecture or irreversible contract fork, not because a
   task merely looks large.
 - The top model owns orchestration, synthesis, planning, review verdicts, and risky diagnosis.
+- A deterministic classifier elevates scope from subsystem, data, security, integration, and irreversibility
+  evidence, but never invents a missing product decision.
+- Large materially changing contexts roll over only under measured pressure; small runs remain unchanged.
+- Lower-cost model routes are earned by five comparable clean outcomes, revoked on regression, and never used
+  for critical-risk work.
 
 `small` and `quick` skip broad memory recall and the **Vault Pulse** by default. An explicit user cue that a
 similar bug or fix existed before instead triggers one targeted local recall with at most five hits at any scope,
 without provider searches.
 Current-state checks and the final learning review still run at every non-trivial scope.
+
+Domain complexity and operational impact are separate conditional contracts. When active, each requires one
+typed Research row, an acceptance-linked Plan check, and matching Verification evidence. When inactive they add
+no prompt ceremony.
 
 ## Project Intelligence and Memory
 
@@ -349,6 +358,11 @@ projects do not eventually require manual ledger cleanup.
 An Obsidian Vault is optional. Without it, project-local memory and every quality gate continue to
 work. With authenticated Vault MCP tools, Kimiflow can recall and export curated, non-private
 cross-project learning. API keys are never stored in `.kimiflow/`.
+
+Vault reads are namespace-bound: foreign project paths and unsafe fields are rejected before selected content
+enters a run, then locally deduplicated and capped. Old terminal run artifacts can be archived one at a time
+after a safe age while preserving verified evidence and a small resumable stub; active runs and learnings are
+never retention candidates.
 
 See [`reference.md`](reference.md#memory-router--learning-loop-phase-2-recall--phase-7-learn) for the
 artifact and privacy contract, and [`reference.md`](reference.md#vault-conventions-phase-2) for Vault

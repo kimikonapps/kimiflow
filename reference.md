@@ -471,6 +471,56 @@ Kimiflow routes by four capability tiers so the workflow stays portable across C
 
 ---
 
+## Adaptive control plane (Phases 0–7)
+
+The adaptive layer is local, deterministic, additive, and inactive unless its trigger is proved. Its canonical
+entry point is `hooks/adaptive-control.sh`; no feature requires a hosted provider, Vault, alternate model, new
+worktree, or user approval.
+
+- **Scope and intent:** `classify --run .kimiflow/<slug> --write` derives scope from affected subsystems,
+  durable data, security, integrations, irreversibility, and product uncertainty. It may only elevate scope.
+  An unresolved WHAT/WHY choice produces `intent_action=return_to_intake`; the classifier never supplies the
+  answer. Its digest binds only semantic selectors, affected paths, and intent/problem content, so phase/status
+  bookkeeping does not trigger pointless reclassification. `active-run.sh rescope --run ... --write` applies
+  only that exact run-local receipt and is one-way.
+- **Domain and operations:** classification separately selects `domain_complexity` and `operational_impact`.
+  When active, Research must contain the exact typed evidence row, Plan an AC-linked named check, and
+  Verification the matching passed row. `contract --stage plan|verify` enforces this. Off means zero injected
+  ceremony and forbids stale conditional rows.
+- **Context rollover:** Phase Context compares the previous and current digest-bound shadow. A rollover is
+  pending only under measured hard pressure, or for a large run whose phase changed materially at sufficient
+  estimated context size. The adapter must negotiate `context_rollover`; its next resume request receives only
+  the current bounded artifact manifest. `context.compacted` closes the receipt only with the exact rollover ID
+  and current digest. An embedded host instead delegates that phase to one fresh `top` worker with only the
+  retained manifest/current phase/named code, then records the exact `rollover-handoff`; if no fresh worker is
+  available, a bounded fallback continues the existing context. Neither path creates a wait.
+- **Eval-based model routes:** a command adapter receives both the conservative production map and its configured
+  evaluation candidates. Only an exact `turn.completed.model_route` attestation plus measured usage proves that
+  a distinct `balanced|cheap` candidate actually ran. At terminal success/failure the runner automatically
+  derives outcome, retries, all material review findings, risk, and route-bound tokens from run evidence; caller
+  labels cannot manufacture a sample. `model-record --run .kimiflow/<slug>` is only an idempotent maintenance
+  replay of that same evidence-bound evaluation. The digest is stored in
+  `.kimiflow/project/MODEL-OUTCOMES.jsonl`; one run counts once per role. `model-resolve` keeps every lower role
+  on `top` until five comparable clean run outcomes prove eligibility. Any failed terminal run or material
+  finding revokes it before the next production selection; critical risk always resolves to `top`. Model IDs
+  remain host-owned.
+- **Vault namespace:** `memory-router.sh provider prefetch` emits the stable local project namespace and hard
+  result cap. Direct search output becomes usable only through `provider accept-results --run ... --input ...`,
+  which rejects foreign paths and unsafe fields, deduplicates/reranks locally, and writes a mode-0600 bounded
+  `VAULT-RECALL.md` plus content-free receipt. Cross-project data still requires the existing privacy capsule.
+- **Retention:** `memory-router.sh retention preview` is read-only.
+  `retention archive --write` considers only aged terminal runs, keeps the newest terminal set, archives at most
+  one oldest eligible run per invocation, requires an explicit terminal `Status: done|failed|aborted`, rejects
+  links/special files/oversize input, verifies a per-file manifest, and only then replaces it with a minimal
+  resumable stub. `Phase 7: done` alone is never terminal. Active/recent runs and project learnings are
+  untouched; failure leaves the source run intact.
+
+Every receipt is bounded, mode-0600, and free of prompt/Vault payload text where a digest or count suffices.
+Malformed ledgers, unsupported capabilities, and no-trigger cases fall back to the pre-existing top-model,
+current-context, project-local flow without an interaction gate.
+
+---
+
 ## Build Preview / Risk Gate (Phase 4 → Phase 5)
 
 The internal plan remains fully gated, but the user sees a plain-language outcome rather than reviewing HOW in `PLAN.md`. Schema 4+ treats the original explicit build request as authority for reversible work: after the summary, `Build risk: none` continues without a prompt. Schema 3 retains its old Preview gates for resumability.

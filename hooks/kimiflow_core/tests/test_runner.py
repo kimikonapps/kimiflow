@@ -4,8 +4,9 @@ import stat
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
-from kimiflow_core import active_run, runner
+from kimiflow_core import active_run, adaptive_control, phase_context, runner
 
 
 THREAD = "019f5fa0-567a-70e0-9b07-604ffbdafbf4"
@@ -157,6 +158,123 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(adapter.resumes[0][1], THREAD)
         self.assertIn("next action", adapter.resumes[0][2].lower())
         self.assertEqual(self.read_receipt()["status"], "done")
+
+    def test_missing_rollover_capability_uses_bounded_fallback_without_wait(self):
+        self.write_active()
+        pending = {
+            "schema_version": 1,
+            "status": "pending",
+            "rollover_id": "roll_" + "a" * 32,
+            "reason": "measured_context_pressure",
+            "scope": "small",
+            "pressure": "hard",
+            "phase": 3,
+            "previous_digest": "sha256:" + "b" * 64,
+            "current_digest": "sha256:" + "c" * 64,
+            "changed_ratio": 0,
+            "estimated_tokens": 100,
+            "cumulative_input_tokens": 120000,
+            "retained": [],
+            "user_gate": False,
+        }
+        adaptive_control.write_rollover(self.root, self.run_dir, pending)
+        status = active_run.status_json(self.root)
+        runner._prepare_context_rollover(self.root, status, FakeAdapter())
+        with open(
+            os.path.join(self.run_dir, adaptive_control.ROLLOVER_NAME),
+            encoding="utf-8",
+        ) as handle:
+            result = json.load(handle)
+        self.assertEqual(result["status"], "bounded_fallback")
+        self.assertFalse(result["user_gate"])
+        self.assertFalse(status.get("awaiting_user", False))
+
+    def test_invalid_rollover_feature_dependency_uses_bounded_fallback(self):
+        test_case = self
+
+        class InvalidRolloverAdapter(FakeAdapter):
+            def info(self):
+                return {
+                    "schema_version": 1,
+                    "name": "invalid-rollover",
+                    "host": "local",
+                    "capabilities": {
+                        key: True for key in runner.model_adapter.CAPABILITY_KEYS
+                    },
+                    "features": {"context_rollover": True},
+                }
+
+            def set_context_rollover(self, _value):
+                test_case.fail("invalid adapter must not receive rollover")
+
+        self.write_active()
+        pending = {
+            "schema_version": 1,
+            "status": "pending",
+            "rollover_id": "roll_" + "a" * 32,
+            "reason": "measured_context_pressure",
+            "scope": "small",
+            "pressure": "hard",
+            "phase": 3,
+            "previous_digest": "sha256:" + "b" * 64,
+            "current_digest": "sha256:" + "c" * 64,
+            "changed_ratio": 0,
+            "estimated_tokens": 100,
+            "cumulative_input_tokens": 120000,
+            "retained": [],
+            "user_gate": False,
+        }
+        adaptive_control.write_rollover(self.root, self.run_dir, pending)
+
+        runner._prepare_context_rollover(
+            self.root, active_run.status_json(self.root), InvalidRolloverAdapter(),
+        )
+
+        with open(
+            os.path.join(self.run_dir, adaptive_control.ROLLOVER_NAME),
+            encoding="utf-8",
+        ) as handle:
+            result = json.load(handle)
+        self.assertEqual(result["status"], "bounded_fallback")
+        self.assertEqual(result["fallback_reason"], "capability_unavailable")
+        self.assertFalse(result["user_gate"])
+
+    def test_measured_large_run_token_pressure_triggers_rollover_before_hard_budget(self):
+        self.write_active()
+        status = active_run.status_json(self.root)
+        status["scope"] = "large"
+        status["execution_control"] = {
+            "budget_pressure": "normal",
+            "usage": {
+                "model_calls": 5,
+                "tool_calls": 10,
+                "input_tokens": 120000,
+                "output_tokens": 1000,
+            },
+        }
+        shadow = {
+            "schema_version": 1,
+            "status": "current",
+            "phase": 5,
+            "estimated_tokens": 100,
+            "composite_basis": "sha256:" + "a" * 64,
+            "selection": [],
+        }
+
+        with mock.patch.object(
+            phase_context, "load_stored_shadow", return_value=shadow,
+        ):
+            runner._prepare_context_rollover(self.root, status, FakeAdapter())
+
+        with open(
+            os.path.join(self.run_dir, adaptive_control.ROLLOVER_NAME),
+            encoding="utf-8",
+        ) as handle:
+            receipt = json.load(handle)
+        self.assertEqual(receipt["status"], "bounded_fallback")
+        self.assertEqual(receipt["reason"], "measured_context_pressure")
+        self.assertEqual(receipt["fallback_reason"], "capability_unavailable")
+        self.assertEqual(receipt["cumulative_input_tokens"], 120000)
 
     def test_usage_receipt_distinguishes_known_usage_from_unavailable(self):
         known = {"model_calls": 1, "tool_calls": 3, "input_tokens": 120, "output_tokens": 30}

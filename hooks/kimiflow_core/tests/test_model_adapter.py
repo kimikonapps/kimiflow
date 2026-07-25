@@ -8,7 +8,7 @@ import time
 import unittest
 from pathlib import Path
 
-from kimiflow_core import model_adapter, runner
+from kimiflow_core import adaptive_control, model_adapter, runner
 
 
 class ModelAdapterTests(unittest.TestCase):
@@ -25,14 +25,24 @@ class ModelAdapterTests(unittest.TestCase):
         subprocess.run(["git", "-C", self.root, "add", "README.md"], check=True)
         subprocess.run(["git", "-C", self.root, "commit", "-qm", "fixture"], check=True)
 
-    def write_harness(self, capabilities=None, features=None, events=None):
+    def write_harness(self, capabilities=None, features=None, events=None, completion=None):
         path = os.path.join(self.tmp.name, "agent-harness")
         caps = capabilities or {key: True for key in model_adapter.CAPABILITY_KEYS}
+        completion_event = completion if completion is not None else {
+            "type": "turn.completed",
+            "usage": {
+                "model_calls": 1,
+                "tool_calls": 2,
+                "input_tokens": 10,
+                "output_tokens": 5,
+            },
+        }
         source = """#!/usr/bin/env python3
 import json, os, subprocess, sys
 CAPS = %s
 FEATURES = %s
 EVENTS = %s
+COMPLETION = %s
 if sys.argv[1] == "capabilities":
     info = {"schema_version":1,"name":"fixture-agent","host":"local","capabilities":CAPS}
     if FEATURES is not None: info["features"] = FEATURES
@@ -65,8 +75,13 @@ else:
     os.unlink(os.path.join(state, "ACTIVE_RUN.json"))
     json.dump({"schema_version":1,"outcome":"done"}, open(os.path.join(run, "SESSION-OUTCOME.json"), "w"))
 for event in EVENTS: print(json.dumps(event))
-print(json.dumps({"type":"turn.completed","usage":{"model_calls":1,"tool_calls":2,"input_tokens":10,"output_tokens":5}}))
-""" % (repr(caps), repr(features), repr(events or []))
+print(json.dumps(COMPLETION))
+""" % (
+            repr(caps),
+            repr(features),
+            repr(events or []),
+            repr(completion_event),
+        )
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(source)
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
@@ -130,8 +145,13 @@ print(json.dumps({"type":"turn.completed","usage":{"model_calls":1,"tool_calls":
         self.assertEqual([payload["action"] for payload in payloads], ["start", "resume"])
         for payload in payloads:
             self.assertEqual(payload["model_routing"]["roles"], {
+                "top": "qwen-local", "balanced": "qwen-local",
+            })
+            self.assertEqual(payload["model_routing"]["candidates"], {
                 "top": "qwen-local", "balanced": "qwen-coder-local",
             })
+            self.assertEqual(payload["model_routing"]["policy"]["status"], "resolved")
+            self.assertEqual(payload["model_routing"]["policy"]["decisions"]["balanced"]["reason"], "top_default")
             context = payload["workflow_context"]
             self.assertEqual(context["name"], "kimiflow")
             plugin_root = os.path.realpath(context["plugin_root"])
@@ -148,6 +168,175 @@ print(json.dumps({"type":"turn.completed","usage":{"model_calls":1,"tool_calls":
         self.assertRegex(receipt["adapter_contract"], r"^sha256:[0-9a-f]{64}$")
         self.assertNotIn("qwen-local", json.dumps(receipt))
         self.assertNotIn("Planning", json.dumps(receipt))
+
+    def test_runtime_model_policy_selects_and_revokes_the_emitted_candidate(self):
+        features = {"model_roles": True, "adaptive_model_routes": True}
+        payload_log = os.path.join(self.tmp.name, "routing-payloads.jsonl")
+        roles = {"top": "sol", "balanced": "qwen"}
+        for index in range(5):
+            adaptive_control.record_model_outcome(
+                self.root, "sample_%024x" % index,
+                "balanced", "qwen", "sol", "routine", "passed",
+                input_tokens=100 + index, output_tokens=20,
+                evidence_digest="sha256:" + ("%064x" % (index + 1)),
+            )
+        adapter = model_adapter.CommandAgentAdapter(
+            self.write_harness(features=features),
+            model_roles=roles,
+            environ={"PATH": os.environ.get("PATH", ""), "PAYLOAD_LOG": payload_log},
+        )
+        self.assertEqual(adapter.start(self.root, "eligible", lambda _: None).returncode, 0)
+        adaptive_control.record_model_outcome(
+            self.root, "sample_%024x" % 99,
+            "balanced", "qwen", "sol", "routine", "failed", high_findings=1,
+            evidence_digest="sha256:" + ("%064x" % 100),
+        )
+        self.assertEqual(adapter.start(self.root, "revoked", lambda _: None).returncode, 0)
+        payloads = [
+            json.loads(line)
+            for line in Path(payload_log).read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(payloads[0]["model_routing"]["roles"]["balanced"], "qwen")
+        self.assertEqual(payloads[1]["model_routing"]["roles"]["balanced"], "sol")
+        for payload in payloads:
+            self.assertEqual(payload["model_routing"]["candidates"]["balanced"], "qwen")
+            self.assertIn("policy", payload["model_routing"])
+
+    def test_legacy_model_roles_never_apply_adaptive_policy(self):
+        features = {"model_roles": True}
+        payload_log = os.path.join(self.tmp.name, "legacy-routing-payloads.jsonl")
+        roles = {"top": "sol", "balanced": "qwen"}
+        adaptive_control.record_model_outcome(
+            self.root, "sample_%024x" % 99,
+            "balanced", "qwen", "sol", "routine", "failed", high_findings=1,
+            evidence_digest="sha256:" + ("%064x" % 100),
+        )
+        adapter = model_adapter.CommandAgentAdapter(
+            self.write_harness(features=features),
+            model_roles=roles,
+            environ={"PATH": os.environ.get("PATH", ""), "PAYLOAD_LOG": payload_log},
+        )
+
+        self.assertEqual(adapter.start(self.root, "legacy", lambda _: None).returncode, 0)
+
+        payload = json.loads(Path(payload_log).read_text(encoding="utf-8"))
+        self.assertEqual(payload["model_routing"]["roles"], roles)
+        self.assertNotIn("candidates", payload["model_routing"])
+        self.assertNotIn("policy", payload["model_routing"])
+
+    def test_adapter_attests_candidate_route_and_runner_binds_its_usage(self):
+        features = {"model_roles": True, "adaptive_model_routes": True}
+        route = {"role": "balanced", "model": "qwen", "baseline": "sol"}
+        adapter = model_adapter.CommandAgentAdapter(
+            self.write_harness(
+                features=features,
+                completion={
+                    "type": "turn.completed",
+                    "usage": {
+                        "model_calls": 1,
+                        "tool_calls": 2,
+                        "input_tokens": 10,
+                        "output_tokens": 5,
+                    },
+                    "model_route": route,
+                },
+            ),
+            model_roles={"top": "sol", "balanced": "qwen"},
+        )
+
+        result = runner.run_task(self.root, "candidate evidence", adapter=adapter)
+
+        self.assertEqual(result["status"], "done")
+        evidence = json.loads(Path(
+            self.root, ".kimiflow", "demo",
+            adaptive_control.MODEL_ROUTE_EVIDENCE_NAME,
+        ).read_text(encoding="utf-8"))
+        self.assertEqual(evidence["routes"][0]["role"], "balanced")
+        self.assertEqual(evidence["routes"][0]["model"], "qwen")
+        self.assertEqual(evidence["routes"][0]["baseline"], "sol")
+        self.assertEqual(evidence["routes"][0]["turns"], 2)
+        self.assertEqual(evidence["routes"][0]["input_tokens"], 20)
+        self.assertEqual(evidence["routes"][0]["output_tokens"], 10)
+
+    def test_adapter_rejects_unconfigured_model_route_attestation(self):
+        adapter = model_adapter.CommandAgentAdapter(
+            self.write_harness(
+                features={"model_roles": True, "adaptive_model_routes": True},
+                completion={
+                    "type": "turn.completed",
+                    "usage": {
+                        "model_calls": 1,
+                        "tool_calls": 1,
+                        "input_tokens": 5,
+                        "output_tokens": 2,
+                    },
+                    "model_route": {
+                        "role": "balanced",
+                        "model": "arbitrary",
+                        "baseline": "sol",
+                    },
+                },
+            ),
+            model_roles={"top": "sol", "balanced": "qwen"},
+        )
+
+        result = adapter.start(self.root, "test", lambda _session: None)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.error_code, "model_route_mismatch")
+
+    def test_context_rollover_payload_and_acknowledgement_share_exact_identity(self):
+        rollover_id = "roll_" + "a" * 32
+        digest = "sha256:" + "b" * 64
+        features = {"structured_events": True, "context_rollover": True}
+        payload_log = os.path.join(self.tmp.name, "rollover-payload.jsonl")
+        adapter = model_adapter.CommandAgentAdapter(
+            self.write_harness(
+                features=features,
+                events=[{
+                    "type": "context.compacted",
+                    "rollover_id": rollover_id,
+                    "current_digest": digest,
+                    "before_tokens": 100,
+                    "after_tokens": 40,
+                }],
+            ),
+            environ={"PATH": os.environ.get("PATH", ""), "PAYLOAD_LOG": payload_log},
+        )
+        adapter.set_context_rollover({
+            "schema_version": 1,
+            "status": "pending",
+            "rollover_id": rollover_id,
+            "current_digest": digest,
+            "phase": 3,
+            "reason": "material_phase_context_change",
+            "retained": [],
+            "user_gate": False,
+        })
+        active_dir = os.path.join(self.root, ".kimiflow", "session")
+        os.makedirs(active_dir, exist_ok=True)
+        with open(os.path.join(active_dir, "ACTIVE_RUN.json"), "w", encoding="utf-8") as handle:
+            json.dump({"status": "active"}, handle)
+        result = adapter.resume(self.root, "local-session-123", "continue", lambda _: None)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.context_compaction["rollover_id"], rollover_id)
+        self.assertEqual(result.context_compaction["current_digest"], digest)
+        payload = json.loads(Path(payload_log).read_text(encoding="utf-8").splitlines()[0])
+        self.assertEqual(payload["context_rollover"]["rollover_id"], rollover_id)
+        self.assertEqual(payload["context_rollover"]["current_digest"], digest)
+
+    def test_legacy_token_only_context_compaction_remains_valid_telemetry(self):
+        event = model_adapter.normalize_event({
+            "type": "context.compacted",
+            "before_tokens": 10,
+            "after_tokens": 5,
+        }, structured=True)
+
+        self.assertEqual(event, {
+            "type": "context.compacted",
+            "before_tokens": 10,
+            "after_tokens": 5,
+        })
 
     def test_resume_rejects_adapter_contract_drift(self):
         features = {key: True for key in model_adapter.FEATURE_KEYS}
@@ -378,6 +567,14 @@ time.sleep(30)
             set(definitions["modelRouting"]["properties"]["roles"]["properties"]),
             set(model_adapter.MODEL_ROLE_KEYS),
         )
+        self.assertEqual(
+            set(definitions["modelRouting"]["properties"]["candidates"]["properties"]),
+            set(model_adapter.MODEL_ROLE_KEYS),
+        )
+        self.assertEqual(
+            set(definitions["modelRoute"]["properties"]),
+            {"role", "model", "baseline"},
+        )
         run_result = definitions["runResult"]
         self.assertEqual(run_result["properties"]["type"]["const"], "run.result")
         self.assertEqual(set(run_result["required"]), {"schema_version", "type", "result"})
@@ -403,6 +600,10 @@ time.sleep(30)
             by_type["context.compacted"]["properties"]["before_tokens"]["maximum"],
             model_adapter.MAX_TOKEN_COUNT,
         )
+        self.assertEqual(
+            by_type["turn.completed"]["properties"]["model_route"]["$ref"],
+            "#/$defs/modelRoute",
+        )
 
     def test_command_adapter_rejects_missing_tool_capability(self):
         caps = {key: True for key in model_adapter.CAPABILITY_KEYS}
@@ -411,45 +612,61 @@ time.sleep(30)
         with self.assertRaisesRegex(model_adapter.AdapterError, "tests"):
             adapter.info()
 
+    def test_context_rollover_requires_structured_events(self):
+        with self.assertRaisesRegex(
+            model_adapter.AdapterError,
+            "context_rollover_requires_structured_events",
+        ):
+            model_adapter.validate_info({
+                "schema_version": 1,
+                "name": "fixture-agent",
+                "host": "local",
+                "capabilities": {
+                    key: True for key in model_adapter.CAPABILITY_KEYS
+                },
+                "features": {"context_rollover": True},
+            })
+
+    def test_adaptive_model_routes_require_model_roles(self):
+        with self.assertRaisesRegex(
+            model_adapter.AdapterError,
+            "adaptive_model_routes_requires_model_roles",
+        ):
+            model_adapter.validate_info({
+                "schema_version": 1,
+                "name": "fixture-agent",
+                "host": "local",
+                "capabilities": {
+                    key: True for key in model_adapter.CAPABILITY_KEYS
+                },
+                "features": {"adaptive_model_routes": True},
+            })
+
     def test_command_adapter_requires_one_terminal_completion_event(self):
-        path = self.write_harness()
-        with open(path, "r", encoding="utf-8") as handle:
-            source = handle.read()
-        source = source.replace(
-            'print(json.dumps({"type":"turn.completed","usage":{"model_calls":1,"tool_calls":2,"input_tokens":10,"output_tokens":5}}))',
-            'print(json.dumps({"type":"message","text":"no terminal event"}))',
+        path = self.write_harness(
+            completion={"type": "message", "text": "no terminal event"},
         )
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(source)
         adapter = model_adapter.CommandAgentAdapter(path)
         result = adapter.start(self.root, "task", lambda _: None)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(result.error_code, "missing_turn_completed")
 
     def test_command_adapter_accepts_absent_usage_as_unavailable(self):
-        path = self.write_harness()
-        with open(path, "r", encoding="utf-8") as handle:
-            source = handle.read()
-        source = source.replace(
-            'print(json.dumps({"type":"turn.completed","usage":{"model_calls":1,"tool_calls":2,"input_tokens":10,"output_tokens":5}}))',
-            'print(json.dumps({"type":"turn.completed"}))',
-        )
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(source)
+        path = self.write_harness(completion={"type": "turn.completed"})
         result = model_adapter.CommandAgentAdapter(path).start(self.root, "task", lambda _: None)
         self.assertEqual(result.returncode, 0)
         self.assertIsNone(result.usage)
 
     def test_command_adapter_rejects_malformed_usage(self):
-        path = self.write_harness()
-        with open(path, "r", encoding="utf-8") as handle:
-            source = handle.read()
-        source = source.replace(
-            '"model_calls":1,"tool_calls":2,"input_tokens":10,"output_tokens":5',
-            '"model_calls":"invalid","tool_calls":2,"input_tokens":10,"output_tokens":5',
-        )
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(source)
+        path = self.write_harness(completion={
+            "type": "turn.completed",
+            "usage": {
+                "model_calls": "invalid",
+                "tool_calls": 2,
+                "input_tokens": 10,
+                "output_tokens": 5,
+            },
+        })
         result = model_adapter.CommandAgentAdapter(path).start(self.root, "task", lambda _: None)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(result.error_code, "invalid_usage")

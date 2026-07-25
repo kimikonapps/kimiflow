@@ -222,6 +222,21 @@ class PhaseContextTests(unittest.TestCase):
         self.assertEqual([row["name"] for row in references], ["Selected"])
         self.assertLess(references[0]["bytes"], 100)
 
+    def test_runtime_manifest_does_not_select_its_own_rollover_receipt(self):
+        repository = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "..")
+        )
+        with open(
+            os.path.join(repository, "phases", "PHASES.json"),
+            encoding="utf-8",
+        ) as handle:
+            manifest = json.load(handle)
+        for phase in manifest["phases"]:
+            selected = []
+            for key in ("required", "feature", "fix", "audit", "optional"):
+                selected.extend(phase["context"].get(key, []))
+            self.assertNotIn("CONTEXT-ROLLOVER.json", selected)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -13,21 +13,21 @@
       "name": "clarify",
       "file": "phases/phase-1-clarify.md",
       "reference_sections": ["Intent clarification (grill, plain language) (Phase 1)"],
-      "context": {"required": ["STATE.md"], "feature": [], "fix": [], "audit": [], "optional": ["CURRENT-STATE.md"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
+      "context": {"required": ["STATE.md"], "feature": [], "fix": [], "audit": [], "optional": ["CURRENT-STATE.md", "ADAPTIVE-CLASSIFICATION.json"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     },
     {
       "id": 2,
       "name": "understand",
       "file": "phases/phase-2-understand.md",
       "reference_sections": ["Understand & research (Phase 2)", "Adaptive Architecture Deliberation", "Project memory & standards (Phase 2 read · Phase 7 append)", "Memory recall (Phase 2)", "Current-State Pulse / Gate (Phase 2)", "Vault conventions (Phase 2)"],
-      "context": {"required": ["STATE.md"], "feature": ["INTENT.md"], "fix": ["PROBLEM.md", "BUG-REPRO.md"], "audit": ["AUDIT-INTENT.md"], "optional": ["CURRENT-STATE.md", "RECALL.md", "STANDARDS-CONTEXT.md", "PROJECT-DELTA-CONTEXT.md"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
+      "context": {"required": ["STATE.md"], "feature": ["INTENT.md"], "fix": ["PROBLEM.md", "BUG-REPRO.md"], "audit": ["AUDIT-INTENT.md"], "optional": ["CURRENT-STATE.md", "RECALL.md", "STANDARDS-CONTEXT.md", "PROJECT-DELTA-CONTEXT.md", "ADAPTIVE-CLASSIFICATION.json", "VAULT-RECALL.md"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     },
     {
       "id": 3,
       "name": "plan",
       "file": "phases/phase-3-plan.md",
       "reference_sections": ["Acceptance-criteria template (Phase 3)", "Code mandate (Phase 3 directive · Phase 5 build · Phase 7 review)", "Fix mode (diagnosis) (Phase 1–2)"],
-      "context": {"required": ["STATE.md"], "feature": ["INTENT.md"], "fix": ["PROBLEM.md", "DIAGNOSIS.md"], "audit": ["AUDIT-INTENT.md", "AUDIT.md"], "optional": ["RESEARCH.md", "RECALL.md", "STANDARDS-CONTEXT.md"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
+      "context": {"required": ["STATE.md"], "feature": ["INTENT.md"], "fix": ["PROBLEM.md", "DIAGNOSIS.md"], "audit": ["AUDIT-INTENT.md", "AUDIT.md"], "optional": ["RESEARCH.md", "RECALL.md", "STANDARDS-CONTEXT.md", "ADAPTIVE-CLASSIFICATION.json", "VAULT-RECALL.md"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     },
     {
       "id": 4,
@@ -41,21 +41,21 @@
       "name": "build",
       "file": "phases/phase-5-build.md",
       "reference_sections": ["Code mandate (Phase 3 directive · Phase 5 build · Phase 7 review)"],
-      "context": {"required": ["STATE.md"], "feature": ["INTENT.md", "PLAN.md", "ACCEPTANCE.md"], "fix": ["PROBLEM.md", "DIAGNOSIS.md", "BUG-REPRO.md", "PLAN.md", "ACCEPTANCE.md"], "audit": ["AUDIT-INTENT.md", "AUDIT.md"], "optional": ["RESEARCH.md", "RECOVERY.md", "ITEMS.jsonl"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
+      "context": {"required": ["STATE.md"], "feature": ["INTENT.md", "PLAN.md", "ACCEPTANCE.md"], "fix": ["PROBLEM.md", "DIAGNOSIS.md", "BUG-REPRO.md", "PLAN.md", "ACCEPTANCE.md"], "audit": ["AUDIT-INTENT.md", "AUDIT.md"], "optional": ["RESEARCH.md", "RECOVERY.md", "ITEMS.jsonl", "ADAPTIVE-CLASSIFICATION.json"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     },
     {
       "id": 6,
       "name": "verify",
       "file": "phases/phase-6-verify.md",
       "reference_sections": ["Implementation conformance (adaptive Phase 6)", "Verification (goal-backward) (Phase 6)", "Hard test-gate (opt-in, per project) (scaling knob)"],
-      "context": {"required": ["STATE.md"], "feature": ["INTENT.md", "PLAN.md", "ACCEPTANCE.md"], "fix": ["PROBLEM.md", "DIAGNOSIS.md", "BUG-REPRO.md", "PLAN.md", "ACCEPTANCE.md"], "audit": ["AUDIT-INTENT.md", "AUDIT.md"], "optional": ["RESEARCH.md", "RECOVERY.md", "ITEMS.jsonl", "EXECUTION-TRACE.json"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
+      "context": {"required": ["STATE.md"], "feature": ["INTENT.md", "PLAN.md", "ACCEPTANCE.md"], "fix": ["PROBLEM.md", "DIAGNOSIS.md", "BUG-REPRO.md", "PLAN.md", "ACCEPTANCE.md"], "audit": ["AUDIT-INTENT.md", "AUDIT.md"], "optional": ["RESEARCH.md", "RECOVERY.md", "ITEMS.jsonl", "EXECUTION-TRACE.json", "ADAPTIVE-CLASSIFICATION.json"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     },
     {
       "id": 7,
       "name": "review-commit",
       "file": "phases/phase-7-review-commit.md",
       "reference_sections": ["Review rubric (Phase 4 plan-gate · Phase 7 code-review)", "Commit hygiene (Phase 7 atomic local commit)", "Memory Router & Learning Loop (Phase 2 recall · Phase 7 learn)"],
-      "context": {"required": ["STATE.md"], "feature": ["INTENT.md", "PLAN.md", "ACCEPTANCE.md"], "fix": ["PROBLEM.md", "DIAGNOSIS.md", "BUG-REPRO.md", "PLAN.md", "ACCEPTANCE.md"], "audit": ["AUDIT-INTENT.md", "AUDIT.md"], "optional": ["VERIFICATION.md", "CODE-REVIEW.md", "RECOVERY.md", "ITEMS.jsonl", "EXECUTION-TRACE.json"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
+      "context": {"required": ["STATE.md"], "feature": ["INTENT.md", "PLAN.md", "ACCEPTANCE.md"], "fix": ["PROBLEM.md", "DIAGNOSIS.md", "BUG-REPRO.md", "PLAN.md", "ACCEPTANCE.md"], "audit": ["AUDIT-INTENT.md", "AUDIT.md"], "optional": ["VERIFICATION.md", "CODE-REVIEW.md", "RECOVERY.md", "ITEMS.jsonl", "EXECUTION-TRACE.json", "ADAPTIVE-CLASSIFICATION.json"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     }
   ],
   "flow": {

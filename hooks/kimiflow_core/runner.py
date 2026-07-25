@@ -449,12 +449,23 @@ def _execution_hard(status):
     return execution.get("budget_pressure") == "hard"
 
 
-def _record_turn_usage(root, status, usage):
+def _record_turn_usage(root, status, usage, model_route=None):
     normalized = model_adapter.normalize_usage(usage)
     try:
         active_run.record_host_usage(root, status, normalized)
     except (active_run.ActiveError, OSError, ValueError) as exc:
         raise RunnerError("usage_record_failed", "cannot persist adapter usage receipt: %s" % exc, 2)
+    if normalized is not None and model_route is not None:
+        from . import adaptive_control
+
+        try:
+            adaptive_control.record_model_route_usage(
+                root, status["run"], model_route, normalized,
+            )
+        except (OSError, ValueError, adaptive_control.AdaptiveControlError):
+            # Optimization evidence is fail-closed: losing it keeps `top`, but
+            # never interrupts otherwise valid product work.
+            pass
     if normalized is None or not isinstance(status.get("execution_control"), dict):
         return
     try:
@@ -464,6 +475,86 @@ def _record_turn_usage(root, status, usage):
         )
     except (active_run.ActiveError, OSError, ValueError) as exc:
         raise RunnerError("usage_record_failed", "cannot persist adapter usage: %s" % exc, 2)
+
+
+def _record_context_compaction(root, status, event):
+    if not isinstance(event, dict) or status.get("present") is not True:
+        return
+    from . import adaptive_control
+
+    try:
+        adaptive_control.acknowledge_rollover(
+            root,
+            status["run"],
+            event.get("rollover_id"),
+            event.get("current_digest"),
+            event.get("before_tokens"),
+            event.get("after_tokens"),
+        )
+    except (OSError, ValueError, adaptive_control.AdaptiveControlError):
+        # A stale acknowledgement never closes the current request and is not a
+        # reason to interrupt otherwise safe autonomous work.
+        return
+
+
+def _prepare_context_rollover(root, status, adapter):
+    if status.get("present") is not True:
+        return
+    from . import adaptive_control, phase_context
+
+    pending = None
+    try:
+        pending = adaptive_control.pending_rollover(root, status["run"])
+        measured_input = (
+            status.get("execution_control", {})
+            .get("usage", {})
+            .get("input_tokens", 0)
+        )
+        if pending is None and (
+            _execution_hard(status)
+            or (
+                status.get("scope") == "large"
+                and isinstance(measured_input, int)
+                and not isinstance(measured_input, bool)
+                and measured_input >= 120000
+            )
+        ):
+            run_dir = os.path.join(root, status["run"])
+            shadow = phase_context.load_stored_shadow(root, run_dir, active=status)
+            if shadow is not None:
+                pending = adaptive_control.decide_rollover(
+                    shadow,
+                    shadow,
+                    status.get("scope", "small"),
+                    pressure="hard",
+                    cumulative_input_tokens=measured_input,
+                )
+                adaptive_control.write_rollover(root, status["run"], pending)
+        if pending is None:
+            return
+        info = model_adapter.info_for(adapter)
+        features = info.get("features", {})
+        if features.get("context_rollover") is True and hasattr(adapter, "set_context_rollover"):
+            adapter.set_context_rollover(pending)
+        else:
+            adaptive_control.fallback_rollover(root, status["run"])
+    except (OSError, ValueError, model_adapter.AdapterError, adaptive_control.AdaptiveControlError):
+        # An unusable optional host contract must not leave a pending rollover
+        # that is retried forever. Fall back to the bounded current-context flow.
+        if pending is not None:
+            try:
+                adaptive_control.fallback_rollover(root, status["run"])
+            except (
+                OSError, ValueError, model_adapter.AdapterError,
+                adaptive_control.AdaptiveControlError,
+            ):
+                pass
+        return
+
+
+def _resume_adapter(root, status, adapter, session_id, prompt, on_session):
+    _prepare_context_rollover(root, status, adapter)
+    return adapter.resume(root, session_id, prompt, on_session)
 
 
 def _final_recovery_prompt(status):
@@ -491,8 +582,10 @@ def _drive(root, adapter, receipt, turn, baseline, workflow_aware=False):
                 raise RunnerError("transport_error", "coding-agent transport failed after automatic retries", 1)
             retries += 1
             try:
-                turn = adapter.resume(
+                turn = _resume_adapter(
                     root,
+                    _active_status(root),
+                    adapter,
                     receipt["thread_id"],
                     (
                         "Recover the explicit Kimiflow task after a transport/tool failure. If no active run exists yet, "
@@ -517,7 +610,8 @@ def _drive(root, adapter, receipt, turn, baseline, workflow_aware=False):
                 receipt = _update_receipt(root, receipt, "ownership_conflict")
                 raise RunnerError("ownership_conflict", "active Kimiflow run is not owned by this adapter session", 1)
             receipt = _update_receipt(root, receipt, active_run=status.get("run"))
-            _record_turn_usage(root, status, turn.usage)
+            _record_turn_usage(root, status, turn.usage, turn.model_route)
+            _record_context_compaction(root, status, getattr(turn, "context_compaction", None))
             if status.get("awaiting_user") is True:
                 receipt = _update_receipt(root, receipt, "awaiting_user")
                 return _public_result(receipt, wait=status)
@@ -531,16 +625,16 @@ def _drive(root, adapter, receipt, turn, baseline, workflow_aware=False):
                     root, receipt, final_recovery_used=True, exhaustion_reason=reason,
                 )
                 try:
-                    turn = adapter.resume(
-                        root, receipt["thread_id"], _final_recovery_prompt(status),
+                    turn = _resume_adapter(
+                        root, status, adapter, receipt["thread_id"], _final_recovery_prompt(status),
                         lambda value: _ensure_same_thread(value, receipt["thread_id"]),
                     )
                 except KeyboardInterrupt:
                     return _record_interruption(root, receipt)
                 continue
             try:
-                turn = adapter.resume(
-                    root,
+                turn = _resume_adapter(
+                    root, status, adapter,
                     receipt["thread_id"],
                     _continuation_prompt(status),
                     lambda value: _ensure_same_thread(value, receipt["thread_id"]),
@@ -550,6 +644,17 @@ def _drive(root, adapter, receipt, turn, baseline, workflow_aware=False):
             continue
         outcome = _read_changed_outcome(root, baseline, receipt.get("active_run"))
         if outcome:
+            final_status = {"run": outcome["run"]}
+            try:
+                _record_turn_usage(root, final_status, turn.usage, turn.model_route)
+            except RunnerError:
+                pass
+            try:
+                from . import adaptive_control
+
+                adaptive_control.record_observed_model_outcomes(root, outcome["run"])
+            except (OSError, ValueError, adaptive_control.AdaptiveControlError):
+                pass
             receipt = _update_receipt(root, receipt, outcome["status"], active_run=outcome["run"])
             return _public_result(receipt, outcome=outcome)
         receipt = _update_receipt(root, receipt, "no_kimiflow_run")
@@ -662,8 +767,8 @@ def resume_task(root, message=None, adapter=None):
         }
     receipt = _update_receipt(root, receipt, "running", **updates)
     try:
-        turn = adapter.resume(
-            root,
+        turn = _resume_adapter(
+            root, current, adapter,
             receipt["thread_id"],
             prompt,
             lambda value: _ensure_same_thread(value, receipt["thread_id"]),
