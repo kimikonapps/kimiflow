@@ -194,16 +194,16 @@
       "sha256": "sha256:0865024bb110714857749a2a6db390188c1f2e964cf2b404bc4540d68a89c745"
     },
     {
-      "bytes": 7889,
+      "bytes": 9756,
       "mode": "0644",
       "path": "hooks/kimiflow_core/adapter_conformance.py",
-      "sha256": "sha256:00ff86c550bf49518bfad46107846bae677717c44a460cf569c96d0f16238ff6"
+      "sha256": "sha256:de4950a44908bff69e86324061efe1c16ffe5599dad65c67ed6e85dfb4ce8ab4"
     },
     {
-      "bytes": 70273,
+      "bytes": 79878,
       "mode": "0644",
       "path": "hooks/kimiflow_core/adaptive_control.py",
-      "sha256": "sha256:b3e1a2cd86592fedba9e606ae162a01cbcc8ac603bcc04c4ef744c194e3243d7"
+      "sha256": "sha256:1d816ad25dc3365dfa4964f7d9c6984e014d82a8e01582af3e6eea7bb3f49542"
     },
     {
       "bytes": 714,
@@ -218,10 +218,10 @@
       "sha256": "sha256:cd37de085b12738a662b3b2cd3c8a3d42951edfd3e57a85ab7259e8e62f8d34a"
     },
     {
-      "bytes": 16832,
+      "bytes": 17184,
       "mode": "0644",
       "path": "hooks/kimiflow_core/code_intelligence.py",
-      "sha256": "sha256:33be58ed9edc43379461b721193a2dbbe1633b818923692cd13575357ccada36"
+      "sha256": "sha256:58e669d8e8f6a81d5aeffeb298c70e3aab771997c8ae43438445dfd8f1a7da26"
     },
     {
       "bytes": 10380,
@@ -266,10 +266,10 @@
       "sha256": "sha256:73ad266f8758591037f44e63fd27a737efd661582e7292bcee7a1a553b9fda0a"
     },
     {
-      "bytes": 40380,
+      "bytes": 43049,
       "mode": "0644",
       "path": "hooks/kimiflow_core/model_adapter.py",
-      "sha256": "sha256:aa2f0a9ac409da65c32d2553213ebba06a76e1319ce0eceafb9176fe81a87a48"
+      "sha256": "sha256:d6b552cf24dcc41875ae16a07a22259bb02a23d8ef517da2b60ccc0d95b4e8aa"
     },
     {
       "bytes": 2255,
@@ -860,6 +860,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:1bcf05f3ac2fdf53de7220c27c0c78ae2febf45e967f1b5575be5f12139a96ff",
+  "runtime_fingerprint": "sha256:f8c69001ce0264c49fe6028c7305e9f022fa4baf013bb71adc06f4d43892e62f",
   "schema_version": 1
 }

@@ -265,6 +265,55 @@ class RuntimeReleaseTests(unittest.TestCase):
             identities[0]["runtime_fingerprint"],
             manifest["artifact"]["runtime_fingerprint"],
         )
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            exit_code = runtime_release.main([
+                "verify",
+                "--manifest", manifest_path,
+                "--archive", archive,
+                "--host-profile", "app_host",
+                "--supported-adapter-protocol", str(model_adapter.PROTOCOL_VERSION),
+                *sum(
+                    (
+                        ["--host-feature", feature]
+                        for feature in runtime_release.HOST_PROFILES["app_host"]
+                    ),
+                    [],
+                ),
+            ])
+        self.assertEqual(exit_code, 0)
+        cli_result = json.loads(stdout.getvalue())
+        self.assertEqual(cli_result["status"], "artifact_verified")
+        self.assertEqual(cli_result["version"], manifest["version"])
+        self.assertEqual(cli_result["source_commit"], SOURCE_COMMIT)
+        self.assertEqual(cli_result["artifact"], manifest["artifact"]["name"])
+
+        server = mcp_server.Server(self.candidate)
+        request_id, initialize = server.handle({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": mcp_server.PROTOCOL_VERSION,
+                "capabilities": {},
+                "clientInfo": {"name": "runtime-test", "version": "1"},
+            },
+        })
+        self.assertEqual(request_id, 1)
+        self.assertEqual(initialize["serverInfo"]["version"], manifest["version"])
+
+        adapter_info = model_adapter.validate_info({
+            "schema_version": model_adapter.PROTOCOL_VERSION,
+            "name": "runtime-test",
+            "host": "fixture",
+            "capabilities": {
+                name: True for name in model_adapter.CAPABILITY_KEYS
+            },
+        })
+        self.assertEqual(
+            adapter_info["schema_version"],
+            manifest["contracts"]["adapter_protocol"]["max"],
+        )
 
     def test_build_budget_includes_archived_fingerprint(self):
         fingerprint, _ = runtime_release._read_json(

@@ -622,6 +622,56 @@ class AdaptiveControlTests(unittest.TestCase):
         self.assertEqual(result["route"], "shadow")
         self.assertEqual(result["reason"], "evidence_pending")
 
+    def test_execution_variant_requires_comparable_clean_lower_cost_evidence(self):
+        profile = {
+            "model_fingerprint": self.evidence(960),
+            "execution_variants": [
+                {"id": "default", "default": True, "cost_rank": 50},
+                {"id": "lean", "default": False, "cost_rank": 10},
+            ],
+        }
+        binding = {
+            "role": "implementation",
+            "task_class": "routine-code",
+            "runtime_fingerprint": self.evidence(961),
+            "policy_fingerprint": self.evidence(962),
+            "prompt_gate_fingerprint": self.evidence(963),
+        }
+        for index in range(5):
+            for variant, tokens in (("default", 1000), ("lean", 600)):
+                adaptive_control.record_execution_variant_outcome(
+                    self.root,
+                    "sample_%024x" % (1000 + index * 2 + (variant == "lean")),
+                    profile["model_fingerprint"],
+                    variant,
+                    **binding,
+                    quality_passed=True,
+                    verification_passed=True,
+                    logical_input_tokens=tokens,
+                    output_tokens=100,
+                )
+        selected = adaptive_control.resolve_execution_variant(
+            self.root, profile, **binding,
+        )
+        self.assertEqual(selected["execution_variant"], "lean")
+        self.assertEqual(selected["reason"], "verified_lower_cost_equivalence")
+        adaptive_control.record_execution_variant_outcome(
+            self.root,
+            "sample_%024x" % 1100,
+            profile["model_fingerprint"],
+            "lean",
+            **binding,
+            quality_passed=False,
+            verification_passed=False,
+            high_findings=1,
+            logical_input_tokens=500,
+            output_tokens=100,
+        )
+        revoked = adaptive_control.resolve_execution_variant(
+            self.root, profile, **binding,
+        )
+        self.assertEqual(revoked["execution_variant"], "default")
+
     def test_review_mode_requires_calibration_samples_runtime_binding_and_one_in_ten_audit(self):
         key = {
             "model_fingerprint": self.evidence(1001),

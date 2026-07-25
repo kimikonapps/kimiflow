@@ -321,6 +321,65 @@ print(json.dumps(completion))
             "single-independent",
         )
 
+    def test_verified_lower_cost_execution_variant_is_selected_and_session_stable(self):
+        profile = self.execution_profile()
+        profile["execution_variants"][1]["cost_rank"] = 10
+        profile["execution_variants"][1]["depth_rank"] = 30
+        payload_log = os.path.join(self.tmp.name, "variant-payloads.jsonl")
+        adapter = model_adapter.CommandAgentAdapter(
+            self.write_harness(
+                features={"adaptive_execution_profiles": True},
+                execution_profile=profile,
+            ),
+            environ={"PATH": os.environ.get("PATH", ""), "PAYLOAD_LOG": payload_log},
+        )
+        binding = {
+            "role": "implementation",
+            "task_class": "routine-code",
+            "runtime_fingerprint": model_adapter.runtime_fingerprint(),
+            "policy_fingerprint": model_adapter.execution_profile_fingerprint(profile),
+            "prompt_gate_fingerprint": adapter.contract_fingerprint(),
+        }
+        for index in range(5):
+            for variant, tokens in (("budget8192", 1000), ("budget32768", 500)):
+                adaptive_control.record_execution_variant_outcome(
+                    self.root,
+                    "sample_%024x" % (1200 + index * 2 + (variant == "budget32768")),
+                    profile["model_fingerprint"],
+                    variant,
+                    **binding,
+                    quality_passed=True,
+                    verification_passed=True,
+                    logical_input_tokens=tokens,
+                    output_tokens=100,
+                )
+        started = adapter.start(self.root, "start", lambda _session: None)
+        self.assertEqual(started.returncode, 0)
+        adaptive_control.record_execution_variant_outcome(
+            self.root,
+            "sample_%024x" % 1300,
+            profile["model_fingerprint"],
+            "budget32768",
+            **binding,
+            quality_passed=False,
+            verification_passed=False,
+            high_findings=1,
+            logical_input_tokens=500,
+            output_tokens=100,
+        )
+        resumed = adapter.resume(
+            self.root, started.session_id, "resume", lambda _session: None
+        )
+        self.assertEqual(resumed.returncode, 0)
+        payloads = [
+            json.loads(line)
+            for line in Path(payload_log).read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(
+            [row["execution_profile"]["execution_variant"] for row in payloads],
+            ["budget32768", "budget32768"],
+        )
+
     def test_feature_capable_adapter_start_and_resume_preserve_workflow_and_model_roles(self):
         features = {key: True for key in model_adapter.FEATURE_KEYS}
         payload_log = os.path.join(self.tmp.name, "feature-payloads.jsonl")

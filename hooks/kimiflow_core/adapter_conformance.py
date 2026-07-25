@@ -35,19 +35,74 @@ def _digest_tree(root):
     return "sha256:" + digest.hexdigest()
 
 
-def _probe_prompt(operation, marker, artifacts):
+def _probe_prompt(operation, marker, probes):
     payload = {
         "contract": "kimiflow-adapter-conformance-v1",
         "operation": operation,
         "marker": marker,
         "requirements": ["files", "shell", "tests", "gates"],
-        "artifacts": artifacts,
+        "probes": probes,
     }
     return (
         "Execute this deterministic Kimiflow adapter conformance probe exactly once. "
         "Do not access paths outside the supplied root. Probe: "
         + json.dumps(payload, sort_keys=True, separators=(",", ":"))
     )
+
+
+def _write_probe(path, source):
+    Path(path).write_text(source, encoding="utf-8")
+    os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+
+
+def _behavior_probes(root, contract, start_marker):
+    directory_name = ".kimiflow-conformance-probes"
+    directory = os.path.join(root, directory_name)
+    os.mkdir(directory, 0o700)
+    markers = {
+        name: name + "-" + hashlib.sha256(
+            (contract + start_marker + name).encode("ascii")
+        ).hexdigest()[:24]
+        for name in ("shell", "tests", "gates")
+    }
+    receipt_paths = {
+        name: os.path.join(directory_name, name + ".receipt")
+        for name in markers
+    }
+    _write_probe(
+        os.path.join(directory, "shell_probe.py"),
+        "from pathlib import Path\n"
+        "Path(%r).write_text(%r, encoding='utf-8')\n"
+        % (receipt_paths["shell"], markers["shell"] + "\n"),
+    )
+    _write_probe(
+        os.path.join(directory, "test_probe.py"),
+        "import unittest\nfrom pathlib import Path\n"
+        "class Probe(unittest.TestCase):\n"
+        "    def test_adapter_test_capability(self):\n"
+        "        Path(%r).write_text(%r, encoding='utf-8')\n"
+        "if __name__ == '__main__': unittest.main()\n"
+        % (receipt_paths["tests"], markers["tests"] + "\n"),
+    )
+    _write_probe(
+        os.path.join(directory, "gate_probe.py"),
+        "from pathlib import Path\n"
+        "required = [(%r, %r), (%r, %r)]\n"
+        "if any(Path(path).read_text(encoding='utf-8') != marker for path, marker in required):\n"
+        "    raise SystemExit(1)\n"
+        "Path(%r).write_text(%r, encoding='utf-8')\n"
+        % (
+            receipt_paths["shell"], markers["shell"] + "\n",
+            receipt_paths["tests"], markers["tests"] + "\n",
+            receipt_paths["gates"], markers["gates"] + "\n",
+        ),
+    )
+    probes = {
+        "shell": "python3 %s/shell_probe.py" % directory_name,
+        "tests": "python3 %s/test_probe.py -q" % directory_name,
+        "gates": "python3 %s/gate_probe.py" % directory_name,
+    }
+    return probes, receipt_paths, markers
 
 
 def _marker_valid(root, name, marker):
@@ -84,33 +139,28 @@ def run(executable, project_root=None, model=None, environ=None):
         Path(os.path.join(root, "fixture.txt")).write_text("fixture\n", encoding="utf-8")
         start_marker = "start-" + hashlib.sha256(contract.encode("ascii")).hexdigest()[:16]
         resume_marker = "resume-" + hashlib.sha256((contract + start_marker).encode("ascii")).hexdigest()[:16]
-        artifacts = {
-            name: {
-                "path": name + ".txt",
-                "marker": name + "-" + hashlib.sha256(
-                    (contract + start_marker + name).encode("ascii")
-                ).hexdigest()[:16],
-            }
-            for name in ("shell", "tests", "gates")
-        }
+        probes, receipt_paths, markers = _behavior_probes(
+            root, contract, start_marker
+        )
         sessions = []
         start = adapter.start(
-            root, _probe_prompt("start", start_marker, artifacts), sessions.append
+            root, _probe_prompt("start", start_marker, probes), sessions.append
         )
         checks["start"] = "passed" if start.returncode == 0 and start.session_id else "failed"
         checks["files"] = "passed" if _marker_valid(root, "start.txt", start_marker) else "failed"
         for capability in ("shell", "tests", "gates"):
-            probe = artifacts[capability]
             checks[capability] = (
                 "passed"
-                if _marker_valid(root, probe["path"], probe["marker"])
+                if _marker_valid(
+                    root, receipt_paths[capability], markers[capability]
+                )
                 else "failed"
             )
         if start.returncode == 0 and start.session_id:
             resume = adapter.resume(
                 root,
                 start.session_id,
-                _probe_prompt("resume", resume_marker, artifacts),
+                _probe_prompt("resume", resume_marker, probes),
                 sessions.append,
             )
         else:

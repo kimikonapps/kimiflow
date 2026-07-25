@@ -140,11 +140,15 @@ def snapshot(root):
     return {"id": "sha256:" + digest.hexdigest(), "dirty": bool(status)}
 
 
-def eligible(scope, affected_paths, signals):
+def eligible(scope, affected_paths, signals, exact_targets=False):
+    if not isinstance(exact_targets, bool):
+        raise CodeIntelligenceError("exact_targets_invalid")
     if scope != "large":
         return False, "scope_not_large"
     if not isinstance(affected_paths, (list, tuple)) or not affected_paths:
         return False, "anchors_missing"
+    if exact_targets:
+        return False, "exact_targets_known"
     normalized_signals = set(signals or ())
     if normalized_signals - SIGNALS:
         raise CodeIntelligenceError("signals_invalid")
@@ -260,10 +264,12 @@ def _render(facts, k, max_bytes, max_tokens):
 def route(
     root, scope, affected_paths, signals, executable=None, relation_types=None,
     symbols=None, mode="shadow", k=40, hops=1, deadline_ms=5000, max_bytes=8192,
-    max_tokens=2048, environ=None,
+    max_tokens=2048, exact_targets=False, environ=None,
 ):
     root = os.path.realpath(root)
-    is_eligible, reason = eligible(scope, affected_paths, signals)
+    is_eligible, reason = eligible(
+        scope, affected_paths, signals, exact_targets=exact_targets
+    )
     fallback = {
         "schema_version": 1, "status": "fallback", "route": "lexical",
         "provider_invoked": False, "reason": reason, "context": "", "user_gate": False,
@@ -367,6 +373,7 @@ def main(argv=None):
     parser.add_argument("--deadline-ms", type=int, default=5000)
     parser.add_argument("--max-bytes", type=int, default=8192)
     parser.add_argument("--max-tokens", type=int, default=2048)
+    parser.add_argument("--exact-targets", action="store_true")
     parser.add_argument("--pretty", action="store_true")
     args = parser.parse_args(argv)
     try:
@@ -374,6 +381,7 @@ def main(argv=None):
             args.root, args.scope, args.affected_path, args.signal, args.provider,
             args.relation, args.symbol, args.mode, args.k, args.hops,
             args.deadline_ms, args.max_bytes, args.max_tokens,
+            args.exact_targets,
         )
         print(json.dumps(value, sort_keys=True, indent=2 if args.pretty else None, separators=None if args.pretty else (",", ":")))
         return 0

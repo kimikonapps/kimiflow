@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import threading
@@ -236,6 +237,35 @@ def execution_profile_fingerprint(value):
 def default_execution_variant(value):
     profile = normalize_execution_profile(value)
     return next(row["id"] for row in profile["execution_variants"] if row["default"])
+
+
+def runtime_fingerprint():
+    plugin_root = os.path.realpath(
+        os.path.join(os.path.dirname(__file__), "..", "..")
+    )
+    candidates = (
+        os.path.join(plugin_root, "RUNTIME-FINGERPRINT.json"),
+        os.path.join(plugin_root, "plugins", "kimiflow", "RUNTIME-FINGERPRINT.json"),
+    )
+    for path in candidates:
+        try:
+            info = os.stat(path, follow_symlinks=False)
+            if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+                continue
+            with open(path, "rb") as handle:
+                payload = handle.read(MAX_CAPABILITIES_BYTES + 1)
+            value = json.loads(payload.decode("utf-8"))
+            fingerprint = value.get("runtime_fingerprint")
+            if (
+                len(payload) <= MAX_CAPABILITIES_BYTES
+                and isinstance(fingerprint, str)
+                and DIGEST_RE.fullmatch(fingerprint) is not None
+            ):
+                return fingerprint
+        except (OSError, UnicodeError, ValueError, AttributeError):
+            continue
+    with open(__file__, "rb") as handle:
+        return "sha256:" + hashlib.sha256(handle.read()).hexdigest()
 
 
 def workflow_context():
@@ -668,6 +698,8 @@ class CommandAgentAdapter:
         self.stderr = stderr or sys.stderr
         self._info = None
         self._context_rollover = None
+        self._execution_selection = None
+        self._execution_profile_fingerprint = None
         self._usage_turn_ids = set()
         timeout_value = (os.environ if environ is None else environ).get(
             "KIMIFLOW_ADAPTER_TURN_TIMEOUT_SECONDS", str(DEFAULT_TURN_TIMEOUT_SECONDS),
@@ -751,6 +783,49 @@ class CommandAgentAdapter:
             "retained": value.get("retained", []),
         }
 
+    def _select_execution_variant(self, root, profile):
+        from . import adaptive_control
+
+        profile_fingerprint = execution_profile_fingerprint(profile)
+        if self._execution_selection is not None:
+            if self._execution_profile_fingerprint != profile_fingerprint:
+                raise AdapterError("execution_profile_drift")
+            return dict(self._execution_selection)
+        risk = adaptive_control.routing_risk(root)
+        task_class = "%s-code" % risk
+        contract = self.contract_fingerprint()
+        if contract is None:
+            contract = "sha256:" + hashlib.sha256(
+                b"kimiflow-adapter-prompt-gate-v1"
+            ).hexdigest()
+        try:
+            route = adaptive_control.resolve_execution_variant(
+                root,
+                profile,
+                "implementation",
+                task_class,
+                runtime_fingerprint(),
+                profile_fingerprint,
+                contract,
+                risk=risk,
+            )
+        except (OSError, ValueError, adaptive_control.AdaptiveControlError):
+            route = {
+                "execution_variant": default_execution_variant(profile),
+                "reason": "routing_policy_invalid",
+            }
+        self._execution_profile_fingerprint = profile_fingerprint
+        self._execution_selection = {
+            "schema_version": 1,
+            "profile_fingerprint": profile_fingerprint,
+            "model_fingerprint": profile["model_fingerprint"],
+            "execution_variant": route["execution_variant"],
+            "max_input_tokens": profile["max_input_tokens"],
+            "max_output_tokens": profile["max_output_tokens"],
+            "controls": dict(profile["controls"]),
+        }
+        return dict(self._execution_selection)
+
     def _invoke(self, action, root, session_id, prompt, on_session):
         info = self.info()
         payload = {
@@ -768,15 +843,7 @@ class CommandAgentAdapter:
         profile = info.get("execution_profile")
         execution_selection = None
         if features.get("adaptive_execution_profiles") is True:
-            execution_selection = {
-                "schema_version": 1,
-                "profile_fingerprint": execution_profile_fingerprint(profile),
-                "model_fingerprint": profile["model_fingerprint"],
-                "execution_variant": default_execution_variant(profile),
-                "max_input_tokens": profile["max_input_tokens"],
-                "max_output_tokens": profile["max_output_tokens"],
-                "controls": dict(profile["controls"]),
-            }
+            execution_selection = self._select_execution_variant(root, profile)
             payload["execution_profile"] = execution_selection
         if features.get("workflow_context") is True:
             payload["workflow_context"] = workflow_context()

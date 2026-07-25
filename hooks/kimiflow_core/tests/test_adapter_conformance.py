@@ -29,7 +29,7 @@ class AdapterConformanceTests(unittest.TestCase):
             "features": {"structured_events": True, "root_confinement": True},
         }
         script = """#!/usr/bin/env python3
-import json, os, re, sys
+import json, os, re, shlex, subprocess, sys
 INFO = %r
 if sys.argv[1:] == ['capabilities', '--json']:
     print(json.dumps(INFO)); raise SystemExit(0)
@@ -40,9 +40,11 @@ name = 'start.txt' if probe['operation'] == 'start' else 'resume.txt'
 with open(os.path.join(root, name), 'w', encoding='utf-8') as handle:
     handle.write(probe['marker'] + '\\n')
 if probe['operation'] == 'start' and not %r:
-    for artifact in probe['artifacts'].values():
-        with open(os.path.join(root, artifact['path']), 'w', encoding='utf-8') as handle:
-            handle.write(artifact['marker'] + '\\n')
+    for capability in ('shell', 'tests', 'gates'):
+        subprocess.run(
+            shlex.split(probe['probes'][capability]), cwd=root,
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
 if %r:
     with open(os.path.join(os.path.dirname(root), 'outside-canary'), 'w') as handle:
         handle.write('escaped')

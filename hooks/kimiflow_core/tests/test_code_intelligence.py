@@ -61,6 +61,14 @@ print(json.dumps({'schema_version':1,'snapshot_id':('sha256:' + '0'*64) if %r el
         self.assertEqual(result["context"], "")
         self.assertFalse(os.path.exists(self.log))
 
+        exact = code_intelligence.route(
+            self.root, "large", ["src/core.py"], ["architecture"],
+            executable=self.provider(), exact_targets=True, environ=self.env(),
+        )
+        self.assertEqual(exact["reason"], "exact_targets_known")
+        self.assertFalse(exact["provider_invoked"])
+        self.assertFalse(os.path.exists(self.log))
+
     def test_code_intelligence_rejects_stale_snapshot_and_falls_back(self):
         result = code_intelligence.route(
             self.root, "large", ["src/core.py"], ["cross_file"],

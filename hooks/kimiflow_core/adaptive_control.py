@@ -34,6 +34,7 @@ MODEL_POLICY_NAME = "MODEL-ROUTING-POLICY.json"
 MODEL_ROUTE_EVIDENCE_NAME = "MODEL-ROUTE-EVIDENCE.json"
 RETRIEVAL_LEDGER_NAME = "RETRIEVAL-OUTCOMES.jsonl"
 REVIEW_LEDGER_NAME = "REVIEW-OUTCOMES.jsonl"
+VARIANT_LEDGER_NAME = "EXECUTION-VARIANT-OUTCOMES.jsonl"
 HOST_USAGE_NAME = "HOST-USAGE.json"
 EXECUTION_TRACE_NAME = "EXECUTION-TRACE.json"
 MAX_ARTIFACT_BYTES = 1024 * 1024
@@ -1521,6 +1522,181 @@ def resolve_review_mode(
     }
 
 
+def record_execution_variant_outcome(
+    root, sample_id, model_fingerprint, execution_variant, role, task_class,
+    runtime_fingerprint, policy_fingerprint, prompt_gate_fingerprint,
+    quality_passed, verification_passed, high_findings=0, retries=0,
+    logical_input_tokens=0, output_tokens=0, scope_creep=False,
+):
+    if SAMPLE_ID_RE.fullmatch(str(sample_id)) is None:
+        raise AdaptiveControlError("variant_sample_invalid")
+    key = _review_key(
+        model_fingerprint, execution_variant, role, task_class,
+        runtime_fingerprint, policy_fingerprint, prompt_gate_fingerprint,
+    )
+    if any(not isinstance(value, bool) for value in (
+        quality_passed, verification_passed, scope_creep,
+    )):
+        raise AdaptiveControlError("variant_outcome_invalid")
+    metrics = (high_findings, retries, logical_input_tokens, output_tokens)
+    if any(
+        isinstance(value, bool) or not isinstance(value, int) or value < 0
+        for value in metrics
+    ):
+        raise AdaptiveControlError("variant_metrics_invalid")
+    row = {
+        "schema_version": 1,
+        "sample_id": sample_id,
+        "recorded_at": _now(),
+        **key,
+        "quality_passed": quality_passed,
+        "verification_passed": verification_passed,
+        "high_findings": high_findings,
+        "retries": retries,
+        "logical_input_tokens": logical_input_tokens,
+        "output_tokens": output_tokens,
+        "scope_creep": scope_creep,
+    }
+    return _append_adaptive_row(
+        root, VARIANT_LEDGER_NAME, row, ("sample_id", *key.keys()),
+    )
+
+
+def _valid_variant_row(row):
+    try:
+        key = _review_key(
+            row.get("model_fingerprint"), row.get("execution_variant"),
+            row.get("role"), row.get("task_class"),
+            row.get("runtime_fingerprint"), row.get("policy_fingerprint"),
+            row.get("prompt_gate_fingerprint"),
+        )
+    except (AttributeError, AdaptiveControlError):
+        return False
+    required = {
+        "schema_version", "sample_id", "recorded_at", *key.keys(),
+        "quality_passed", "verification_passed", "high_findings", "retries",
+        "logical_input_tokens", "output_tokens", "scope_creep",
+    }
+    return (
+        isinstance(row, dict) and set(row) == required
+        and row.get("schema_version") == 1
+        and SAMPLE_ID_RE.fullmatch(str(row.get("sample_id", ""))) is not None
+        and all(isinstance(row.get(name), bool) for name in (
+            "quality_passed", "verification_passed", "scope_creep",
+        ))
+        and all(
+            not isinstance(row.get(name), bool)
+            and isinstance(row.get(name), int)
+            and row.get(name) >= 0
+            for name in (
+                "high_findings", "retries", "logical_input_tokens",
+                "output_tokens",
+            )
+        )
+    )
+
+
+def _clean_variant_samples(rows, key):
+    matching = [
+        row for row in rows
+        if all(row.get(name) == value for name, value in key.items())
+    ][-MODEL_MIN_SAMPLES:]
+    clean = (
+        len(matching) == MODEL_MIN_SAMPLES
+        and all(
+            row["quality_passed"] and row["verification_passed"]
+            and row["high_findings"] == 0 and row["retries"] == 0
+            and not row["scope_creep"]
+            and row["logical_input_tokens"] + row["output_tokens"] > 0
+            for row in matching
+        )
+    )
+    average = (
+        sum(
+            row["logical_input_tokens"] + row["output_tokens"]
+            for row in matching
+        ) // len(matching)
+        if matching else 0
+    )
+    return clean, average, len(matching)
+
+
+def resolve_execution_variant(
+    root, profile, role, task_class, runtime_fingerprint,
+    policy_fingerprint, prompt_gate_fingerprint, risk="routine",
+):
+    if risk not in ("routine", "critical"):
+        raise AdaptiveControlError("variant_risk_invalid")
+    if (
+        not isinstance(profile, dict)
+        or not isinstance(profile.get("model_fingerprint"), str)
+        or SHA_RE.fullmatch(profile["model_fingerprint"]) is None
+        or not isinstance(profile.get("execution_variants"), list)
+    ):
+        raise AdaptiveControlError("variant_profile_invalid")
+    variants = profile["execution_variants"]
+    defaults = [
+        row for row in variants
+        if isinstance(row, dict) and row.get("default") is True
+    ]
+    if len(defaults) != 1:
+        raise AdaptiveControlError("variant_profile_invalid")
+    default = defaults[0]
+    base_key = {
+        "model_fingerprint": profile["model_fingerprint"],
+        "role": role,
+        "task_class": task_class,
+        "runtime_fingerprint": runtime_fingerprint,
+        "policy_fingerprint": policy_fingerprint,
+        "prompt_gate_fingerprint": prompt_gate_fingerprint,
+    }
+    _review_key(
+        base_key["model_fingerprint"], default.get("id"), role, task_class,
+        runtime_fingerprint, policy_fingerprint, prompt_gate_fingerprint,
+    )
+    rows = _adaptive_rows(root, VARIANT_LEDGER_NAME)
+    if any(not _valid_variant_row(row) for row in rows):
+        raise AdaptiveControlError("variant_ledger_contract_invalid")
+    default_key = {**base_key, "execution_variant": default["id"]}
+    default_clean, default_average, default_samples = _clean_variant_samples(
+        rows, default_key,
+    )
+    selected = default
+    selected_average = default_average
+    reason = "critical_default" if risk == "critical" else "evidence_pending"
+    if risk == "routine" and default_clean:
+        candidates = []
+        default_cost = default.get("cost_rank", 100)
+        for variant in variants:
+            if not isinstance(variant, dict) or variant.get("id") == default["id"]:
+                continue
+            clean, average, samples = _clean_variant_samples(
+                rows, {**base_key, "execution_variant": variant.get("id")},
+            )
+            if (
+                clean
+                and variant.get("cost_rank", 100) < default_cost
+                and average < default_average
+            ):
+                candidates.append((
+                    average, variant.get("cost_rank", 100),
+                    variant.get("id"), variant, samples,
+                ))
+        if candidates:
+            selected_average, _cost, _ident, selected, _samples = min(candidates)
+            reason = "verified_lower_cost_equivalence"
+    return {
+        "schema_version": 1,
+        "status": "resolved",
+        "execution_variant": selected["id"],
+        "default_variant": default["id"],
+        "reason": reason,
+        "samples": default_samples,
+        "average_total_tokens": selected_average,
+        "user_gate": False,
+    }
+
+
 def routing_risk(root):
     """Return the conservative current risk bucket without exposing run content."""
     active = _read_json(
@@ -1605,6 +1781,34 @@ def _parser():
     retrieval_resolve.add_argument("--provider-fingerprint", required=True)
     retrieval_resolve.add_argument("--task-class", required=True)
     retrieval_resolve.add_argument("--pretty", action="store_true")
+    variant_record = commands.add_parser("variant-record")
+    variant_record.add_argument("--root")
+    variant_record.add_argument("--sample-id", required=True)
+    variant_record.add_argument("--model-fingerprint", required=True)
+    variant_record.add_argument("--execution-variant", required=True)
+    variant_record.add_argument("--role", required=True)
+    variant_record.add_argument("--task-class", required=True)
+    variant_record.add_argument("--runtime-fingerprint", required=True)
+    variant_record.add_argument("--policy-fingerprint", required=True)
+    variant_record.add_argument("--prompt-gate-fingerprint", required=True)
+    variant_record.add_argument("--quality", choices=("passed", "failed"), required=True)
+    variant_record.add_argument("--verification", choices=("passed", "failed"), required=True)
+    variant_record.add_argument("--high-findings", type=int, default=0)
+    variant_record.add_argument("--retries", type=int, default=0)
+    variant_record.add_argument("--logical-input-tokens", type=int, default=0)
+    variant_record.add_argument("--output-tokens", type=int, default=0)
+    variant_record.add_argument("--scope-creep", action="store_true")
+    variant_record.add_argument("--pretty", action="store_true")
+    variant_resolve = commands.add_parser("variant-resolve")
+    variant_resolve.add_argument("--root")
+    variant_resolve.add_argument("--profile-json", required=True)
+    variant_resolve.add_argument("--role", required=True)
+    variant_resolve.add_argument("--task-class", required=True)
+    variant_resolve.add_argument("--runtime-fingerprint", required=True)
+    variant_resolve.add_argument("--policy-fingerprint", required=True)
+    variant_resolve.add_argument("--prompt-gate-fingerprint", required=True)
+    variant_resolve.add_argument("--risk", choices=("routine", "critical"), default="routine")
+    variant_resolve.add_argument("--pretty", action="store_true")
     for name in ("review-record", "review-resolve"):
         review = commands.add_parser(name)
         review.add_argument("--root")
@@ -1684,6 +1888,25 @@ def main(argv=None):
         elif args.command == "retrieval-resolve":
             value = resolve_retrieval_route(
                 root, args.provider_fingerprint, args.task_class,
+            )
+        elif args.command == "variant-record":
+            value = record_execution_variant_outcome(
+                root, args.sample_id, args.model_fingerprint,
+                args.execution_variant, args.role, args.task_class,
+                args.runtime_fingerprint, args.policy_fingerprint,
+                args.prompt_gate_fingerprint, args.quality == "passed",
+                args.verification == "passed", args.high_findings,
+                args.retries, args.logical_input_tokens, args.output_tokens,
+                args.scope_creep,
+            )
+        elif args.command == "variant-resolve":
+            profile = json.loads(
+                args.profile_json, object_pairs_hook=_reject_duplicates
+            )
+            value = resolve_execution_variant(
+                root, profile, args.role, args.task_class,
+                args.runtime_fingerprint, args.policy_fingerprint,
+                args.prompt_gate_fingerprint, args.risk,
             )
         elif args.command == "review-record":
             value = record_review_outcome(
