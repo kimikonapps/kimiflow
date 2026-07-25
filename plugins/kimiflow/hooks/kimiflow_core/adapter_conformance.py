@@ -149,6 +149,7 @@ def run(executable, project_root=None, model=None, environ=None):
             "capabilities": info["capabilities"],
             "features": info.get("features", {}),
             "adapter_command": os.path.realpath(resolved),
+            "model": model,
         }
         payload = json.dumps(
             material, sort_keys=True, separators=(",", ":")

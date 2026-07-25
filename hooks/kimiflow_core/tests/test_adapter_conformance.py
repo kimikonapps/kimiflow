@@ -89,13 +89,21 @@ print(json.dumps({'type':'turn.completed','usage':{'model_calls':1,'tool_calls':
         self.assertNotIn("prompt", json.dumps(result))
 
     def test_valid_baseline_adapter_without_optional_features_is_supported(self):
+        executable = self.harness(featureful=False)
         result = adapter_conformance.run(
-            self.harness(featureful=False), self.project
+            executable, self.project, model="model-a"
         )
         self.assertEqual(result["status"], "compatible")
         self.assertRegex(result["contract_fingerprint"], r"^sha256:[0-9a-f]{64}$")
         self.assertEqual(result["checks"]["structured_events"], "not_claimed")
         self.assertEqual(result["checks"]["root_confinement"], "not_claimed")
+        other_model = adapter_conformance.run(
+            executable, self.project, model="model-b"
+        )
+        self.assertNotEqual(
+            result["contract_fingerprint"],
+            other_model["contract_fingerprint"],
+        )
 
     def test_claimed_tools_without_behavioral_evidence_are_rejected(self):
         result = adapter_conformance.run(self.harness(claims_only=True), self.project)
