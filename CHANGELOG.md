@@ -4,7 +4,10 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Changed
+
+- The GitHub README now presents Kimiflow as an explicit graph-loop, with a theme-aware static overview and a
+  linked interactive GitHub Pages view for feature, bug-fix, parallel-work, and release paths.
 
 ## 0.2.20
 

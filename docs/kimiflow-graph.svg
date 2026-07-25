@@ -1,0 +1,196 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" role="img" aria-labelledby="title desc">
+  <title id="title">Kimiflow 0.2.20 graph-loop architecture</title>
+  <desc id="desc">An eight-phase engineering graph with evidence-bound feedback edges, selective context systems, adaptive model routing, a one-slot worktree broker, atomic commits, and explicit immutable releases.</desc>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #1f2328; }
+    .title { font-size: 24px; font-weight: 600; letter-spacing: .8px; }
+    .subtitle { font-size: 14px; fill: #59636e; }
+    .node-title { font-size: 15px; font-weight: 600; }
+    .node-sub { font-size: 12px; fill: #59636e; }
+    .phase-label { font-size: 14px; font-weight: 600; }
+    .phase-sub { font-size: 11px; fill: #59636e; }
+    .edge-label { font-size: 11px; fill: #59636e; }
+    .background { fill: #ffffff; }
+    .node { fill: #f6f8fa; stroke: #d0d7de; stroke-width: 1.5; }
+    .phase { fill: #ddf4ff; stroke: #54aeff; stroke-width: 1.8; }
+    .controller { fill: #b6e3ff; stroke: #0969da; stroke-width: 2.5; }
+    .user { fill: #fff8c5; stroke: #d4a72c; }
+    .workspace { fill: #fbefff; stroke: #a475f9; }
+    .intelligence { fill: #dafbe1; stroke: #4ac26b; }
+    .evidence { fill: #fff8c5; stroke: #bf8700; }
+    .output { fill: #ffebe9; stroke: #ff8182; }
+    .spoke { fill: none; stroke: #d0d7de; stroke-width: 1; }
+    .sequence { fill: none; stroke: #0969da; stroke-width: 3; marker-end: url(#arrow-blue); }
+    .feedback { fill: none; stroke: #bc4c00; stroke-width: 2.4; stroke-dasharray: 8 7; marker-end: url(#arrow-orange); }
+    .context { fill: none; stroke: #6e7781; stroke-width: 1.5; stroke-dasharray: 3 6; marker-end: url(#arrow-gray); }
+    .legend-line { fill: none; stroke-width: 3; }
+    @media (prefers-color-scheme: dark) {
+      .background { fill: #0d1117; }
+      text { fill: #f0f6fc; }
+      .subtitle, .node-sub, .phase-sub, .edge-label { fill: #9198a1; }
+      .node { fill: #161b22; stroke: #3d444d; }
+      .phase { fill: #0d2847; stroke: #2f81f7; }
+      .controller { fill: #0d419d; stroke: #58a6ff; }
+      .user, .evidence { fill: #341a00; stroke: #d29922; }
+      .workspace { fill: #2a1b3d; stroke: #a371f7; }
+      .intelligence { fill: #12261e; stroke: #3fb950; }
+      .output { fill: #3b1219; stroke: #f85149; }
+      .spoke { stroke: #30363d; }
+      .sequence { stroke: #58a6ff; }
+      .feedback { stroke: #f0883e; }
+      .context { stroke: #8b949e; }
+    }
+  </style>
+  <defs>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#0969da"/>
+    </marker>
+    <marker id="arrow-orange" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#bc4c00"/>
+    </marker>
+    <marker id="arrow-gray" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#6e7781"/>
+    </marker>
+  </defs>
+
+  <rect class="background" width="1200" height="820" rx="18"/>
+  <text class="title" x="600" y="32" text-anchor="middle">KIMIFLOW 0.2.20 · EVIDENCE-BOUND GRAPH LOOP</text>
+  <text class="subtitle" x="600" y="55" text-anchor="middle">The graph moves forward, loops back on falsified assumptions, and loads expensive context only when evidence justifies it.</text>
+
+  <g aria-hidden="true">
+    <path class="spoke" d="M600 408L600 190"/>
+    <path class="spoke" d="M600 408L790 245"/>
+    <path class="spoke" d="M600 408L875 400"/>
+    <path class="spoke" d="M600 408L795 565"/>
+    <path class="spoke" d="M600 408L600 630"/>
+    <path class="spoke" d="M600 408L405 565"/>
+    <path class="spoke" d="M600 408L325 400"/>
+    <path class="spoke" d="M600 408L410 245"/>
+
+    <path class="sequence" d="M664 178Q730 178 760 212"/>
+    <path class="sequence" d="M826 267Q867 316 870 354"/>
+    <path class="sequence" d="M860 445Q838 515 824 533"/>
+    <path class="sequence" d="M744 585Q671 620 666 620"/>
+    <path class="sequence" d="M534 620Q456 604 443 586"/>
+    <path class="sequence" d="M371 532Q329 476 326 444"/>
+    <path class="sequence" d="M340 356Q357 285 375 267"/>
+
+    <path class="feedback" d="M433 528C500 445 720 398 824 397"/>
+    <path class="feedback" d="M345 380C425 306 707 300 829 370"/>
+    <path class="feedback" d="M446 257C495 329 447 468 430 530"/>
+    <path class="feedback" d="M350 423C367 473 388 505 404 528"/>
+
+    <path class="context" d="M600 112L600 142"/>
+    <path class="context" d="M1030 128C880 133 746 142 666 164"/>
+    <path class="context" d="M236 194C355 156 485 153 533 166"/>
+    <path class="context" d="M1028 236C962 222 903 226 830 238"/>
+    <path class="context" d="M1050 377L942 392"/>
+    <path class="context" d="M1039 540C954 505 916 461 898 435"/>
+    <path class="context" d="M748 720C628 700 487 635 442 588"/>
+    <path class="context" d="M258 704C266 597 290 493 310 443"/>
+    <path class="context" d="M336 705C570 773 1039 654 1063 430"/>
+    <path class="context" d="M235 403L510 406"/>
+    <path class="context" d="M215 367C270 290 331 245 366 238"/>
+    <path class="context" d="M377 226C340 177 313 151 286 133"/>
+    <path class="context" d="M197 102L156 101"/>
+  </g>
+
+  <g>
+    <rect class="node output" x="28" y="76" width="128" height="54" rx="14"/>
+    <text class="node-title" x="92" y="99" text-anchor="middle">Push / Release</text>
+    <text class="node-sub" x="92" y="119" text-anchor="middle">explicit · immutable</text>
+
+    <rect class="node output" x="197" y="78" width="178" height="58" rx="14"/>
+    <text class="node-title" x="286" y="102" text-anchor="middle">Atomic local commit</text>
+    <text class="node-sub" x="286" y="123" text-anchor="middle">named paths only</text>
+
+    <rect class="node user" x="525" y="69" width="150" height="44" rx="14"/>
+    <text class="node-title" x="600" y="96" text-anchor="middle">Your product goal</text>
+
+    <rect class="node intelligence" x="916" y="82" width="252" height="58" rx="14"/>
+    <text class="node-title" x="1042" y="106" text-anchor="middle">PROGRAM.json scheduler</text>
+    <text class="node-sub" x="1042" y="127" text-anchor="middle">next dependency-ready run</text>
+
+    <rect class="node workspace" x="42" y="153" width="194" height="82" rx="14"/>
+    <text class="node-title" x="139" y="179" text-anchor="middle">One-slot worktree broker</text>
+    <text class="node-sub" x="139" y="201" text-anchor="middle">free main → direct</text>
+    <text class="node-sub" x="139" y="221" text-anchor="middle">busy / dirty → 1 tree + FIFO</text>
+
+    <rect class="node user" x="1028" y="192" width="148" height="82" rx="14"/>
+    <text class="node-title" x="1102" y="218" text-anchor="middle">Product questions</text>
+    <text class="node-sub" x="1102" y="240" text-anchor="middle">only facts the model</text>
+    <text class="node-sub" x="1102" y="260" text-anchor="middle">cannot infer safely</text>
+
+    <rect class="node intelligence" x="1010" y="340" width="168" height="82" rx="14"/>
+    <text class="node-title" x="1094" y="366" text-anchor="middle">Project memory</text>
+    <text class="node-sub" x="1094" y="388" text-anchor="middle">Recall · Deltas · Vault</text>
+    <text class="node-sub" x="1094" y="408" text-anchor="middle">path-scoped</text>
+
+    <rect class="node intelligence" x="1014" y="500" width="164" height="82" rx="14"/>
+    <text class="node-title" x="1096" y="526" text-anchor="middle">Code intelligence</text>
+    <text class="node-sub" x="1096" y="548" text-anchor="middle">large + eval-proven</text>
+    <text class="node-sub" x="1096" y="568" text-anchor="middle">otherwise rg / map</text>
+
+    <rect class="node intelligence" x="635" y="690" width="228" height="66" rx="14"/>
+    <text class="node-title" x="749" y="716" text-anchor="middle">Adaptive model profiles</text>
+    <text class="node-sub" x="749" y="739" text-anchor="middle">cheaper only after equivalence evidence</text>
+
+    <rect class="node evidence" x="154" y="670" width="206" height="68" rx="14"/>
+    <text class="node-title" x="257" y="697" text-anchor="middle">Tests + outcome evaluation</text>
+    <text class="node-sub" x="257" y="720" text-anchor="middle">reality check → curated memory</text>
+
+    <rect class="node evidence" x="42" y="350" width="193" height="112" rx="14"/>
+    <text class="node-title" x="138.5" y="377" text-anchor="middle">Evidence ledger</text>
+    <text class="node-sub" x="138.5" y="400" text-anchor="middle">intent · paths · research</text>
+    <text class="node-sub" x="138.5" y="421" text-anchor="middle">tests · findings · cost</text>
+    <text class="node-sub" x="138.5" y="444" text-anchor="middle">append-only receipts</text>
+  </g>
+
+  <g>
+    <circle class="controller" cx="600" cy="408" r="82"/>
+    <text class="node-title" x="600" y="390" text-anchor="middle">GRAPH ENGINE</text>
+    <text class="node-sub" x="600" y="414" text-anchor="middle">selects the next valid edge</text>
+    <text class="node-sub" x="600" y="436" text-anchor="middle">progress · budget · evidence</text>
+
+    <ellipse class="phase" cx="600" cy="166" rx="66" ry="42"/>
+    <text class="phase-label" x="600" y="161" text-anchor="middle">0 · Setup</text>
+    <text class="phase-sub" x="600" y="181" text-anchor="middle">route + state</text>
+
+    <ellipse class="phase" cx="790" cy="240" rx="66" ry="42"/>
+    <text class="phase-label" x="790" y="235" text-anchor="middle">1 · Clarify</text>
+    <text class="phase-sub" x="790" y="255" text-anchor="middle">intent lock</text>
+
+    <ellipse class="phase" cx="875" cy="400" rx="66" ry="42"/>
+    <text class="phase-label" x="875" y="395" text-anchor="middle">2 · Understand</text>
+    <text class="phase-sub" x="875" y="415" text-anchor="middle">code + research</text>
+
+    <ellipse class="phase" cx="790" cy="565" rx="66" ry="42"/>
+    <text class="phase-label" x="790" y="560" text-anchor="middle">3 · Plan</text>
+    <text class="phase-sub" x="790" y="580" text-anchor="middle">architecture + ACs</text>
+
+    <ellipse class="phase" cx="600" cy="630" rx="66" ry="42"/>
+    <text class="phase-label" x="600" y="625" text-anchor="middle">4 · Plan review</text>
+    <text class="phase-sub" x="600" y="645" text-anchor="middle">falsifiers</text>
+
+    <ellipse class="phase" cx="410" cy="565" rx="66" ry="42"/>
+    <text class="phase-label" x="410" y="560" text-anchor="middle">5 · Build</text>
+    <text class="phase-sub" x="410" y="580" text-anchor="middle">one implementer</text>
+
+    <ellipse class="phase" cx="325" cy="400" rx="66" ry="42"/>
+    <text class="phase-label" x="325" y="395" text-anchor="middle">6 · Verify</text>
+    <text class="phase-sub" x="325" y="415" text-anchor="middle">tests + outcome</text>
+
+    <ellipse class="phase" cx="410" cy="240" rx="66" ry="42"/>
+    <text class="phase-label" x="410" y="235" text-anchor="middle">7 · Review</text>
+    <text class="phase-sub" x="410" y="255" text-anchor="middle">findings + commit</text>
+  </g>
+
+  <g transform="translate(414 790)">
+    <line class="legend-line" x1="0" y1="0" x2="34" y2="0" stroke="#0969da"/>
+    <text class="edge-label" x="42" y="4">normal phase edge</text>
+    <line class="legend-line" x1="185" y1="0" x2="219" y2="0" stroke="#bc4c00" stroke-dasharray="8 7"/>
+    <text class="edge-label" x="227" y="4">automatic feedback</text>
+    <line class="legend-line" x1="380" y1="0" x2="414" y2="0" stroke="#6e7781" stroke-dasharray="3 6"/>
+    <text class="edge-label" x="422" y="4">context / evidence</text>
+  </g>
+</svg>

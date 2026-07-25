@@ -18,6 +18,14 @@ clarify, understand or diagnose, plan, review, implement, verify, code-review, a
 simple work small, but makes important gates enforceable by scripts and hooks instead of relying on
 the model to declare itself done.
 
+<p align="center">
+  <a href="https://kimikonapps.github.io/kimiflow/">
+    <img src="docs/kimiflow-graph.svg" alt="Kimiflow graph-loop architecture: eight engineering phases, evidence-bound feedback, selective context systems, adaptive model routing, worktree isolation, atomic commits, and explicit immutable releases.">
+  </a>
+  <br>
+  <sub><a href="https://kimikonapps.github.io/kimiflow/">Explore the interactive graph</a></sub>
+</p>
+
 <!-- capabilities:start -->
 **What kimiflow does:** disciplined **feature and bug-fix** delivery with mechanical gates; local
 **project intelligence** and curated memory; publish-safe **repo docs**; and reviewable local
