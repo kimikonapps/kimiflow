@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kimiflow.local/schemas/code-retrieval-eval-v1.schema.json",
+  "title": "Kimiflow code retrieval evaluation fixture v1",
+  "type": "object",
+  "required": ["schema_version", "fixture_id", "k", "max_context_bytes", "queries"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "fixture_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,95}$"},
+    "k": {"type": "integer", "minimum": 1, "maximum": 100},
+    "max_context_bytes": {"type": "integer", "minimum": 1, "maximum": 10000000},
+    "queries": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "required": ["id", "query_class", "expected_paths", "expected_symbols", "forbidden_paths"],
+        "properties": {
+          "id": {"type": "string"},
+          "query_class": {"type": "string"},
+          "expected_paths": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+          "expected_symbols": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+          "forbidden_paths": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

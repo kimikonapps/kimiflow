@@ -113,6 +113,17 @@ if [ -f "$ROOT/hooks/kimiflow_core/execution_control.py" ] \
 else
   bad "Codex adaptive execution controller wiring incomplete"
 fi
+if [ -x "$ROOT/hooks/adapter-conformance.sh" ] \
+  && [ -x "$ROOT/hooks/kimiflow-mcp.sh" ] \
+  && [ -x "$ROOT/hooks/code-intelligence.sh" ] \
+  && [ -s "$ROOT/references/adapter-conformance-v1.schema.json" ] \
+  && [ -s "$ROOT/references/code-intelligence-provider-v1.schema.json" ] \
+  && grep -q 'kimiflow_status' "$ROOT/hooks/kimiflow_core/mcp_server.py" \
+  && grep -q 'five clean verified Canary outcomes' "$ROOT/README.md"; then
+  ok "Codex provider-neutral MCP, conformance and code-intelligence wiring"
+else
+  bad "Codex provider-neutral MCP, conformance or code-intelligence wiring incomplete"
+fi
 grep -q 'Project Map Bootstrap' "$ROOT/SKILL.md" && ok "canonical Project Map Bootstrap present" || bad "canonical Project Map Bootstrap missing"
 grep -q 'FACTS.jsonl' "$ROOT/reference.md" && ok "project map evidence artifact documented" || bad "project map evidence artifact missing"
 if [ -x "$ROOT/hooks/project-map-status.sh" ] && bash -n "$ROOT/hooks/project-map-status.sh" 2>/dev/null; then ok "project map status helper ok"; else bad "project map status helper missing/not-exec/bad"; fi

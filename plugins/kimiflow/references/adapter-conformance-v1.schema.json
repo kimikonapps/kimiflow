@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kimiflow.local/schemas/adapter-conformance-v1.schema.json",
+  "title": "Kimiflow adapter conformance receipt v1",
+  "type": "object",
+  "required": ["schema_version", "status", "adapter", "host", "contract_fingerprint", "capabilities", "features", "checks", "failed_checks"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "status": {"enum": ["compatible", "incompatible"]},
+    "adapter": {"type": "string"},
+    "host": {"type": "string"},
+    "contract_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "capabilities": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "features": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "checks": {"type": "object", "additionalProperties": {"enum": ["passed", "failed", "not_claimed", "controller_enforced"]}},
+    "failed_checks": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+  },
+  "additionalProperties": false
+}

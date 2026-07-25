@@ -519,6 +519,20 @@ worktree, or user approval.
   policy drift, repeated failure, a regression signal, or an audit finding revokes embedded review. Critical
   security/data/migration/public-contract work uses `ensemble`. Thus self-verification removes routine duplicate
   semantic calls, never mechanical tests/diff/scope/secret/evidence gates.
+- **Retrieval eval and optional code intelligence:** `code-retrieval-eval-v1` scores frozen baseline/candidate
+  results without a model (file/symbol recall, precision, MRR, forbidden hits, freshness and context budget).
+  `code-intelligence.sh` starts only for `large` work with an architecture/cross-file/caller/map-stale/lexical-
+  miss signal and only when a provider executable was explicitly configured. Results must match the exact Git+
+  dirty snapshot, stay inside canonical regular root files, use allowlisted relations, `hops<=2`, `K<=40`, at
+  most twelve rendered ranges and the byte/deadline budget. Shadow returns content-free metrics. Holdout+Shadow
+  permits Canary; five clean verified Canary outcomes permit Active. High findings, retries, token waste or
+  staleness select lexical `off` without a user gate.
+- **Adapter conformance and MCP:** `adapter-conformance.sh` behavior-tests a declared command adapter in a
+  disposable owned directory and leaves the user project untouched. The optional `kimiflow-mcp.sh` facade uses
+  newline-delimited MCP `2025-11-25` JSON-RPC and exposes only status, context, scorecard and action. It delegates
+  to `run_bridge` under one pinned root; read tools tolerate absent owner identity while mutations require the
+  launch host/session and retain cursor/CAS/action-ID/replay enforcement. There is no network listener, sampling,
+  MCP task, arbitrary file tool or second Kimiflow engine.
 - **Vault namespace:** `memory-router.sh provider prefetch` emits the stable local project namespace and hard
   result cap. Direct search output becomes usable only through `provider accept-results --run ... --input ...`,
   which rejects foreign paths and unsafe fields, deduplicates/reranks locally, and writes a mode-0600 bounded

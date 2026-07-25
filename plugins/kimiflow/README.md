@@ -171,6 +171,35 @@ Phase context stays in shadow mode and never replaces the current phase file plu
 sections. The complete `reference.md` is not preloaded. Terminal scorecards remain
 readable through an explicit safe run path after the Active Run has retired.
 
+Clients that speak MCP can use the same bridge through the local stdio facade; no network server or second
+workflow engine is introduced:
+
+```bash
+hooks/kimiflow-mcp.sh --root /path/to/project
+# Mutating clients additionally launch it with the active owner identity:
+hooks/kimiflow-mcp.sh --root /path/to/project --host codex --session-id <session-id>
+```
+
+The server implements MCP `2025-11-25` lifecycle, ping, and exactly four tools: `kimiflow_status`,
+`kimiflow_context`, `kimiflow_scorecard`, and `kimiflow_action`. Read tools remain available without an owner;
+actions fail closed unless the launch identity matches the Active Run and still pass through its cursor, CAS,
+action-ID, and replay checks. KimiTalk, an IDE, or a local-model host can therefore integrate one immutable
+Kimiflow release without forking Kimiflow.
+
+### Optional bounded code intelligence
+
+`hooks/code-intelligence.sh` can query an explicitly configured local Command/SCIP/LSP bridge for typed code
+relationships on eligible `large` cross-file work. It is never auto-discovered, never runs for local/small work,
+and returns to Project Map/`rg` on timeout, stale snapshots, dirty-workspace mismatch, oversized output, or any
+unsafe path. New providers begin with content-free Shadow evidence. A green holdout plus Shadow permits one
+replacement Canary path; only five clean verified Canary outcomes permit Active use. A quality, retry, token,
+or freshness regression revokes it automatically. The provider returns bounded `path:line` facts, not free-form
+prompts or a second memory store, so normal runs pay zero additional context tokens.
+
+Before trusting a new host adapter, `hooks/adapter-conformance.sh --adapter <command> --project-root <root>`
+runs start/resume, event, usage and claimed root-confinement probes inside a disposable Kimiflow-owned area and
+emits only a digest/count receipt. Repository maintainers exercise the model-free retrieval scorer in CI.
+
 ### Optional continuity for architecture changes and multi-run programs
 
 Normal single-run Kimiflow stays unchanged. For larger work, three explicit local commands are available:
@@ -292,6 +321,11 @@ mechanizes the evidence boundaries without pretending a tool can prove that no b
 - Large materially changing contexts roll over only under measured pressure; small runs remain unchanged.
 - Lower-cost model routes are earned by five comparable clean outcomes, revoked on regression, and never used
   for critical-risk work.
+- Self-verifying model profiles earn embedded code review only after five runtime/policy/prompt-bound clean
+  samples. Exactly one of ten matching routine runs remains an independent audit; critical work keeps an
+  independent ensemble. Mechanical tests, diff, scope, secret and evidence gates never disappear.
+- Optional code intelligence is Shadow-first and replaces lexical context only after evidence; it never adds a
+  duplicate model path or tokens to small/local work.
 
 `small` and `quick` skip broad memory recall and the **Vault Pulse** by default. An explicit user cue that a
 similar bug or fix existed before instead triggers one targeted local recall with at most five hits at any scope,

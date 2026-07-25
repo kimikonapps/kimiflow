@@ -109,6 +109,17 @@ if [ -f "$ROOT/hooks/kimiflow_core/execution_control.py" ] \
 else
   bad "adaptive execution controller wiring incomplete"
 fi
+if [ -x "$ROOT/hooks/adapter-conformance.sh" ] \
+  && [ -x "$ROOT/hooks/kimiflow-mcp.sh" ] \
+  && [ -x "$ROOT/hooks/code-intelligence.sh" ] \
+  && [ -s "$ROOT/references/adapter-conformance-v1.schema.json" ] \
+  && [ -s "$ROOT/references/code-intelligence-provider-v1.schema.json" ] \
+  && grep -q 'kimiflow_status' "$ROOT/hooks/kimiflow_core/mcp_server.py" \
+  && grep -q 'five clean verified Canary outcomes' "$ROOT/README.md"; then
+  ok "provider-neutral MCP, conformance and code-intelligence wiring"
+else
+  bad "provider-neutral MCP, conformance or code-intelligence wiring incomplete"
+fi
 grep -q 'Project Map Bootstrap' "$ROOT/SKILL.md" && ok "canonical skill documents Project Map Bootstrap" || bad "missing Project Map Bootstrap in SKILL.md"
 grep -q -- '--project-map quick' "$ROOT/reference.md" && ok "reference documents project-map quick tier" || bad "missing project-map quick tier in reference.md"
 if grep -Eq -- '--project-map[^)]*(standard|deep)' "$ROOT/reference.md" "$ROOT/SKILL.md"; then bad "retired project-map tier (standard/deep) resurfaced in live docs"; else ok "no retired project-map tiers in live docs"; fi

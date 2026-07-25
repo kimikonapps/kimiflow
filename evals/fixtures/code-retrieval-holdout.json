@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "fixture_id": "kimiflow-code-retrieval-v1",
+  "k": 5,
+  "max_context_bytes": 4096,
+  "queries": [
+    {
+      "id": "adapter-resume",
+      "query_class": "cross-file",
+      "expected_paths": [
+        "hooks/kimiflow_core/model_adapter.py",
+        "hooks/kimiflow_core/runner.py"
+      ],
+      "expected_symbols": [
+        "CommandAgentAdapter",
+        "resume_task"
+      ],
+      "forbidden_paths": [
+        ".env"
+      ]
+    },
+    {
+      "id": "active-owner",
+      "query_class": "caller-impact",
+      "expected_paths": [
+        "hooks/kimiflow_core/active_run.py"
+      ],
+      "expected_symbols": [
+        "valid_owner"
+      ],
+      "forbidden_paths": [
+        ".kimiflow/session/ACTIVE_RUN.json"
+      ]
+    }
+  ]
+}

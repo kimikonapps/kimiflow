@@ -32,6 +32,8 @@ ROLLOVER_NAME = "CONTEXT-ROLLOVER.json"
 MODEL_LEDGER_NAME = "MODEL-OUTCOMES.jsonl"
 MODEL_POLICY_NAME = "MODEL-ROUTING-POLICY.json"
 MODEL_ROUTE_EVIDENCE_NAME = "MODEL-ROUTE-EVIDENCE.json"
+RETRIEVAL_LEDGER_NAME = "RETRIEVAL-OUTCOMES.jsonl"
+REVIEW_LEDGER_NAME = "REVIEW-OUTCOMES.jsonl"
 HOST_USAGE_NAME = "HOST-USAGE.json"
 EXECUTION_TRACE_NAME = "EXECUTION-TRACE.json"
 MAX_ARTIFACT_BYTES = 1024 * 1024
@@ -1252,6 +1254,273 @@ def resolve_model_roles(root, configured, risk="routine", write=False):
     return value
 
 
+def _adaptive_rows(root, name):
+    root = os.path.realpath(root)
+    project = _model_project(root)
+    if not os.path.lexists(project):
+        return []
+    try:
+        with memory_store.local_path_guard(root, project) as anchor:
+            payload = _read_project_file(anchor["descriptor"], name, MAX_LEDGER_BYTES)
+    except (memory_store.ConcurrentWriteError, OSError, ValueError) as exc:
+        raise AdaptiveControlError("adaptive_ledger_unsafe:%s" % exc.__class__.__name__)
+    if payload is None:
+        return []
+    rows = []
+    for raw in payload.splitlines():
+        if not raw.strip():
+            continue
+        if len(rows) >= MAX_LEDGER_ROWS:
+            raise AdaptiveControlError("adaptive_ledger_too_many_rows")
+        try:
+            row = json.loads(raw.decode("utf-8"), object_pairs_hook=_reject_duplicates)
+        except (UnicodeError, ValueError, json.JSONDecodeError):
+            raise AdaptiveControlError("adaptive_ledger_malformed")
+        if not isinstance(row, dict):
+            raise AdaptiveControlError("adaptive_ledger_invalid")
+        rows.append(row)
+    return rows
+
+
+def _append_adaptive_row(root, name, row, identity_keys):
+    with _model_ledger_lock(root):
+        rows = _adaptive_rows(root, name)
+        matching = [item for item in rows if all(item.get(key) == row.get(key) for key in identity_keys)]
+        if matching:
+            previous = dict(matching[-1])
+            previous.pop("recorded_at", None)
+            candidate = dict(row)
+            candidate.pop("recorded_at", None)
+            if previous != candidate:
+                raise AdaptiveControlError("adaptive_sample_conflict")
+            return matching[-1]
+        rows = (rows + [row])[-MAX_LEDGER_ROWS:]
+        payload = "".join(
+            json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+            for item in rows
+        )
+        if len(payload.encode("utf-8")) > MAX_LEDGER_BYTES:
+            raise AdaptiveControlError("adaptive_ledger_oversize")
+        project = _model_project(os.path.realpath(root))
+        memory_store.atomic_write(
+            os.path.join(project, name), payload, mode=0o600,
+            refuse_symlink=True, durable=True,
+        )
+    return row
+
+
+def record_retrieval_outcome(
+    root, sample_id, provider_fingerprint, task_class, stage, quality_passed,
+    verification_passed, high_findings=0, retries=0, logical_input_tokens=0,
+    provider_latency_ms=0, token_waste=False, snapshot_status="current",
+):
+    if SAMPLE_ID_RE.fullmatch(str(sample_id)) is None or SHA_RE.fullmatch(str(provider_fingerprint)) is None:
+        raise AdaptiveControlError("retrieval_outcome_identity_invalid")
+    if not isinstance(task_class, str) or re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", task_class) is None:
+        raise AdaptiveControlError("retrieval_outcome_class_invalid")
+    if stage not in ("holdout", "shadow", "canary") or snapshot_status not in ("current", "stale"):
+        raise AdaptiveControlError("retrieval_outcome_stage_invalid")
+    if not isinstance(quality_passed, bool) or not isinstance(verification_passed, bool) or not isinstance(token_waste, bool):
+        raise AdaptiveControlError("retrieval_outcome_status_invalid")
+    counters = (high_findings, retries, logical_input_tokens, provider_latency_ms)
+    if any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in counters):
+        raise AdaptiveControlError("retrieval_outcome_metrics_invalid")
+    row = {
+        "schema_version": 1,
+        "sample_id": sample_id,
+        "recorded_at": _now(),
+        "provider_fingerprint": provider_fingerprint,
+        "task_class": task_class,
+        "stage": stage,
+        "quality_passed": quality_passed,
+        "verification_passed": verification_passed,
+        "high_findings": high_findings,
+        "retries": retries,
+        "logical_input_tokens": logical_input_tokens,
+        "provider_latency_ms": provider_latency_ms,
+        "token_waste": token_waste,
+        "snapshot_status": snapshot_status,
+    }
+    return _append_adaptive_row(
+        root, RETRIEVAL_LEDGER_NAME, row,
+        ("sample_id", "provider_fingerprint", "task_class", "stage"),
+    )
+
+
+def _valid_retrieval_row(row):
+    required = {
+        "schema_version", "sample_id", "recorded_at", "provider_fingerprint", "task_class",
+        "stage", "quality_passed", "verification_passed", "high_findings", "retries",
+        "logical_input_tokens", "provider_latency_ms", "token_waste", "snapshot_status",
+    }
+    return (
+        isinstance(row, dict) and set(row) == required and row.get("schema_version") == 1
+        and SAMPLE_ID_RE.fullmatch(str(row.get("sample_id", ""))) is not None
+        and SHA_RE.fullmatch(str(row.get("provider_fingerprint", ""))) is not None
+        and row.get("stage") in ("holdout", "shadow", "canary")
+        and row.get("snapshot_status") in ("current", "stale")
+        and all(isinstance(row.get(key), bool) for key in ("quality_passed", "verification_passed", "token_waste"))
+        and all(not isinstance(row.get(key), bool) and isinstance(row.get(key), int) and row.get(key) >= 0 for key in ("high_findings", "retries", "logical_input_tokens", "provider_latency_ms"))
+    )
+
+
+def resolve_retrieval_route(root, provider_fingerprint, task_class):
+    if SHA_RE.fullmatch(str(provider_fingerprint)) is None:
+        raise AdaptiveControlError("retrieval_route_identity_invalid")
+    rows = _adaptive_rows(root, RETRIEVAL_LEDGER_NAME)
+    if any(not _valid_retrieval_row(row) for row in rows):
+        raise AdaptiveControlError("retrieval_ledger_contract_invalid")
+    matching = [
+        row for row in rows
+        if row["provider_fingerprint"] == provider_fingerprint and row["task_class"] == task_class
+    ]
+    if any(
+        row["snapshot_status"] != "current" or not row["quality_passed"]
+        or row["high_findings"] > 0 or row["retries"] > 0 or row["token_waste"]
+        for row in matching[-1:]
+    ):
+        route, reason = "off", "quality_regression"
+    else:
+        holdout = any(row["stage"] == "holdout" and row["quality_passed"] for row in matching)
+        shadow = any(row["stage"] == "shadow" and row["quality_passed"] for row in matching)
+        canaries = [row for row in matching if row["stage"] == "canary"][-5:]
+        clean_canaries = (
+            len(canaries) == 5
+            and all(
+                row["quality_passed"] and row["verification_passed"]
+                and row["high_findings"] == 0 and row["retries"] == 0
+                and not row["token_waste"] and row["snapshot_status"] == "current"
+                for row in canaries
+            )
+        )
+        if clean_canaries:
+            route, reason = "active", "five_clean_canaries"
+        elif holdout and shadow:
+            route, reason = "canary", "holdout_and_shadow_clean"
+        else:
+            route, reason = "shadow", "evidence_pending"
+    return {
+        "schema_version": 1,
+        "status": "resolved",
+        "route": route,
+        "reason": reason,
+        "samples": len(matching),
+        "user_gate": False,
+    }
+
+
+def _review_key(
+    model_fingerprint, execution_variant, role, task_class, runtime_fingerprint,
+    policy_fingerprint, prompt_gate_fingerprint,
+):
+    fingerprints = (model_fingerprint, runtime_fingerprint, policy_fingerprint, prompt_gate_fingerprint)
+    if any(SHA_RE.fullmatch(str(value)) is None for value in fingerprints):
+        raise AdaptiveControlError("review_identity_invalid")
+    identities = (execution_variant, role, task_class)
+    if any(not isinstance(value, str) or re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", value) is None for value in identities):
+        raise AdaptiveControlError("review_identity_invalid")
+    return {
+        "model_fingerprint": model_fingerprint,
+        "execution_variant": execution_variant,
+        "role": role,
+        "task_class": task_class,
+        "runtime_fingerprint": runtime_fingerprint,
+        "policy_fingerprint": policy_fingerprint,
+        "prompt_gate_fingerprint": prompt_gate_fingerprint,
+    }
+
+
+def record_review_outcome(
+    root, sample_id, model_fingerprint, execution_variant, role, task_class,
+    runtime_fingerprint, policy_fingerprint, prompt_gate_fingerprint,
+    quality_passed, high_findings=0, retries=0, audit_finding=False,
+):
+    if SAMPLE_ID_RE.fullmatch(str(sample_id)) is None:
+        raise AdaptiveControlError("review_sample_invalid")
+    key = _review_key(
+        model_fingerprint, execution_variant, role, task_class, runtime_fingerprint,
+        policy_fingerprint, prompt_gate_fingerprint,
+    )
+    if not isinstance(quality_passed, bool) or not isinstance(audit_finding, bool):
+        raise AdaptiveControlError("review_outcome_invalid")
+    if any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in (high_findings, retries)):
+        raise AdaptiveControlError("review_metrics_invalid")
+    row = {
+        "schema_version": 1, "sample_id": sample_id, "recorded_at": _now(), **key,
+        "quality_passed": quality_passed,
+        "high_findings": high_findings,
+        "retries": retries,
+        "audit_finding": audit_finding,
+    }
+    return _append_adaptive_row(
+        root, REVIEW_LEDGER_NAME, row,
+        ("sample_id", *key.keys()),
+    )
+
+
+def _valid_review_row(row):
+    try:
+        key = _review_key(
+            row.get("model_fingerprint"), row.get("execution_variant"), row.get("role"),
+            row.get("task_class"), row.get("runtime_fingerprint"),
+            row.get("policy_fingerprint"), row.get("prompt_gate_fingerprint"),
+        )
+    except (AttributeError, AdaptiveControlError):
+        return False
+    required = {"schema_version", "sample_id", "recorded_at", *key.keys(), "quality_passed", "high_findings", "retries", "audit_finding"}
+    return (
+        set(row) == required and row.get("schema_version") == 1
+        and SAMPLE_ID_RE.fullmatch(str(row.get("sample_id", ""))) is not None
+        and isinstance(row.get("quality_passed"), bool)
+        and isinstance(row.get("audit_finding"), bool)
+        and all(not isinstance(row.get(name), bool) and isinstance(row.get(name), int) and row.get(name) >= 0 for name in ("high_findings", "retries"))
+    )
+
+
+def resolve_review_mode(
+    root, model_fingerprint, execution_variant, role, task_class,
+    runtime_fingerprint, policy_fingerprint, prompt_gate_fingerprint,
+    risk="routine", repeated_failure=False, regression=False,
+):
+    key = _review_key(
+        model_fingerprint, execution_variant, role, task_class, runtime_fingerprint,
+        policy_fingerprint, prompt_gate_fingerprint,
+    )
+    if risk not in ("routine", "critical") or not isinstance(repeated_failure, bool) or not isinstance(regression, bool):
+        raise AdaptiveControlError("review_route_invalid")
+    rows = _adaptive_rows(root, REVIEW_LEDGER_NAME)
+    if any(not _valid_review_row(row) for row in rows):
+        raise AdaptiveControlError("review_ledger_contract_invalid")
+    matching = [row for row in rows if all(row.get(name) == value for name, value in key.items())]
+    clean = [
+        row for row in matching
+        if row["quality_passed"] and row["high_findings"] == 0
+        and row["retries"] == 0 and not row["audit_finding"]
+    ]
+    revoked = any(row["audit_finding"] or row["high_findings"] > 0 or not row["quality_passed"] for row in matching[-1:])
+    if risk == "critical":
+        mode, reason, audit = "ensemble", "critical_risk", False
+    elif repeated_failure or regression or revoked:
+        mode, reason, audit = "single-independent", "regression_or_failure", False
+    elif len(clean) < 5:
+        mode, reason, audit = "single-independent", "calibration_pending", False
+    else:
+        material = json.dumps(key, sort_keys=True, separators=(",", ":"))
+        offset = int(hashlib.sha256(material.encode("utf-8")).hexdigest()[:8], 16) % 10
+        audit = (offset + len(matching)) % 10 == 0
+        mode = "single-independent" if audit else "embedded"
+        reason = "deterministic_audit" if audit else "calibrated_self_verification"
+    return {
+        "schema_version": 1,
+        "status": "resolved",
+        "review_mode": mode,
+        "reason": reason,
+        "audit_sample": audit,
+        "samples": len(matching),
+        "user_gate": False,
+    }
+
+
 def routing_risk(root):
     """Return the conservative current risk bucket without exposing run content."""
     active = _read_json(
@@ -1316,6 +1585,47 @@ def _parser():
     resolve.add_argument("--risk", choices=("routine", "critical"), default="routine")
     resolve.add_argument("--write", action="store_true")
     resolve.add_argument("--pretty", action="store_true")
+    retrieval_record = commands.add_parser("retrieval-record")
+    retrieval_record.add_argument("--root")
+    retrieval_record.add_argument("--sample-id", required=True)
+    retrieval_record.add_argument("--provider-fingerprint", required=True)
+    retrieval_record.add_argument("--task-class", required=True)
+    retrieval_record.add_argument("--stage", choices=("holdout", "shadow", "canary"), required=True)
+    retrieval_record.add_argument("--quality", choices=("passed", "failed"), required=True)
+    retrieval_record.add_argument("--verification", choices=("passed", "failed", "not-applicable"), default="not-applicable")
+    retrieval_record.add_argument("--high-findings", type=int, default=0)
+    retrieval_record.add_argument("--retries", type=int, default=0)
+    retrieval_record.add_argument("--logical-input-tokens", type=int, default=0)
+    retrieval_record.add_argument("--provider-latency-ms", type=int, default=0)
+    retrieval_record.add_argument("--token-waste", action="store_true")
+    retrieval_record.add_argument("--snapshot-status", choices=("current", "stale"), default="current")
+    retrieval_record.add_argument("--pretty", action="store_true")
+    retrieval_resolve = commands.add_parser("retrieval-resolve")
+    retrieval_resolve.add_argument("--root")
+    retrieval_resolve.add_argument("--provider-fingerprint", required=True)
+    retrieval_resolve.add_argument("--task-class", required=True)
+    retrieval_resolve.add_argument("--pretty", action="store_true")
+    for name in ("review-record", "review-resolve"):
+        review = commands.add_parser(name)
+        review.add_argument("--root")
+        review.add_argument("--model-fingerprint", required=True)
+        review.add_argument("--execution-variant", required=True)
+        review.add_argument("--role", required=True)
+        review.add_argument("--task-class", required=True)
+        review.add_argument("--runtime-fingerprint", required=True)
+        review.add_argument("--policy-fingerprint", required=True)
+        review.add_argument("--prompt-gate-fingerprint", required=True)
+        review.add_argument("--pretty", action="store_true")
+        if name == "review-record":
+            review.add_argument("--sample-id", required=True)
+            review.add_argument("--quality", choices=("passed", "failed"), required=True)
+            review.add_argument("--high-findings", type=int, default=0)
+            review.add_argument("--retries", type=int, default=0)
+            review.add_argument("--audit-finding", action="store_true")
+        else:
+            review.add_argument("--risk", choices=("routine", "critical"), default="routine")
+            review.add_argument("--repeated-failure", action="store_true")
+            review.add_argument("--regression", action="store_true")
     return parser
 
 
@@ -1361,9 +1671,35 @@ def main(argv=None):
                     }),
                     "user_gate": False,
                 }
-        else:
+        elif args.command == "model-resolve":
             configured = json.loads(args.roles_json, object_pairs_hook=_reject_duplicates)
             value = resolve_model_roles(root, configured, args.risk, write=args.write)
+        elif args.command == "retrieval-record":
+            value = record_retrieval_outcome(
+                root, args.sample_id, args.provider_fingerprint, args.task_class,
+                args.stage, args.quality == "passed", args.verification == "passed",
+                args.high_findings, args.retries, args.logical_input_tokens,
+                args.provider_latency_ms, args.token_waste, args.snapshot_status,
+            )
+        elif args.command == "retrieval-resolve":
+            value = resolve_retrieval_route(
+                root, args.provider_fingerprint, args.task_class,
+            )
+        elif args.command == "review-record":
+            value = record_review_outcome(
+                root, args.sample_id, args.model_fingerprint, args.execution_variant,
+                args.role, args.task_class, args.runtime_fingerprint,
+                args.policy_fingerprint, args.prompt_gate_fingerprint,
+                args.quality == "passed", args.high_findings, args.retries,
+                args.audit_finding,
+            )
+        else:
+            value = resolve_review_mode(
+                root, args.model_fingerprint, args.execution_variant, args.role,
+                args.task_class, args.runtime_fingerprint, args.policy_fingerprint,
+                args.prompt_gate_fingerprint, args.risk, args.repeated_failure,
+                args.regression,
+            )
         _emit(value, args.pretty)
         return 0 if value.get("status") != "CLOSED" else 1
     except (AdaptiveControlError, ValueError, json.JSONDecodeError) as exc:

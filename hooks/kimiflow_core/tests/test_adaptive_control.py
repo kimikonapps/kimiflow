@@ -572,6 +572,87 @@ class AdaptiveControlTests(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.run, "VAULT-RECALL.md")))
         self.assertFalse(os.path.exists(os.path.join(self.root, ".kimiflow", "archive")))
 
+    def test_retrieval_route_uses_multidimensional_outcome_and_revokes_on_regression(self):
+        provider = self.evidence(900)
+        task_class = "cross-file"
+        initial = adaptive_control.resolve_retrieval_route(self.root, provider, task_class)
+        self.assertEqual(initial["route"], "shadow")
+        adaptive_control.record_retrieval_outcome(
+            self.root, "sample_%024x" % 900, provider, task_class, "holdout",
+            True, False, provider_latency_ms=12,
+        )
+        adaptive_control.record_retrieval_outcome(
+            self.root, "sample_%024x" % 901, provider, task_class, "shadow",
+            True, False, provider_latency_ms=8,
+        )
+        self.assertEqual(
+            adaptive_control.resolve_retrieval_route(self.root, provider, task_class)["route"],
+            "canary",
+        )
+        for index in range(5):
+            adaptive_control.record_retrieval_outcome(
+                self.root, "sample_%024x" % (910 + index), provider, task_class, "canary",
+                True, True, logical_input_tokens=100, provider_latency_ms=7,
+            )
+        self.assertEqual(
+            adaptive_control.resolve_retrieval_route(self.root, provider, task_class)["route"],
+            "active",
+        )
+        adaptive_control.record_retrieval_outcome(
+            self.root, "sample_%024x" % 999, provider, task_class, "canary",
+            False, False, high_findings=1, retries=1, token_waste=True,
+        )
+        revoked = adaptive_control.resolve_retrieval_route(self.root, provider, task_class)
+        self.assertEqual(revoked["route"], "off")
+        self.assertEqual(revoked["reason"], "quality_regression")
+        self.assertFalse(revoked["user_gate"])
+
+    def test_review_mode_requires_calibration_samples_runtime_binding_and_one_in_ten_audit(self):
+        key = {
+            "model_fingerprint": self.evidence(1001),
+            "execution_variant": "budget8192",
+            "role": "balanced",
+            "task_class": "routine-code",
+            "runtime_fingerprint": self.evidence(1002),
+            "policy_fingerprint": self.evidence(1003),
+            "prompt_gate_fingerprint": self.evidence(1004),
+        }
+        pending = adaptive_control.resolve_review_mode(self.root, **key)
+        self.assertEqual(pending["review_mode"], "single-independent")
+        for index in range(5):
+            adaptive_control.record_review_outcome(
+                self.root, "sample_%024x" % (1000 + index), **key,
+                quality_passed=True,
+            )
+        selections = []
+        for index in range(10):
+            selection = adaptive_control.resolve_review_mode(self.root, **key)
+            selections.append(selection)
+            adaptive_control.record_review_outcome(
+                self.root, "sample_%024x" % (1100 + index), **key,
+                quality_passed=True,
+            )
+        self.assertEqual(sum(row["audit_sample"] for row in selections), 1)
+        self.assertEqual(
+            sum(row["review_mode"] == "single-independent" for row in selections), 1,
+        )
+        drifted = dict(key, runtime_fingerprint=self.evidence(2000))
+        self.assertEqual(
+            adaptive_control.resolve_review_mode(self.root, **drifted)["review_mode"],
+            "single-independent",
+        )
+        self.assertEqual(
+            adaptive_control.resolve_review_mode(self.root, **key, risk="critical")["review_mode"],
+            "ensemble",
+        )
+        adaptive_control.record_review_outcome(
+            self.root, "sample_%024x" % 1200, **key,
+            quality_passed=False, high_findings=1, audit_finding=True,
+        )
+        revoked = adaptive_control.resolve_review_mode(self.root, **key)
+        self.assertEqual(revoked["review_mode"], "single-independent")
+        self.assertEqual(revoked["reason"], "regression_or_failure")
+
 
 if __name__ == "__main__":
     unittest.main()

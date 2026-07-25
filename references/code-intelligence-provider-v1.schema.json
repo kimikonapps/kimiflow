@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kimiflow.local/schemas/code-intelligence-provider-v1.schema.json",
+  "title": "Kimiflow code intelligence provider v1",
+  "$defs": {
+    "snapshot": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "relation": {"enum": ["definition", "reference", "caller", "callee", "dependency", "implementation", "type"]},
+    "relativePath": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"}
+  },
+  "oneOf": [
+    {
+      "title": "Capabilities",
+      "type": "object",
+      "required": ["schema_version", "name", "version", "relations", "dirty_workspace", "snapshot"],
+      "properties": {
+        "schema_version": {"const": 1},
+        "name": {"type": "string"},
+        "version": {"type": "string"},
+        "relations": {"type": "array", "items": {"$ref": "#/$defs/relation"}, "uniqueItems": true},
+        "dirty_workspace": {"type": "boolean"},
+        "snapshot": {"const": true}
+      },
+      "additionalProperties": false
+    },
+    {
+      "title": "Query",
+      "type": "object",
+      "required": ["schema_version", "root", "snapshot_id", "dirty", "anchors", "relations", "k", "hops", "deadline_ms", "max_bytes"],
+      "properties": {
+        "schema_version": {"const": 1},
+        "root": {"type": "string"},
+        "snapshot_id": {"$ref": "#/$defs/snapshot"},
+        "dirty": {"type": "boolean"},
+        "anchors": {"type": "object"},
+        "relations": {"type": "array", "items": {"$ref": "#/$defs/relation"}, "uniqueItems": true},
+        "k": {"type": "integer", "minimum": 1, "maximum": 40},
+        "hops": {"type": "integer", "minimum": 1, "maximum": 2},
+        "deadline_ms": {"type": "integer", "minimum": 100, "maximum": 30000},
+        "max_bytes": {"type": "integer", "minimum": 256, "maximum": 65536}
+      },
+      "additionalProperties": false
+    },
+    {
+      "title": "Result",
+      "type": "object",
+      "required": ["schema_version", "snapshot_id", "facts"],
+      "properties": {
+        "schema_version": {"const": 1},
+        "snapshot_id": {"$ref": "#/$defs/snapshot"},
+        "facts": {"type": "array", "maxItems": 4096, "items": {"type": "object"}}
+      },
+      "additionalProperties": false
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "fixture_id": "kimiflow-execution-profile-v1",
+  "minimum_clean_samples": 5,
+  "review_audit_period": 10,
+  "dimensions": [
+    "verification_passed",
+    "high_findings",
+    "retries",
+    "logical_input_tokens",
+    "output_tokens",
+    "scope_creep"
+  ],
+  "binding": [
+    "model_fingerprint",
+    "execution_variant",
+    "role",
+    "task_class",
+    "runtime_fingerprint",
+    "review_policy_fingerprint",
+    "prompt_gate_fingerprint"
+  ]
+}

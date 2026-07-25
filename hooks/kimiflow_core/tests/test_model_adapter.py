@@ -275,6 +275,52 @@ print(json.dumps(completion))
                 "execution_profile": duplicate_default,
             })
 
+    def test_execution_profile_is_negotiated_cache_stable_and_evidence_routed(self):
+        payload_log = os.path.join(self.tmp.name, "stable-profile-payloads.jsonl")
+        adapter = model_adapter.CommandAgentAdapter(
+            self.write_harness(
+                features={"adaptive_execution_profiles": True},
+                execution_profile=self.execution_profile(),
+            ),
+            environ={"PATH": os.environ.get("PATH", ""), "PAYLOAD_LOG": payload_log},
+        )
+        started = adapter.start(self.root, "start", lambda _session: None)
+        resumed = adapter.resume(self.root, started.session_id, "resume", lambda _session: None)
+        self.assertEqual((started.returncode, resumed.returncode), (0, 0))
+        payloads = [json.loads(line) for line in Path(payload_log).read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(payloads[0]["execution_profile"], payloads[1]["execution_profile"])
+
+        selection = payloads[0]["execution_profile"]
+        key = {
+            "model_fingerprint": selection["model_fingerprint"],
+            "execution_variant": selection["execution_variant"],
+            "role": "balanced",
+            "task_class": "routine-code",
+            "runtime_fingerprint": "sha256:" + "b" * 64,
+            "policy_fingerprint": "sha256:" + "c" * 64,
+            "prompt_gate_fingerprint": "sha256:" + "d" * 64,
+        }
+        for index in range(5):
+            adaptive_control.record_review_outcome(
+                self.root, "sample_%024x" % (700 + index), **key,
+                quality_passed=True,
+            )
+        modes = []
+        for index in range(10):
+            route = adaptive_control.resolve_review_mode(self.root, **key)
+            modes.append(route["review_mode"])
+            adaptive_control.record_review_outcome(
+                self.root, "sample_%024x" % (800 + index), **key,
+                quality_passed=True,
+            )
+        self.assertIn("embedded", modes)
+        self.assertEqual(modes.count("single-independent"), 1)
+        drifted = dict(key, prompt_gate_fingerprint="sha256:" + "e" * 64)
+        self.assertEqual(
+            adaptive_control.resolve_review_mode(self.root, **drifted)["review_mode"],
+            "single-independent",
+        )
+
     def test_feature_capable_adapter_start_and_resume_preserve_workflow_and_model_roles(self):
         features = {key: True for key in model_adapter.FEATURE_KEYS}
         payload_log = os.path.join(self.tmp.name, "feature-payloads.jsonl")

@@ -24,6 +24,10 @@ FULL_REQUIRED_TOOLS = ("bash", "git", "jq", "sqlite3", "shasum")
 PINNED_PARITY_TAG = "kimiflow--v0.1.50"
 PORTABILITY_MODULES = (
     "kimiflow_core.tests.test_atomic",
+    "kimiflow_core.tests.test_adapter_conformance",
+    "kimiflow_core.tests.test_code_intelligence",
+    "kimiflow_core.tests.test_code_retrieval_eval",
+    "kimiflow_core.tests.test_mcp_server",
     "kimiflow_core.tests.test_run_bridge",
     "kimiflow_core.tests.test_workspace_preflight",
     "memory_router.tests.test_lifecycle",
