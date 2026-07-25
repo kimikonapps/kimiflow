@@ -25,7 +25,7 @@
     {
       "title": "Query",
       "type": "object",
-      "required": ["schema_version", "root", "snapshot_id", "dirty", "anchors", "relations", "k", "hops", "deadline_ms", "max_bytes"],
+      "required": ["schema_version", "root", "snapshot_id", "dirty", "anchors", "relations", "k", "hops", "deadline_ms", "max_bytes", "max_tokens"],
       "properties": {
         "schema_version": {"const": 1},
         "root": {"type": "string"},
@@ -36,7 +36,8 @@
         "k": {"type": "integer", "minimum": 1, "maximum": 40},
         "hops": {"type": "integer", "minimum": 1, "maximum": 2},
         "deadline_ms": {"type": "integer", "minimum": 100, "maximum": 30000},
-        "max_bytes": {"type": "integer", "minimum": 256, "maximum": 65536}
+        "max_bytes": {"type": "integer", "minimum": 256, "maximum": 65536},
+        "max_tokens": {"type": "integer", "minimum": 64, "maximum": 16384}
       },
       "additionalProperties": false
     },

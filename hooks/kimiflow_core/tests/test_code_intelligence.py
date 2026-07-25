@@ -74,11 +74,13 @@ print(json.dumps({'schema_version':1,'snapshot_id':('sha256:' + '0'*64) if %r el
         result = code_intelligence.route(
             self.root, "large", ["src/core.py"], ["caller_impact"],
             executable=self.provider(many=True), relation_types=["caller"], mode="canary",
-            k=40, hops=1, max_bytes=512, environ=self.env(),
+            k=40, hops=1, max_bytes=2048, max_tokens=64, environ=self.env(),
         )
         self.assertEqual(result["status"], "selected")
         self.assertLessEqual(result["metrics"]["selected_count"], 12)
+        self.assertLessEqual(result["metrics"]["context_bytes"], 2048)
         self.assertLessEqual(result["metrics"]["context_bytes"], 512)
+        self.assertLessEqual(result["metrics"]["estimated_tokens"], 64)
         self.assertTrue(result["metrics"]["truncated"])
         self.assertNotIn("def main", result["context"])
         self.assertIn("src/core.py:1-1", result["context"])

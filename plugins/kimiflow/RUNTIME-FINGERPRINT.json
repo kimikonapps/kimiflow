@@ -194,16 +194,16 @@
       "sha256": "sha256:0865024bb110714857749a2a6db390188c1f2e964cf2b404bc4540d68a89c745"
     },
     {
-      "bytes": 7201,
+      "bytes": 7889,
       "mode": "0644",
       "path": "hooks/kimiflow_core/adapter_conformance.py",
-      "sha256": "sha256:4691e00d91220869e98973d9417090945fa9394b768c8c5a36110456c93983ee"
+      "sha256": "sha256:00ff86c550bf49518bfad46107846bae677717c44a460cf569c96d0f16238ff6"
     },
     {
-      "bytes": 70250,
+      "bytes": 70273,
       "mode": "0644",
       "path": "hooks/kimiflow_core/adaptive_control.py",
-      "sha256": "sha256:9e026b3457a69f6831cb095d497dc354f0e2f43e26db2affc8336c52b701dc6e"
+      "sha256": "sha256:b3e1a2cd86592fedba9e606ae162a01cbcc8ac603bcc04c4ef744c194e3243d7"
     },
     {
       "bytes": 714,
@@ -218,10 +218,10 @@
       "sha256": "sha256:cd37de085b12738a662b3b2cd3c8a3d42951edfd3e57a85ab7259e8e62f8d34a"
     },
     {
-      "bytes": 16373,
+      "bytes": 16832,
       "mode": "0644",
       "path": "hooks/kimiflow_core/code_intelligence.py",
-      "sha256": "sha256:250f67493d08fb9ef12e79704701e9775f688e0b2f5a566001586185fcc620b6"
+      "sha256": "sha256:33be58ed9edc43379461b721193a2dbbe1633b818923692cd13575357ccada36"
     },
     {
       "bytes": 10380,
@@ -794,10 +794,10 @@
       "sha256": "sha256:b43500b7e09b25d82df5e3f6de74d5669b0f43a90860c807c8beb7c62e6afaa0"
     },
     {
-      "bytes": 2298,
+      "bytes": 2388,
       "mode": "0644",
       "path": "references/code-intelligence-provider-v1.schema.json",
-      "sha256": "sha256:bbc5186f0cda70223f5a0fc43dffc6d5512f2bacb1372aae71bc5e22789ace2f"
+      "sha256": "sha256:fbf548f4d33c4dd4dbcf183a999f8ee614ac680c3bfec01e17b5badfcf5cbdca"
     },
     {
       "bytes": 1308,
@@ -860,6 +860,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:c97874ebd91ed02ae5584c1590b9833fd04c6f9f9df6dff58761fb59a16c2d97",
+  "runtime_fingerprint": "sha256:1bcf05f3ac2fdf53de7220c27c0c78ae2febf45e967f1b5575be5f12139a96ff",
   "schema_version": 1
 }

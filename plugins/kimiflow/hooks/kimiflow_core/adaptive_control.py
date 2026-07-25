@@ -1393,7 +1393,7 @@ def resolve_retrieval_route(root, provider_fingerprint, task_class):
                 for row in canaries
             )
         )
-        if clean_canaries:
+        if holdout and shadow and clean_canaries:
             route, reason = "active", "five_clean_canaries"
         elif holdout and shadow:
             route, reason = "canary", "holdout_and_shadow_clean"

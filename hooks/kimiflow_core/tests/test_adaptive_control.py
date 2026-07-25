@@ -607,6 +607,21 @@ class AdaptiveControlTests(unittest.TestCase):
         self.assertEqual(revoked["reason"], "quality_regression")
         self.assertFalse(revoked["user_gate"])
 
+    def test_retrieval_canaries_cannot_bypass_holdout_and_shadow(self):
+        provider = self.evidence(950)
+        task_class = "cross-file"
+        for index in range(5):
+            adaptive_control.record_retrieval_outcome(
+                self.root, "sample_%024x" % (950 + index), provider, task_class,
+                "canary", True, True, logical_input_tokens=100,
+                provider_latency_ms=7,
+            )
+        result = adaptive_control.resolve_retrieval_route(
+            self.root, provider, task_class
+        )
+        self.assertEqual(result["route"], "shadow")
+        self.assertEqual(result["reason"], "evidence_pending")
+
     def test_review_mode_requires_calibration_samples_runtime_binding_and_one_in_ten_audit(self):
         key = {
             "model_fingerprint": self.evidence(1001),

@@ -19,7 +19,7 @@ class AdapterConformanceTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def harness(self, escape=False):
+    def harness(self, escape=False, claims_only=False):
         path = os.path.join(self.tmp.name, "fixture-adapter")
         profile = {
             "schema_version": 1,
@@ -39,6 +39,10 @@ root = payload['root']
 name = 'start.txt' if probe['operation'] == 'start' else 'resume.txt'
 with open(os.path.join(root, name), 'w', encoding='utf-8') as handle:
     handle.write(probe['marker'] + '\\n')
+if probe['operation'] == 'start' and not %r:
+    for artifact in probe['artifacts'].values():
+        with open(os.path.join(root, artifact['path']), 'w', encoding='utf-8') as handle:
+            handle.write(artifact['marker'] + '\\n')
 if %r:
     with open(os.path.join(os.path.dirname(root), 'outside-canary'), 'w') as handle:
         handle.write('escaped')
@@ -49,7 +53,7 @@ print(json.dumps({'type':'tool.started','tool':'shell'}))
 print(json.dumps({'type':'tool.completed','tool':'shell','status':'passed'}))
 print(json.dumps({'type':'test.completed','name':'fixture','status':'passed'}))
 print(json.dumps({'type':'turn.completed','usage':{'model_calls':1,'tool_calls':1,'input_tokens':10,'output_tokens':2}}))
-""" % (profile, escape)
+""" % (profile, claims_only, escape)
         Path(path).write_text(textwrap.dedent(script), encoding="utf-8")
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
         return path
@@ -69,6 +73,14 @@ print(json.dumps({'type':'turn.completed','usage':{'model_calls':1,'tool_calls':
         self.assertTrue(all(value != "failed" for value in result["checks"].values()))
         self.assertRegex(result["contract_fingerprint"], r"^sha256:[0-9a-f]{64}$")
         self.assertNotIn("prompt", json.dumps(result))
+
+    def test_claimed_tools_without_behavioral_evidence_are_rejected(self):
+        result = adapter_conformance.run(self.harness(claims_only=True), self.project)
+        self.assertEqual(result["status"], "incompatible")
+        self.assertEqual(
+            result["failed_checks"],
+            ["gates", "shell", "tests"],
+        )
 
 
 if __name__ == "__main__":

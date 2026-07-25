@@ -35,12 +35,13 @@ def _digest_tree(root):
     return "sha256:" + digest.hexdigest()
 
 
-def _probe_prompt(operation, marker):
+def _probe_prompt(operation, marker, artifacts):
     payload = {
         "contract": "kimiflow-adapter-conformance-v1",
         "operation": operation,
         "marker": marker,
         "requirements": ["files", "shell", "tests", "gates"],
+        "artifacts": artifacts,
     }
     return (
         "Execute this deterministic Kimiflow adapter conformance probe exactly once. "
@@ -75,9 +76,7 @@ def run(executable, project_root=None, model=None, environ=None):
     except (model_adapter.AdapterError, OSError, ValueError) as exc:
         raise ConformanceError("capabilities_invalid:%s" % exc)
     contract = adapter.contract_fingerprint()
-    checks = {
-        key: "passed" for key in ("capabilities", "files", "shell", "tests", "gates")
-    }
+    checks = {"capabilities": "passed"}
     with tempfile.TemporaryDirectory(prefix="kimiflow-adapter-conformance-") as owned:
         root = os.path.join(owned, "project")
         sibling = os.path.join(owned, "outside-canary")
@@ -85,12 +84,35 @@ def run(executable, project_root=None, model=None, environ=None):
         Path(os.path.join(root, "fixture.txt")).write_text("fixture\n", encoding="utf-8")
         start_marker = "start-" + hashlib.sha256(contract.encode("ascii")).hexdigest()[:16]
         resume_marker = "resume-" + hashlib.sha256((contract + start_marker).encode("ascii")).hexdigest()[:16]
+        artifacts = {
+            name: {
+                "path": name + ".txt",
+                "marker": name + "-" + hashlib.sha256(
+                    (contract + start_marker + name).encode("ascii")
+                ).hexdigest()[:16],
+            }
+            for name in ("shell", "tests", "gates")
+        }
         sessions = []
-        start = adapter.start(root, _probe_prompt("start", start_marker), sessions.append)
+        start = adapter.start(
+            root, _probe_prompt("start", start_marker, artifacts), sessions.append
+        )
         checks["start"] = "passed" if start.returncode == 0 and start.session_id else "failed"
         checks["files"] = "passed" if _marker_valid(root, "start.txt", start_marker) else "failed"
+        for capability in ("shell", "tests", "gates"):
+            probe = artifacts[capability]
+            checks[capability] = (
+                "passed"
+                if _marker_valid(root, probe["path"], probe["marker"])
+                else "failed"
+            )
         if start.returncode == 0 and start.session_id:
-            resume = adapter.resume(root, start.session_id, _probe_prompt("resume", resume_marker), sessions.append)
+            resume = adapter.resume(
+                root,
+                start.session_id,
+                _probe_prompt("resume", resume_marker, artifacts),
+                sessions.append,
+            )
         else:
             resume = model_adapter.TurnResult(1, error_code="start_failed")
         checks["resume"] = "passed" if resume.returncode == 0 and _marker_valid(root, "resume.txt", resume_marker) else "failed"

@@ -231,7 +231,7 @@ def normalize_result(root, value, request, capabilities):
     return sorted(normalized, key=lambda row: (-row["confidence"], row["path"], row["start_line"], row["relation"]))
 
 
-def _render(facts, k, max_bytes):
+def _render(facts, k, max_bytes, max_tokens):
     rows = ["# Code Intelligence Context", ""]
     selected = []
     truncated = False
@@ -243,7 +243,12 @@ def _render(facts, k, max_bytes):
             fact["relation"], target, fact["provenance"], fact["confidence"],
         )
         candidate = "\n".join(rows + [line, ""]) + "\n"
-        if len(candidate.encode("utf-8")) > max_bytes or len(selected) >= 12:
+        candidate_bytes = len(candidate.encode("utf-8"))
+        if (
+            candidate_bytes > max_bytes
+            or (candidate_bytes + 3) // 4 > max_tokens
+            or len(selected) >= 12
+        ):
             truncated = True
             break
         rows.append(line)
@@ -255,7 +260,7 @@ def _render(facts, k, max_bytes):
 def route(
     root, scope, affected_paths, signals, executable=None, relation_types=None,
     symbols=None, mode="shadow", k=40, hops=1, deadline_ms=5000, max_bytes=8192,
-    environ=None,
+    max_tokens=2048, environ=None,
 ):
     root = os.path.realpath(root)
     is_eligible, reason = eligible(scope, affected_paths, signals)
@@ -277,6 +282,8 @@ def route(
         raise CodeIntelligenceError("deadline_invalid")
     if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or not 256 <= max_bytes <= 65_536:
         raise CodeIntelligenceError("budget_invalid")
+    if isinstance(max_tokens, bool) or not isinstance(max_tokens, int) or not 64 <= max_tokens <= 16_384:
+        raise CodeIntelligenceError("token_budget_invalid")
     try:
         current = snapshot(root)
         capabilities = _provider_capabilities(executable, environ=environ)
@@ -298,10 +305,11 @@ def route(
             "hops": hops,
             "deadline_ms": deadline_ms,
             "max_bytes": max_bytes,
+            "max_tokens": max_tokens,
         }
         raw = _provider_query(executable, request, deadline_ms, environ=environ)
         facts = normalize_result(root, raw, request, capabilities)
-        context, selected, truncated = _render(facts, k, max_bytes)
+        context, selected, truncated = _render(facts, k, max_bytes, max_tokens)
         metrics = {
             "fact_count": len(facts),
             "selected_count": len(selected),
@@ -358,13 +366,14 @@ def main(argv=None):
     parser.add_argument("--hops", type=int, default=1)
     parser.add_argument("--deadline-ms", type=int, default=5000)
     parser.add_argument("--max-bytes", type=int, default=8192)
+    parser.add_argument("--max-tokens", type=int, default=2048)
     parser.add_argument("--pretty", action="store_true")
     args = parser.parse_args(argv)
     try:
         value = route(
             args.root, args.scope, args.affected_path, args.signal, args.provider,
             args.relation, args.symbol, args.mode, args.k, args.hops,
-            args.deadline_ms, args.max_bytes,
+            args.deadline_ms, args.max_bytes, args.max_tokens,
         )
         print(json.dumps(value, sort_keys=True, indent=2 if args.pretty else None, separators=None if args.pretty else (",", ":")))
         return 0

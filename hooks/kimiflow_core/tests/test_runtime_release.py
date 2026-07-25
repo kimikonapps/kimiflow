@@ -8,7 +8,7 @@ import unittest
 from unittest import mock
 import zipfile
 
-from kimiflow_core import runtime_release
+from kimiflow_core import mcp_server, model_adapter, runtime_release
 
 
 SOURCE_COMMIT = "a" * 40
@@ -235,6 +235,36 @@ class RuntimeReleaseTests(unittest.TestCase):
             archive_payload = handle.read()
         self.assertEqual(manifest["artifact"]["bytes"], len(archive_payload))
         self.assertEqual(manifest["artifact"]["sha256"], runtime_release._sha256(archive_payload))
+
+    def test_all_host_entrypoints_bind_same_runtime_fingerprint(self):
+        manifest, manifest_path, archive = self.build()
+        identities = []
+        for profile, features in (
+            ("embedded", []),
+            ("app_host", runtime_release.HOST_PROFILES["app_host"]),
+        ):
+            status, verified, compatibility = runtime_release.verify_artifact(
+                manifest_path,
+                archive,
+                host_profile=profile,
+                supported_protocol=model_adapter.PROTOCOL_VERSION,
+                host_features=features,
+            )
+            self.assertEqual(status, "artifact_verified")
+            self.assertTrue(compatibility["compatible"])
+            identities.append({
+                "version": verified["version"],
+                "source_commit": verified["source"]["commit"],
+                "runtime_fingerprint": verified["artifact"]["runtime_fingerprint"],
+                "adapter_protocol": verified["contracts"]["adapter_protocol"],
+            })
+        self.assertEqual(identities[0], identities[1])
+        self.assertEqual(identities[0]["version"], mcp_server._runtime_version(self.candidate))
+        self.assertEqual(identities[0]["source_commit"], SOURCE_COMMIT)
+        self.assertEqual(
+            identities[0]["runtime_fingerprint"],
+            manifest["artifact"]["runtime_fingerprint"],
+        )
 
     def test_build_budget_includes_archived_fingerprint(self):
         fingerprint, _ = runtime_release._read_json(
