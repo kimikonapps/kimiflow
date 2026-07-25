@@ -268,6 +268,19 @@ def worktree_status(path):
     return result
 
 
+def kimiflow_only_ignored(status):
+    if not status["ignored_count"]:
+        return True
+    return (
+        not status["ignored_paths_truncated"]
+        and len(status["ignored_paths"]) == status["ignored_count"]
+        and all(
+            path == ".kimiflow" or path.startswith(".kimiflow/")
+            for path in status["ignored_paths"]
+        )
+    )
+
+
 def is_within(path, parent):
     try:
         return os.path.commonpath([os.path.realpath(path), os.path.realpath(parent)]) == os.path.realpath(parent)
@@ -335,7 +348,13 @@ def registry_directory(primary, create=False):
             os.close(base_descriptor)
 
 
-def atomic_directory_write(directory_descriptor, name, payload):
+def atomic_directory_write(
+    directory_descriptor,
+    name,
+    payload,
+    *,
+    _commit_guard=None,
+):
     temporary = ".kimiflow-%s-%s" % (name, secrets.token_hex(8))
     backup = ".kimiflow-backup-%s-%s" % (name, secrets.token_hex(8))
     quarantine = ".kimiflow-quarantine-%s-%s" % (name, secrets.token_hex(8))
@@ -360,6 +379,8 @@ def atomic_directory_write(directory_descriptor, name, payload):
         os.fsync(descriptor)
         temporary_info = os.fstat(descriptor)
         temporary_identity = (temporary_info.st_dev, temporary_info.st_ino)
+        if _commit_guard is not None and not _commit_guard():
+            raise OSError("atomic write commit guard refused publication")
         try:
             target = os.stat(name, dir_fd=directory_descriptor, follow_symlinks=False)
         except FileNotFoundError:
@@ -388,6 +409,8 @@ def atomic_directory_write(directory_descriptor, name, payload):
                 os.rename(backup, name, src_dir_fd=directory_descriptor, dst_dir_fd=directory_descriptor)
                 target_moved = False
             raise OSError("atomic source identity changed")
+        if _commit_guard is not None and not _commit_guard():
+            raise OSError("atomic write commit guard changed during publication")
         os.unlink(temporary, dir_fd=directory_descriptor)
         os.fsync(directory_descriptor)
         committed_name = os.stat(name, dir_fd=directory_descriptor, follow_symlinks=False)
@@ -406,7 +429,7 @@ def atomic_directory_write(directory_descriptor, name, payload):
             # second directory-fsync failure is an uncertain durability signal,
             # not permission to report a rolled-back transaction.
             pass
-    except OSError:
+    except BaseException:
         if target_moved:
             try:
                 current_backup = os.stat(backup, dir_fd=directory_descriptor, follow_symlinks=False)
@@ -485,6 +508,58 @@ def atomic_directory_write(directory_descriptor, name, payload):
             os.close(descriptor)
 
 
+def atomic_directory_backup_name(directory_descriptor, name):
+    prefix = ".kimiflow-backup-%s-" % name
+    backups = []
+    try:
+        for candidate in os.listdir(directory_descriptor):
+            if candidate.startswith(prefix):
+                backups.append(candidate)
+                if len(backups) > 1:
+                    raise WorkspaceError("ambiguous atomic recovery state")
+    except OSError as exc:
+        raise WorkspaceError("cannot inspect atomic recovery state") from exc
+    return backups[0] if backups else ""
+
+
+def recover_atomic_directory_name(directory_descriptor, name):
+    backup = atomic_directory_backup_name(directory_descriptor, name)
+    try:
+        current = os.stat(name, dir_fd=directory_descriptor, follow_symlinks=False)
+    except FileNotFoundError:
+        current = None
+    except OSError as exc:
+        raise WorkspaceError("cannot inspect atomic recovery target") from exc
+    if current is not None and (
+        stat.S_ISLNK(current.st_mode) or not stat.S_ISREG(current.st_mode)
+    ):
+        raise WorkspaceError("unsafe atomic recovery target")
+    if not backup:
+        return
+    try:
+        backup_info = os.stat(
+            backup,
+            dir_fd=directory_descriptor,
+            follow_symlinks=False,
+        )
+        if stat.S_ISLNK(backup_info.st_mode) or not stat.S_ISREG(
+            backup_info.st_mode
+        ):
+            raise WorkspaceError("unsafe atomic recovery backup")
+        if current is None:
+            os.rename(
+                backup,
+                name,
+                src_dir_fd=directory_descriptor,
+                dst_dir_fd=directory_descriptor,
+            )
+        else:
+            os.unlink(backup, dir_fd=directory_descriptor)
+        os.fsync(directory_descriptor)
+    except OSError as exc:
+        raise WorkspaceError("cannot recover atomic state") from exc
+
+
 def validate_registry(data):
     if not isinstance(data, dict) or data.get("schema_version") != 1:
         raise WorkspaceError("malformed worktree registry")
@@ -526,7 +601,33 @@ def read_registry_descriptor(directory_descriptor):
             raise WorkspaceError("malformed worktree registry")
         return validate_registry(json.loads(payload.decode("utf-8")))
     except FileNotFoundError:
-        return {"schema_version": 1, "entries": []}
+        backup = atomic_directory_backup_name(
+            directory_descriptor,
+            "WORKTREE_REGISTRY.json",
+        )
+        if not backup:
+            return {"schema_version": 1, "entries": []}
+        backup_descriptor = None
+        try:
+            backup_descriptor = os.open(
+                backup,
+                flags,
+                dir_fd=directory_descriptor,
+            )
+            info = os.fstat(backup_descriptor)
+            if not stat.S_ISREG(info.st_mode):
+                raise WorkspaceError("unsafe worktree registry recovery state")
+            payload = os.read(backup_descriptor, 65537)
+            if len(payload) > 65536:
+                raise WorkspaceError("malformed worktree registry recovery state")
+            return validate_registry(json.loads(payload.decode("utf-8")))
+        except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+            if isinstance(exc, WorkspaceError):
+                raise
+            raise WorkspaceError("malformed worktree registry recovery state") from exc
+        finally:
+            if backup_descriptor is not None:
+                os.close(backup_descriptor)
     except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
         if isinstance(exc, WorkspaceError):
             raise
@@ -546,15 +647,10 @@ def read_registry(primary, directory_descriptor=None):
 def write_registry_descriptor(directory_descriptor, registry):
     directory_descriptor = registry_descriptor(directory_descriptor)
     payload = (json.dumps(validate_registry(registry), sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
-    try:
-        existing = os.stat("WORKTREE_REGISTRY.json", dir_fd=directory_descriptor, follow_symlinks=False)
-    except FileNotFoundError:
-        pass
-    except OSError as exc:
-        raise WorkspaceError("cannot inspect worktree registry") from exc
-    else:
-        if stat.S_ISLNK(existing.st_mode) or not stat.S_ISREG(existing.st_mode):
-            raise WorkspaceError("unsafe worktree registry")
+    recover_atomic_directory_name(
+        directory_descriptor,
+        "WORKTREE_REGISTRY.json",
+    )
     try:
         atomic_directory_write(directory_descriptor, "WORKTREE_REGISTRY.json", payload)
     except OSError as exc:
@@ -720,17 +816,29 @@ def unlink_admin_file(admin_descriptor, name):
 
 
 def state_value_from_text(source, wanted):
-    for raw in source.splitlines():
+    lines = source.splitlines()
+    for index, raw in enumerate(lines):
         line = raw.strip().lstrip("-").strip().replace("**", "")
         label, sep, value = line.partition(":")
         if sep and label.strip().lower() == wanted.lower():
-            return value.strip()
+            value = value.strip()
+            if value or wanted.lower() not in {"affected files", "affected paths"}:
+                return value
+            values = []
+            for candidate in lines[index + 1 :]:
+                match = re.match(r"^[ \t]*-[ \t]+(.+?)\s*$", candidate)
+                if not match:
+                    if candidate.strip():
+                        break
+                    continue
+                values.append(match.group(1).strip())
+            return ", ".join(values)
     return ""
 
 
-def safe_run_state(primary, run):
+def safe_run_source(primary, run):
     if not RUN_RE.match(run or ""):
-        return "", ""
+        return ""
     flags = os.O_RDONLY
     directory_flags = flags | (os.O_DIRECTORY if hasattr(os, "O_DIRECTORY") else 0)
     if hasattr(os, "O_NOFOLLOW"):
@@ -749,22 +857,20 @@ def safe_run_state(primary, run):
         run_info = os.fstat(run_descriptor)
         state_info = os.fstat(state_descriptor)
         if not stat.S_ISDIR(base_info.st_mode) or not stat.S_ISDIR(run_info.st_mode) or not stat.S_ISREG(state_info.st_mode):
-            return "", ""
+            return ""
         payload = os.read(state_descriptor, 1048577)
         if len(payload) > 1048576:
-            return "", ""
+            return ""
         named_base = os.lstat(base_path)
         named_run = os.stat(run_name, dir_fd=base_descriptor, follow_symlinks=False)
         named_state = os.stat("STATE.md", dir_fd=run_descriptor, follow_symlinks=False)
         if (named_base.st_dev, named_base.st_ino) != (base_info.st_dev, base_info.st_ino):
-            return "", ""
+            return ""
         if (named_run.st_dev, named_run.st_ino) != (run_info.st_dev, run_info.st_ino):
-            return "", ""
+            return ""
         if (named_state.st_dev, named_state.st_ino) != (state_info.st_dev, state_info.st_ino):
-            return "", ""
+            return ""
         source = payload.decode("utf-8")
-        flow_schema = state_value_from_text(source, "Flow schema")
-        status_value = state_value_from_text(source, "Status")
         final_state = os.fstat(state_descriptor)
         final_named_state = os.stat("STATE.md", dir_fd=run_descriptor, follow_symlinks=False)
         initial_content_identity = (
@@ -785,10 +891,10 @@ def safe_run_state(primary, run):
             final_named_state.st_dev,
             final_named_state.st_ino,
         ) != (state_info.st_dev, state_info.st_ino):
-            return "", ""
-        return flow_schema, status_value
+            return ""
+        return source
     except (OSError, UnicodeError):
-        return "", ""
+        return ""
     finally:
         if state_descriptor is not None:
             os.close(state_descriptor)
@@ -796,6 +902,14 @@ def safe_run_state(primary, run):
             os.close(run_descriptor)
         if base_descriptor is not None:
             os.close(base_descriptor)
+
+
+def safe_run_state(primary, run):
+    source = safe_run_source(primary, run)
+    return (
+        state_value_from_text(source, "Flow schema"),
+        state_value_from_text(source, "Status"),
+    )
 
 
 def local_active(path):
@@ -816,8 +930,10 @@ def local_active(path):
     return True
 
 
-def run_status(primary, run):
-    _, value = safe_run_state(primary, run)
+def run_status(primary, run, worktree=None):
+    _, value = safe_run_state(worktree or primary, run)
+    if not value and worktree and os.path.realpath(worktree) != os.path.realpath(primary):
+        _, value = safe_run_state(primary, run)
     return value.lower().split(" ", 1)[0]
 
 
@@ -850,7 +966,7 @@ def build_status(root=None, registry_descriptor=None):
         registration = registrations.get(path)
         receipt_valid = bool(registration and not record.get("prunable") and owner_receipt_matches(path, registration))
         run = registration["run"] if registration else ""
-        status_value = run_status(primary, run) if run else ""
+        status_value = run_status(primary, run, path) if run else ""
         active = local_active(path) or bool(run and status_value not in TERMINAL_RUN_STATUS)
         locked = bool(record.get("locked"))
         prunable = bool(record.get("prunable"))
@@ -955,7 +1071,7 @@ def build_status(root=None, registry_descriptor=None):
         "auto_cleanup_paths": [tree["path"] for tree in trees if tree["removable"]],
         "decision_required": bool(unresolved),
         "unresolved": unresolved,
-        "policy": {"mode": "solo", "new_worktrees": "explicit-only", "max_temporary": 1},
+        "policy": {"mode": "solo", "new_worktrees": "auto-when-main-busy", "max_temporary": 1},
         "worktrees": trees,
     }
 
@@ -968,29 +1084,58 @@ def find_tree(status, path):
     raise WorkspaceError("path is not a linked worktree")
 
 
-def register(root, path, run, write=False):
+def register(
+    root,
+    path,
+    run,
+    write=False,
+    *,
+    _registry_descriptor=None,
+    _allow_locked=False,
+    _require_active=True,
+    _identity=None,
+):
     if not RUN_RE.match(run or ""):
         raise WorkspaceError("run must be .kimiflow/<slug>")
-    with registry_operation(root, write) as registry_descriptor:
+    operation = (
+        contextlib.nullcontext(_registry_descriptor)
+        if _registry_descriptor is not None
+        else registry_operation(root, write)
+    )
+    with operation as registry_descriptor:
         status = build_status(root, registry_descriptor)
         tree = find_tree(status, path)
-        if tree["current"] or tree["primary"] or tree["codex_managed"] or tree["locked"] or tree["prunable"] or tree["dirty"] or tree["ignored_count"] or tree["active"] or not tree["exists"]:
+        if (
+            tree["current"]
+            or tree["primary"]
+            or tree["codex_managed"]
+            or (tree["locked"] and not _allow_locked)
+            or tree["prunable"]
+            or tree["dirty"]
+            or tree["ignored_count"]
+            or tree["active"]
+            or not tree["exists"]
+        ):
             raise WorkspaceError("worktree is not eligible for registration")
         primary = status["primary_root"]
-        schema, status_value = safe_run_state(primary, run)
-        schema_token = schema.split(" ", 1)[0]
-        if (
-            not schema_token.isdigit()
-            or int(schema_token) < 4
-            or status_value.lower() != "active"
-        ):
-            raise WorkspaceError(
-                "registration requires a primary versioned schema-4+ run"
-            )
+        if _require_active:
+            schema, status_value = safe_run_state(primary, run)
+            schema_token = schema.split(" ", 1)[0]
+            if (
+                not schema_token.isdigit()
+                or int(schema_token) < 4
+                or status_value.lower() != "active"
+            ):
+                raise WorkspaceError(
+                    "registration requires a primary versioned schema-4+ run"
+                )
         registry = read_registry(primary, registry_descriptor)
         if registry["entries"]:
             raise WorkspaceError("temporary worktree cap reached")
-        entry = {"path": tree["path"], "run": run, "identity": secrets.token_hex(32)}
+        identity = _identity or secrets.token_hex(32)
+        if not IDENTITY_RE.match(identity):
+            raise WorkspaceError("invalid worktree ownership identity")
+        entry = {"path": tree["path"], "run": run, "identity": identity}
         if write:
             receipt = owner_receipt_path(tree["path"])
             admin_dir = os.path.dirname(receipt)
@@ -1281,7 +1426,14 @@ def persist_admin_compensation(parent_descriptor, archive_descriptor, metadata_p
         ) from exc
 
 
-def detach_admin_record(admin_dir, admin_descriptor, common_dir, identity):
+def detach_admin_record(
+    admin_dir,
+    admin_descriptor,
+    common_dir,
+    identity,
+    *,
+    _archive_guard=None,
+):
     admin_parent = os.path.dirname(admin_dir)
     admin_name = os.path.basename(admin_dir)
     metadata_root, metadata_path = metadata_retirement_paths(common_dir, identity)
@@ -1305,6 +1457,8 @@ def detach_admin_record(admin_dir, admin_descriptor, common_dir, identity):
             raise WorkspaceError("cannot revalidate worktree administrative record") from exc
         if (current.st_dev, current.st_ino) != (pinned_admin.st_dev, pinned_admin.st_ino):
             raise WorkspaceError("worktree administrative identity changed before retirement")
+        if _archive_guard is not None:
+            _archive_guard(admin_dir)
         try:
             os.rename(
                 admin_name,
@@ -1350,6 +1504,24 @@ def detach_admin_record(admin_dir, admin_descriptor, common_dir, identity):
             raise WorkspaceError(
                 "worktree administrative identity changed during retirement; refusing to relocate archive entry"
             )
+        if _archive_guard is not None:
+            try:
+                _archive_guard(metadata_path)
+            except Exception:
+                restored = rollback_mismatched_admin_move(
+                    parent_descriptor,
+                    archive_descriptor,
+                    admin_parent,
+                    admin_name,
+                    identity,
+                    pinned_admin,
+                )
+                if not restored:
+                    raise MetadataRollbackError(
+                        "archive validation failed and metadata remains at %s"
+                        % metadata_path
+                    )
+                raise
         try:
             os.fsync(parent_descriptor)
             os.fsync(archive_descriptor)
@@ -1496,12 +1668,23 @@ def restore_archived_worktree(path, archive_root, archive_path, expected_identit
         raise WorkspaceError("worktree retirement rollback failed; content remains archived at %s" % archive_path) from exc
 
 
-def remove(root, path, write=False, before_archive=None):
+def remove(
+    root,
+    path,
+    write=False,
+    before_archive=None,
+    *,
+    _allow_kimiflow_ignored=False,
+    _archive_guard=None,
+):
     with registry_operation(root, write) as registry_descriptor:
         status = build_status(root, registry_descriptor)
         tree = find_tree(status, path)
-        if not tree["removable"]:
-            raise WorkspaceError("worktree removal refused: %s" % ",".join(tree["blockers"]))
+        blockers = list(tree["blockers"])
+        if _allow_kimiflow_ignored and kimiflow_only_ignored(tree):
+            blockers = [value for value in blockers if value != "ignored-content"]
+        if blockers:
+            raise WorkspaceError("worktree removal refused: %s" % ",".join(blockers))
         registry = read_registry(status["primary_root"], registry_descriptor)
         entry = next((item for item in registry["entries"] if item["path"] == tree["path"]), None)
         if entry is None:
@@ -1542,6 +1725,8 @@ def remove(root, path, write=False, before_archive=None):
                         raise WorkspaceError("cannot revalidate checkout before retirement") from exc
                     if (current_checkout.st_dev, current_checkout.st_ino) != (pinned.st_dev, pinned.st_ino):
                         raise WorkspaceError("worktree identity changed before archive rename")
+                    if _archive_guard is not None:
+                        _archive_guard(tree["path"])
                     try:
                         os.rename(
                             checkout_name,
@@ -1575,6 +1760,18 @@ def remove(root, path, write=False, before_archive=None):
                             checkout_archive_descriptor,
                         )
                         raise WorkspaceError("worktree archive path identity changed during retirement")
+                    if _archive_guard is not None:
+                        try:
+                            _archive_guard(archive_path)
+                        except Exception:
+                            restore_archived_worktree(
+                                tree["path"],
+                                archive_root,
+                                archive_path,
+                                (pinned.st_dev, pinned.st_ino),
+                                checkout_archive_descriptor,
+                            )
+                            raise
                     try:
                         os.fsync(checkout_parent_descriptor)
                         os.fsync(checkout_archive_descriptor)
@@ -1593,6 +1790,16 @@ def remove(root, path, write=False, before_archive=None):
                             admin_descriptor,
                             common_dir,
                             entry["identity"],
+                            _archive_guard=(
+                                (
+                                    lambda candidate_admin: _archive_guard(
+                                        archive_path,
+                                        candidate_admin,
+                                    )
+                                )
+                                if _archive_guard is not None
+                                else None
+                            ),
                         )
                     except MetadataRollbackError as exc:
                         raise WorkspaceError(
@@ -1673,6 +1880,9 @@ def parser():
             item.add_argument("--run", required=True)
         item.add_argument("--write", action="store_true")
         item.add_argument("--pretty", action="store_true")
+    from . import worktree_broker
+
+    worktree_broker.add_parsers(sub)
     return result
 
 
@@ -1689,8 +1899,12 @@ def main(argv=None):
             result = register(args.root, args.path, args.run, args.write)
         elif command == "remove":
             result = remove(args.root, args.path, args.write)
-        else:
+        elif command == "prune":
             result = prune(args.root, args.write)
+        else:
+            from . import worktree_broker
+
+            result = worktree_broker.dispatch(command, args)
         print(json.dumps(result, ensure_ascii=True, indent=2 if args.pretty else None, sort_keys=True))
         return 0
     except WorkspaceError as exc:

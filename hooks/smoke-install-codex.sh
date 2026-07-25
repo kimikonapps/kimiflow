@@ -139,14 +139,22 @@ if [ -x "$ROOT/hooks/test-discovery-gate.sh" ] && bash -n "$ROOT/hooks/test-disc
 if [ -x "$ROOT/hooks/working-tree-gate.sh" ] && bash -n "$ROOT/hooks/working-tree-gate.sh" 2>/dev/null; then ok "working-tree gate helper ok"; else bad "working-tree gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-working-tree-gate.sh" ] && bash -n "$ROOT/hooks/test-working-tree-gate.sh" 2>/dev/null; then ok "working-tree gate test ok"; else bad "working-tree gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/workspace-preflight.sh" ] && bash -n "$ROOT/hooks/workspace-preflight.sh" 2>/dev/null; then ok "workspace preflight helper ok"; else bad "workspace preflight helper missing/not-exec/bad"; fi
+if [ -f "$ROOT/hooks/kimiflow_core/worktree_broker.py" ] \
+  && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import worktree_broker; assert worktree_broker.BROKER_SCHEMA == 1' 2>/dev/null \
+  && grep -q 'route --run .kimiflow/<slug>' "$ROOT/phases/phase-0-setup.md" \
+  && grep -q 'write-gate --run .kimiflow/<slug>' "$ROOT/phases/phase-5-build.md"; then
+  ok "Codex autonomous worktree broker wiring"
+else
+  bad "Codex autonomous worktree broker wiring incomplete"
+fi
 if [ -x "$ROOT/hooks/ci-test-plan.sh" ] && bash -n "$ROOT/hooks/ci-test-plan.sh" 2>/dev/null && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import ci_test_plan' 2>/dev/null; then ok "CI test plan helper ok"; else bad "CI test plan helper missing/not-exec/unloadable"; fi
 if [ -x "$ROOT/hooks/behavior-eval-receipt.sh" ] && bash -n "$ROOT/hooks/behavior-eval-receipt.sh" 2>/dev/null && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import eval_receipt' 2>/dev/null; then ok "behavior eval receipt helper ok"; else bad "behavior eval receipt helper missing/not-exec/unloadable"; fi
 if grep -q 'show one plain summary' "$ROOT/phases/phase-0-setup.md" \
-  && grep -q 'await-user --run .kimiflow/<slug> --kind workspace' "$ROOT/phases/phase-0-setup.md" \
-  && grep -q 'Apply only the selected safe actions, rerun status' "$ROOT/phases/phase-0-setup.md"; then
-  ok "schema4_workspace_summary_and_single_decision"
+  && grep -q 'route --run .kimiflow/<slug> --write' "$ROOT/phases/phase-0-setup.md" \
+  && grep -q 'never ask merely to create, queue, retry, integrate, or retire' "$ROOT/phases/phase-0-setup.md"; then
+  ok "Codex autonomous workspace route and bounded foreign decision"
 else
-  bad "workspace summary/one-shot disposition procedure is incomplete"
+  bad "Codex autonomous workspace route or bounded foreign decision is incomplete"
 fi
 grep -q 'Only after step 3.55' "$ROOT/phases/phase-0-setup.md" && ok "frontend baseline follows workspace closure" || bad "frontend baseline timing bypasses workspace closure"
 if grep -Fqi 'use a separate git worktree' "$ROOT/hooks/kimiflow_core/active_run.py"; then bad "non-owner hook suggests an unguarded worktree"; else ok "non-owner hook preserves exceptional-worktree authority"; fi

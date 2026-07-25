@@ -1739,11 +1739,21 @@ def cmd_observe(args):
     )
 
 
-def cmd_start(args):
+def cmd_start(args, _workspace_locked=False):
     opts = parse_options(args, "start", {"--root": "", "--run": "", "--mode": "feature", "--scope": "small", "--host": os.environ.get("KIMIFLOW_HOST", "unknown"), "--write": False, "--pretty": False})
     need_jq()
     write = opts["--write"]
     root = resolve_root(opts["--root"], strict=write)
+    if write and not _workspace_locked:
+        probe = run_git(root, ["rev-parse", "--is-inside-work-tree"])
+        if probe.returncode != 0 or probe.stdout.strip() != "true":
+            return cmd_start(args, _workspace_locked=True)
+        try:
+            primary = workspace_preflight.worktree_records(root)[0]["path"]
+            with workspace_preflight.registry_lock(primary):
+                return cmd_start(args, _workspace_locked=True)
+        except workspace_preflight.WorkspaceError as exc:
+            die("cannot acquire workspace lease: %s" % exc, 2)
     run_dir = resolve_run_dir(root, opts["--run"])
     run_rel = rel_path(root, run_dir)
     existing = status_json(root)

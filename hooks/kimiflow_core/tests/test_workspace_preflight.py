@@ -200,6 +200,23 @@ class WorkspacePreflightCase(unittest.TestCase):
         self.assertTrue(failed)
         self.assertEqual(wp.read_registry(self.repo)["entries"], [])
 
+    def test_registry_write_heals_a_single_hard_crash_backup(self):
+        wp.write_registry(self.repo, {"schema_version": 1, "entries": []})
+        session = os.path.join(self.repo, ".kimiflow", "session")
+        registry = os.path.join(session, "WORKTREE_REGISTRY.json")
+        backup = os.path.join(
+            session,
+            ".kimiflow-backup-WORKTREE_REGISTRY.json-hard-crash",
+        )
+        os.rename(registry, backup)
+
+        self.assertEqual(wp.read_registry(self.repo)["entries"], [])
+        wp.write_registry(self.repo, {"schema_version": 1, "entries": []})
+
+        self.assertTrue(os.path.isfile(registry))
+        self.assertFalse(os.path.exists(backup))
+        self.assertEqual(wp.read_registry(self.repo)["entries"], [])
+
     def test_registry_write_removes_new_target_after_post_link_stat_failure(self):
         registry_name = "WORKTREE_REGISTRY.json"
         original_link = wp.os.link
@@ -780,8 +797,18 @@ class WorkspacePreflightCase(unittest.TestCase):
         run = self.write_run()
         wp.register(self.repo, first, run, write=True)
         status = wp.build_status(self.repo)
-        self.assertEqual(status["policy"], {"mode": "solo", "new_worktrees": "explicit-only", "max_temporary": 1})
+        self.assertEqual(
+            status["policy"],
+            {"mode": "solo", "new_worktrees": "auto-when-main-busy", "max_temporary": 1},
+        )
         self.assertFalse(status["can_register_temporary"])
+
+    def test_state_value_reads_canonical_affected_file_list(self):
+        source = "Status: active\nAffected files:\n- src/a.py\n- src/b.py\nPhase 0: done\n"
+        self.assertEqual(
+            wp.state_value_from_text(source, "Affected files"),
+            "src/a.py, src/b.py",
+        )
 
     def test_terminal_cleanup_uses_primary_registry_and_no_force(self):
         linked = self.add_tree("terminal")
