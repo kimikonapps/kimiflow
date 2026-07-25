@@ -3,7 +3,7 @@
   "$id": "https://kimiflow.local/schemas/adapter-conformance-v1.schema.json",
   "title": "Kimiflow adapter conformance receipt v1",
   "type": "object",
-  "required": ["schema_version", "status", "adapter", "host", "contract_fingerprint", "capabilities", "features", "checks", "failed_checks"],
+  "required": ["schema_version", "status", "adapter", "host", "contract_fingerprint", "capabilities", "features", "assurance", "checks", "failed_checks"],
   "properties": {
     "schema_version": {"const": 1},
     "status": {"enum": ["compatible", "incompatible"]},
@@ -12,6 +12,16 @@
     "contract_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "capabilities": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
     "features": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "assurance": {
+      "type": "object",
+      "required": ["mode", "host_trust_required", "os_process_attestation"],
+      "properties": {
+        "mode": {"const": "cooperative_black_box"},
+        "host_trust_required": {"const": true},
+        "os_process_attestation": {"const": false}
+      },
+      "additionalProperties": false
+    },
     "checks": {"type": "object", "additionalProperties": {"enum": ["passed", "failed", "not_claimed", "controller_enforced"]}},
     "failed_checks": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
   },

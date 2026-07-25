@@ -302,14 +302,28 @@ class RuntimeReleaseTests(unittest.TestCase):
         self.assertEqual(request_id, 1)
         self.assertEqual(initialize["serverInfo"]["version"], manifest["version"])
 
-        adapter_info = model_adapter.validate_info({
+        adapter_payload = {
             "schema_version": model_adapter.PROTOCOL_VERSION,
             "name": "runtime-test",
             "host": "fixture",
             "capabilities": {
                 name: True for name in model_adapter.CAPABILITY_KEYS
             },
-        })
+        }
+        adapter_path = os.path.join(self.temp.name, "runtime-adapter")
+        with open(adapter_path, "w", encoding="utf-8") as handle:
+            handle.write(
+                "#!/usr/bin/env python3\n"
+                "import json, sys\n"
+                "INFO = %r\n"
+                "if sys.argv[1:] == ['capabilities', '--json']:\n"
+                "    print(json.dumps(INFO))\n"
+                "    raise SystemExit(0)\n"
+                "raise SystemExit(2)\n"
+                % adapter_payload
+            )
+        os.chmod(adapter_path, 0o700)
+        adapter_info = model_adapter.CommandAgentAdapter(adapter_path).info()
         self.assertEqual(
             adapter_info["schema_version"],
             manifest["contracts"]["adapter_protocol"]["max"],

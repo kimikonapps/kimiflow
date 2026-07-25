@@ -528,7 +528,10 @@ worktree, or user approval.
   permits Canary; five clean verified Canary outcomes permit Active. High findings, retries, token waste or
   staleness select lexical `off` without a user gate.
 - **Adapter conformance and MCP:** `adapter-conformance.sh` behavior-tests a declared command adapter in a
-  disposable owned directory and leaves the user project untouched. The optional `kimiflow-mcp.sh` facade uses
+  disposable owned directory and leaves the user project untouched. Its receipt explicitly declares
+  `cooperative_black_box`, `host_trust_required=true`, and `os_process_attestation=false`: a same-user foreign
+  process can forge its own filesystem/events, so the host must trust or separately sandbox that executable.
+  Compatibility is not a portable security attestation. The optional `kimiflow-mcp.sh` facade uses
   newline-delimited MCP `2025-11-25` JSON-RPC and exposes only status, context, scorecard and action. It delegates
   to `run_bridge` under one pinned root; read tools tolerate absent owner identity while mutations require the
   launch host/session and retain cursor/CAS/action-ID/replay enforcement. There is no network listener, sampling,

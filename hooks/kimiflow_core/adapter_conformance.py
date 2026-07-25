@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import stat
 import sys
 import tempfile
@@ -14,6 +15,13 @@ from . import model_adapter
 
 class ConformanceError(ValueError):
     pass
+
+
+ASSURANCE = {
+    "mode": "cooperative_black_box",
+    "host_trust_required": True,
+    "os_process_attestation": False,
+}
 
 
 def _digest_tree(root):
@@ -117,7 +125,7 @@ def _marker_valid(root, name, marker):
 
 
 def run(executable, project_root=None, model=None, environ=None):
-    """Run bounded start/resume behavior checks without touching ``project_root``."""
+    """Run cooperative bounded behavior checks without touching ``project_root``."""
     original = _digest_tree(project_root) if project_root else None
     events = []
     adapter = model_adapter.CommandAgentAdapter(
@@ -131,6 +139,21 @@ def run(executable, project_root=None, model=None, environ=None):
     except (model_adapter.AdapterError, OSError, ValueError) as exc:
         raise ConformanceError("capabilities_invalid:%s" % exc)
     contract = adapter.contract_fingerprint()
+    if contract is None:
+        search_path = (os.environ if environ is None else environ).get("PATH")
+        resolved = shutil.which(executable, path=search_path) or executable
+        material = {
+            "schema_version": model_adapter.PROTOCOL_VERSION,
+            "adapter": info["name"],
+            "host": info["host"],
+            "capabilities": info["capabilities"],
+            "features": info.get("features", {}),
+            "adapter_command": os.path.realpath(resolved),
+        }
+        payload = json.dumps(
+            material, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        contract = "sha256:" + hashlib.sha256(payload).hexdigest()
     checks = {"capabilities": "passed"}
     with tempfile.TemporaryDirectory(prefix="kimiflow-adapter-conformance-") as owned:
         root = os.path.join(owned, "project")
@@ -196,6 +219,7 @@ def run(executable, project_root=None, model=None, environ=None):
         "contract_fingerprint": contract,
         "capabilities": sorted(key for key, value in info["capabilities"].items() if value is True),
         "features": sorted(key for key, value in info.get("features", {}).items() if value is True),
+        "assurance": dict(ASSURANCE),
         "checks": checks,
         "failed_checks": failed,
     }

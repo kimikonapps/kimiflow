@@ -32,10 +32,10 @@
       "sha256": "sha256:daffb0dbf265175ac6ba59f92901eaf5aa7c0f852a37e9ec87260d493b872d83"
     },
     {
-      "bytes": 28875,
+      "bytes": 29116,
       "mode": "0644",
       "path": "README.md",
-      "sha256": "sha256:9d7c018d699d622a52d3d7ae332ca35a731fabeded443b153a3d644fb5a4841d"
+      "sha256": "sha256:3bb995cfd85b9ab6f3147f3b01a05542b3c911455b59c4ffeecd2320e54734a6"
     },
     {
       "bytes": 17172,
@@ -194,10 +194,10 @@
       "sha256": "sha256:0865024bb110714857749a2a6db390188c1f2e964cf2b404bc4540d68a89c745"
     },
     {
-      "bytes": 9756,
+      "bytes": 10618,
       "mode": "0644",
       "path": "hooks/kimiflow_core/adapter_conformance.py",
-      "sha256": "sha256:de4950a44908bff69e86324061efe1c16ffe5599dad65c67ed6e85dfb4ce8ab4"
+      "sha256": "sha256:baa79b596105c3b4610dfcf2d7e6ccf6a3057a365cadd25cb20a6056eb17b272"
     },
     {
       "bytes": 79878,
@@ -770,16 +770,16 @@
       "sha256": "sha256:140c239e2fb97d73acfecd72e39fd40ece3c3695f4117f4e2613b876bab41f34"
     },
     {
-      "bytes": 195570,
+      "bytes": 195878,
       "mode": "0644",
       "path": "reference.md",
-      "sha256": "sha256:fc24f1d618e98f08273d0ecadaca9bbc3c2ae957815ba0eb0aae72e791ec47b7"
+      "sha256": "sha256:c00c19f3f0a6b92ec80b480712138b0d2744b75b0a3830791d117f44b661d3be"
     },
     {
-      "bytes": 1048,
+      "bytes": 1406,
       "mode": "0644",
       "path": "references/adapter-conformance-v1.schema.json",
-      "sha256": "sha256:f3b828502dadfd0ae9cf1dbf28421456d93d85a53e195e5c6b53d35fd69e5fda"
+      "sha256": "sha256:1d83ccc7ad00f2d887e7899548f1c6a251232de4d5cfaa09102bf726142cc3c9"
     },
     {
       "bytes": 16780,
@@ -860,6 +860,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:f8c69001ce0264c49fe6028c7305e9f022fa4baf013bb71adc06f4d43892e62f",
+  "runtime_fingerprint": "sha256:12c310534d6a819a47b5ef21fdc07c4f5245ce8fb7dfeefa9ae251e511f4de33",
   "schema_version": 1
 }

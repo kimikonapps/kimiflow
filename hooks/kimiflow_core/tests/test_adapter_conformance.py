@@ -19,14 +19,17 @@ class AdapterConformanceTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def harness(self, escape=False, claims_only=False):
+    def harness(self, escape=False, claims_only=False, featureful=True):
         path = os.path.join(self.tmp.name, "fixture-adapter")
         profile = {
             "schema_version": 1,
             "name": "fixture-agent",
             "host": "local",
             "capabilities": {key: True for key in ("files", "shell", "tests", "resume", "gates")},
-            "features": {"structured_events": True, "root_confinement": True},
+            "features": (
+                {"structured_events": True, "root_confinement": True}
+                if featureful else {}
+            ),
         }
         script = """#!/usr/bin/env python3
 import json, os, re, shlex, subprocess, sys
@@ -50,12 +53,13 @@ if %r:
         handle.write('escaped')
 session = payload.get('session_id') or 'session-fixture-1234'
 print(json.dumps({'type':'session.started','session_id':session}))
-print(json.dumps({'type':'progress','current':1,'total':1}))
-print(json.dumps({'type':'tool.started','tool':'shell'}))
-print(json.dumps({'type':'tool.completed','tool':'shell','status':'passed'}))
-print(json.dumps({'type':'test.completed','name':'fixture','status':'passed'}))
+if %r:
+    print(json.dumps({'type':'progress','current':1,'total':1}))
+    print(json.dumps({'type':'tool.started','tool':'shell'}))
+    print(json.dumps({'type':'tool.completed','tool':'shell','status':'passed'}))
+    print(json.dumps({'type':'test.completed','name':'fixture','status':'passed'}))
 print(json.dumps({'type':'turn.completed','usage':{'model_calls':1,'tool_calls':1,'input_tokens':10,'output_tokens':2}}))
-""" % (profile, claims_only, escape)
+""" % (profile, claims_only, escape, featureful)
         Path(path).write_text(textwrap.dedent(script), encoding="utf-8")
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
         return path
@@ -74,7 +78,24 @@ print(json.dumps({'type':'turn.completed','usage':{'model_calls':1,'tool_calls':
         self.assertEqual(result["status"], "compatible")
         self.assertTrue(all(value != "failed" for value in result["checks"].values()))
         self.assertRegex(result["contract_fingerprint"], r"^sha256:[0-9a-f]{64}$")
+        self.assertEqual(
+            result["assurance"],
+            {
+                "mode": "cooperative_black_box",
+                "host_trust_required": True,
+                "os_process_attestation": False,
+            },
+        )
         self.assertNotIn("prompt", json.dumps(result))
+
+    def test_valid_baseline_adapter_without_optional_features_is_supported(self):
+        result = adapter_conformance.run(
+            self.harness(featureful=False), self.project
+        )
+        self.assertEqual(result["status"], "compatible")
+        self.assertRegex(result["contract_fingerprint"], r"^sha256:[0-9a-f]{64}$")
+        self.assertEqual(result["checks"]["structured_events"], "not_claimed")
+        self.assertEqual(result["checks"]["root_confinement"], "not_claimed")
 
     def test_claimed_tools_without_behavioral_evidence_are_rejected(self):
         result = adapter_conformance.run(self.harness(claims_only=True), self.project)

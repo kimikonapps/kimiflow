@@ -198,7 +198,10 @@ prompts or a second memory store, so normal runs pay zero additional context tok
 
 Before trusting a new host adapter, `hooks/adapter-conformance.sh --adapter <command> --project-root <root>`
 runs start/resume, event, usage and claimed root-confinement probes inside a disposable Kimiflow-owned area and
-emits only a digest/count receipt. Repository maintainers exercise the model-free retrieval scorer in CI.
+emits only a digest/count receipt. This is cooperative black-box compatibility evidence, not OS process
+attestation: the host must trust or separately sandbox the configured executable, and every receipt exposes
+`host_trust_required=true` plus `os_process_attestation=false`. Repository maintainers exercise the model-free
+retrieval scorer in CI.
 
 ### Optional continuity for architecture changes and multi-run programs
 
