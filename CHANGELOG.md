@@ -4,6 +4,13 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.19
+
+The adaptive-control release: Kimiflow now spends context, model capacity, memory, and maintenance work only
+when bounded evidence shows that a run needs it, while legacy hosts and small local work keep their compact path.
+
 ### Added
 
 - A local adaptive control plane that conservatively classifies scope, unresolved product intent, domain
