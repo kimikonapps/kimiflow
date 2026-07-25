@@ -32,7 +32,8 @@
         "structured_events": {"type": "boolean"},
         "root_confinement": {"type": "boolean"},
         "context_rollover": {"type": "boolean"},
-        "adaptive_model_routes": {"type": "boolean"}
+        "adaptive_model_routes": {"type": "boolean"},
+        "adaptive_execution_profiles": {"type": "boolean"}
       },
       "allOf": [
         {
@@ -65,10 +66,62 @@
         "name": {"$ref": "#/$defs/identity"},
         "host": {"$ref": "#/$defs/identity"},
         "capabilities": {"$ref": "#/$defs/capabilities"},
-        "features": {"$ref": "#/$defs/features"}
+        "features": {"$ref": "#/$defs/features"},
+        "execution_profile": {"$ref": "#/$defs/executionProfile"}
       },
       "required": ["schema_version", "name", "host", "capabilities"],
       "additionalProperties": true
+    },
+    "executionVariant": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/identity"},
+        "default": {"type": "boolean"},
+        "cost_rank": {"type": "integer", "minimum": 0, "maximum": 100},
+        "depth_rank": {"type": "integer", "minimum": 0, "maximum": 100}
+      },
+      "required": ["id", "default"],
+      "additionalProperties": false
+    },
+    "executionControls": {
+      "type": "object",
+      "properties": {
+        "thinking": {"enum": ["unavailable", "fixed_on", "fixed_off", "selectable", "adaptive_default"]},
+        "task_budget": {"type": "boolean"},
+        "prompt_cache": {"type": "boolean"},
+        "compaction": {"type": "boolean"},
+        "structured_failures": {"type": "boolean"}
+      },
+      "required": ["thinking", "task_budget", "prompt_cache", "compaction", "structured_failures"],
+      "additionalProperties": false
+    },
+    "executionProfile": {
+      "type": "object",
+      "$comment": "Runtime requires exactly one default variant and unique variant IDs.",
+      "properties": {
+        "schema_version": {"const": 1},
+        "model_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "max_input_tokens": {"type": "integer", "minimum": 1, "maximum": 10000000000},
+        "max_output_tokens": {"type": "integer", "minimum": 1, "maximum": 10000000000},
+        "execution_variants": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"$ref": "#/$defs/executionVariant"}},
+        "controls": {"$ref": "#/$defs/executionControls"}
+      },
+      "required": ["schema_version", "model_fingerprint", "max_input_tokens", "max_output_tokens", "execution_variants", "controls"],
+      "additionalProperties": false
+    },
+    "executionProfileSelection": {
+      "type": "object",
+      "properties": {
+        "schema_version": {"const": 1},
+        "profile_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "model_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "execution_variant": {"$ref": "#/$defs/identity"},
+        "max_input_tokens": {"type": "integer", "minimum": 1, "maximum": 10000000000},
+        "max_output_tokens": {"type": "integer", "minimum": 1, "maximum": 10000000000},
+        "controls": {"$ref": "#/$defs/executionControls"}
+      },
+      "required": ["schema_version", "profile_fingerprint", "model_fingerprint", "execution_variant", "max_input_tokens", "max_output_tokens", "controls"],
+      "additionalProperties": false
     },
     "modelRouting": {
       "type": "object",
@@ -169,6 +222,35 @@
       "required": ["model_calls", "tool_calls", "input_tokens", "output_tokens"],
       "additionalProperties": false
     },
+    "usageV2Counter": {
+      "anyOf": [
+        {"type": "integer", "minimum": 0, "maximum": 10000000000},
+        {"const": "unavailable"}
+      ]
+    },
+    "usageV2": {
+      "type": "object",
+      "$comment": "Runtime requires logical_input_tokens = uncached + cache_read + cache_creation and active <= peak <= max_input when all counters are available.",
+      "properties": {
+        "schema_version": {"const": 2},
+        "turn_id": {"type": "string", "pattern": "^turn_[A-Za-z0-9._:-]{1,96}$"},
+        "session_id": {"$ref": "#/$defs/sessionId"},
+        "model_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "execution_variant": {"$ref": "#/$defs/identity"},
+        "model_calls": {"$ref": "#/$defs/usageV2Counter"},
+        "tool_calls": {"$ref": "#/$defs/usageV2Counter"},
+        "uncached_input_tokens": {"$ref": "#/$defs/usageV2Counter"},
+        "cache_read_input_tokens": {"$ref": "#/$defs/usageV2Counter"},
+        "cache_creation_input_tokens": {"$ref": "#/$defs/usageV2Counter"},
+        "logical_input_tokens": {"$ref": "#/$defs/usageV2Counter"},
+        "output_tokens": {"$ref": "#/$defs/usageV2Counter"},
+        "active_context_tokens": {"$ref": "#/$defs/usageV2Counter"},
+        "peak_context_tokens": {"$ref": "#/$defs/usageV2Counter"},
+        "max_input_tokens": {"$ref": "#/$defs/usageV2Counter"}
+      },
+      "required": ["schema_version", "turn_id", "session_id", "model_fingerprint", "execution_variant", "model_calls", "tool_calls", "uncached_input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "logical_input_tokens", "output_tokens", "active_context_tokens", "peak_context_tokens", "max_input_tokens"],
+      "additionalProperties": false
+    },
     "turnRequest": {
       "type": "object",
       "properties": {
@@ -185,7 +267,8 @@
         },
         "workflow_context": {"$ref": "#/$defs/workflowContext"},
         "model_routing": {"$ref": "#/$defs/modelRouting"},
-        "context_rollover": {"$ref": "#/$defs/contextRollover"}
+        "context_rollover": {"$ref": "#/$defs/contextRollover"},
+        "execution_profile": {"$ref": "#/$defs/executionProfileSelection"}
       },
       "required": ["schema_version", "action", "root", "session_id", "host", "adapter", "prompt", "model", "required_capabilities"],
       "additionalProperties": false
@@ -214,7 +297,7 @@
         {"type": "object", "properties": {"type": {"const": "session.started"}, "session_id": {"$ref": "#/$defs/sessionId"}}, "required": ["type", "session_id"], "additionalProperties": true},
         {"type": "object", "properties": {"type": {"const": "message"}, "text": {"type": "string", "minLength": 1, "maxLength": 65536}}, "required": ["type", "text"], "additionalProperties": true},
         {"type": "object", "properties": {"type": {"enum": ["turn.failed", "error"]}}, "required": ["type"], "additionalProperties": true},
-        {"type": "object", "properties": {"type": {"const": "turn.completed"}, "usage": {"$ref": "#/$defs/usage"}, "model_route": {"$ref": "#/$defs/modelRoute"}}, "required": ["type"], "additionalProperties": true},
+        {"type": "object", "properties": {"type": {"const": "turn.completed"}, "usage": {"$ref": "#/$defs/usage"}, "usage_v2": {"$ref": "#/$defs/usageV2"}, "model_route": {"$ref": "#/$defs/modelRoute"}}, "required": ["type"], "additionalProperties": true},
         {"type": "object", "properties": {"type": {"const": "phase.changed"}, "phase": {"type": "integer", "minimum": 0, "maximum": 7}, "status": {"enum": ["started", "completed", "blocked"]}, "label": {"type": "string", "minLength": 1, "maxLength": 240}}, "required": ["type", "phase", "status"], "additionalProperties": true},
         {"type": "object", "$comment": "Runtime additionally requires total >= current when total is present.", "properties": {"type": {"const": "progress"}, "current": {"type": "integer", "minimum": 0, "maximum": 1000000000}, "total": {"type": "integer", "minimum": 0, "maximum": 1000000000}, "label": {"type": "string", "minLength": 1, "maxLength": 240}}, "required": ["type", "current"], "additionalProperties": true},
         {"type": "object", "properties": {"type": {"const": "tool.started"}, "tool": {"$ref": "#/$defs/identity"}, "duration_ms": {"type": "integer", "minimum": 0, "maximum": 86400000}, "label": {"type": "string", "minLength": 1, "maxLength": 240}}, "required": ["type", "tool"], "additionalProperties": true},

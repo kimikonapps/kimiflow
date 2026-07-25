@@ -25,9 +25,37 @@ class ModelAdapterTests(unittest.TestCase):
         subprocess.run(["git", "-C", self.root, "add", "README.md"], check=True)
         subprocess.run(["git", "-C", self.root, "commit", "-qm", "fixture"], check=True)
 
-    def write_harness(self, capabilities=None, features=None, events=None, completion=None):
+    def execution_profile(self):
+        return {
+            "schema_version": 1,
+            "model_fingerprint": "sha256:" + "a" * 64,
+            "max_input_tokens": 1_000_000,
+            "max_output_tokens": 128_000,
+            "execution_variants": [
+                {"id": "budget8192", "default": True, "cost_rank": 20, "depth_rank": 40},
+                {"id": "budget32768", "default": False, "cost_rank": 60, "depth_rank": 80},
+            ],
+            "controls": {
+                "thinking": "selectable",
+                "task_budget": True,
+                "prompt_cache": True,
+                "compaction": True,
+                "structured_failures": True,
+            },
+        }
+
+    def write_harness(
+        self, capabilities=None, features=None, events=None, completion=None,
+        execution_profile=None,
+    ):
         path = os.path.join(self.tmp.name, "agent-harness")
         caps = capabilities or {key: True for key in model_adapter.CAPABILITY_KEYS}
+        if (
+            execution_profile is None
+            and isinstance(features, dict)
+            and features.get("adaptive_execution_profiles") is True
+        ):
+            execution_profile = self.execution_profile()
         completion_event = completion if completion is not None else {
             "type": "turn.completed",
             "usage": {
@@ -41,11 +69,13 @@ class ModelAdapterTests(unittest.TestCase):
 import json, os, subprocess, sys
 CAPS = %s
 FEATURES = %s
+EXECUTION_PROFILE = %s
 EVENTS = %s
 COMPLETION = %s
 if sys.argv[1] == "capabilities":
     info = {"schema_version":1,"name":"fixture-agent","host":"local","capabilities":CAPS}
     if FEATURES is not None: info["features"] = FEATURES
+    if EXECUTION_PROFILE is not None: info["execution_profile"] = EXECUTION_PROFILE
     print(json.dumps(info))
     raise SystemExit(0)
 payload = json.loads(sys.stdin.readline())
@@ -75,10 +105,15 @@ else:
     os.unlink(os.path.join(state, "ACTIVE_RUN.json"))
     json.dump({"schema_version":1,"outcome":"done"}, open(os.path.join(run, "SESSION-OUTCOME.json"), "w"))
 for event in EVENTS: print(json.dumps(event))
-print(json.dumps(COMPLETION))
+completion = json.loads(json.dumps(COMPLETION))
+if isinstance(completion, dict) and isinstance(completion.get("usage_v2"), dict):
+    completion["usage_v2"]["turn_id"] = "turn_" + payload["action"]
+    completion["usage_v2"]["session_id"] = session
+print(json.dumps(completion))
 """ % (
             repr(caps),
             repr(features),
+            repr(execution_profile),
             repr(events or []),
             repr(completion_event),
         )
@@ -86,6 +121,27 @@ print(json.dumps(COMPLETION))
             handle.write(source)
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
         return path
+
+    def usage_v2(self, turn_id="turn_one", **updates):
+        value = {
+            "schema_version": 2,
+            "turn_id": turn_id,
+            "session_id": "local-session-123",
+            "model_fingerprint": "sha256:" + "a" * 64,
+            "execution_variant": "budget8192",
+            "model_calls": 1,
+            "tool_calls": 2,
+            "uncached_input_tokens": 60,
+            "cache_read_input_tokens": 30,
+            "cache_creation_input_tokens": 10,
+            "logical_input_tokens": 100,
+            "output_tokens": 20,
+            "active_context_tokens": 400,
+            "peak_context_tokens": 500,
+            "max_input_tokens": 1_000_000,
+        }
+        value.update(updates)
+        return value
 
     def test_command_adapter_runs_same_lifecycle_and_normalizes_usage(self):
         adapter = model_adapter.CommandAgentAdapter(self.write_harness(), model="qwen-local")
@@ -115,6 +171,109 @@ print(json.dumps(COMPLETION))
         self.assertTrue(all(set(payload) == expected for payload in payloads))
         self.assertIn("$kimiflow", payloads[0]["prompt"])
         self.assertNotIn("adapter_contract", json.dumps(result))
+
+    def test_execution_profile_is_provider_neutral_and_pins_host_default(self):
+        payload_log = os.path.join(self.tmp.name, "profile-payload.jsonl")
+        profile = self.execution_profile()
+        adapter = model_adapter.CommandAgentAdapter(
+            self.write_harness(
+                features={"adaptive_execution_profiles": True},
+                execution_profile=profile,
+            ),
+            required_features=("adaptive_execution_profiles",),
+            environ={"PATH": os.environ.get("PATH", ""), "PAYLOAD_LOG": payload_log},
+        )
+
+        result = adapter.start(self.root, "profile", lambda _session: None)
+
+        self.assertEqual(result.returncode, 0)
+        payload = json.loads(Path(payload_log).read_text(encoding="utf-8"))
+        selection = payload["execution_profile"]
+        self.assertEqual(selection["execution_variant"], "budget8192")
+        self.assertEqual(selection["max_input_tokens"], 1_000_000)
+        self.assertRegex(selection["profile_fingerprint"], r"^sha256:[0-9a-f]{64}$")
+        self.assertNotIn("opus", json.dumps(payload).lower())
+        self.assertNotIn("xhigh", json.dumps(payload).lower())
+
+    def test_usage_v2_enforces_exact_accounting_and_aggregates_turn_deltas(self):
+        first = model_adapter.normalize_usage_v2(self.usage_v2("turn_one"))
+        second = model_adapter.normalize_usage_v2(self.usage_v2(
+            "turn_two",
+            uncached_input_tokens=20,
+            cache_read_input_tokens=5,
+            cache_creation_input_tokens=0,
+            logical_input_tokens=25,
+            active_context_tokens=450,
+            peak_context_tokens=600,
+        ))
+
+        aggregate = runner._merge_usage_v2(None, first, initialize=True)
+        aggregate = runner._merge_usage_v2(aggregate, second)
+
+        self.assertEqual(aggregate["turns"], 2)
+        self.assertEqual(aggregate["logical_input_tokens"], 125)
+        self.assertEqual(aggregate["cache_read_input_tokens"], 35)
+        self.assertEqual(aggregate["active_context_tokens"], 450)
+        self.assertEqual(aggregate["peak_context_tokens"], 600)
+        with self.assertRaisesRegex(model_adapter.AdapterError, "logical_input_mismatch"):
+            model_adapter.normalize_usage_v2(self.usage_v2(logical_input_tokens=99))
+        with self.assertRaisesRegex(model_adapter.AdapterError, "context_bounds"):
+            model_adapter.normalize_usage_v2(self.usage_v2(
+                active_context_tokens=600, peak_context_tokens=500,
+            ))
+
+    def test_usage_v2_is_bound_to_negotiated_profile_and_session(self):
+        completion = {"type": "turn.completed", "usage_v2": self.usage_v2()}
+        adapter = model_adapter.CommandAgentAdapter(
+            self.write_harness(
+                features={"adaptive_execution_profiles": True},
+                completion=completion,
+            ),
+        )
+        self.assertEqual(adapter.start(self.root, "usage", lambda _session: None).returncode, 0)
+
+        mismatch = self.usage_v2(model_fingerprint="sha256:" + "b" * 64)
+        rejected = model_adapter.CommandAgentAdapter(
+            self.write_harness(
+                features={"adaptive_execution_profiles": True},
+                completion={"type": "turn.completed", "usage_v2": mismatch},
+            ),
+        ).start(self.root, "usage", lambda _session: None)
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertEqual(rejected.error_code, "usage_v2_profile_mismatch")
+        self.assertIsNone(rejected.usage)
+        self.assertIsNone(rejected.usage_v2)
+
+    def test_runner_persists_exact_usage_v2_session_totals(self):
+        adapter = model_adapter.CommandAgentAdapter(
+            self.write_harness(
+                features={"adaptive_execution_profiles": True},
+                completion={"type": "turn.completed", "usage_v2": self.usage_v2()},
+            ),
+        )
+
+        result = runner.run_task(self.root, "usage-v2 run", adapter=adapter)
+
+        self.assertEqual(result["status"], "done")
+        self.assertEqual(result["usage_v2"]["status"], "available")
+        self.assertEqual(result["usage_v2"]["turns"], 2)
+        self.assertEqual(result["usage_v2"]["turn_ids"], ["turn_start", "turn_resume"])
+        self.assertEqual(result["usage_v2"]["logical_input_tokens"], 200)
+        self.assertEqual(result["usage_v2"]["cache_read_input_tokens"], 60)
+        self.assertEqual(result["usage_v2"]["peak_context_tokens"], 500)
+
+    def test_execution_profile_requires_one_unique_default(self):
+        duplicate_default = self.execution_profile()
+        duplicate_default["execution_variants"][1]["default"] = True
+        with self.assertRaisesRegex(model_adapter.AdapterError, "execution_profile_invalid"):
+            model_adapter.validate_info({
+                "schema_version": 1,
+                "name": "profiled",
+                "host": "local",
+                "capabilities": {key: True for key in model_adapter.CAPABILITY_KEYS},
+                "features": {"adaptive_execution_profiles": True},
+                "execution_profile": duplicate_default,
+            })
 
     def test_feature_capable_adapter_start_and_resume_preserve_workflow_and_model_roles(self):
         features = {key: True for key in model_adapter.FEATURE_KEYS}
@@ -575,6 +734,13 @@ time.sleep(30)
             set(definitions["modelRoute"]["properties"]),
             {"role", "model", "baseline"},
         )
+        self.assertEqual(
+            set(definitions["executionProfile"]["properties"]),
+            {
+                "schema_version", "model_fingerprint", "max_input_tokens",
+                "max_output_tokens", "execution_variants", "controls",
+            },
+        )
         run_result = definitions["runResult"]
         self.assertEqual(run_result["properties"]["type"]["const"], "run.result")
         self.assertEqual(set(run_result["required"]), {"schema_version", "type", "result"})
@@ -603,6 +769,10 @@ time.sleep(30)
         self.assertEqual(
             by_type["turn.completed"]["properties"]["model_route"]["$ref"],
             "#/$defs/modelRoute",
+        )
+        self.assertEqual(
+            by_type["turn.completed"]["properties"]["usage_v2"]["$ref"],
+            "#/$defs/usageV2",
         )
 
     def test_command_adapter_rejects_missing_tool_capability(self):

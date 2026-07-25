@@ -16,10 +16,15 @@ PROTOCOL_VERSION = 1
 CAPABILITY_KEYS = ("files", "shell", "tests", "resume", "gates")
 FEATURE_KEYS = (
     "workflow_context", "model_roles", "structured_events", "root_confinement",
-    "context_rollover", "adaptive_model_routes",
+    "context_rollover", "adaptive_model_routes", "adaptive_execution_profiles",
 )
 MODEL_ROLE_KEYS = ("top", "balanced", "cheap", "cross_family_top")
 USAGE_KEYS = ("model_calls", "tool_calls", "input_tokens", "output_tokens")
+USAGE_V2_COUNTER_KEYS = (
+    "model_calls", "tool_calls", "uncached_input_tokens", "cache_read_input_tokens",
+    "cache_creation_input_tokens", "logical_input_tokens", "output_tokens",
+    "active_context_tokens", "peak_context_tokens", "max_input_tokens",
+)
 MAX_CAPABILITIES_BYTES = 64 * 1024
 MAX_EVENT_BYTES = 256 * 1024
 MAX_EVENT_TEXT = 64 * 1024
@@ -33,6 +38,8 @@ DEFAULT_TURN_TIMEOUT_SECONDS = 2 * 60 * 60
 MAX_TURN_TIMEOUT_SECONDS = 24 * 60 * 60
 IDENTITY_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 SESSION_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
+DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+TURN_ID_RE = re.compile(r"^turn_[A-Za-z0-9._:-]{1,96}$")
 
 
 class AdapterError(ValueError):
@@ -47,10 +54,11 @@ class TurnResult:
     usage: dict = None
     context_compaction: dict = None
     model_route: dict = None
+    usage_v2: dict = None
 
     def __init__(
         self, returncode, session_id="", error_code="", usage=None, thread_id="",
-        context_compaction=None, model_route=None,
+        context_compaction=None, model_route=None, usage_v2=None,
     ):
         self.returncode = returncode
         self.session_id = session_id or thread_id
@@ -58,6 +66,7 @@ class TurnResult:
         self.usage = usage
         self.context_compaction = context_compaction
         self.model_route = model_route
+        self.usage_v2 = usage_v2
 
     @property
     def thread_id(self):
@@ -106,6 +115,12 @@ def validate_info(value):
                 "adapter_features_invalid:adaptive_model_routes_requires_model_roles"
             )
         result["features"] = {key: features[key] for key in FEATURE_KEYS if key in features}
+    profile = value.get("execution_profile")
+    profile_enabled = result.get("features", {}).get("adaptive_execution_profiles") is True
+    if profile_enabled:
+        result["execution_profile"] = normalize_execution_profile(profile)
+    elif profile is not None:
+        raise AdapterError("adapter_execution_profile_without_feature")
     return result
 
 
@@ -141,6 +156,86 @@ def normalize_model(value):
     ):
         raise AdapterError("model_invalid")
     return value
+
+
+def _bounded_token_count(value):
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= MAX_TOKEN_COUNT:
+        raise AdapterError("execution_profile_invalid")
+    return value
+
+
+def normalize_execution_profile(value):
+    required = {
+        "schema_version", "model_fingerprint", "max_input_tokens", "max_output_tokens",
+        "execution_variants", "controls",
+    }
+    if not isinstance(value, dict) or set(value) != required or value.get("schema_version") != 1:
+        raise AdapterError("execution_profile_invalid")
+    fingerprint = value.get("model_fingerprint")
+    if not isinstance(fingerprint, str) or DIGEST_RE.fullmatch(fingerprint) is None:
+        raise AdapterError("execution_profile_invalid")
+    max_input = _bounded_token_count(value.get("max_input_tokens"))
+    max_output = _bounded_token_count(value.get("max_output_tokens"))
+    variants = value.get("execution_variants")
+    if not isinstance(variants, list) or not 1 <= len(variants) <= 32:
+        raise AdapterError("execution_profile_invalid")
+    normalized_variants = []
+    seen = set()
+    default_count = 0
+    for variant in variants:
+        allowed = {"id", "default", "cost_rank", "depth_rank"}
+        if not isinstance(variant, dict) or set(variant) - allowed or set(variant) < {"id", "default"}:
+            raise AdapterError("execution_profile_invalid")
+        variant_id = variant.get("id")
+        is_default = variant.get("default")
+        if (
+            not isinstance(variant_id, str)
+            or IDENTITY_RE.fullmatch(variant_id) is None
+            or variant_id in seen
+            or not isinstance(is_default, bool)
+        ):
+            raise AdapterError("execution_profile_invalid")
+        row = {"id": variant_id, "default": is_default}
+        for key in ("cost_rank", "depth_rank"):
+            if key in variant:
+                rank = variant[key]
+                if isinstance(rank, bool) or not isinstance(rank, int) or not 0 <= rank <= 100:
+                    raise AdapterError("execution_profile_invalid")
+                row[key] = rank
+        seen.add(variant_id)
+        default_count += int(is_default)
+        normalized_variants.append(row)
+    if default_count != 1:
+        raise AdapterError("execution_profile_invalid")
+    controls = value.get("controls")
+    control_keys = {
+        "thinking", "task_budget", "prompt_cache", "compaction", "structured_failures",
+    }
+    if not isinstance(controls, dict) or set(controls) != control_keys:
+        raise AdapterError("execution_profile_invalid")
+    if controls.get("thinking") not in (
+        "unavailable", "fixed_on", "fixed_off", "selectable", "adaptive_default",
+    ) or any(not isinstance(controls.get(key), bool) for key in control_keys - {"thinking"}):
+        raise AdapterError("execution_profile_invalid")
+    return {
+        "schema_version": 1,
+        "model_fingerprint": fingerprint,
+        "max_input_tokens": max_input,
+        "max_output_tokens": max_output,
+        "execution_variants": normalized_variants,
+        "controls": {key: controls[key] for key in sorted(control_keys)},
+    }
+
+
+def execution_profile_fingerprint(value):
+    profile = normalize_execution_profile(value)
+    payload = json.dumps(profile, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return "sha256:%s" % hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def default_execution_variant(value):
+    profile = normalize_execution_profile(value)
+    return next(row["id"] for row in profile["execution_variants"] if row["default"])
 
 
 def workflow_context():
@@ -194,6 +289,14 @@ def normalize_event(value, structured=False):
             if usage is None:
                 raise AdapterError("invalid_usage")
             result["usage"] = usage
+        if "usage_v2" in value:
+            usage_v2 = normalize_usage_v2(value.get("usage_v2"))
+            result["usage_v2"] = usage_v2
+            derived = legacy_usage_from_v2(usage_v2)
+            if "usage" in result and derived is not None and result["usage"] != derived:
+                raise AdapterError("invalid_usage_v2:legacy_mismatch")
+            if "usage" not in result and derived is not None:
+                result["usage"] = derived
         if "model_route" in value:
             route = value.get("model_route")
             if (
@@ -382,6 +485,70 @@ def normalize_usage(value):
     return result
 
 
+def normalize_usage_v2(value):
+    required = {
+        "schema_version", "turn_id", "session_id", "model_fingerprint",
+        "execution_variant", *USAGE_V2_COUNTER_KEYS,
+    }
+    if not isinstance(value, dict) or set(value) != required or value.get("schema_version") != 2:
+        raise AdapterError("invalid_usage_v2")
+    if (
+        not isinstance(value.get("turn_id"), str)
+        or TURN_ID_RE.fullmatch(value["turn_id"]) is None
+        or not isinstance(value.get("session_id"), str)
+        or SESSION_RE.fullmatch(value["session_id"]) is None
+        or not isinstance(value.get("model_fingerprint"), str)
+        or DIGEST_RE.fullmatch(value["model_fingerprint"]) is None
+        or not isinstance(value.get("execution_variant"), str)
+        or IDENTITY_RE.fullmatch(value["execution_variant"]) is None
+    ):
+        raise AdapterError("invalid_usage_v2")
+    normalized = {
+        "schema_version": 2,
+        "turn_id": value["turn_id"],
+        "session_id": value["session_id"],
+        "model_fingerprint": value["model_fingerprint"],
+        "execution_variant": value["execution_variant"],
+    }
+    available = True
+    for key in USAGE_V2_COUNTER_KEYS:
+        item = value.get(key)
+        if item == "unavailable":
+            available = False
+        elif isinstance(item, bool) or not isinstance(item, int) or not 0 <= item <= MAX_TOKEN_COUNT:
+            raise AdapterError("invalid_usage_v2")
+        normalized[key] = item
+    normalized["status"] = "available" if available else "unavailable"
+    if available:
+        if normalized["logical_input_tokens"] != (
+            normalized["uncached_input_tokens"]
+            + normalized["cache_read_input_tokens"]
+            + normalized["cache_creation_input_tokens"]
+        ):
+            raise AdapterError("invalid_usage_v2:logical_input_mismatch")
+        if not (
+            normalized["active_context_tokens"]
+            <= normalized["peak_context_tokens"]
+            <= normalized["max_input_tokens"]
+        ):
+            raise AdapterError("invalid_usage_v2:context_bounds")
+    return normalized
+
+
+def legacy_usage_from_v2(value):
+    normalized = normalize_usage_v2({
+        key: item for key, item in value.items() if key != "status"
+    }) if value.get("status") in ("available", "unavailable") else normalize_usage_v2(value)
+    if normalized["status"] != "available":
+        return None
+    return {
+        "model_calls": normalized["model_calls"],
+        "tool_calls": normalized["tool_calls"],
+        "input_tokens": normalized["logical_input_tokens"],
+        "output_tokens": normalized["output_tokens"],
+    }
+
+
 def add_usage(total, delta):
     if delta is None:
         return total
@@ -501,6 +668,7 @@ class CommandAgentAdapter:
         self.stderr = stderr or sys.stderr
         self._info = None
         self._context_rollover = None
+        self._usage_turn_ids = set()
         timeout_value = (os.environ if environ is None else environ).get(
             "KIMIFLOW_ADAPTER_TURN_TIMEOUT_SECONDS", str(DEFAULT_TURN_TIMEOUT_SECONDS),
         )
@@ -559,6 +727,7 @@ class CommandAgentAdapter:
             "required_features": sorted(self.required_features),
             "model": self.model,
             "model_roles": self.model_roles,
+            "execution_profile": info.get("execution_profile"),
         }
         search_path = (os.environ if self.environ is None else self.environ).get("PATH")
         resolved = shutil.which(self.executable, path=search_path)
@@ -596,6 +765,19 @@ class CommandAgentAdapter:
             "required_capabilities": list(CAPABILITY_KEYS),
         }
         features = info.get("features", {})
+        profile = info.get("execution_profile")
+        execution_selection = None
+        if features.get("adaptive_execution_profiles") is True:
+            execution_selection = {
+                "schema_version": 1,
+                "profile_fingerprint": execution_profile_fingerprint(profile),
+                "model_fingerprint": profile["model_fingerprint"],
+                "execution_variant": default_execution_variant(profile),
+                "max_input_tokens": profile["max_input_tokens"],
+                "max_output_tokens": profile["max_output_tokens"],
+                "controls": dict(profile["controls"]),
+            }
+            payload["execution_profile"] = execution_selection
         if features.get("workflow_context") is True:
             payload["workflow_context"] = workflow_context()
         if self.model_roles:
@@ -683,6 +865,7 @@ class CommandAgentAdapter:
         completion_event = None
         context_compaction = None
         model_route = None
+        usage_v2 = None
         try:
             for raw, read_error in _bounded_binary_lines(proc.stdout):
                 if read_error:
@@ -714,6 +897,27 @@ class CommandAgentAdapter:
                         failed = "duplicate_turn_completed"
                     completed = True
                     usage = public.get("usage")
+                    usage_v2 = public.get("usage_v2")
+                    if usage_v2 is not None:
+                        if execution_selection is None:
+                            failed = "usage_v2_without_execution_profile"
+                        elif (
+                            usage_v2["session_id"] != observed
+                            or usage_v2["model_fingerprint"]
+                            != execution_selection["model_fingerprint"]
+                            or usage_v2["execution_variant"]
+                            != execution_selection["execution_variant"]
+                            or (
+                                usage_v2["status"] == "available"
+                                and usage_v2["max_input_tokens"]
+                                != execution_selection["max_input_tokens"]
+                            )
+                        ):
+                            failed = "usage_v2_profile_mismatch"
+                        elif usage_v2["turn_id"] in self._usage_turn_ids:
+                            failed = "usage_v2_turn_replayed"
+                        else:
+                            self._usage_turn_ids.add(usage_v2["turn_id"])
                     model_route = public.get("model_route")
                     if model_route is not None:
                         routing = payload.get("model_routing")
@@ -752,6 +956,9 @@ class CommandAgentAdapter:
             failed = "missing_turn_completed"
         if returncode == 0 and failed:
             returncode = 1
+        if failed.startswith("usage_v2_"):
+            usage = None
+            usage_v2 = None
         if returncode == 0 and not failed and self.event_sink is not None:
             try:
                 self.event_sink({"schema_version": PROTOCOL_VERSION, **completion_event})
@@ -765,6 +972,7 @@ class CommandAgentAdapter:
             usage=usage,
             context_compaction=context_compaction,
             model_route=model_route,
+            usage_v2=usage_v2,
         )
 
     def start(self, root, prompt, on_session):

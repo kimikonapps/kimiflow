@@ -18,6 +18,7 @@ RECEIPT_RELATIVE = ".kimiflow/session/HEADLESS_RUN.json"
 MAX_RECEIPT_BYTES = 64 * 1024
 TRANSPORT_RETRIES = 2
 DEFAULT_AUTONOMOUS_TURN_LIMIT = 48
+MAX_USAGE_V2_TURNS = 256
 TERMINAL_OUTCOMES = {"done", "parked", "failed", "aborted"}
 RESUMABLE_WAIT_STATES = {"awaiting_user", "parked"}
 RESUMABLE_STATES = RESUMABLE_WAIT_STATES | {"running", "interrupted", "transport_error", "exhausted"}
@@ -100,6 +101,46 @@ def _validate_receipt(root, value):
                     raise RunnerError("invalid_receipt", "unavailable usage must use null counters", 2)
             elif isinstance(item, bool) or not isinstance(item, int) or item < 0:
                 raise RunnerError("invalid_receipt", "runner receipt has invalid usage counters", 2)
+    usage_v2 = value.get("usage_v2")
+    if usage_v2 is not None:
+        if not isinstance(usage_v2, dict) or usage_v2.get("status") not in ("available", "unavailable"):
+            raise RunnerError("invalid_receipt", "runner receipt has invalid usage-v2", 2)
+        if usage_v2["status"] == "available":
+            required = {
+                "status", "model_fingerprint", "execution_variant", "max_input_tokens",
+                "turn_ids", "turns", "model_calls", "tool_calls", "uncached_input_tokens",
+                "cache_read_input_tokens", "cache_creation_input_tokens", "logical_input_tokens",
+                "output_tokens", "active_context_tokens", "peak_context_tokens",
+            }
+            if set(usage_v2) != required:
+                raise RunnerError("invalid_receipt", "runner receipt has incomplete usage-v2", 2)
+            turn_ids = usage_v2.get("turn_ids")
+            if (
+                not isinstance(turn_ids, list)
+                or not 1 <= len(turn_ids) <= MAX_USAGE_V2_TURNS
+                or len(turn_ids) != len(set(turn_ids))
+                or any(not isinstance(item, str) or model_adapter.TURN_ID_RE.fullmatch(item) is None for item in turn_ids)
+                or usage_v2.get("turns") != len(turn_ids)
+                or not isinstance(usage_v2.get("model_fingerprint"), str)
+                or model_adapter.DIGEST_RE.fullmatch(usage_v2["model_fingerprint"]) is None
+                or not isinstance(usage_v2.get("execution_variant"), str)
+                or model_adapter.IDENTITY_RE.fullmatch(usage_v2["execution_variant"]) is None
+            ):
+                raise RunnerError("invalid_receipt", "runner receipt has invalid usage-v2 identity", 2)
+            for key in required - {"status", "model_fingerprint", "execution_variant", "turn_ids"}:
+                item = usage_v2.get(key)
+                if isinstance(item, bool) or not isinstance(item, int) or item < 0:
+                    raise RunnerError("invalid_receipt", "runner receipt has invalid usage-v2 counters", 2)
+            if usage_v2["logical_input_tokens"] != (
+                usage_v2["uncached_input_tokens"]
+                + usage_v2["cache_read_input_tokens"]
+                + usage_v2["cache_creation_input_tokens"]
+            ) or not (
+                usage_v2["active_context_tokens"]
+                <= usage_v2["peak_context_tokens"]
+                <= usage_v2["max_input_tokens"]
+            ):
+                raise RunnerError("invalid_receipt", "runner receipt has inconsistent usage-v2", 2)
     active = value.get("active_run")
     if active is not None:
         normalized = os.path.normpath(active).replace(os.sep, "/") if isinstance(active, str) else ""
@@ -359,6 +400,10 @@ def _unavailable_usage():
     return {"status": "unavailable", **{key: None for key in model_adapter.USAGE_KEYS}}
 
 
+def _unavailable_usage_v2():
+    return {"status": "unavailable"}
+
+
 def _merge_usage(current, delta, initialize=False):
     normalized = model_adapter.normalize_usage(delta)
     if normalized is None:
@@ -370,6 +415,60 @@ def _merge_usage(current, delta, initialize=False):
     return {"status": "available", **{
         key: current[key] + normalized[key] for key in model_adapter.USAGE_KEYS
     }}
+
+
+def _merge_usage_v2(current, delta, initialize=False):
+    if delta is None:
+        return _unavailable_usage_v2()
+    try:
+        normalized = model_adapter.normalize_usage_v2({
+            key: value for key, value in delta.items() if key != "status"
+        })
+    except (AttributeError, model_adapter.AdapterError):
+        return _unavailable_usage_v2()
+    if normalized["status"] != "available":
+        return _unavailable_usage_v2()
+    additive = (
+        "model_calls", "tool_calls", "uncached_input_tokens", "cache_read_input_tokens",
+        "cache_creation_input_tokens", "logical_input_tokens", "output_tokens",
+    )
+    if initialize:
+        return {
+            "status": "available",
+            "model_fingerprint": normalized["model_fingerprint"],
+            "execution_variant": normalized["execution_variant"],
+            "max_input_tokens": normalized["max_input_tokens"],
+            "turn_ids": [normalized["turn_id"]],
+            "turns": 1,
+            **{key: normalized[key] for key in additive},
+            "active_context_tokens": normalized["active_context_tokens"],
+            "peak_context_tokens": normalized["peak_context_tokens"],
+        }
+    if not isinstance(current, dict) or current.get("status") != "available":
+        return _unavailable_usage_v2()
+    turn_ids = current.get("turn_ids")
+    if (
+        not isinstance(turn_ids, list)
+        or len(turn_ids) >= MAX_USAGE_V2_TURNS
+        or normalized["turn_id"] in turn_ids
+        or current.get("model_fingerprint") != normalized["model_fingerprint"]
+        or current.get("execution_variant") != normalized["execution_variant"]
+        or current.get("max_input_tokens") != normalized["max_input_tokens"]
+    ):
+        return _unavailable_usage_v2()
+    return {
+        "status": "available",
+        "model_fingerprint": current["model_fingerprint"],
+        "execution_variant": current["execution_variant"],
+        "max_input_tokens": current["max_input_tokens"],
+        "turn_ids": turn_ids + [normalized["turn_id"]],
+        "turns": current["turns"] + 1,
+        **{key: current[key] + normalized[key] for key in additive},
+        "active_context_tokens": normalized["active_context_tokens"],
+        "peak_context_tokens": max(
+            current["peak_context_tokens"], normalized["peak_context_tokens"],
+        ),
+    }
 
 
 def _new_receipt(root, thread_id, adapter_info, adapter_contract=None):
@@ -387,6 +486,7 @@ def _new_receipt(root, thread_id, adapter_info, adapter_contract=None):
         "turn_limit": _turn_limit(),
         "final_recovery_used": False,
         "usage": _unavailable_usage(),
+        "usage_v2": _unavailable_usage_v2(),
         "started_at": now,
         "updated_at": now,
     }
@@ -417,6 +517,7 @@ def _public_result(receipt, status=None, outcome=None, wait=None):
         "active_run": receipt.get("active_run"),
         "turns": receipt.get("turns", 0),
         "usage": receipt.get("usage", _unavailable_usage()),
+        "usage_v2": receipt.get("usage_v2", _unavailable_usage_v2()),
     }
     if isinstance(outcome, dict) and outcome.get("reason"):
         result["reason"] = outcome["reason"]
@@ -572,6 +673,10 @@ def _drive(root, adapter, receipt, turn, baseline, workflow_aware=False):
         receipt = _update_receipt(
             root, receipt, turns=receipt["turns"] + 1,
             usage=_merge_usage(receipt.get("usage"), turn.usage, initialize=receipt["turns"] == 0),
+            usage_v2=_merge_usage_v2(
+                receipt.get("usage_v2"), getattr(turn, "usage_v2", None),
+                initialize=receipt["turns"] == 0,
+            ),
         )
         while turn.returncode != 0:
             if turn.error_code == "event_sink_failed":
@@ -602,6 +707,10 @@ def _drive(root, adapter, receipt, turn, baseline, workflow_aware=False):
             receipt = _update_receipt(
                 root, receipt, turns=receipt["turns"] + 1,
                 usage=_merge_usage(receipt.get("usage"), turn.usage, initialize=receipt["turns"] == 0),
+                usage_v2=_merge_usage_v2(
+                    receipt.get("usage_v2"), getattr(turn, "usage_v2", None),
+                    initialize=receipt["turns"] == 0,
+                ),
             )
         retries = 0
         status = _active_status(root)
