@@ -79,22 +79,9 @@ def _git_text(root, args):
 
 
 def _kimiflow_only_ignored(root, status):
-    if wp.kimiflow_only_ignored(status):
-        return True
-    if not status["ignored_paths_truncated"]:
-        return False
-    paths, count = wp.stream_nul_git_paths(
-        root,
-        ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"],
-        status["ignored_count"],
-    )
-    return (
-        count == len(paths)
-        and all(
-            path == ".kimiflow" or path.startswith(".kimiflow/")
-            for path in paths
-        )
-    )
+    if "ignored_only_kimiflow" in status:
+        return status["ignored_only_kimiflow"]
+    return wp.kimiflow_only_ignored_at(root, status)
 
 
 def _head(root):
@@ -1969,10 +1956,10 @@ def _retirement_checkout_matches(primary, task, require_lock=True):
 
 def _archived_checkout_status(path, admin_dir, common_dir=None):
     environment = os.environ.copy()
-    environment["GIT_DIR"] = common_dir or admin_dir
+    environment["GIT_DIR"] = admin_dir
     environment["GIT_WORK_TREE"] = path
     if common_dir:
-        environment["GIT_INDEX_FILE"] = os.path.join(admin_dir, "index")
+        environment["GIT_COMMON_DIR"] = common_dir
 
     def run(args):
         return subprocess.run(
@@ -2016,13 +2003,25 @@ def _archived_checkout_status(path, admin_dir, common_dir=None):
     result["dirty_paths_truncated"] = (
         result["dirty_path_count"] > len(result["dirty_paths"])
     )
-    ignored_paths, ignored_count = paths(
-        ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"],
-        wp.IGNORED_PATH_SAMPLE_LIMIT,
+    ignored = run(
+        ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"]
     )
-    result["ignored_paths"] = ignored_paths
-    result["ignored_count"] = ignored_count
-    result["ignored_paths_truncated"] = ignored_count > len(ignored_paths)
+    if ignored.returncode != 0:
+        raise wp.WorkspaceError("cannot inspect archived worktree paths")
+    ignored_values = [
+        raw.decode("utf-8", "surrogateescape")
+        for raw in ignored.stdout.split(b"\0")
+        if raw
+    ]
+    result["ignored_paths"] = ignored_values[: wp.IGNORED_PATH_SAMPLE_LIMIT]
+    result["ignored_count"] = len(ignored_values)
+    result["ignored_paths_truncated"] = (
+        len(ignored_values) > len(result["ignored_paths"])
+    )
+    result["ignored_only_kimiflow"] = all(
+        path == ".kimiflow" or path.startswith(".kimiflow/")
+        for path in ignored_values
+    )
     return result
 
 

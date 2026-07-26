@@ -1405,6 +1405,51 @@ class WorktreeBrokerCase(unittest.TestCase):
         self.assertTrue(os.path.isdir(target))
         self.assertFalse(os.path.exists(os.path.join(self.repo, "late.txt")))
 
+    def test_retirement_allows_many_kimiflow_artifacts(self):
+        run = ".kimiflow/run-a"
+        target, _, _ = self.integrated_task(run)
+        self.write_terminal(target, run)
+        self.commit_file(self.repo, "later.txt", "later\n", "later main change")
+        artifacts = os.path.join(target, ".kimiflow", "artifacts")
+        os.makedirs(artifacts, exist_ok=True)
+        for index in range(wp.IGNORED_PATH_SAMPLE_LIMIT + 5):
+            with open(
+                os.path.join(artifacts, "%02d.txt" % index),
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                handle.write("artifact\n")
+
+        result = broker.retire(self.repo, run, write=True)
+
+        self.assertEqual(result["status"], "retired")
+        self.assertFalse(os.path.exists(target))
+        self.assertTrue(os.path.isdir(result["archive_path"]))
+
+    def test_retirement_rejects_foreign_ignored_content_after_sample_limit(self):
+        run = ".kimiflow/run-a"
+        target, _, _ = self.integrated_task(run)
+        self.write_terminal(target, run)
+        artifacts = os.path.join(target, ".kimiflow", "artifacts")
+        os.makedirs(artifacts, exist_ok=True)
+        for index in range(wp.IGNORED_PATH_SAMPLE_LIMIT + 5):
+            with open(
+                os.path.join(artifacts, "%02d.txt" % index),
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                handle.write("artifact\n")
+        self.ignore("reports/")
+        reports = os.path.join(target, "reports")
+        os.makedirs(reports)
+        with open(os.path.join(reports, "keep.txt"), "w", encoding="utf-8") as handle:
+            handle.write("keep\n")
+
+        with self.assertRaisesRegex(wp.WorkspaceError, "task ref mismatch"):
+            broker.retire(self.repo, run, write=True)
+
+        self.assertTrue(os.path.isfile(os.path.join(reports, "keep.txt")))
+
     def test_retirement_rechecks_content_immediately_before_archive(self):
         run = ".kimiflow/run-a"
         target, _, _ = self.integrated_task(run)
