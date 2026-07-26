@@ -5,19 +5,19 @@
       "bytes": 511,
       "mode": "0644",
       "path": ".claude-plugin/plugin.json",
-      "sha256": "sha256:462a0dde1183e173834dcfed322d3cc7a770cd38ff4e0ee9b5801137b7e61619"
+      "sha256": "sha256:37ad8a30a3d1f80f3ddbfe0591a6ceb3ac336ff3778d69adfe9d42cdf0e10ddf"
     },
     {
       "bytes": 3614,
       "mode": "0644",
       "path": ".codex-plugin/plugin.json",
-      "sha256": "sha256:b2869ad3ef792349b7ada9ec0aa5d6f98c04e8e1557874491f0663c937a7536c"
+      "sha256": "sha256:8f365d5c3045364592d86c343a3c69a4d259eeb6ec7da1192a2c94a578200cc7"
     },
     {
       "bytes": 17397,
       "mode": "0644",
       "path": "COMPATIBILITY.md",
-      "sha256": "sha256:aa72545188dac0b4096122e8bf809e7858e5eaaf87c6080997e6ff20a2d6ca82"
+      "sha256": "sha256:a0250dec9752acb25565ba6f8d7323f99e5962005570718bb8da99ae4051b0ac"
     },
     {
       "bytes": 1064,
@@ -800,10 +800,10 @@
       "sha256": "sha256:be46d70174cd6efddd14290f4c2c4e1b995a6125cc72797fdd61f2f5d707c85b"
     },
     {
-      "bytes": 21915,
+      "bytes": 19515,
       "mode": "0644",
       "path": "phases/phase-7-review-commit.md",
-      "sha256": "sha256:10f5022dee802e53673b1224b2200ea98997b5cf372589afcc2707dbec17a198"
+      "sha256": "sha256:28932a69bc8614f6f5ca7dfd3a11d886a45e8f651cdfa475c880769d30f90d7d"
     },
     {
       "bytes": 205826,
@@ -896,6 +896,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:d457ebe848a900ca2e9791fab5200d33684e1359928ca66072f8a0100f7f57fc",
+  "runtime_fingerprint": "sha256:46f0b5f6e93c1a590fa6505b3f3ea795401ab21f5097cf79cff9836e4aa58e65",
   "schema_version": 1
 }

@@ -4,10 +4,34 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-### Documentation
+_No unreleased changes._
 
-- Updated the English and German GitHub READMEs with an automatically current release link and the
-  `0.2.22` ignored-artifact worktree behavior.
+## 0.2.23
+
+The evidence-gated review-efficiency release: Kimiflow can reduce repeated semantic review work only after the
+exact model, prompt, runtime, and policy combination has proved equal quality with lower token use.
+
+### Added
+
+- Evidence-bound review leases with Holdout, Shadow, and five ordered Canary comparisons, plus deterministic
+  one-in-ten audits and automatic revocation when quality, verification, or convergence regresses.
+- Exact model, execution-variant, role, task, runtime, policy, and prompt-gate fingerprints so new models and
+  changed prompting recalibrate instead of inheriting stale review shortcuts.
+
+### Changed
+
+- Post-repair reviews may selectively rerun only the axes invalidated by the exact path and mode delta; first
+  reviews, critical changes, broad deltas, and uncertain evidence continue to receive full review.
+- Frontier-model guidance now favors lean goals, boundaries, evidence, output contracts, and exit criteria over
+  provider folklore, forced reasoning, or generic checklists.
+- Updated the English and German GitHub READMEs with an automatically current release link and the `0.2.22`
+  ignored-artifact worktree behavior.
+
+### Fixed
+
+- Current recovery and verification failure signals now revoke stale review leases even when a caller omits them.
+- Security-sensitive path detection now covers plural and case-varied authentication, payment, migration,
+  secret, credential, token, and session paths without treating unrelated documentation as sensitive.
 
 ## 0.2.22
 
