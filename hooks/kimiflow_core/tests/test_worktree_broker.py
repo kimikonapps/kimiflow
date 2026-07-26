@@ -78,6 +78,14 @@ class WorktreeBrokerCase(unittest.TestCase):
         self.git(root, "commit", "-m", message)
         return self.git(root, "rev-parse", "HEAD").stdout.strip()
 
+    def ignore(self, pattern):
+        with open(
+            os.path.join(self.repo, ".git", "info", "exclude"),
+            "a",
+            encoding="utf-8",
+        ) as handle:
+            handle.write(pattern + "\n")
+
     def allocate(self, run=".kimiflow/run-a", affected=("src/main.py",)):
         self.write_active(affected=affected)
         result = broker.route(self.repo, run, write=True)
@@ -483,6 +491,84 @@ class WorktreeBrokerCase(unittest.TestCase):
                 ["git", "diff", "--cached", "--quiet", "--"],
             ],
         )
+
+    def test_integration_allows_unrelated_ignored_primary_content(self):
+        run = ".kimiflow/run-a"
+        target = self.allocate(run)
+        self.clear_active()
+        basis = self.write_plan(target, run)
+        broker.declare(target, run, basis, paths=["feature.txt"], write=True)
+        self.commit_file(target, "feature.txt", "task\n", "task change")
+        for index in range(25):
+            with open(
+                os.path.join(target, run, "receipt-%02d.json" % index),
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                handle.write("{}\n")
+        self.ignore("dist/")
+        local_artifact = os.path.join(self.repo, "dist", "release.zip")
+        os.makedirs(os.path.dirname(local_artifact), exist_ok=True)
+        with open(local_artifact, "w", encoding="utf-8") as handle:
+            handle.write("local release\n")
+        check = json.dumps([sys.executable, "-c", "raise SystemExit(0)"])
+
+        result = broker.integrate(self.repo, run, checks=[check], write=True)
+
+        self.assertEqual(result["status"], "integrated")
+        with open(local_artifact, encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), "local release\n")
+
+    def test_integration_rejects_foreign_ignored_content_after_truncated_run_sample(self):
+        run = ".kimiflow/run-a"
+        target = self.allocate(run)
+        self.clear_active()
+        basis = self.write_plan(target, run)
+        broker.declare(target, run, basis, paths=["feature.txt"], write=True)
+        self.commit_file(target, "feature.txt", "task\n", "task change")
+        for index in range(25):
+            with open(
+                os.path.join(target, run, "receipt-%02d.json" % index),
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                handle.write("{}\n")
+        self.ignore("cache/")
+        cache = os.path.join(target, "cache")
+        os.makedirs(cache)
+        with open(os.path.join(cache, "local.bin"), "w", encoding="utf-8") as handle:
+            handle.write("foreign ignored content\n")
+        check = json.dumps([sys.executable, "-c", "raise SystemExit(0)"])
+
+        with self.assertRaisesRegex(
+            wp.WorkspaceError,
+            "task worktree is not clean and owned",
+        ):
+            broker.integrate(self.repo, run, checks=[check], write=True)
+
+    def test_integration_blocks_colliding_ignored_primary_path(self):
+        run = ".kimiflow/run-a"
+        target = self.allocate(run)
+        self.clear_active()
+        basis = self.write_plan(target, run)
+        broker.declare(target, run, basis, paths=["feature.txt"], write=True)
+        self.commit_file(target, "feature.txt", "task\n", "task change")
+        self.ignore("feature.txt")
+        local_path = os.path.join(self.repo, "feature.txt")
+        with open(local_path, "w", encoding="utf-8") as handle:
+            handle.write("local ignored content\n")
+        main_before = self.git(self.repo, "rev-parse", "HEAD").stdout.strip()
+        check = json.dumps([sys.executable, "-c", "raise SystemExit(0)"])
+
+        result = broker.integrate(self.repo, run, checks=[check], write=True)
+
+        self.assertEqual(
+            (result["status"], result["reason"], result["paths"]),
+            ("ready-to-integrate", "ignored-path-collision", ["feature.txt"]),
+        )
+        self.assertEqual(self.git(self.repo, "rev-parse", "HEAD").stdout.strip(), main_before)
+        with open(local_path, encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), "local ignored content\n")
 
     def test_retirement_refuses_unsafe_state_then_archives_green_ancestor(self):
         run = ".kimiflow/run-a"
@@ -1560,6 +1646,11 @@ class WorktreeBrokerCase(unittest.TestCase):
         self.assertNotIn(os.path.realpath(foreign), [entry["path"] for entry in registry["entries"]])
 
     def test_backward_compatible_status_and_candidate_packaging(self):
+        self.ignore("dist/")
+        local_artifact = os.path.join(self.repo, "dist", "release.zip")
+        os.makedirs(os.path.dirname(local_artifact), exist_ok=True)
+        with open(local_artifact, "w", encoding="utf-8") as handle:
+            handle.write("local release\n")
         result = broker.route(self.repo, ".kimiflow/direct-run", write=True)
         self.assertEqual((result["status"], result["route"]), ("direct", "main"))
         self.assertFalse(
