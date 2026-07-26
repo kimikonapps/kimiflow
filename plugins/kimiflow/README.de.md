@@ -4,6 +4,8 @@
 
 [English](README.md) | [Workflow-Referenz](reference.md) | [Beispiele](examples/README.md) | [Kompatibilität](COMPATIBILITY.md)
 
+[![Aktuelles Release](https://img.shields.io/github/v/release/kimikonapps/kimiflow?display_name=tag&sort=semver)](https://github.com/kimikonapps/kimiflow/releases/latest)
+
 Kimiflow ist ein bewusst aufgerufener Skill beziehungsweise Plugin-Flow mit acht Phasen: klären,
 verstehen oder diagnostizieren, planen, reviewen, umsetzen, verifizieren, Code prüfen und committen.
 Einfache Arbeit bleibt klein; wichtige Grenzen werden durch getestete Skripte und Hooks abgesichert,
@@ -339,7 +341,9 @@ Ein aktiver Run speichert seine Codex- oder Claude-Owner-Session. Andere Session
 diskutieren und planen. Vor Writes inventarisiert Kimiflow alle Checkouts. Ein sauberes/freies Primary
 bleibt ohne Broker-State direkt; bei dirty oder busy Primary entsteht automatisch genau ein gesperrter,
 eigener `codex/<slug>*`-Worktree. Weitere Runs warten FIFO ohne Bestätigungsfrage. Phase 3 bindet Pfade
-und Contracts an die exakten PLAN-Bytes, Phase 5 prüft diesen Write-Gate. Integration nutzt
+und Contracts an die exakten PLAN-Bytes. Fremde ignorierte Dateien machen einen ansonsten sicheren
+Checkout nicht busy; Kimiflow-eigene ignorierte Run-Artefakte bleiben beim Retirement erhalten, ohne
+Ancestry-, Ownership- oder Integritätsprüfungen abzuschwächen. Phase 5 prüft den Write-Gate. Integration nutzt
 Merge-Tree-Preflight, argv-basierte Projektchecks vollständig vor der Mutation, bei Bedarf einen
 Merge-Commit nur im eigenen Branch und Fast-forward-only für Primary; danach folgen nur mechanische
 Git-Integritätsbelege. Erst terminale, grüne und per Ancestry belegte Trees werden crash-sicher

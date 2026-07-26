@@ -34,6 +34,8 @@ MODEL_POLICY_NAME = "MODEL-ROUTING-POLICY.json"
 MODEL_ROUTE_EVIDENCE_NAME = "MODEL-ROUTE-EVIDENCE.json"
 RETRIEVAL_LEDGER_NAME = "RETRIEVAL-OUTCOMES.jsonl"
 REVIEW_LEDGER_NAME = "REVIEW-OUTCOMES.jsonl"
+REVIEW_CASCADE_LEDGER_NAME = "REVIEW-CASCADE-OUTCOMES.jsonl"
+REVIEW_CASCADE_ROUTE_NAME = "REVIEW-CASCADE-ROUTE.json"
 VARIANT_LEDGER_NAME = "EXECUTION-VARIANT-OUTCOMES.jsonl"
 HOST_USAGE_NAME = "HOST-USAGE.json"
 EXECUTION_TRACE_NAME = "EXECUTION-TRACE.json"
@@ -1522,6 +1524,352 @@ def resolve_review_mode(
     }
 
 
+def record_review_cascade_outcome(
+    root, sample_id, model_fingerprint, execution_variant, role, task_class,
+    runtime_fingerprint, policy_fingerprint, prompt_gate_fingerprint, stage,
+    quality_passed, verification_passed, missed_material_findings=0, retries=0,
+    full_input_tokens=0, full_output_tokens=0, cascade_input_tokens=0,
+    cascade_output_tokens=0, full_rounds=1, cascade_rounds=1,
+    audit_finding=False,
+):
+    if SAMPLE_ID_RE.fullmatch(str(sample_id)) is None:
+        raise AdaptiveControlError("review_cascade_sample_invalid")
+    key = _review_key(
+        model_fingerprint, execution_variant, role, task_class,
+        runtime_fingerprint, policy_fingerprint, prompt_gate_fingerprint,
+    )
+    if stage not in ("holdout", "shadow", "canary"):
+        raise AdaptiveControlError("review_cascade_stage_invalid")
+    if any(
+        not isinstance(value, bool)
+        for value in (quality_passed, verification_passed, audit_finding)
+    ):
+        raise AdaptiveControlError("review_cascade_outcome_invalid")
+    counters = (
+        missed_material_findings,
+        retries,
+        full_input_tokens,
+        full_output_tokens,
+        cascade_input_tokens,
+        cascade_output_tokens,
+    )
+    if any(
+        isinstance(value, bool) or not isinstance(value, int) or value < 0
+        for value in counters
+    ):
+        raise AdaptiveControlError("review_cascade_metrics_invalid")
+    rounds = (full_rounds, cascade_rounds)
+    if any(
+        isinstance(value, bool) or not isinstance(value, int) or value < 1
+        for value in rounds
+    ):
+        raise AdaptiveControlError("review_cascade_rounds_invalid")
+    row = {
+        "schema_version": 1,
+        "sample_id": sample_id,
+        "recorded_at": _now(),
+        **key,
+        "stage": stage,
+        "quality_passed": quality_passed,
+        "verification_passed": verification_passed,
+        "missed_material_findings": missed_material_findings,
+        "retries": retries,
+        "full_input_tokens": full_input_tokens,
+        "full_output_tokens": full_output_tokens,
+        "cascade_input_tokens": cascade_input_tokens,
+        "cascade_output_tokens": cascade_output_tokens,
+        "full_rounds": full_rounds,
+        "cascade_rounds": cascade_rounds,
+        "audit_finding": audit_finding,
+    }
+    return _append_adaptive_row(
+        root,
+        REVIEW_CASCADE_LEDGER_NAME,
+        row,
+        ("sample_id", *key.keys()),
+    )
+
+
+def _valid_review_cascade_row(row):
+    if not isinstance(row, dict):
+        return False
+    try:
+        key = _review_key(
+            row.get("model_fingerprint"),
+            row.get("execution_variant"),
+            row.get("role"),
+            row.get("task_class"),
+            row.get("runtime_fingerprint"),
+            row.get("policy_fingerprint"),
+            row.get("prompt_gate_fingerprint"),
+        )
+    except (AttributeError, AdaptiveControlError):
+        return False
+    required = {
+        "schema_version",
+        "sample_id",
+        "recorded_at",
+        *key.keys(),
+        "stage",
+        "quality_passed",
+        "verification_passed",
+        "missed_material_findings",
+        "retries",
+        "full_input_tokens",
+        "full_output_tokens",
+        "cascade_input_tokens",
+        "cascade_output_tokens",
+        "full_rounds",
+        "cascade_rounds",
+        "audit_finding",
+    }
+    counters = (
+        "missed_material_findings",
+        "retries",
+        "full_input_tokens",
+        "full_output_tokens",
+        "cascade_input_tokens",
+        "cascade_output_tokens",
+    )
+    rounds = ("full_rounds", "cascade_rounds")
+    return (
+        set(row) == required
+        and row.get("schema_version") == 1
+        and SAMPLE_ID_RE.fullmatch(str(row.get("sample_id", ""))) is not None
+        and row.get("stage") in ("holdout", "shadow", "canary")
+        and all(
+            isinstance(row.get(name), bool)
+            for name in ("quality_passed", "verification_passed", "audit_finding")
+        )
+        and all(
+            not isinstance(row.get(name), bool)
+            and isinstance(row.get(name), int)
+            and row.get(name) >= 0
+            for name in counters
+        )
+        and all(
+            not isinstance(row.get(name), bool)
+            and isinstance(row.get(name), int)
+            and row.get(name) >= 1
+            for name in rounds
+        )
+    )
+
+
+def _review_cascade_clean(row):
+    full_tokens = row["full_input_tokens"] + row["full_output_tokens"]
+    cascade_tokens = row["cascade_input_tokens"] + row["cascade_output_tokens"]
+    return (
+        row["quality_passed"]
+        and row["verification_passed"]
+        and row["missed_material_findings"] == 0
+        and row["retries"] == 0
+        and not row["audit_finding"]
+        and full_tokens > 0
+        and 0 < cascade_tokens < full_tokens
+        and row["cascade_rounds"] <= row["full_rounds"]
+        and row["cascade_rounds"] <= 2
+    )
+
+
+def resolve_review_cascade(
+    root, model_fingerprint, execution_variant, role, task_class,
+    runtime_fingerprint, policy_fingerprint, prompt_gate_fingerprint,
+    risk="routine", repeated_failure=False, regression=False,
+):
+    key = _review_key(
+        model_fingerprint, execution_variant, role, task_class,
+        runtime_fingerprint, policy_fingerprint, prompt_gate_fingerprint,
+    )
+    if (
+        risk not in ("routine", "critical")
+        or not isinstance(repeated_failure, bool)
+        or not isinstance(regression, bool)
+    ):
+        raise AdaptiveControlError("review_cascade_route_invalid")
+    rows = _adaptive_rows(root, REVIEW_CASCADE_LEDGER_NAME)
+    if any(not _valid_review_cascade_row(row) for row in rows):
+        raise AdaptiveControlError("review_cascade_ledger_contract_invalid")
+    matching = [
+        row
+        for row in rows
+        if all(row.get(name) == value for name, value in key.items())
+    ]
+    bad_indexes = [
+        index
+        for index, row in enumerate(matching)
+        if not _review_cascade_clean(row)
+    ]
+    latest_regressed = bool(bad_indexes) and bad_indexes[-1] == len(matching) - 1
+    calibration = (
+        matching[bad_indexes[-1] + 1 :]
+        if bad_indexes
+        else matching
+    )
+    audit = False
+    if risk == "critical":
+        route, stage, reason = "full", "off", "critical_risk"
+    elif repeated_failure or regression:
+        route, stage, reason = "full", "off", "regression_or_failure"
+    elif latest_regressed:
+        route, stage, reason = "full", "off", "quality_or_token_regression"
+    else:
+        holdout_index = next(
+            (
+                index
+                for index, row in enumerate(calibration)
+                if row["stage"] == "holdout" and _review_cascade_clean(row)
+            ),
+            None,
+        )
+        shadow_index = next(
+            (
+                index
+                for index, row in enumerate(calibration)
+                if holdout_index is not None
+                and index > holdout_index
+                and row["stage"] == "shadow"
+                and _review_cascade_clean(row)
+            ),
+            None,
+        )
+        holdout = holdout_index is not None
+        shadow = shadow_index is not None
+        canaries = [
+            row
+            for index, row in enumerate(calibration)
+            if shadow_index is not None
+            and index > shadow_index
+            and row["stage"] == "canary"
+        ][-5:]
+        clean_canaries = len(canaries) == 5 and all(
+            _review_cascade_clean(row) for row in canaries
+        )
+        if holdout and shadow and clean_canaries:
+            material = json.dumps(key, sort_keys=True, separators=(",", ":"))
+            offset = int(
+                hashlib.sha256(material.encode("utf-8")).hexdigest()[:8], 16
+            ) % 10
+            audit = (offset + len(matching)) % 10 == 0
+            route = "full" if audit else "selective"
+            stage = "active"
+            reason = "deterministic_audit" if audit else "verified_ab_equivalence"
+        elif holdout and shadow:
+            route, stage, reason = "full", "canary", "canary_evidence_pending"
+        else:
+            route, stage, reason = "full", "shadow", "ab_evidence_pending"
+    return {
+        "schema_version": 1,
+        "status": "resolved",
+        "route": route,
+        "stage": stage,
+        "reason": reason,
+        "audit_sample": audit,
+        "samples": len(matching),
+        "user_gate": False,
+    }
+
+
+def _review_cascade_run_signals(run_dir):
+    recovery = _read_text(
+        os.path.join(run_dir, "RECOVERY.md"),
+        missing_ok=True,
+    )
+    verification = _read_text(
+        os.path.join(run_dir, "VERIFICATION.md"),
+        missing_ok=True,
+    )
+    repeated_failure = re.search(
+        r"^<!-- kimiflow:recovery gate=code\b",
+        recovery,
+        re.MULTILINE,
+    ) is not None
+    regression = re.search(
+        r"^<!-- kimiflow:verification [^\n]*"
+        r"regression=(?:failed|not_run) -->$",
+        verification,
+        re.MULTILINE,
+    ) is not None
+    return repeated_failure, regression
+
+
+def write_review_cascade_route(
+    root, run, model_fingerprint, execution_variant, role, task_class,
+    runtime_fingerprint, policy_fingerprint, prompt_gate_fingerprint,
+    risk="routine", repeated_failure=False, regression=False,
+):
+    run_dir = _safe_run(root, run)
+    run_repeated_failure, run_regression = _review_cascade_run_signals(run_dir)
+    repeated_failure = repeated_failure or run_repeated_failure
+    regression = regression or run_regression
+    key = _review_key(
+        model_fingerprint, execution_variant, role, task_class,
+        runtime_fingerprint, policy_fingerprint, prompt_gate_fingerprint,
+    )
+    resolved = resolve_review_cascade(
+        root,
+        **key,
+        risk=risk,
+        repeated_failure=repeated_failure,
+        regression=regression,
+    )
+    receipt = {
+        **resolved,
+        "binding": key,
+        "risk": risk,
+        "repeated_failure": repeated_failure,
+        "regression": regression,
+    }
+    _write_run_receipt(root, run_dir, REVIEW_CASCADE_ROUTE_NAME, receipt)
+    return receipt
+
+
+def verify_review_cascade_route(root, run_dir, risk):
+    path = os.path.join(run_dir, REVIEW_CASCADE_ROUTE_NAME)
+    receipt = _read_json(path)
+    required = {
+        "schema_version",
+        "status",
+        "route",
+        "stage",
+        "reason",
+        "audit_sample",
+        "samples",
+        "user_gate",
+        "binding",
+        "risk",
+        "repeated_failure",
+        "regression",
+    }
+    if not isinstance(receipt, dict) or set(receipt) != required:
+        raise AdaptiveControlError("review_cascade_route_receipt_invalid")
+    binding = receipt.get("binding")
+    if not isinstance(binding, dict) or receipt.get("risk") != risk:
+        raise AdaptiveControlError("review_cascade_route_receipt_invalid")
+    run_repeated_failure, run_regression = _review_cascade_run_signals(run_dir)
+    if (
+        run_repeated_failure and not receipt.get("repeated_failure")
+        or run_regression and not receipt.get("regression")
+    ):
+        raise AdaptiveControlError("review_cascade_route_receipt_stale")
+    expected = {
+        **resolve_review_cascade(
+            root,
+            **binding,
+            risk=risk,
+            repeated_failure=receipt.get("repeated_failure"),
+            regression=receipt.get("regression"),
+        ),
+        "binding": binding,
+        "risk": risk,
+        "repeated_failure": receipt.get("repeated_failure"),
+        "regression": receipt.get("regression"),
+    }
+    if receipt != expected:
+        raise AdaptiveControlError("review_cascade_route_receipt_stale")
+    return receipt, path
+
+
 def record_execution_variant_outcome(
     root, sample_id, model_fingerprint, execution_variant, role, task_class,
     runtime_fingerprint, policy_fingerprint, prompt_gate_fingerprint,
@@ -1830,6 +2178,45 @@ def _parser():
             review.add_argument("--risk", choices=("routine", "critical"), default="routine")
             review.add_argument("--repeated-failure", action="store_true")
             review.add_argument("--regression", action="store_true")
+    for name in ("review-cascade-record", "review-cascade-resolve"):
+        cascade = commands.add_parser(name)
+        cascade.add_argument("--root")
+        cascade.add_argument("--model-fingerprint", required=True)
+        cascade.add_argument("--execution-variant", required=True)
+        cascade.add_argument("--role", required=True)
+        cascade.add_argument("--task-class", required=True)
+        cascade.add_argument("--runtime-fingerprint", required=True)
+        cascade.add_argument("--policy-fingerprint", required=True)
+        cascade.add_argument("--prompt-gate-fingerprint", required=True)
+        cascade.add_argument("--pretty", action="store_true")
+        if name == "review-cascade-record":
+            cascade.add_argument("--sample-id", required=True)
+            cascade.add_argument(
+                "--stage", choices=("holdout", "shadow", "canary"), required=True
+            )
+            cascade.add_argument(
+                "--quality", choices=("passed", "failed"), required=True
+            )
+            cascade.add_argument(
+                "--verification", choices=("passed", "failed"), required=True
+            )
+            cascade.add_argument("--missed-material-findings", type=int, default=0)
+            cascade.add_argument("--retries", type=int, default=0)
+            cascade.add_argument("--full-input-tokens", type=int, required=True)
+            cascade.add_argument("--full-output-tokens", type=int, required=True)
+            cascade.add_argument("--cascade-input-tokens", type=int, required=True)
+            cascade.add_argument("--cascade-output-tokens", type=int, required=True)
+            cascade.add_argument("--full-rounds", type=int, required=True)
+            cascade.add_argument("--cascade-rounds", type=int, required=True)
+            cascade.add_argument("--audit-finding", action="store_true")
+        else:
+            cascade.add_argument("--run")
+            cascade.add_argument(
+                "--risk", choices=("routine", "critical"), default="routine"
+            )
+            cascade.add_argument("--repeated-failure", action="store_true")
+            cascade.add_argument("--regression", action="store_true")
+            cascade.add_argument("--write", action="store_true")
     return parser
 
 
@@ -1916,11 +2303,66 @@ def main(argv=None):
                 args.quality == "passed", args.high_findings, args.retries,
                 args.audit_finding,
             )
-        else:
+        elif args.command == "review-resolve":
             value = resolve_review_mode(
                 root, args.model_fingerprint, args.execution_variant, args.role,
                 args.task_class, args.runtime_fingerprint, args.policy_fingerprint,
                 args.prompt_gate_fingerprint, args.risk, args.repeated_failure,
+                args.regression,
+            )
+        elif args.command == "review-cascade-record":
+            value = record_review_cascade_outcome(
+                root,
+                args.sample_id,
+                args.model_fingerprint,
+                args.execution_variant,
+                args.role,
+                args.task_class,
+                args.runtime_fingerprint,
+                args.policy_fingerprint,
+                args.prompt_gate_fingerprint,
+                args.stage,
+                args.quality == "passed",
+                args.verification == "passed",
+                args.missed_material_findings,
+                args.retries,
+                args.full_input_tokens,
+                args.full_output_tokens,
+                args.cascade_input_tokens,
+                args.cascade_output_tokens,
+                args.full_rounds,
+                args.cascade_rounds,
+                args.audit_finding,
+            )
+        elif args.write:
+            if not args.run:
+                raise AdaptiveControlError("review_cascade_run_required")
+            value = write_review_cascade_route(
+                root,
+                args.run,
+                args.model_fingerprint,
+                args.execution_variant,
+                args.role,
+                args.task_class,
+                args.runtime_fingerprint,
+                args.policy_fingerprint,
+                args.prompt_gate_fingerprint,
+                args.risk,
+                args.repeated_failure,
+                args.regression,
+            )
+        else:
+            value = resolve_review_cascade(
+                root,
+                args.model_fingerprint,
+                args.execution_variant,
+                args.role,
+                args.task_class,
+                args.runtime_fingerprint,
+                args.policy_fingerprint,
+                args.prompt_gate_fingerprint,
+                args.risk,
+                args.repeated_failure,
                 args.regression,
             )
         _emit(value, args.pretty)

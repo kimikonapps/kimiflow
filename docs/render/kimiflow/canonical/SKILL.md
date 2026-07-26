@@ -88,7 +88,7 @@ These operative rules stay in the driver until a later approved packet proves an
 - **Phase 4 held rule:** only evidenced BLOCKER/HIGH revises; architecture changes need an executable failure/named-invariant violation. Contracted findings are candidate-first, typed, digest-pinned, class-stable, and need negative resolution evidence. Never reset valid rounds. Budgets: 2 small, 3 large/audit. Repeat class/oscillation/cap recovers autonomously. Schema 4+ pauses only for material risk.
 - **Phase 5 protected rules:** managed trees require the PLAN-digest write gate; serialization retries autonomously. Run slices/checks in order. Red commits tests only. Checkpoints inspect named staging, isolate foreign staging by path, and scan weakening/secrets/paths; production checkpoints need a clean-tree-only verifier. Review keeps `started_head`. Deletions need proof; failure changes approach; churn never resets recovery.
 - **Phase 6 protected rules:** fixes require `red-green-gate.sh`. Run declared slices/falsifiers and active conditional checks, then 1–5 decisions plus one whole-intent sweep; Contract-3 proves every Requirement. Code/scope gaps → Phase 5; strategy/architecture/research drift → Phase 2.
-- **Phase 7 protected rules:** preflights OPEN. First pass emits evidenced BLOCKER/HIGH; saturation binds disposition/snapshot. Repairs reuse falsifiers. Two failures need a new PLAN-bound trajectory. Resolver fails closed. Commit named paths; push/release stays explicit.
+- **Phase 7 protected rules:** Full first review. Only an exact-fingerprint lease narrows repaired axes; risky/broad deltas stay full. Saturation binds path bytes/results. Two failures need a PLAN trajectory. Resolver fails closed. Commit named paths; push/release explicit.
 
 ## Scaling Knobs
 

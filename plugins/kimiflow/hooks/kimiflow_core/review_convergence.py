@@ -10,7 +10,7 @@ import re
 import shlex
 import stat
 
-from . import build_replan
+from . import adaptive_control, build_replan
 
 
 MAX_TEXT_BYTES = 1024 * 1024
@@ -62,6 +62,37 @@ SATURATION_KEYS = {
     "dispositions",
     "carried_classes",
 }
+SATURATION_V2_KEYS = SATURATION_KEYS | {
+    "scheduled_axes",
+    "review_files",
+    "delta_receipt",
+}
+DELTA_KEYS = {
+    "schema_version",
+    "source_round",
+    "round",
+    "plan_sha256",
+    "source_saturation_sha256",
+    "repair_sha256",
+    "scheduled_axes",
+    "rerun_axes",
+    "carried_axes",
+    "review_files",
+    "changed_paths",
+    "route_receipt_sha256",
+}
+REVIEW_FILE_KEYS = {
+    "path",
+    "status_sha256",
+    "worktree_sha256",
+    "index_sha256",
+    "head_sha256",
+    "mode",
+}
+DELTA_SPEC_RE = re.compile(
+    r"^(review-deltas/r[1-9][0-9]*\.json)@([a-f0-9]{64})$"
+)
+MAX_SELECTIVE_CHANGED_PATHS = 8
 DISPOSITION_KEYS = {
     "candidate_id",
     "outcome",
@@ -271,12 +302,128 @@ def _axes(value):
     return axes
 
 
+def _axis_list(value, reason="axes-invalid"):
+    if (
+        not isinstance(value, list)
+        or not value
+        or len(value) > 8
+        or len(value) != len(set(value))
+        or any(not isinstance(axis, str) or SLUG_RE.fullmatch(axis) is None for axis in value)
+    ):
+        raise GateError(reason)
+    return value
+
+
+def _review_files(value):
+    if not isinstance(value, list) or not value or len(value) > 256:
+        raise GateError("review-files-invalid")
+    paths = []
+    for row in value:
+        if not isinstance(row, dict) or set(row) != REVIEW_FILE_KEYS:
+            raise GateError("review-files-invalid")
+        try:
+            normalized = build_replan._normalize_path(row.get("path"))
+        except build_replan.BuildReplanError as exc:
+            raise GateError("review-files-invalid") from exc
+        if normalized != row.get("path"):
+            raise GateError("review-files-invalid")
+        for name in (
+            "status_sha256",
+            "worktree_sha256",
+            "index_sha256",
+            "head_sha256",
+        ):
+            digest = row.get(name)
+            if digest is not None and (
+                not isinstance(digest, str) or SHA_RE.fullmatch(digest) is None
+            ):
+                raise GateError("review-files-invalid")
+        mode = row.get("mode")
+        if mode is not None and (
+            isinstance(mode, bool)
+            or not isinstance(mode, int)
+            or not 0 <= mode <= 0o777
+        ):
+            raise GateError("review-files-invalid")
+        paths.append(normalized)
+    if paths != sorted(set(paths)):
+        raise GateError("review-files-invalid")
+    return value
+
+
+def _state_risk(run):
+    state = _text(_artifact_path(run, "STATE.md"))
+
+    def value(key):
+        match = re.search(
+            r"^%s:\s*(.+?)\s*$" % re.escape(key),
+            state,
+            re.IGNORECASE | re.MULTILINE,
+        )
+        return match.group(1).strip().casefold().split(" ", 1)[0] if match else ""
+
+    architecture = value("Architecture deliberation")
+    build_risk = value("Build risk")
+    if architecture not in ("active", "off") or build_risk not in (
+        "required",
+        "none",
+    ):
+        return "critical"
+    return (
+        "critical"
+        if architecture == "active" or build_risk == "required"
+        else "routine"
+    )
+
+
+def _required_delta_axes(changed_paths, scheduled_axes):
+    required = {"spec-correctness"}
+    security_pattern = re.compile(
+        r"(?:^|[/_.-])(?:"
+        r"auth|authn|authz|oauth|authentication|authorization|authenticator|"
+        r"security|secure|secret|secrets|credential|credentials|token|tokens|"
+        r"session|sessions|privacy|permission|permissions|acl|rbac|payment|"
+        r"payments|billing|migration|migrations|crypto"
+        r")(?:[/_.-]|$)"
+    )
+    integration_prefixes = (
+        ".github/",
+        "docs/render/",
+        "hooks/",
+        "phases/",
+        "plugins/",
+        "skills/",
+    )
+    integration_names = {
+        "package.json",
+        "pyproject.toml",
+        "cargo.toml",
+        "go.mod",
+        "plugin.json",
+        "skill.md",
+        "reference.md",
+        "hooks.json",
+        "agents.md",
+        "claude.md",
+        "readme.md",
+    }
+    if any(security_pattern.search(path.casefold()) for path in changed_paths):
+        required.add("failure-security")
+    if any(
+        path.casefold().startswith(integration_prefixes)
+        or os.path.basename(path).casefold() in integration_names
+        for path in changed_paths
+    ):
+        required.add("standards-integration")
+    return required.intersection(scheduled_axes)
+
+
 def _plan(run):
     payload = _regular_bytes(_artifact_path(run, "PLAN.md"))
     return payload, _sha(payload)
 
 
-def _review_basis(run, base):
+def _review_basis(run, base, details=False):
     try:
         root, _ = build_replan._root_for(run)
         state_text = _text(_artifact_path(run, "STATE.md"))
@@ -310,19 +457,22 @@ def _review_basis(run, base):
         raise
     except (build_replan.BuildReplanError, OSError, UnicodeError, ValueError) as exc:
         raise GateError("review-basis-invalid", str(exc)) from exc
-    return {
+    value = {
         "review_base_sha": resolved_base,
         "review_target_sha": target,
         "review_snapshot_sha256": snapshot["sha256"],
     }
+    if details:
+        value["review_files"] = snapshot["files"]
+    return value
 
 
-def basis(run, base):
+def basis(run, base, details=False):
     run = _run_dir(run)
-    value = _review_basis(run, base)
+    value = _review_basis(run, base, details=details)
     print(
         json.dumps(
-            {"schema_version": 1, **value},
+            {"schema_version": 2 if details else 1, **value},
             ensure_ascii=True,
             sort_keys=True,
             separators=(",", ":"),
@@ -448,7 +598,7 @@ def saturation(run, round_number, axes):
     run = _run_dir(run)
     round_number = _round(round_number)
     axes = _axes(axes)
-    plan_payload, plan_sha = _plan(run)
+    _, plan_sha = _plan(run)
     candidates = {}
     file_rows = []
     for axis in axes:
@@ -474,9 +624,17 @@ def saturation(run, round_number, axes):
         if exc.reason == "missing-artifact":
             raise GateError("missing-saturation", receipt_path)
         raise
-    if not isinstance(receipt, dict) or set(receipt) != SATURATION_KEYS:
+    if not isinstance(receipt, dict):
         raise GateError("saturation-malformed")
-    if receipt.get("schema_version") != 1 or receipt.get("round") != round_number:
+    schema_version = receipt.get("schema_version")
+    expected_keys = (
+        SATURATION_KEYS
+        if schema_version == 1
+        else SATURATION_V2_KEYS
+        if schema_version == 2
+        else set()
+    )
+    if set(receipt) != expected_keys or receipt.get("round") != round_number:
         raise GateError("saturation-malformed")
     if receipt.get("plan_sha256") != plan_sha:
         raise GateError("stale-plan")
@@ -492,12 +650,34 @@ def saturation(run, round_number, axes):
         or SHA_RE.fullmatch(snapshot) is None
     ):
         raise GateError("review-basis-invalid", "receipt")
-    if _review_basis(run, base) != {
+    expected_basis = {
         "review_base_sha": base,
         "review_target_sha": target,
         "review_snapshot_sha256": snapshot,
-    }:
-        raise GateError("stale-review-basis")
+    }
+    if schema_version == 1:
+        if _review_basis(run, base) != expected_basis:
+            raise GateError("stale-review-basis")
+    else:
+        scheduled_axes = _axis_list(
+            receipt.get("scheduled_axes"), "scheduled-axes-invalid"
+        )
+        review_files = _review_files(receipt.get("review_files"))
+        expected_basis["review_files"] = review_files
+        if _review_basis(run, base, details=True) != expected_basis:
+            raise GateError("stale-review-basis")
+        delta_receipt = receipt.get("delta_receipt")
+        if delta_receipt is None:
+            if scheduled_axes != axes:
+                raise GateError("selective-review-unproven")
+        else:
+            _validate_delta(
+                run,
+                round_number,
+                scheduled_axes,
+                axes,
+                delta_receipt,
+            )
     if receipt.get("axes") != axes:
         raise GateError("axis-receipt-mismatch")
     if receipt.get("candidate_files") != file_rows:
@@ -636,22 +816,31 @@ def _acyclic(groups):
         visit(node)
 
 
-def repair(run, round_number):
+def _repair_details(run, round_number):
     run = _run_dir(run)
     round_number = _round(round_number)
     _, plan_sha = _plan(run)
     _, findings_payload, aggregate = _aggregate(run, round_number)
     if not aggregate:
-        return _emit("OPEN", "not-required", "no material findings")
+        return {
+            "required": False,
+            "groups": 0,
+            "classes": 0,
+            "path": None,
+            "payload": None,
+        }
     receipt_path = _artifact_path(
         run, "review-repairs", "r%s.json" % round_number
     )
     try:
-        receipt = _json(receipt_path)
+        receipt_payload = _regular_bytes(receipt_path, MAX_JSON_BYTES)
+        receipt = json.loads(receipt_payload.decode("utf-8"))
     except GateError as exc:
         if exc.reason == "missing-artifact":
             raise GateError("missing-repair", receipt_path)
         raise
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise GateError("malformed-artifact", receipt_path) from exc
     if not isinstance(receipt, dict) or set(receipt) != REPAIR_KEYS:
         raise GateError("repair-malformed")
     if receipt.get("schema_version") != 1 or receipt.get("round") != round_number:
@@ -715,10 +904,189 @@ def repair(run, round_number):
             % (",".join(sorted(aggregate)), ",".join(sorted(set(covered)))),
         )
     _acyclic(groups)
+    return {
+        "required": True,
+        "groups": len(groups),
+        "classes": len(covered),
+        "path": receipt_path,
+        "payload": receipt_payload,
+    }
+
+
+def repair(run, round_number):
+    details = _repair_details(run, round_number)
+    if not details["required"]:
+        return _emit("OPEN", "not-required", "no material findings")
     return _emit(
         "OPEN",
         "repair-ready",
-        "groups=%s classes=%s" % (len(groups), len(covered)),
+        "groups=%s classes=%s" % (details["groups"], details["classes"]),
+    )
+
+
+def _validate_delta(run, round_number, scheduled_axes, rerun_axes, spec=None):
+    run = _run_dir(run)
+    round_number = _round(round_number)
+    if round_number == 1:
+        raise GateError("selective-review-first-round")
+    scheduled_axes = _axis_list(scheduled_axes, "scheduled-axes-invalid")
+    rerun_axes = _axis_list(rerun_axes, "rerun-axes-invalid")
+    if not set(rerun_axes).issubset(scheduled_axes):
+        raise GateError("rerun-axes-invalid")
+    delta_path = _artifact_path(
+        run, "review-deltas", "r%s.json" % round_number
+    )
+    delta_payload = _regular_bytes(delta_path, MAX_JSON_BYTES)
+    if spec is not None:
+        match = DELTA_SPEC_RE.fullmatch(spec) if isinstance(spec, str) else None
+        expected_relative = "review-deltas/r%s.json" % round_number
+        if (
+            match is None
+            or match.group(1) != expected_relative
+            or match.group(2) != _sha(delta_payload)
+        ):
+            raise GateError("delta-receipt-mismatch")
+    try:
+        receipt = json.loads(delta_payload.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise GateError("delta-malformed") from exc
+    if not isinstance(receipt, dict) or set(receipt) != DELTA_KEYS:
+        raise GateError("delta-malformed")
+    source_round = round_number - 1
+    if (
+        receipt.get("schema_version") != 1
+        or receipt.get("source_round") != source_round
+        or receipt.get("round") != round_number
+    ):
+        raise GateError("delta-malformed")
+    _, plan_sha = _plan(run)
+    if receipt.get("plan_sha256") != plan_sha:
+        raise GateError("stale-plan")
+    source_saturation_path = _artifact_path(
+        run, "review-saturation", "r%s.json" % source_round
+    )
+    source_saturation_payload = _regular_bytes(
+        source_saturation_path, MAX_JSON_BYTES
+    )
+    if receipt.get("source_saturation_sha256") != _sha(
+        source_saturation_payload
+    ):
+        raise GateError("stale-source-saturation")
+    try:
+        source_saturation = json.loads(source_saturation_payload.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise GateError("source-saturation-malformed") from exc
+    if (
+        not isinstance(source_saturation, dict)
+        or source_saturation.get("schema_version") != 2
+        or set(source_saturation) != SATURATION_V2_KEYS
+        or source_saturation.get("round") != source_round
+        or source_saturation.get("plan_sha256") != plan_sha
+    ):
+        raise GateError("source-saturation-malformed")
+    source_scheduled = _axis_list(
+        source_saturation.get("scheduled_axes"), "source-scheduled-axes-invalid"
+    )
+    if source_scheduled != scheduled_axes:
+        raise GateError("scheduled-axis-drift")
+    source_files = _review_files(source_saturation.get("review_files"))
+
+    repair_details = _repair_details(run, source_round)
+    if not repair_details["required"]:
+        raise GateError("repair-not-required")
+    if receipt.get("repair_sha256") != _sha(repair_details["payload"]):
+        raise GateError("stale-repair")
+
+    base = source_saturation.get("review_base_sha")
+    current_basis = _review_basis(run, base, details=True)
+    current_files = _review_files(current_basis["review_files"])
+    if receipt.get("review_files") != current_files:
+        raise GateError("delta-snapshot-mismatch")
+    source_by_path = {row["path"]: row for row in source_files}
+    current_by_path = {row["path"]: row for row in current_files}
+    if set(source_by_path) != set(current_by_path):
+        raise GateError("delta-path-drift")
+    changed_paths = []
+    for path in sorted(source_by_path):
+        before = source_by_path[path]
+        after = current_by_path[path]
+        if (
+            (before["worktree_sha256"] is None)
+            != (after["worktree_sha256"] is None)
+            or before["mode"] != after["mode"]
+        ):
+            raise GateError("delta-boundary-change", path)
+        if before["worktree_sha256"] != after["worktree_sha256"]:
+            changed_paths.append(path)
+    if not changed_paths:
+        raise GateError("delta-empty")
+    if len(changed_paths) > MAX_SELECTIVE_CHANGED_PATHS:
+        raise GateError("delta-too-broad", str(len(changed_paths)))
+    if receipt.get("changed_paths") != changed_paths:
+        raise GateError("changed-paths-mismatch")
+
+    carried_axes = receipt.get("carried_axes")
+    if (
+        receipt.get("scheduled_axes") != scheduled_axes
+        or receipt.get("rerun_axes") != rerun_axes
+        or not isinstance(carried_axes, list)
+        or carried_axes != [
+            axis for axis in scheduled_axes if axis not in set(rerun_axes)
+        ]
+        or not carried_axes
+        or sorted(rerun_axes + carried_axes) != sorted(scheduled_axes)
+    ):
+        raise GateError("axis-partition-invalid")
+    if _state_risk(run) != "routine":
+        raise GateError("critical-review-requires-full")
+    required_axes = _required_delta_axes(changed_paths, scheduled_axes)
+    missing_required = sorted(required_axes - set(rerun_axes))
+    if missing_required:
+        raise GateError("required-axis-missing", missing_required[0])
+
+    try:
+        root, _ = build_replan._root_for(run)
+        route, route_path = adaptive_control.verify_review_cascade_route(
+            root, run, "routine"
+        )
+    except (
+        adaptive_control.AdaptiveControlError,
+        build_replan.BuildReplanError,
+    ) as exc:
+        raise GateError("review-cascade-route-invalid", str(exc)) from exc
+    route_payload = _regular_bytes(route_path, MAX_JSON_BYTES)
+    if (
+        route.get("route") != "selective"
+        or route.get("stage") != "active"
+        or route.get("audit_sample")
+        or receipt.get("route_receipt_sha256") != _sha(route_payload)
+    ):
+        raise GateError("review-cascade-route-inactive")
+    return {
+        "changed_paths": changed_paths,
+        "rerun_axes": rerun_axes,
+        "carried_axes": carried_axes,
+        "digest": _sha(delta_payload),
+    }
+
+
+def delta(run, round_number, scheduled_axes, rerun_axes):
+    run = _run_dir(run)
+    details = _validate_delta(
+        run,
+        round_number,
+        _axes(scheduled_axes),
+        _axes(rerun_axes),
+    )
+    return _emit(
+        "OPEN",
+        "selective-review-ready",
+        "changed=%s rerun=%s carried=%s"
+        % (
+            len(details["changed_paths"]),
+            len(details["rerun_axes"]),
+            len(details["carried_axes"]),
+        ),
     )
 
 
@@ -880,6 +1248,7 @@ def _parser():
     basis_parser = subparsers.add_parser("basis")
     basis_parser.add_argument("--run", required=True)
     basis_parser.add_argument("--base", required=True)
+    basis_parser.add_argument("--details", action="store_true")
     saturation_parser = subparsers.add_parser("saturation")
     saturation_parser.add_argument("--run", required=True)
     saturation_parser.add_argument("--round", required=True, type=int)
@@ -887,6 +1256,11 @@ def _parser():
     repair_parser = subparsers.add_parser("repair")
     repair_parser.add_argument("--run", required=True)
     repair_parser.add_argument("--round", required=True, type=int)
+    delta_parser = subparsers.add_parser("delta")
+    delta_parser.add_argument("--run", required=True)
+    delta_parser.add_argument("--round", required=True, type=int)
+    delta_parser.add_argument("--scheduled-axes", required=True)
+    delta_parser.add_argument("--rerun-axes", required=True)
     preflight_parser = subparsers.add_parser("preflight")
     preflight_parser.add_argument("--run", required=True)
     preflight_parser.add_argument("--round", required=True, type=int)
@@ -897,11 +1271,18 @@ def main(argv=None):
     args = _parser().parse_args(argv)
     try:
         if args.command == "basis":
-            return basis(args.run, args.base)
+            return basis(args.run, args.base, args.details)
         if args.command == "saturation":
             return saturation(args.run, args.round, args.axes)
         if args.command == "repair":
             return repair(args.run, args.round)
+        if args.command == "delta":
+            return delta(
+                args.run,
+                args.round,
+                args.scheduled_axes,
+                args.rerun_axes,
+            )
         return preflight(args.run, args.round)
     except GateError as exc:
         return _emit("CLOSED", exc.reason, exc.detail)

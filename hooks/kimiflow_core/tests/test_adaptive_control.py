@@ -718,6 +718,245 @@ class AdaptiveControlTests(unittest.TestCase):
         self.assertEqual(revoked["review_mode"], "single-independent")
         self.assertEqual(revoked["reason"], "regression_or_failure")
 
+    def test_review_cascade_requires_ab_savings_and_revokes_on_regression(self):
+        key = {
+            "model_fingerprint": self.evidence(3001),
+            "execution_variant": "native",
+            "role": "top",
+            "task_class": "routine-repair",
+            "runtime_fingerprint": self.evidence(3002),
+            "policy_fingerprint": self.evidence(3003),
+            "prompt_gate_fingerprint": self.evidence(3004),
+        }
+
+        pending = adaptive_control.resolve_review_cascade(self.root, **key)
+        self.assertEqual(pending["route"], "full")
+        self.assertEqual(pending["stage"], "shadow")
+
+        def record(index, stage, **overrides):
+            values = {
+                "quality_passed": True,
+                "verification_passed": True,
+                "missed_material_findings": 0,
+                "retries": 0,
+                "full_input_tokens": 3000,
+                "full_output_tokens": 300,
+                "cascade_input_tokens": 1200,
+                "cascade_output_tokens": 180,
+                "full_rounds": 2,
+                "cascade_rounds": 2,
+                "audit_finding": False,
+            }
+            values.update(overrides)
+            return adaptive_control.record_review_cascade_outcome(
+                self.root,
+                "sample_%024x" % index,
+                **key,
+                stage=stage,
+                **values,
+            )
+
+        record(3000, "holdout")
+        record(3001, "shadow")
+        for index in range(5):
+            record(3010 + index, "canary")
+
+        selections = []
+        for index in range(10):
+            selection = adaptive_control.resolve_review_cascade(self.root, **key)
+            selections.append(selection)
+            record(3020 + index, "canary")
+        self.assertEqual(sum(row["audit_sample"] for row in selections), 1)
+        self.assertEqual(sum(row["route"] == "full" for row in selections), 1)
+        self.assertTrue(all(row["stage"] == "active" for row in selections))
+
+        critical = adaptive_control.resolve_review_cascade(
+            self.root, **key, risk="critical"
+        )
+        self.assertEqual(critical["route"], "full")
+        self.assertEqual(critical["reason"], "critical_risk")
+
+        drifted = dict(key, prompt_gate_fingerprint=self.evidence(3999))
+        self.assertEqual(
+            adaptive_control.resolve_review_cascade(self.root, **drifted)["route"],
+            "full",
+        )
+
+        record(
+            3040,
+            "canary",
+            missed_material_findings=1,
+            cascade_input_tokens=3200,
+        )
+        revoked = adaptive_control.resolve_review_cascade(self.root, **key)
+        self.assertEqual(revoked["route"], "full")
+        self.assertEqual(revoked["stage"], "off")
+        self.assertEqual(revoked["reason"], "quality_or_token_regression")
+
+        record(3041, "canary")
+        recalibration = adaptive_control.resolve_review_cascade(self.root, **key)
+        self.assertEqual(recalibration["route"], "full")
+        self.assertEqual(recalibration["stage"], "shadow")
+
+        ledger = os.path.join(
+            self.root,
+            ".kimiflow",
+            "project",
+            adaptive_control.REVIEW_CASCADE_LEDGER_NAME,
+        )
+        self.assertEqual(os.stat(ledger).st_mode & 0o777, 0o600)
+
+    def test_review_cascade_route_receipt_recomputes_exact_prompt_identity(self):
+        key = {
+            "model_fingerprint": self.evidence(4001),
+            "execution_variant": "native",
+            "role": "top",
+            "task_class": "routine-repair",
+            "runtime_fingerprint": self.evidence(4002),
+            "policy_fingerprint": self.evidence(4003),
+            "prompt_gate_fingerprint": self.evidence(4004),
+        }
+        stages = ["holdout", "shadow"] + ["canary"] * 5
+        for index, stage in enumerate(stages):
+            adaptive_control.record_review_cascade_outcome(
+                self.root,
+                "sample_%024x" % (4100 + index),
+                **key,
+                stage=stage,
+                quality_passed=True,
+                verification_passed=True,
+                full_input_tokens=2000,
+                full_output_tokens=200,
+                cascade_input_tokens=800,
+                cascade_output_tokens=100,
+                full_rounds=2,
+                cascade_rounds=2,
+            )
+        receipt = adaptive_control.write_review_cascade_route(
+            self.root, self.run, **key
+        )
+        verified, path = adaptive_control.verify_review_cascade_route(
+            self.root, self.run, "routine"
+        )
+        self.assertEqual(verified, receipt)
+        self.assertEqual(
+            os.path.basename(path), adaptive_control.REVIEW_CASCADE_ROUTE_NAME
+        )
+        self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+
+        receipt_path = os.path.join(
+            self.run, adaptive_control.REVIEW_CASCADE_ROUTE_NAME
+        )
+        with open(receipt_path, "r", encoding="utf-8") as handle:
+            tampered = json.load(handle)
+        tampered["binding"]["prompt_gate_fingerprint"] = self.evidence(4999)
+        with open(receipt_path, "w", encoding="utf-8") as handle:
+            json.dump(tampered, handle)
+        with self.assertRaisesRegex(
+            adaptive_control.AdaptiveControlError,
+            "review_cascade_route_receipt_stale",
+        ):
+            adaptive_control.verify_review_cascade_route(
+                self.root, self.run, "routine"
+            )
+
+    def test_review_cascade_requires_ordered_distinct_calibration_runs(self):
+        key = {
+            "model_fingerprint": self.evidence(5001),
+            "execution_variant": "native",
+            "role": "top",
+            "task_class": "routine-repair",
+            "runtime_fingerprint": self.evidence(5002),
+            "policy_fingerprint": self.evidence(5003),
+            "prompt_gate_fingerprint": self.evidence(5004),
+        }
+
+        def record(index, stage):
+            return adaptive_control.record_review_cascade_outcome(
+                self.root,
+                "sample_%024x" % index,
+                **key,
+                stage=stage,
+                quality_passed=True,
+                verification_passed=True,
+                full_input_tokens=2000,
+                full_output_tokens=200,
+                cascade_input_tokens=800,
+                cascade_output_tokens=100,
+                full_rounds=2,
+                cascade_rounds=2,
+            )
+
+        for index in range(5):
+            record(5000 + index, "canary")
+        record(5010, "shadow")
+        record(5011, "holdout")
+        pending = adaptive_control.resolve_review_cascade(self.root, **key)
+        self.assertEqual(pending["route"], "full")
+        self.assertEqual(pending["stage"], "shadow")
+
+        with self.assertRaisesRegex(
+            adaptive_control.AdaptiveControlError, "adaptive_sample_conflict"
+        ):
+            record(5011, "shadow")
+
+        record(5012, "shadow")
+        for index in range(5):
+            record(5020 + index, "canary")
+        active = adaptive_control.resolve_review_cascade(self.root, **key)
+        self.assertEqual(active["stage"], "active")
+        self.assertIn(active["route"], ("full", "selective"))
+
+    def test_review_cascade_route_binds_run_failure_signals(self):
+        key = {
+            "model_fingerprint": self.evidence(6001),
+            "execution_variant": "native",
+            "role": "top",
+            "task_class": "routine-repair",
+            "runtime_fingerprint": self.evidence(6002),
+            "policy_fingerprint": self.evidence(6003),
+            "prompt_gate_fingerprint": self.evidence(6004),
+        }
+        for index, stage in enumerate(["holdout", "shadow"] + ["canary"] * 5):
+            adaptive_control.record_review_cascade_outcome(
+                self.root,
+                "sample_%024x" % (6100 + index),
+                **key,
+                stage=stage,
+                quality_passed=True,
+                verification_passed=True,
+                full_input_tokens=2000,
+                full_output_tokens=200,
+                cascade_input_tokens=800,
+                cascade_output_tokens=100,
+                full_rounds=2,
+                cascade_rounds=2,
+            )
+        receipt = adaptive_control.write_review_cascade_route(
+            self.root, self.run, **key
+        )
+        self.assertFalse(receipt["repeated_failure"])
+
+        self.write(
+            "RECOVERY.md",
+            "<!-- kimiflow:recovery gate=code source-round=1 epoch-start=2 "
+            "cap=4 before=%s after=%s -->\n"
+            % ("1" * 64, "2" * 64),
+        )
+        with self.assertRaisesRegex(
+            adaptive_control.AdaptiveControlError,
+            "review_cascade_route_receipt_stale",
+        ):
+            adaptive_control.verify_review_cascade_route(
+                self.root, self.run, "routine"
+            )
+        revoked = adaptive_control.write_review_cascade_route(
+            self.root, self.run, **key
+        )
+        self.assertTrue(revoked["repeated_failure"])
+        self.assertEqual(revoked["route"], "full")
+        self.assertEqual(revoked["reason"], "regression_or_failure")
+
 
 if __name__ == "__main__":
     unittest.main()

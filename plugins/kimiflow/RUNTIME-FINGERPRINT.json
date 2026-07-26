@@ -26,22 +26,22 @@
       "sha256": "sha256:b796986e145d409f27c8ec0edaaf223ee51bdbbc2fa4477fe2d6c0984d5adf5b"
     },
     {
-      "bytes": 25000,
+      "bytes": 25394,
       "mode": "0644",
       "path": "README.de.md",
-      "sha256": "sha256:c8dc381fb85d3d22e93fd2d9dcf82c48d77040743bfa3453647243ce38fbd3e4"
+      "sha256": "sha256:69723e37a5b04f68d0cd34e698e7593c0ce394550dd5d9b640a78972ec04b4b9"
     },
     {
-      "bytes": 30286,
+      "bytes": 30655,
       "mode": "0644",
       "path": "README.md",
-      "sha256": "sha256:e74bc09c05e96568698878f0e6059d2484f6bbc826cd8ea631ad47e4159cf39e"
+      "sha256": "sha256:0c09b87d5b400216a3f5a4dc202e7d8cfe8522f7624b75bb6002691cd2d9051e"
     },
     {
-      "bytes": 16998,
+      "bytes": 17000,
       "mode": "0644",
       "path": "SKILL.md",
-      "sha256": "sha256:c6103d194cb3a8cbbe2f0dc8b85105afdd7faa36ca895a46f9d03f3e16617c36"
+      "sha256": "sha256:7299492051468cd48ed32c660d345d67b8b4b83d378c3629aaeda4c6cb5f8a71"
     },
     {
       "bytes": 5051,
@@ -206,10 +206,10 @@
       "sha256": "sha256:c1a1621900673eb67480255f50b63abcbb8edf5e544668444042c4e61c16f772"
     },
     {
-      "bytes": 79878,
+      "bytes": 96007,
       "mode": "0644",
       "path": "hooks/kimiflow_core/adaptive_control.py",
-      "sha256": "sha256:1d816ad25dc3365dfa4964f7d9c6984e014d82a8e01582af3e6eea7bb3f49542"
+      "sha256": "sha256:b4012584c7c4fb1b15262aba8584997e6b6be07ba3ed31bf66de8f56bb9d6b0c"
     },
     {
       "bytes": 714,
@@ -332,10 +332,10 @@
       "sha256": "sha256:53895944940ba8b8ef000f9a0c906bd9d8e0f7c3a73398573465f0bd3322d0c0"
     },
     {
-      "bytes": 33375,
+      "bytes": 46597,
       "mode": "0644",
       "path": "hooks/kimiflow_core/review_convergence.py",
-      "sha256": "sha256:f1002ddd61b50d85e22cea30d26391dea28afabc15f663e28bbdc295153aff45"
+      "sha256": "sha256:b01b13acea80904dca8dbed9dc6e0ea7110985ef3e5d159078fddde64be73a45"
     },
     {
       "bytes": 15467,
@@ -800,16 +800,16 @@
       "sha256": "sha256:be46d70174cd6efddd14290f4c2c4e1b995a6125cc72797fdd61f2f5d707c85b"
     },
     {
-      "bytes": 19956,
+      "bytes": 21915,
       "mode": "0644",
       "path": "phases/phase-7-review-commit.md",
-      "sha256": "sha256:9ddbe1c2c868933b8b8535917ae658df7f1196801f181dcff4ccaa8fa359a390"
+      "sha256": "sha256:10f5022dee802e53673b1224b2200ea98997b5cf372589afcc2707dbec17a198"
     },
     {
-      "bytes": 203792,
+      "bytes": 205826,
       "mode": "0644",
       "path": "reference.md",
-      "sha256": "sha256:9cddf2115f801ec0f05c8d3fd2b6686ff970282d74abb78ba039fd9ab1cbfc22"
+      "sha256": "sha256:286568fd54b2507317bbb7cf13f53e5f8b9545b4d0d6fd6de7522f0a88d6e773"
     },
     {
       "bytes": 1406,
@@ -884,10 +884,10 @@
       "sha256": "sha256:f1e7d6c42d0460d63aef67873456b6cb6c590be2f6cb75034351726353baa907"
     },
     {
-      "bytes": 14785,
+      "bytes": 14945,
       "mode": "0644",
       "path": "skills/kimiflow/SKILL.md",
-      "sha256": "sha256:6bcb79831c32554dbf4ebc81cdc0db6b825e65ac4aa9645005f15d424442deb2"
+      "sha256": "sha256:fb0109e2b92e98325ab27339a075f43a56204cdc05e96cc23c8305f09eb8863d"
     },
     {
       "bytes": 244,
@@ -896,6 +896,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:3673a5b70934a380db499fcb452ab102725c32589cc5671d42230fb93f95ad25",
+  "runtime_fingerprint": "sha256:d457ebe848a900ca2e9791fab5200d33684e1359928ca66072f8a0100f7f57fc",
   "schema_version": 1
 }

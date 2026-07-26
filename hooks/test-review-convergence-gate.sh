@@ -3,6 +3,7 @@
 set -u
 
 SCRIPT="$(cd "$(dirname "$0")" && pwd)/review-convergence-gate.sh"
+ADAPTIVE="$(cd "$(dirname "$0")" && pwd)/adaptive-control.sh"
 WORK="$(mktemp -d)"
 RUN="$WORK/.kimiflow/demo"
 trap 'rm -rf "$WORK"' EXIT
@@ -31,9 +32,10 @@ reset_run() {
     "$RUN/review-evidence" \
     "$RUN/review-saturation" \
     "$RUN/review-repairs" \
+    "$RUN/review-deltas" \
     "$RUN/review-trajectories"
   printf 'minimum complete plan\n' > "$RUN/PLAN.md"
-  printf 'Affected files:\n- src/reviewed.py\n' > "$RUN/STATE.md"
+  printf 'Architecture deliberation: off\nBuild risk: none\nAffected files:\n- src/reviewed.py\n' > "$RUN/STATE.md"
   printf 'NONE\n' > "$RUN/findings/r1-code-verified.md"
 }
 
@@ -88,6 +90,38 @@ write_saturation_receipt() {
     }' > "$RUN/review-saturation/r${round}.json"
 }
 
+write_saturation_v2_receipt() {
+  local round="$1" scheduled_json="$2" axes_json="$3" files_json="$4"
+  local dispositions_json="$5" carried_json="$6" delta_receipt="$7"
+  local basis_json
+  basis_json="$("$SCRIPT" basis --run "$RUN" --base HEAD --details)"
+  jq -n \
+    --argjson round "$round" \
+    --arg plan_sha256 "$(hash_file "$RUN/PLAN.md")" \
+    --argjson scheduled_axes "$scheduled_json" \
+    --argjson axes "$axes_json" \
+    --argjson candidate_files "$files_json" \
+    --argjson dispositions "$dispositions_json" \
+    --argjson carried_classes "$carried_json" \
+    --argjson basis "$basis_json" \
+    --argjson delta_receipt "$delta_receipt" \
+    '{
+      schema_version: 2,
+      round: $round,
+      plan_sha256: $plan_sha256,
+      review_base_sha: $basis.review_base_sha,
+      review_target_sha: $basis.review_target_sha,
+      review_snapshot_sha256: $basis.review_snapshot_sha256,
+      scheduled_axes: $scheduled_axes,
+      axes: $axes,
+      review_files: $basis.review_files,
+      candidate_files: $candidate_files,
+      dispositions: $dispositions,
+      carried_classes: $carried_classes,
+      delta_receipt: $delta_receipt
+    }' > "$RUN/review-saturation/r${round}.json"
+}
+
 candidate_file_rows() {
   local round="$1"; shift
   local rows='[]' axis file
@@ -100,6 +134,88 @@ candidate_file_rows() {
   done
   printf '%s' "$rows"
 }
+
+seed_selective_review_route() {
+  local model runtime policy prompt route index stage
+  model="sha256:$(hash_text model)"
+  runtime="sha256:$(hash_text runtime)"
+  policy="sha256:$(hash_text policy)"
+  prompt="sha256:$(hash_text prompt)"
+  index=0
+  for stage in holdout shadow canary canary canary canary canary; do
+    "$ADAPTIVE" review-cascade-record \
+      --root "$WORK" \
+      --sample-id "$(printf 'sample_%024x' "$((8000 + index))")" \
+      --model-fingerprint "$model" \
+      --execution-variant native \
+      --role top \
+      --task-class routine-repair \
+      --runtime-fingerprint "$runtime" \
+      --policy-fingerprint "$policy" \
+      --prompt-gate-fingerprint "$prompt" \
+      --stage "$stage" \
+      --quality passed \
+      --verification passed \
+      --full-input-tokens 3000 \
+      --full-output-tokens 300 \
+      --cascade-input-tokens 1200 \
+      --cascade-output-tokens 180 \
+      --full-rounds 2 \
+      --cascade-rounds 2 >/dev/null
+    index=$((index + 1))
+  done
+  while :; do
+    route="$("$ADAPTIVE" review-cascade-resolve \
+      --root "$WORK" \
+      --model-fingerprint "$model" \
+      --execution-variant native \
+      --role top \
+      --task-class routine-repair \
+      --runtime-fingerprint "$runtime" \
+      --policy-fingerprint "$policy" \
+      --prompt-gate-fingerprint "$prompt")"
+    [ "$(printf '%s' "$route" | jq -r .route)" = "selective" ] && break
+    [ "$index" -ge 17 ] && return 1
+    "$ADAPTIVE" review-cascade-record \
+      --root "$WORK" \
+      --sample-id "$(printf 'sample_%024x' "$((8000 + index))")" \
+      --model-fingerprint "$model" \
+      --execution-variant native \
+      --role top \
+      --task-class routine-repair \
+      --runtime-fingerprint "$runtime" \
+      --policy-fingerprint "$policy" \
+      --prompt-gate-fingerprint "$prompt" \
+      --stage canary \
+      --quality passed \
+      --verification passed \
+      --full-input-tokens 3000 \
+      --full-output-tokens 300 \
+      --cascade-input-tokens 1200 \
+      --cascade-output-tokens 180 \
+      --full-rounds 2 \
+      --cascade-rounds 2 >/dev/null
+    index=$((index + 1))
+  done
+  "$ADAPTIVE" review-cascade-resolve \
+    --root "$WORK" \
+    --run "$RUN" \
+    --write \
+    --model-fingerprint "$model" \
+    --execution-variant native \
+    --role top \
+    --task-class routine-repair \
+    --runtime-fingerprint "$runtime" \
+    --policy-fingerprint "$policy" \
+    --prompt-gate-fingerprint "$prompt" >/dev/null
+}
+
+if PYTHONPATH="$(dirname "$SCRIPT")" python3 -c \
+  'from kimiflow_core.review_convergence import _required_delta_axes as required; axes=["spec-correctness","failure-security","standards-integration"]; assert required(["src/auth/session.py"], axes) == {"spec-correctness","failure-security"}; assert required(["src/payments/tokens.py"], axes) == {"spec-correctness","failure-security"}; assert required(["Migrations/001.sql"], axes) == {"spec-correctness","failure-security"}; assert required(["SKILL.md"], axes) == {"spec-correctness","standards-integration"}; assert required(["Docs/render/widget.md"], axes) == {"spec-correctness","standards-integration"}; assert required(["docs/authors.md"], axes) == {"spec-correctness"}'; then
+  pass "review_lease_path_axes_are_precise"
+else
+  fail "review_lease_path_axes_are_precise"
+fi
 
 # Saturation: every scheduled axis and material disposition is evidence-bound.
 reset_run
@@ -311,6 +427,98 @@ write_repair '[{
   "checks":[{"kind":"verifier","method":"inspect trace"}]
 }]'
 assert_gate "$("$SCRIPT" repair --run "$RUN" --round 1)" CLOSED dependency-cycle "repair_cycle_closes"
+
+# Review lease: a repair delta may narrow axes only after exact A/B calibration.
+reset_run
+line='CANDIDATE HIGH src/reviewed.py:1 :: stale behavior survives the repair :: verify=command:bash hooks/test-review-convergence-gate.sh'
+write_candidate 1 spec-correctness "$line"
+write_candidate 1 failure-security NONE
+write_candidate 1 standards-integration NONE
+evidence="$(write_evidence lease-r1.txt stale-behavior 'command:bash hooks/test-review-convergence-gate.sh' reproduced confirmed)"
+printf 'FINDING HIGH src/reviewed.py:1 :: stale behavior survives the repair :: class=stale-behavior :: verify=command:bash hooks/test-review-convergence-gate.sh :: evidence=%s\n' \
+  "$evidence" > "$RUN/findings/r1-code-verified.md"
+rows="$(candidate_file_rows 1 spec-correctness failure-security standards-integration)"
+dispositions="$(jq -nc \
+  --arg id "$(candidate_id spec-correctness "$line")" \
+  --arg evidence "$evidence" \
+  '[{candidate_id:$id,outcome:"promoted",stable_class:"stale-behavior",verify:"command:bash hooks/test-review-convergence-gate.sh",evidence:$evidence}]')"
+scheduled='["spec-correctness","failure-security","standards-integration"]'
+write_saturation_v2_receipt 1 "$scheduled" "$scheduled" "$rows" "$dispositions" '[]' 'null'
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness,failure-security,standards-integration)" OPEN saturated "saturation_v2_full_round_opens"
+
+jq -n \
+  --arg plan_sha256 "$(hash_file "$RUN/PLAN.md")" \
+  --arg findings_sha256 "$(hash_file "$RUN/findings/r1-code-verified.md")" \
+  '{
+    schema_version:1,
+    round:1,
+    plan_sha256:$plan_sha256,
+    findings_sha256:$findings_sha256,
+    groups:[{
+      id:"stale-behavior",
+      classes:["stale-behavior"],
+      root_cause:"The implementation retained the stale behavior at the repaired boundary.",
+      depends_on:[],
+      repair:"Replace the stale behavior and rerun its exact falsifier.",
+      checks:[{kind:"command",method:"bash hooks/test-review-convergence-gate.sh"}]
+    }]
+  }' > "$RUN/review-repairs/r1.json"
+assert_gate "$("$SCRIPT" repair --run "$RUN" --round 1)" OPEN repair-ready "review_lease_source_repair_opens"
+
+printf 'repaired\n' > "$WORK/src/reviewed.py"
+basis_json="$("$SCRIPT" basis --run "$RUN" --base HEAD --details)"
+jq -n \
+  --arg plan_sha256 "$(hash_file "$RUN/PLAN.md")" \
+  --arg source_saturation_sha256 "$(hash_file "$RUN/review-saturation/r1.json")" \
+  --arg repair_sha256 "$(hash_file "$RUN/review-repairs/r1.json")" \
+  --argjson review_files "$(printf '%s' "$basis_json" | jq -c .review_files)" \
+  --arg route_receipt_sha256 "$(printf '0%.0s' {1..64})" \
+  --argjson scheduled_axes "$scheduled" \
+  '{
+    schema_version:1,
+    source_round:1,
+    round:2,
+    plan_sha256:$plan_sha256,
+    source_saturation_sha256:$source_saturation_sha256,
+    repair_sha256:$repair_sha256,
+    scheduled_axes:$scheduled_axes,
+    rerun_axes:["spec-correctness"],
+    carried_axes:["failure-security","standards-integration"],
+    review_files:$review_files,
+    changed_paths:["src/reviewed.py"],
+    route_receipt_sha256:$route_receipt_sha256
+  }' > "$RUN/review-deltas/r2.json"
+assert_gate "$("$SCRIPT" delta --run "$RUN" --round 2 --scheduled-axes spec-correctness,failure-security,standards-integration --rerun-axes spec-correctness)" CLOSED review-cascade-route-invalid "review_lease_without_calibration_closes"
+
+if seed_selective_review_route; then
+  route_sha="$(hash_file "$RUN/REVIEW-CASCADE-ROUTE.json")"
+  jq --arg route_receipt_sha256 "$route_sha" \
+    '.route_receipt_sha256=$route_receipt_sha256' \
+    "$RUN/review-deltas/r2.json" > "$RUN/review-deltas/r2.next"
+  mv "$RUN/review-deltas/r2.next" "$RUN/review-deltas/r2.json"
+  assert_gate "$("$SCRIPT" delta --run "$RUN" --round 2 --scheduled-axes spec-correctness,failure-security,standards-integration --rerun-axes spec-correctness)" OPEN selective-review-ready "review_lease_calibrated_delta_opens"
+
+  resolved="$(write_evidence lease-r2.txt stale-behavior 'command:bash hooks/test-review-convergence-gate.sh' not_reproduced repaired)"
+  printf 'RESOLVED class=stale-behavior :: verify=command:bash hooks/test-review-convergence-gate.sh :: evidence=%s\n' \
+    "$resolved" > "$RUN/findings/r2-code-verified.md"
+  write_candidate 2 spec-correctness NONE
+  rows="$(candidate_file_rows 2 spec-correctness)"
+  delta_spec="$(jq -Rn --arg value "review-deltas/r2.json@$(hash_file "$RUN/review-deltas/r2.json")" '$value')"
+  write_saturation_v2_receipt 2 "$scheduled" '["spec-correctness"]' "$rows" '[]' '[]' "$delta_spec"
+  assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 2 --axes spec-correctness)" OPEN saturated "review_lease_selective_saturation_opens"
+
+  printf '\n' >> "$RUN/REVIEW-CASCADE-ROUTE.json"
+  assert_gate "$("$SCRIPT" delta --run "$RUN" --round 2 --scheduled-axes spec-correctness,failure-security,standards-integration --rerun-axes spec-correctness)" CLOSED review-cascade-route-inactive "review_lease_route_digest_drift_closes"
+
+  jq --arg route_receipt_sha256 "$(hash_file "$RUN/REVIEW-CASCADE-ROUTE.json")" \
+    '.route_receipt_sha256=$route_receipt_sha256' \
+    "$RUN/review-deltas/r2.json" > "$RUN/review-deltas/r2.next"
+  mv "$RUN/review-deltas/r2.next" "$RUN/review-deltas/r2.json"
+  sed -i.bak 's/Architecture deliberation: off/Architecture deliberation: active/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+  assert_gate "$("$SCRIPT" delta --run "$RUN" --round 2 --scheduled-axes spec-correctness,failure-security,standards-integration --rerun-axes spec-correctness)" CLOSED critical-review-requires-full "review_lease_critical_run_stays_full"
+else
+  fail "review_lease_calibration_setup"
+fi
 
 # Trajectory: after two failed code strategy epochs a new plan-bound hypothesis is mandatory.
 reset_run
