@@ -4,10 +4,26 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.21
+
+The review-convergence and research-freshness release: Kimiflow finds material review problems earlier, changes
+failed repair strategies instead of repeating them, and binds current technical research to applicable evidence.
+
 ### Changed
 
+- Review passes now saturate every scheduled axis on one immutable affected-path snapshot, batch related repairs,
+  and require a new plan-bound trajectory after repeated failed strategies.
+- Current technical research now verifies bounded primary-source receipts for retrieval time, project
+  applicability, version or release status, and the exact risk-shaped research policy.
 - The GitHub README now presents Kimiflow as an explicit graph-loop, with a theme-aware static overview and a
   linked interactive GitHub Pages view for feature, bug-fix, parallel-work, and release paths.
+
+### Fixed
+
+- Completed-run outcome evaluation now replays contracted review gates with the original saturation axes instead
+  of dropping newly required evidence.
 
 ## 0.2.20
 

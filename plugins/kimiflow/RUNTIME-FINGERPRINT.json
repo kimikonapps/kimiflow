@@ -5,19 +5,19 @@
       "bytes": 511,
       "mode": "0644",
       "path": ".claude-plugin/plugin.json",
-      "sha256": "sha256:c3730dd02bdd34147e7931bd81be2fb65b29879f7beb47e005b3fa51562bcd4d"
+      "sha256": "sha256:a802d59e2d99f15e41c073e28ffceefa537e1dd3be0f5dd125e73b6709501431"
     },
     {
       "bytes": 3614,
       "mode": "0644",
       "path": ".codex-plugin/plugin.json",
-      "sha256": "sha256:892a93ae4e227966971633bf94335fbb5f45164c0e5df6d8e4d01e1961591a43"
+      "sha256": "sha256:bac55d8ceb3feed6f4981a9df08424d6ab2dbc2cad4ef7b325da89528704ecf3"
     },
     {
       "bytes": 17397,
       "mode": "0644",
       "path": "COMPATIBILITY.md",
-      "sha256": "sha256:95fd9889a24706a71f99987389f7edb83ab266d0a876f26c1b24aa90c56e09de"
+      "sha256": "sha256:3f7dca76fc9a54a33319d7c48f6cb128a1d6f2845571e0e35e8acac5b74eeb4c"
     },
     {
       "bytes": 1064,
@@ -758,10 +758,10 @@
       "sha256": "sha256:3739aa87e5bb6cca375bf42345480a544ef2f19be331f52f6a6d3bb7e09154bc"
     },
     {
-      "bytes": 20115,
+      "bytes": 19998,
       "mode": "0644",
       "path": "phases/phase-2-understand.md",
-      "sha256": "sha256:4725b304cb034b410e5f443de42de990bcff0ea30a0288a3d9c8b226a204e65f"
+      "sha256": "sha256:b71fc4acaecb4cfcd34960ebd0a03ce850a95465a212f31ac0b360dd2414a4e7"
     },
     {
       "bytes": 9295,
@@ -884,6 +884,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:3a339b3dd0798a0cc43331f2b33d9e039305eb72a86829f04c3d9f59df444e00",
+  "runtime_fingerprint": "sha256:4096e4f7b4bf3c8b3984a7637c688d8722f99ed160d1631bda7684d98883bf8b",
   "schema_version": 1
 }
