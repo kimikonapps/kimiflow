@@ -20,6 +20,21 @@ FOCUSED_SURFACES = {
 LEGACY_LOCAL_SURFACES = {
     "test-memory-router-parity.sh": "test-memory-router-unit.sh",
 }
+EVIDENCE_SURFACES = {
+    "test-intake-gate.sh",
+    "test-build-replan.sh",
+    "test-review-convergence-gate.sh",
+    "test-conformance-gate.sh",
+}
+EVIDENCE_COMMAND = (
+    "bash",
+    "hooks/evidence-eval.sh",
+    "check",
+    "--manifest",
+    "evals/suites/evidence-foundation-v1.json",
+    "--baseline",
+    "evals/baselines/evidence-foundation-v1.json",
+)
 FULL_REQUIRED_TOOLS = ("bash", "git", "jq", "sqlite3", "shasum")
 PINNED_PARITY_TAG = "kimiflow--v0.1.50"
 PORTABILITY_MODULES = (
@@ -62,7 +77,12 @@ def shell_surfaces(root):
 
 def inventory(root):
     surfaces = shell_surfaces(root)
-    known_special = set(PRODUCTION_SURFACES) | set(FOCUSED_SURFACES) | set(LEGACY_LOCAL_SURFACES)
+    known_special = (
+        set(PRODUCTION_SURFACES)
+        | set(FOCUSED_SURFACES)
+        | set(LEGACY_LOCAL_SURFACES)
+        | set(EVIDENCE_SURFACES)
+    )
     missing = sorted(known_special - set(surfaces))
     if missing:
         raise PlanError("declared test surfaces missing: %s" % ", ".join(missing))
@@ -81,6 +101,10 @@ def inventory(root):
             category = "legacy_local"
             replacement = LEGACY_LOCAL_SURFACES[name]
             reason = "retired migration oracle; current runtime covered by %s" % replacement
+        elif name in EVIDENCE_SURFACES:
+            category = "evaluation"
+            replacement = None
+            reason = "executed once by the sealed evidence-foundation suite"
         else:
             category = "full"
             replacement = None
@@ -103,7 +127,10 @@ def inventory(root):
 def lane_commands(root, lane):
     rows = inventory(root)
     if lane == "full":
-        return tuple(("bash", row["path"]) for row in rows if row["category"] == "full")
+        return (
+            tuple(("bash", row["path"]) for row in rows if row["category"] == "full")
+            + (EVIDENCE_COMMAND,)
+        )
     if lane == "portability":
         return (
             ((sys.executable, "-m", "unittest") + PORTABILITY_MODULES,)

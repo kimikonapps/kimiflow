@@ -218,6 +218,7 @@ Produktkonflikt erzeugt. Fixes und exakt triviale Arbeit behalten ihre direkten 
 | Plan-/Review-Gates | AC-Mapping und belegte BLOCKER/HIGHs werden in begrenzten Reparaturrunden gelöst. |
 | Implementation-Conformance-Gate | Rechercheentscheidungen, Invarianten, Pfade, Checks und jede gesperrte Produktanforderung konvergieren in Phase 6; beim Abschluss muss zusätzlich der Commit exakt dem geprüften Stand entsprechen. |
 | Adaptiver Execution-Controller | Run-weites No-Progress und Budgetdruck wählen eine begrenzte Recovery-Aktion; verpflichtende Qualitäts-Gates bleiben erhalten. |
+| Evidence-Evaluation | Vier kritische Flow-Verhalten laufen in CI genau einmal gegen eine versiegelte Baseline des vorherigen Releases; Artefakte enthalten nur begrenzte Metadaten und Digests, nie Prompts, Output, Code, Secrets oder absolute Pfade. |
 | Lokale Run-Steuerung | Hosts erhalten einen Readiness-/Cursor-Vertrag; gemeinsames Locking, Owner-Nachweis und Action-Receipts machen unterstützte Item-Mutationen fail-closed und replay-sicher. |
 | Materielle-Entscheidungs-Gate | Reversible Technik läuft weiter; nur Autorität, Risiko, Zugriff, Privacy/Kosten oder Irreversibilität pausieren. |
 | Red/Green-Gate | Fixes brauchen aufgezeichnete failing/passing Evidence und Regression. |
@@ -246,6 +247,8 @@ mechanisiert die Evidence-Grenzen, ohne Allwissenheit vorzutäuschen.
 - Große, materiell veränderte Kontexte rollen nur bei gemessenem Druck um; kleine Runs bleiben unverändert.
 - Günstigere Modellrouten werden erst nach fünf vergleichbaren sauberen Outcomes freigeschaltet, bei Regression
   entzogen und nie für kritische Arbeit verwendet.
+- Die deterministische Behavior-Evaluation braucht keinen Modell-Call. Modellbewertete Kalibrierung wird nur
+  als nicht-ausführender Release-Plan abgebildet und bleibt außerhalb normaler Runs und CI.
 
 `small` und `quick` überspringen breiten Memory-Recall und den **Vault Pulse** standardmäßig. Ein
 ausdrücklicher Hinweis, dass ein ähnlicher Bug oder Fix schon existierte, löst stattdessen bei jedem
@@ -368,7 +371,7 @@ oder unbekannter Plan-Basis wird vor der Umsetzung revalidiert.
 - [`docs/codebase.md`](docs/codebase.md) - Repository-Map und Zuständigkeiten.
 - [`docs/testing.md`](docs/testing.md) - lokale Checks, Smokes und CI.
 - [`examples/`](examples/README.md) - Small Fix, riskanter Fix und Feature-Walkthrough.
-- [`evals/`](evals/README.md) - verhaltensbasierte Release-Kalibrierung.
+- [`evals/`](evals/README.md) - deterministische Evidence-Checks und verhaltensbasierte Release-Kalibrierung.
 - [`CHANGELOG.md`](CHANGELOG.md) - Release-Historie.
 
 ## Lizenz

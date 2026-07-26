@@ -1,0 +1,219 @@
+{
+  "artifact_type": "baseline",
+  "cases": [
+    {
+      "exit_code": 0,
+      "id": "product-intake",
+      "marker_count": 3,
+      "marker_pass_count": 3,
+      "output_bytes": 789,
+      "output_sha256": "sha256:6daedf19b6a6a79f0d67391594c460c208a1dc6a3e6b1968bd885cbfbcf0da9e",
+      "passed": true,
+      "phase": 1,
+      "skip_detected": false
+    },
+    {
+      "exit_code": 0,
+      "id": "recovery",
+      "marker_count": 1,
+      "marker_pass_count": 1,
+      "output_bytes": 109,
+      "output_sha256": "sha256:cf409505e4e20c382d7c8c9617924e897bbb96d9f88b3deff43c73709e60194f",
+      "passed": true,
+      "phase": 5,
+      "skip_detected": false
+    },
+    {
+      "exit_code": 0,
+      "id": "review-convergence",
+      "marker_count": 3,
+      "marker_pass_count": 3,
+      "output_bytes": 1359,
+      "output_sha256": "sha256:5018d565999a581dd6e661729ca1ad243e4a38b8483657daa6b1b87a388a9464",
+      "passed": true,
+      "phase": 7,
+      "skip_detected": false
+    },
+    {
+      "exit_code": 0,
+      "id": "intent-conformance",
+      "marker_count": 1,
+      "marker_pass_count": 1,
+      "output_bytes": 6101,
+      "output_sha256": "sha256:174406a785820a610869ebfa695bedae43726dd44ccdf9b1ee671a7e5903f5e5",
+      "passed": true,
+      "phase": 6,
+      "skip_detected": false
+    }
+  ],
+  "manifest_sha256": "sha256:38bb3a8b426e46ce879820262e2f911b0197a04425ff3079c75f61232cddbd16",
+  "privacy": {
+    "local_only": true,
+    "stores_absolute_paths": false,
+    "stores_answers": false,
+    "stores_code": false,
+    "stores_output": false,
+    "stores_prompts": false,
+    "stores_secrets": false
+  },
+  "schema_version": 1,
+  "seal": "sha256:55cde36716e4688fa75e105e04b617c5e9a89f35c53f19bdd7bd1c34d54ba5dc",
+  "source_commit": "86faa3bf4aebcdda6ef827de8caedf0d0f56b5aa",
+  "source_snapshot_sha256": "sha256:4b944a54cc5e0e5e0fd10072116b4887902446b88048368270c2f6a52653152b",
+  "suite": "evidence-foundation-v1",
+  "summary": {
+    "case_count": 4,
+    "failure_count": 0,
+    "pass_count": 4,
+    "verdict": "PASS"
+  },
+  "trace": {
+    "spans": [
+      {
+        "kind": "run",
+        "name": "evaluation-suite",
+        "parent_span_id": null,
+        "phase": null,
+        "span_id": "45be525fb71ccaca",
+        "status": "planned",
+        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+      },
+      {
+        "kind": "phase",
+        "name": "phase-1",
+        "parent_span_id": "45be525fb71ccaca",
+        "phase": 1,
+        "span_id": "8f32356f91988321",
+        "status": "planned",
+        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+      },
+      {
+        "kind": "tool",
+        "name": "test-command",
+        "parent_span_id": "8f32356f91988321",
+        "phase": 1,
+        "span_id": "9c5dd0811f43c3d1",
+        "status": "planned",
+        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+      },
+      {
+        "kind": "gate",
+        "name": "product-intake",
+        "parent_span_id": "9c5dd0811f43c3d1",
+        "phase": 1,
+        "span_id": "888a44734dfd86c3",
+        "status": "passed",
+        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+      },
+      {
+        "kind": "phase",
+        "name": "phase-5",
+        "parent_span_id": "45be525fb71ccaca",
+        "phase": 5,
+        "span_id": "4f88196a7cbb4beb",
+        "status": "planned",
+        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+      },
+      {
+        "kind": "tool",
+        "name": "test-command",
+        "parent_span_id": "4f88196a7cbb4beb",
+        "phase": 5,
+        "span_id": "9e5cacc228606af4",
+        "status": "planned",
+        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+      },
+      {
+        "kind": "gate",
+        "name": "recovery",
+        "parent_span_id": "9e5cacc228606af4",
+        "phase": 5,
+        "span_id": "bef7825ca4370f1c",
+        "status": "passed",
+        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+      },
+      {
+        "kind": "recovery",
+        "name": "recovery-check",
+        "parent_span_id": "bef7825ca4370f1c",
+        "phase": 5,
+        "span_id": "6d80eb187452d8e6",
+        "status": "passed",
+        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+      },
+      {
+        "kind": "phase",
+        "name": "phase-7",
+        "parent_span_id": "45be525fb71ccaca",
+        "phase": 7,
+        "span_id": "0f36484a5231d61f",
+        "status": "planned",
+        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+      },
+      {
+        "kind": "tool",
+        "name": "test-command",
+        "parent_span_id": "0f36484a5231d61f",
+        "phase": 7,
+        "span_id": "95a7511873ab3277",
+        "status": "planned",
+        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+      },
+      {
+        "kind": "gate",
+        "name": "review-convergence",
+        "parent_span_id": "95a7511873ab3277",
+        "phase": 7,
+        "span_id": "c93d3e163862c1f0",
+        "status": "passed",
+        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+      },
+      {
+        "kind": "recovery",
+        "name": "recovery-check",
+        "parent_span_id": "c93d3e163862c1f0",
+        "phase": 7,
+        "span_id": "9c2c166e0d634317",
+        "status": "passed",
+        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+      },
+      {
+        "kind": "phase",
+        "name": "phase-6",
+        "parent_span_id": "45be525fb71ccaca",
+        "phase": 6,
+        "span_id": "db8db68e0a3268e5",
+        "status": "planned",
+        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+      },
+      {
+        "kind": "tool",
+        "name": "test-command",
+        "parent_span_id": "db8db68e0a3268e5",
+        "phase": 6,
+        "span_id": "42820b3936452f62",
+        "status": "planned",
+        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+      },
+      {
+        "kind": "gate",
+        "name": "intent-conformance",
+        "parent_span_id": "42820b3936452f62",
+        "phase": 6,
+        "span_id": "db52a1cd3dc950ef",
+        "status": "passed",
+        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+      },
+      {
+        "kind": "handoff",
+        "name": "candidate-result",
+        "parent_span_id": "45be525fb71ccaca",
+        "phase": null,
+        "span_id": "20ec036274bc1fd6",
+        "status": "passed",
+        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+      }
+    ],
+    "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+  }
+}

@@ -1,9 +1,58 @@
-# kimiflow behavioral evals
+# kimiflow evaluations
 
-On-demand, **out-of-CI** pressure tests for kimiflow's gates. They check whether the deployed skill
-(`SKILL.md` + `reference.md`) makes the orchestrator hold a gate when speed, sunk cost, authority, or
-exhaustion push toward skipping it — the superpowers `testing-skills-with-subagents` method (TDD for
-process docs). LLM-judged, slow, and variant by nature: **never wired into CI.**
+Kimiflow has two deliberately separate evaluation lanes:
+
+1. **Deterministic evidence foundation:** a local, model-free CI lane for Product Intake, Recovery,
+   Review Convergence, and Intent Conformance.
+2. **Behavioral release calibration:** on-demand model pressure tests for the deployed skill. These
+   remain slow, variable, and strictly out of normal CI.
+
+## Deterministic evidence foundation
+
+The versioned suite in [`suites/evidence-foundation-v1.json`](suites/evidence-foundation-v1.json)
+runs four existing gate tests exactly once and compares their semantic result with a sealed baseline
+from the preceding release. CI stores only bounded metadata: case status, marker counts, output byte
+counts and SHA-256 digests. Prompts, answers, test output, code, secrets, and absolute paths are never
+written to the artifact.
+
+```bash
+# Normal CI-safe check: run candidate and block any regression.
+bash hooks/evidence-eval.sh check \
+  --manifest evals/suites/evidence-foundation-v1.json \
+  --baseline evals/baselines/evidence-foundation-v1.json
+
+# Optional local artifact and integrity/replay operations.
+bash hooks/evidence-eval.sh run \
+  --manifest evals/suites/evidence-foundation-v1.json \
+  --output /tmp/kimiflow-candidate.json
+bash hooks/evidence-eval.sh verify --artifact /tmp/kimiflow-candidate.json
+bash hooks/evidence-eval.sh replay \
+  --manifest evals/suites/evidence-foundation-v1.json \
+  --artifact /tmp/kimiflow-candidate.json
+```
+
+Every artifact carries one trace ID; any run, phase, model, tool, gate, handoff, or recovery spans
+it contains are parent-linked. Replay is accepted only against the same source snapshot. Manifests
+can invoke only repository `hooks/test-*.sh` surfaces, so this evaluator cannot become a general
+command runner.
+
+`model-plan` emits a sealed, non-executing release plan for the behavioral groups:
+
+```bash
+bash hooks/evidence-eval.sh model-plan \
+  --manifest evals/suites/evidence-foundation-v1.json
+```
+
+It always declares `release_only`, zero model calls, and zero network calls. Normal runs and CI never
+start a model evaluation.
+
+## Behavioral release calibration
+
+These are on-demand, **out-of-CI** pressure tests for kimiflow's gates. They check whether the
+deployed skill (`SKILL.md` + `reference.md`) makes the orchestrator hold a gate when speed, sunk cost,
+authority, or exhaustion push toward skipping it — the superpowers
+`testing-skills-with-subagents` method (TDD for process docs). LLM-judged, slow, and variant by
+nature: **never wired into CI.**
 
 ## What these are (and aren't)
 **Release-calibration, not a runtime oracle.** These scenarios measure whether the *deployed skill*

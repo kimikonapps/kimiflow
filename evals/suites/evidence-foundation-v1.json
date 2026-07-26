@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "suite": "evidence-foundation-v1",
+  "cases": [
+    {
+      "id": "product-intake",
+      "phase": 1,
+      "command": [
+        "bash",
+        "hooks/test-intake-gate.sh"
+      ],
+      "required_markers": [
+        "chat_writes_content_free_receipt",
+        "planning_blocked_before_receipt",
+        "ALL GREEN"
+      ],
+      "trace_recovery": false
+    },
+    {
+      "id": "recovery",
+      "phase": 5,
+      "command": [
+        "bash",
+        "hooks/test-build-replan.sh"
+      ],
+      "required_markers": [
+        "OK"
+      ],
+      "trace_recovery": true
+    },
+    {
+      "id": "review-convergence",
+      "phase": 7,
+      "command": [
+        "bash",
+        "hooks/test-review-convergence-gate.sh"
+      ],
+      "required_markers": [
+        "saturation_clean_axis_opens",
+        "trajectory_repeated_strategy_closes",
+        "ALL GREEN"
+      ],
+      "trace_recovery": true
+    },
+    {
+      "id": "intent-conformance",
+      "phase": 6,
+      "command": [
+        "bash",
+        "hooks/test-conformance-gate.sh"
+      ],
+      "required_markers": [
+        "ALL GREEN"
+      ],
+      "trace_recovery": false
+    }
+  ],
+  "model_release": {
+    "policy": "release_only",
+    "groups": [
+      {
+        "id": "product-intake",
+        "scenarios": [
+          "21-product-intent-ownership"
+        ]
+      },
+      {
+        "id": "recovery",
+        "scenarios": [
+          "03-plan-gate-cap",
+          "23-adaptive-execution-control"
+        ]
+      },
+      {
+        "id": "review-convergence",
+        "scenarios": [
+          "reviewer/A-green-but-acceptance-unmet",
+          "reviewer/B-untested-risk",
+          "reviewer/C-test-narrower-than-intent"
+        ]
+      },
+      {
+        "id": "intent-conformance",
+        "scenarios": [
+          "22-implementation-conformance"
+        ]
+      }
+    ]
+  }
+}

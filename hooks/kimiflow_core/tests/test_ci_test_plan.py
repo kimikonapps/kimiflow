@@ -19,7 +19,10 @@ class CiTestPlanCase(unittest.TestCase):
         )
         self.assertEqual(actual, expected)
         self.assertEqual(len(actual), len(set(actual)))
-        self.assertTrue(all(row["category"] in {"full", "production", "focused", "legacy_local"} for row in rows))
+        self.assertTrue(all(
+            row["category"] in {"full", "production", "focused", "legacy_local", "evaluation"}
+            for row in rows
+        ))
 
     def test_full_lane_excludes_focused_and_legacy_duplicates(self):
         commands = ci_test_plan.lane_commands(self.root, "full")
@@ -33,6 +36,26 @@ class CiTestPlanCase(unittest.TestCase):
         self.assertNotIn("hooks/test-memory-router-parity.sh", paths)
         self.assertNotIn("hooks/test-gate.sh", paths)
         self.assertNotIn("hooks/test-weakening-scan.sh", paths)
+
+    def test_full_lane_bundles_evidence_surfaces_once(self):
+        commands = ci_test_plan.lane_commands(self.root, "full")
+        self.assertEqual(commands.count(ci_test_plan.EVIDENCE_COMMAND), 1)
+        direct_paths = {
+            command[1]
+            for command in commands
+            if len(command) == 2 and command[0] == "bash"
+        }
+        self.assertFalse({
+            "hooks/" + name for name in ci_test_plan.EVIDENCE_SURFACES
+        } & direct_paths)
+        rows = {
+            os.path.basename(row["path"]): row
+            for row in ci_test_plan.inventory(self.root)
+        }
+        self.assertTrue(all(
+            rows[name]["category"] == "evaluation"
+            for name in ci_test_plan.EVIDENCE_SURFACES
+        ))
 
     def test_portability_lane_targets_platform_sensitive_contracts(self):
         command, *shell_commands = ci_test_plan.lane_commands(self.root, "portability")
