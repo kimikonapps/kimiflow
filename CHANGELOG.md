@@ -4,7 +4,10 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Documentation
+
+- Updated the English and German GitHub READMEs with an automatically current release link and the
+  `0.2.22` ignored-artifact worktree behavior.
 
 ## 0.2.22
 

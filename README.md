@@ -13,6 +13,8 @@
 
 [Deutsch](README.de.md) | [Workflow reference](reference.md) | [Examples](examples/README.md) | [Compatibility](COMPATIBILITY.md)
 
+[![Latest release](https://img.shields.io/github/v/release/kimikonapps/kimiflow?display_name=tag&sort=semver)](https://github.com/kimikonapps/kimiflow/releases/latest)
+
 Kimiflow is an explicitly invoked skill/plugin that coordinates an eight-phase engineering loop:
 clarify, understand or diagnose, plan, review, implement, verify, code-review, and commit. It keeps
 simple work small, but makes important gates enforceable by scripts and hooks instead of relying on
@@ -422,6 +424,8 @@ An active run records its owning Codex or Claude session. Other sessions may rea
 Before writing, Kimiflow inventories every checkout. A clean/free primary stays direct with no broker
 state. If primary is dirty or another run owns it, Kimiflow automatically creates exactly one locked,
 owned `codex/<slug>*` worktree; further runs queue FIFO without asking for another confirmation.
+Unrelated ignored files do not make an otherwise safe checkout busy. Kimiflow-owned ignored run
+artifacts are preserved during retirement without weakening ancestry, ownership, or integration checks.
 Phase-3 path/contract declarations and the exact PLAN bytes gate writes. Delivery uses merge-tree
 preflight, no-shell project checks before mutation, an owned-branch reconciliation commit when needed,
 and an ff-only primary update followed only by mechanical Git integrity receipts. Retirement requires
