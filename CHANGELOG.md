@@ -6,6 +6,25 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.22
+
+The evidence-foundation release: Kimiflow can evaluate critical control-plane behavior deterministically and
+handle normal ignored run artifacts without blocking safe worktree delivery.
+
+### Added
+
+- Deterministic, privacy-bounded evidence evaluations with versioned suites and baselines for Product Intake,
+  recovery, review convergence, and intent conformance.
+- CI integration for the evidence-evaluation suite, including negative fixtures that prove known-bad behavior
+  remains blocked.
+
+### Fixed
+
+- Kimiflow-owned worktrees now tolerate unrelated ignored content while preserving tracked-path and ownership
+  safety.
+- Worktree retirement now handles ignored run artifacts without losing ancestry, integration, or cleanup
+  guarantees.
+
 ## 0.2.21
 
 The review-convergence and research-freshness release: Kimiflow finds material review problems earlier, changes

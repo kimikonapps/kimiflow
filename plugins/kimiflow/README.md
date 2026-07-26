@@ -303,6 +303,7 @@ trivial work and fixes keep their direct routes.
 | Plan-blocker and review gates | Acceptance mappings and evidenced `BLOCKER/HIGH` findings are resolved within a bounded repair budget. |
 | Implementation-conformance gate | Researched decisions, invariants, affected paths, exact checks, and every locked product requirement converge in Phase 6; finish additionally proves the committed delivery matches. |
 | Adaptive execution controller | Run-wide no-progress and budget pressure select a bounded recovery action; mandatory quality gates remain intact. |
+| Evidence evaluation | Four critical workflow behaviors run once in CI against a sealed prior-release baseline; artifacts contain bounded metadata and digests, never prompts, output, code, secrets, or absolute paths. |
 | Local run control plane | Hosts receive one readiness/cursor contract; shared locking, owner proof and action receipts make supported item mutations fail closed and replay-safe. |
 | Material-decision gate | Reversible technical work continues; only missing authority, material risk, external access, privacy/cost, or irreversibility pauses. |
 | Red/green gate | Fixes cannot finish without recorded failing and passing evidence plus regression coverage. |
@@ -337,6 +338,8 @@ mechanizes the evidence boundaries without pretending a tool can prove that no b
   independent ensemble. Mechanical tests, diff, scope, secret and evidence gates never disappear.
 - Optional code intelligence is Shadow-first and replaces lexical context only after evidence; it never adds a
   duplicate model path or tokens to small/local work.
+- Deterministic behavior evaluation adds no model call. Model-judged calibration is represented by a
+  non-executing release plan and stays outside normal runs and CI.
 
 `small` and `quick` skip broad memory recall and the **Vault Pulse** by default. An explicit user cue that a
 similar bug or fix existed before instead triggers one targeted local recall with at most five hits at any scope,
@@ -451,7 +454,7 @@ basis is unknown, Kimiflow revalidates before implementation instead of building
 - [`docs/codebase.md`](docs/codebase.md) - repository map and ownership boundaries.
 - [`docs/testing.md`](docs/testing.md) - local, smoke, and CI verification.
 - [`examples/`](examples/README.md) - small fix, risky fix, and feature walkthroughs.
-- [`evals/`](evals/README.md) - behavioral release calibration scenarios.
+- [`evals/`](evals/README.md) - deterministic evidence checks and behavioral release calibration.
 - [`CHANGELOG.md`](CHANGELOG.md) - release history.
 
 ## License

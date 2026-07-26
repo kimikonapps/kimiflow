@@ -78,6 +78,12 @@ def _git_text(root, args):
     return _git(root, args).stdout.decode("utf-8", "surrogateescape").strip()
 
 
+def _kimiflow_only_ignored(root, status):
+    if "ignored_only_kimiflow" in status:
+        return status["ignored_only_kimiflow"]
+    return wp.kimiflow_only_ignored_at(root, status)
+
+
 def _head(root):
     value = _git_text(root, ["rev-parse", "HEAD"])
     if not SHA_RE.fullmatch(value):
@@ -478,7 +484,7 @@ def _validate_terminal_receipts(data):
             )
             if (
                 tree["dirty"]
-                or not wp.kimiflow_only_ignored(tree)
+                or not _kimiflow_only_ignored(task["path"], tree)
                 or collision["action"] != "disjoint"
                 or _active_run(primary)
             ):
@@ -803,7 +809,6 @@ def route(root, run, write=False):
         primary_tree = next(tree for tree in status["worktrees"] if tree["primary"])
         main_free = active_run == run or (
             not primary_tree["dirty"]
-            and wp.kimiflow_only_ignored(primary_tree)
             and active_run is None
         )
         if current != primary:
@@ -933,6 +938,46 @@ def _changed_paths(root, older, newer):
         for item in proc.stdout.split(b"\0")
         if item
     )
+
+
+def _untracked_ignored_path(root, relative):
+    tracked = _git(
+        root,
+        ["ls-files", "--error-unmatch", "--", relative],
+        check=False,
+    )
+    if tracked.returncode == 0:
+        return False
+    if tracked.returncode != 1:
+        raise wp.WorkspaceError("cannot inspect primary path tracking")
+    ignored = _git(
+        root,
+        ["check-ignore", "--quiet", "--no-index", "--", relative],
+        check=False,
+    )
+    if ignored.returncode not in (0, 1):
+        raise wp.WorkspaceError("cannot inspect ignored primary path")
+    return ignored.returncode == 0
+
+
+def _ignored_delivery_conflicts(root, delivered_paths):
+    conflicts = set()
+    for relative in normalize_paths(delivered_paths):
+        absolute = os.path.join(root, *relative.split("/"))
+        if os.path.lexists(absolute) and _untracked_ignored_path(root, relative):
+            conflicts.add(relative)
+        parent = os.path.dirname(relative).replace(os.sep, "/")
+        while parent:
+            absolute_parent = os.path.join(root, *parent.split("/"))
+            if (
+                os.path.lexists(absolute_parent)
+                and (os.path.islink(absolute_parent) or not os.path.isdir(absolute_parent))
+                and _untracked_ignored_path(root, parent)
+            ):
+                conflicts.add(parent)
+                break
+            parent = os.path.dirname(parent).replace(os.sep, "/")
+    return sorted(conflicts)
 
 
 def _plan_digest(root, run):
@@ -1156,25 +1201,16 @@ def _post_cas_delivery_reason(
         ["ls-files", "--others", "--exclude-standard", "-z"],
         0,
     )
-    primary_ignored, ignored_count = wp.stream_nul_git_paths(
-        primary,
-        ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"],
-        wp.IGNORED_PATH_SAMPLE_LIMIT,
-    )
-    if primary_untracked or (
-        ignored_count != len(primary_ignored)
-        or any(
-            path != ".kimiflow" and not path.startswith(".kimiflow/")
-            for path in primary_ignored
-        )
-    ):
+    if primary_untracked:
         return "primary-mutated-at-ref-boundary"
+    if _ignored_delivery_conflicts(primary, delivered_paths):
+        return "ignored-path-collision-at-ref-boundary"
     entry = _registered_task_entry(primary, descriptor, task)
     tree = wp.worktree_status(task["path"])
     if (
         _head(task["path"]) != task_before
         or tree["dirty"]
-        or not wp.kimiflow_only_ignored(tree)
+        or not _kimiflow_only_ignored(task["path"], tree)
         or not _matching_owned_tree(primary, task, task_before)
         or not entry
         or not wp.owner_receipt_matches(entry["path"], entry)
@@ -1581,7 +1617,7 @@ def integrate(root, run, checks=(), write=False):
                 "reason": "primary-ref-changed",
             }
         primary_tree = next(tree for tree in status["worktrees"] if tree["primary"])
-        if primary_tree["dirty"] or not wp.kimiflow_only_ignored(primary_tree):
+        if primary_tree["dirty"]:
             return {"schema_version": BROKER_SCHEMA, "status": "ready-to-integrate", "reason": "primary-dirty"}
         entry = _registered_task_entry(primary, descriptor, task)
         if not entry or not wp.owner_receipt_matches(entry["path"], entry):
@@ -1589,7 +1625,7 @@ def integrate(root, run, checks=(), write=False):
         tree = wp.find_tree(status, entry["path"])
         if (
             tree["dirty"]
-            or not wp.kimiflow_only_ignored(tree)
+            or not _kimiflow_only_ignored(entry["path"], tree)
             or not tree["kimiflow_owned"]
             or not _matching_owned_tree(primary, task, tree["head"])
         ):
@@ -1678,6 +1714,17 @@ def integrate(root, run, checks=(), write=False):
                 "reason": "undeclared-task-delta",
                 "paths": delivered_paths,
             }
+        ignored_conflicts = _ignored_delivery_conflicts(primary, delivered_paths)
+        if ignored_conflicts:
+            task["state"] = "ready-to-integrate"
+            if write:
+                _write_broker(descriptor, state)
+            return {
+                "schema_version": BROKER_SCHEMA,
+                "status": "ready-to-integrate",
+                "reason": "ignored-path-collision",
+                "paths": ignored_conflicts,
+            }
         current_collision = _refresh_delivery_collision(
             primary,
             state,
@@ -1712,7 +1759,7 @@ def integrate(root, run, checks=(), write=False):
         if (
             _head(entry["path"]) != task_before
             or checked_tree["dirty"]
-            or not wp.kimiflow_only_ignored(checked_tree)
+            or not _kimiflow_only_ignored(entry["path"], checked_tree)
             or not _matching_owned_tree(primary, task, task_before)
             or not checked_entry
             or not wp.owner_receipt_matches(checked_entry["path"], checked_entry)
@@ -1739,8 +1786,14 @@ def integrate(root, run, checks=(), write=False):
                 _write_broker(descriptor, state)
             return {"schema_version": BROKER_SCHEMA, "status": "ready-to-integrate", "reason": "primary-advanced"}
         latest = wp.worktree_status(primary)
-        if latest["dirty"] or not wp.kimiflow_only_ignored(latest):
+        if latest["dirty"]:
             return {"schema_version": BROKER_SCHEMA, "status": "ready-to-integrate", "reason": "primary-dirty"}
+        if _ignored_delivery_conflicts(primary, delivered_paths):
+            return {
+                "schema_version": BROKER_SCHEMA,
+                "status": "ready-to-integrate",
+                "reason": "ignored-path-collision-after-check",
+            }
         current_collision = _refresh_delivery_collision(
             primary,
             state,
@@ -1783,7 +1836,7 @@ def integrate(root, run, checks=(), write=False):
         elif (
             _head(entry["path"]) != task_before
             or boundary_tree["dirty"]
-            or not wp.kimiflow_only_ignored(boundary_tree)
+            or not _kimiflow_only_ignored(entry["path"], boundary_tree)
             or not _matching_owned_tree(primary, task, task_before)
             or not boundary_entry
             or not wp.owner_receipt_matches(boundary_entry["path"], boundary_entry)
@@ -1797,10 +1850,10 @@ def integrate(root, run, checks=(), write=False):
             boundary_reason = "peer-collision-at-delivery-boundary"
         else:
             boundary_primary = wp.worktree_status(primary)
-            if boundary_primary["dirty"] or not wp.kimiflow_only_ignored(
-                boundary_primary
-            ):
+            if boundary_primary["dirty"]:
                 boundary_reason = "primary-dirty-at-delivery-boundary"
+            elif _ignored_delivery_conflicts(primary, delivered_paths):
+                boundary_reason = "ignored-path-collision-at-delivery-boundary"
         if boundary_reason:
             task["state"] = boundary_status
             task["journal"] = None
@@ -1898,15 +1951,15 @@ def _retirement_checkout_matches(primary, task, require_lock=True):
     ):
         return False
     tree = wp.worktree_status(task["path"])
-    return not tree["dirty"] and wp.kimiflow_only_ignored(tree)
+    return not tree["dirty"] and _kimiflow_only_ignored(task["path"], tree)
 
 
 def _archived_checkout_status(path, admin_dir, common_dir=None):
     environment = os.environ.copy()
-    environment["GIT_DIR"] = common_dir or admin_dir
+    environment["GIT_DIR"] = admin_dir
     environment["GIT_WORK_TREE"] = path
     if common_dir:
-        environment["GIT_INDEX_FILE"] = os.path.join(admin_dir, "index")
+        environment["GIT_COMMON_DIR"] = common_dir
 
     def run(args):
         return subprocess.run(
@@ -1950,13 +2003,25 @@ def _archived_checkout_status(path, admin_dir, common_dir=None):
     result["dirty_paths_truncated"] = (
         result["dirty_path_count"] > len(result["dirty_paths"])
     )
-    ignored_paths, ignored_count = paths(
-        ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"],
-        wp.IGNORED_PATH_SAMPLE_LIMIT,
+    ignored = run(
+        ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"]
     )
-    result["ignored_paths"] = ignored_paths
-    result["ignored_count"] = ignored_count
-    result["ignored_paths_truncated"] = ignored_count > len(ignored_paths)
+    if ignored.returncode != 0:
+        raise wp.WorkspaceError("cannot inspect archived worktree paths")
+    ignored_values = [
+        raw.decode("utf-8", "surrogateescape")
+        for raw in ignored.stdout.split(b"\0")
+        if raw
+    ]
+    result["ignored_paths"] = ignored_values[: wp.IGNORED_PATH_SAMPLE_LIMIT]
+    result["ignored_count"] = len(ignored_values)
+    result["ignored_paths_truncated"] = (
+        len(ignored_values) > len(result["ignored_paths"])
+    )
+    result["ignored_only_kimiflow"] = all(
+        path == ".kimiflow" or path.startswith(".kimiflow/")
+        for path in ignored_values
+    )
     return result
 
 
@@ -2008,8 +2073,8 @@ def _recover_retirement(primary, state, task, descriptor, write):
             archive["metadata"] if metadata_archived else archive["admin"],
             common_dir if metadata_archived else None,
         )
-        if archived_status["dirty"] or not wp.kimiflow_only_ignored(
-            archived_status
+        if archived_status["dirty"] or not _kimiflow_only_ignored(
+            archive["checkout"], archived_status
         ):
             if metadata_archived:
                 raise wp.WorkspaceError(
@@ -2192,8 +2257,8 @@ def retire(root, run, write=False):
                         else None
                     ),
                 )
-                matches = not archived["dirty"] and wp.kimiflow_only_ignored(
-                    archived
+                matches = not archived["dirty"] and _kimiflow_only_ignored(
+                    candidate_path, archived
                 )
             else:
                 matches = False

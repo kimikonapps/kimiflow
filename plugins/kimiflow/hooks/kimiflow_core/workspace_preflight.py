@@ -281,6 +281,25 @@ def kimiflow_only_ignored(status):
     )
 
 
+def kimiflow_only_ignored_at(path, status):
+    if kimiflow_only_ignored(status):
+        return True
+    if not status["ignored_paths_truncated"]:
+        return False
+    paths, count = stream_nul_git_paths(
+        path,
+        ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"],
+        status["ignored_count"],
+    )
+    return (
+        count == len(paths)
+        and all(
+            candidate == ".kimiflow" or candidate.startswith(".kimiflow/")
+            for candidate in paths
+        )
+    )
+
+
 def is_within(path, parent):
     try:
         return os.path.commonpath([os.path.realpath(path), os.path.realpath(parent)]) == os.path.realpath(parent)
@@ -1681,7 +1700,7 @@ def remove(
         status = build_status(root, registry_descriptor)
         tree = find_tree(status, path)
         blockers = list(tree["blockers"])
-        if _allow_kimiflow_ignored and kimiflow_only_ignored(tree):
+        if _allow_kimiflow_ignored and kimiflow_only_ignored_at(tree["path"], tree):
             blockers = [value for value in blockers if value != "ignored-content"]
         if blockers:
             raise WorkspaceError("worktree removal refused: %s" % ",".join(blockers))
