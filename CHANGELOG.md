@@ -6,6 +6,36 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.25
+
+The project-bound release control-plane release: Kimiflow can repeat unchanged releases mechanically across
+GitHub and non-GitHub targets without rediscovering accounts, replaying completed work, or persisting secrets.
+
+### Added
+
+- Schema-v2 release profiles with typed public inputs, mandatory publication-target binding, and private local
+  memory scoped to the exact repository, worktree, and target.
+- Provider-neutral ephemeral identity through a generic environment adapter, with GitHub retained as an optional
+  read-only-resolved adapter and no global account switching.
+- Exact Phase-6 evidence reuse and content-free stage metrics for control, project checks, builds, provider work,
+  executed checks, reused checks, and resolver probes.
+
+### Changed
+
+- Unchanged completed releases and retryable postconditions reuse current unauthenticated evidence without
+  repeating discovery, model audit, completed checks, effects, or final checks.
+- Release economics remain measurement-based without a fixed time budget; provider-authenticated checks always
+  run with the current ephemeral identity.
+
+### Fixed
+
+- Static artifacts, directory membership, ZIP and tar members, symlinks, and outside-worktree paths now fail
+  closed before publication when they drift or contain credentials.
+- Durable profile, failure, run, and memory state now uses ordered file-and-directory fsync and repairs malformed
+  advisory memory from a completed receipt without repeating project work.
+- Authenticated provider process groups and credential homes are cleaned after controller death and after a
+  successful leader exits, preventing credential-bearing background children from surviving a release command.
+
 ## 0.2.24
 
 The bounded execution runtime release: Kimiflow can run provider-neutral Codex and Claude Code adapters with
