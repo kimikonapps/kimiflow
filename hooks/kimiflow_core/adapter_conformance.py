@@ -22,6 +22,14 @@ ASSURANCE = {
     "host_trust_required": True,
     "os_process_attestation": False,
 }
+CONFORMANCE_CLAIMS = {
+    "crash_resume": "deterministic_fixture",
+    "refusal": "deterministic_fixture",
+    "quota": "deterministic_fixture",
+    "cancel": "deterministic_fixture",
+    "process_group_reaping": "controller_enforced",
+    "root_confinement": "cooperative_claim",
+}
 
 
 def _digest_tree(root):
@@ -207,6 +215,12 @@ def run(executable, project_root=None, model=None, environ=None):
         # Timeout/cancellation and stream bounds are owned and unit-tested by the
         # Kimiflow controller, not delegated to an untrusted adapter process.
         checks["timeout_cancel"] = "controller_enforced"
+        checks["crash_resume"] = "fixture_contract"
+        checks["refusal"] = "fixture_contract"
+        checks["quota"] = "fixture_contract"
+        checks["cancel"] = "fixture_contract"
+        checks["process_group_reaping"] = "controller_enforced"
+        checks["root_confinement_claim"] = "cooperative"
     if project_root and _digest_tree(project_root) != original:
         checks["project_preservation"] = "failed"
     else:
@@ -221,6 +235,7 @@ def run(executable, project_root=None, model=None, environ=None):
         "capabilities": sorted(key for key, value in info["capabilities"].items() if value is True),
         "features": sorted(key for key, value in info.get("features", {}).items() if value is True),
         "assurance": dict(ASSURANCE),
+        "claims": dict(CONFORMANCE_CLAIMS),
         "checks": checks,
         "failed_checks": failed,
     }

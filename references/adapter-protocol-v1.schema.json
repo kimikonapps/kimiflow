@@ -33,7 +33,8 @@
         "root_confinement": {"type": "boolean"},
         "context_rollover": {"type": "boolean"},
         "adaptive_model_routes": {"type": "boolean"},
-        "adaptive_execution_profiles": {"type": "boolean"}
+        "adaptive_execution_profiles": {"type": "boolean"},
+        "work_unit_policy": {"type": "boolean"}
       },
       "allOf": [
         {
@@ -211,6 +212,78 @@
       "required": ["schema_version", "name", "plugin_root", "skill", "phase_manifest", "run_bridge"],
       "additionalProperties": false
     },
+    "workUnitPolicy": {
+      "type": "object",
+      "$comment": "context_scope=sealed_input is a cooperative attestation of no filesystem access, no tools, no resume, and no provider-side prompt/response persistence.",
+      "properties": {
+        "schema_version": {"const": 1},
+        "unit_kind": {"enum": ["research", "review", "solution_candidate", "solution_selector"]},
+        "context_scope": {"enum": ["project_root", "sealed_input"]},
+        "filesystem_access": {"enum": ["read_only", "none"]},
+        "allowed_tools": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\u0000-\\u001F\\u007F]+$"}
+        },
+        "settings_sources": {"type": "array", "maxItems": 0},
+        "mcp_servers": {"type": "array", "maxItems": 0},
+        "hooks": {"const": false},
+        "input_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"context_scope": {"const": "sealed_input"}}, "required": ["context_scope"]},
+          "then": {
+            "properties": {
+              "filesystem_access": {"const": "none"},
+              "allowed_tools": {"maxItems": 0}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"context_scope": {"const": "project_root"}}, "required": ["context_scope"]},
+          "then": {"properties": {"filesystem_access": {"const": "read_only"}}}
+        },
+        {
+          "if": {
+            "properties": {
+              "unit_kind": {
+                "enum": ["solution_candidate", "solution_selector"]
+              }
+            },
+            "required": ["unit_kind"]
+          },
+          "then": {
+            "properties": {
+              "context_scope": {"const": "sealed_input"},
+              "filesystem_access": {"const": "none"},
+              "allowed_tools": {"maxItems": 0}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "unit_kind": {"enum": ["research", "review"]}
+            },
+            "required": ["unit_kind"]
+          },
+          "then": {
+            "properties": {
+              "context_scope": {"const": "project_root"},
+              "filesystem_access": {"const": "read_only"},
+              "allowed_tools": {
+                "items": {
+                  "enum": ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "required": ["schema_version", "unit_kind", "context_scope", "filesystem_access", "allowed_tools", "settings_sources", "mcp_servers", "hooks", "input_digest"],
+      "additionalProperties": false
+    },
     "usage": {
       "type": "object",
       "properties": {
@@ -268,9 +341,37 @@
         "workflow_context": {"$ref": "#/$defs/workflowContext"},
         "model_routing": {"$ref": "#/$defs/modelRouting"},
         "context_rollover": {"$ref": "#/$defs/contextRollover"},
-        "execution_profile": {"$ref": "#/$defs/executionProfileSelection"}
+        "execution_profile": {"$ref": "#/$defs/executionProfileSelection"},
+        "work_unit_policy": {"$ref": "#/$defs/workUnitPolicy"}
       },
       "required": ["schema_version", "action", "root", "session_id", "host", "adapter", "prompt", "model", "required_capabilities"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "work_unit_policy": {
+                "properties": {"context_scope": {"const": "sealed_input"}},
+                "required": ["context_scope"]
+              }
+            },
+            "required": ["work_unit_policy"]
+          },
+          "then": {
+            "properties": {
+              "action": {"const": "start"},
+              "session_id": {"type": "null"}
+            },
+            "not": {
+              "anyOf": [
+                {"required": ["workflow_context"]},
+                {"required": ["model_routing"]},
+                {"required": ["context_rollover"]},
+                {"required": ["execution_profile"]}
+              ]
+            }
+          }
+        }
+      ],
       "additionalProperties": false
     },
     "runResult": {
@@ -296,7 +397,7 @@
       "oneOf": [
         {"type": "object", "properties": {"type": {"const": "session.started"}, "session_id": {"$ref": "#/$defs/sessionId"}}, "required": ["type", "session_id"], "additionalProperties": true},
         {"type": "object", "properties": {"type": {"const": "message"}, "text": {"type": "string", "minLength": 1, "maxLength": 65536}}, "required": ["type", "text"], "additionalProperties": true},
-        {"type": "object", "properties": {"type": {"enum": ["turn.failed", "error"]}}, "required": ["type"], "additionalProperties": true},
+        {"type": "object", "properties": {"type": {"enum": ["turn.failed", "error"]}, "error_code": {"enum": ["turn_cancelled", "refusal", "quota_exceeded", "turn_timeout", "provider_crash"]}}, "required": ["type"], "additionalProperties": true},
         {"type": "object", "properties": {"type": {"const": "turn.completed"}, "usage": {"$ref": "#/$defs/usage"}, "usage_v2": {"$ref": "#/$defs/usageV2"}, "model_route": {"$ref": "#/$defs/modelRoute"}}, "required": ["type"], "additionalProperties": true},
         {"type": "object", "properties": {"type": {"const": "phase.changed"}, "phase": {"type": "integer", "minimum": 0, "maximum": 7}, "status": {"enum": ["started", "completed", "blocked"]}, "label": {"type": "string", "minLength": 1, "maxLength": 240}}, "required": ["type", "phase", "status"], "additionalProperties": true},
         {"type": "object", "$comment": "Runtime additionally requires total >= current when total is present.", "properties": {"type": {"const": "progress"}, "current": {"type": "integer", "minimum": 0, "maximum": 1000000000}, "total": {"type": "integer", "minimum": 0, "maximum": 1000000000}, "label": {"type": "string", "minLength": 1, "maxLength": 240}}, "required": ["type", "current"], "additionalProperties": true},

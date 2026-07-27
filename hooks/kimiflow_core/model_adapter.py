@@ -18,6 +18,7 @@ CAPABILITY_KEYS = ("files", "shell", "tests", "resume", "gates")
 FEATURE_KEYS = (
     "workflow_context", "model_roles", "structured_events", "root_confinement",
     "context_rollover", "adaptive_model_routes", "adaptive_execution_profiles",
+    "work_unit_policy",
 )
 MODEL_ROLE_KEYS = ("top", "balanced", "cheap", "cross_family_top")
 USAGE_KEYS = ("model_calls", "tool_calls", "input_tokens", "output_tokens")
@@ -41,10 +42,107 @@ IDENTITY_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 SESSION_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 TURN_ID_RE = re.compile(r"^turn_[A-Za-z0-9._:-]{1,96}$")
+PROVIDER_ERROR_CODES = (
+    "turn_cancelled", "refusal", "quota_exceeded", "turn_timeout", "provider_crash",
+)
+WORK_UNIT_POLICY_KEYS = (
+    "schema_version", "unit_kind", "context_scope", "filesystem_access",
+    "allowed_tools", "settings_sources", "mcp_servers", "hooks", "input_digest",
+)
+WORK_UNIT_KINDS = (
+    "research", "review", "solution_candidate", "solution_selector",
+)
+READ_ONLY_WORK_UNIT_TOOLS = ("Read", "Glob", "Grep", "WebFetch", "WebSearch")
 
 
 class AdapterError(ValueError):
     pass
+
+
+def validate_work_unit_policy(value):
+    """Validate the exact provider-facing isolation contract."""
+    if not isinstance(value, dict) or set(value) != set(WORK_UNIT_POLICY_KEYS):
+        raise AdapterError("work_unit_policy_invalid")
+    if (
+        value.get("schema_version") != 1
+        or value.get("unit_kind") not in WORK_UNIT_KINDS
+        or value.get("context_scope") not in ("project_root", "sealed_input")
+        or value.get("filesystem_access") not in ("read_only", "none")
+        or value.get("hooks") is not False
+        or not isinstance(value.get("input_digest"), str)
+        or DIGEST_RE.fullmatch(value["input_digest"]) is None
+    ):
+        raise AdapterError("work_unit_policy_invalid")
+    for key in ("allowed_tools", "settings_sources", "mcp_servers"):
+        items = value.get(key)
+        if (
+            not isinstance(items, list)
+            or len(items) != len(set(items))
+            or any(
+                not isinstance(item, str)
+                or not item
+                or len(item) > 128
+                or any(ord(char) < 32 or ord(char) == 127 for char in item)
+                for item in items
+            )
+        ):
+            raise AdapterError("work_unit_policy_invalid")
+    if value["settings_sources"] or value["mcp_servers"]:
+        raise AdapterError("work_unit_policy_invalid")
+    if value["context_scope"] == "sealed_input" and (
+        value["filesystem_access"] != "none" or value["allowed_tools"]
+    ):
+        raise AdapterError("work_unit_policy_invalid")
+    if value["context_scope"] == "project_root" and value["filesystem_access"] != "read_only":
+        raise AdapterError("work_unit_policy_invalid")
+    if value["unit_kind"] in ("solution_candidate", "solution_selector"):
+        if value["context_scope"] != "sealed_input" or value["allowed_tools"]:
+            raise AdapterError("work_unit_policy_invalid")
+    elif (
+        value["context_scope"] != "project_root"
+        or any(tool not in READ_ONLY_WORK_UNIT_TOOLS for tool in value["allowed_tools"])
+    ):
+        raise AdapterError("work_unit_policy_invalid")
+    return {key: value[key] for key in WORK_UNIT_POLICY_KEYS}
+
+
+def normalize_provider_error(value=None, returncode=1, cancelled=False, timed_out=False):
+    """Collapse provider-specific failures to the public five-code matrix."""
+    if cancelled:
+        return "turn_cancelled"
+    if timed_out:
+        return "turn_timeout"
+    if isinstance(value, dict):
+        explicit = value.get("error_code") or value.get("code") or value.get("subtype")
+        text = json.dumps(value, ensure_ascii=False, sort_keys=True)
+    else:
+        explicit = value
+        text = "" if value is None else str(value)
+    if explicit in PROVIDER_ERROR_CODES:
+        return explicit
+    if not explicit and not text and returncode == 0:
+        return ""
+    folded = ("%s %s" % (explicit or "", text)).lower()
+    if any(token in folded for token in ("cancelled", "canceled", "interrupt")):
+        return "turn_cancelled"
+    if any(token in folded for token in ("refusal", "refused", "policy_reject")):
+        return "refusal"
+    if any(token in folded for token in (
+        "quota", "rate_limit", "rate limit", "usage limit", "credit",
+        "billing", "budget",
+    )):
+        return "quota_exceeded"
+    if any(token in folded for token in ("timeout", "timed out")):
+        return "turn_timeout"
+    if (
+        isinstance(value, dict)
+        or explicit in ("turn.failed", "error")
+        or (returncode != 0 and not explicit)
+    ):
+        return "provider_crash"
+    # Validation/stream/controller errors are part of the existing adapter
+    # contract and remain distinguishable from provider failures.
+    return str(explicit) if explicit else ""
 
 
 @dataclass(init=False)
@@ -56,10 +154,11 @@ class TurnResult:
     context_compaction: dict = None
     model_route: dict = None
     usage_v2: dict = None
+    output: object = None
 
     def __init__(
         self, returncode, session_id="", error_code="", usage=None, thread_id="",
-        context_compaction=None, model_route=None, usage_v2=None,
+        context_compaction=None, model_route=None, usage_v2=None, output=None,
     ):
         self.returncode = returncode
         self.session_id = session_id or thread_id
@@ -68,6 +167,7 @@ class TurnResult:
         self.context_compaction = context_compaction
         self.model_route = model_route
         self.usage_v2 = usage_v2
+        self.output = output
 
     @property
     def thread_id(self):
@@ -311,7 +411,12 @@ def normalize_event(value, structured=False):
     if event_type == "message":
         return {"type": event_type, "text": _event_text(value.get("text"))}
     if event_type in ("turn.failed", "error"):
-        return {"type": event_type}
+        result = {"type": event_type}
+        if "error_code" in value:
+            if value.get("error_code") not in PROVIDER_ERROR_CODES:
+                raise AdapterError("invalid_event")
+            result["error_code"] = value["error_code"]
+        return result
     if event_type == "turn.completed":
         result = {"type": event_type}
         if "usage" in value:
@@ -592,6 +697,18 @@ class CodexExecAdapter:
         self.codex = codex
         self.environ = environ
         self.stderr = stderr or sys.stderr
+        self._process = None
+        self._process_lock = threading.Lock()
+        self._cancelled = threading.Event()
+        timeout_value = (os.environ if environ is None else environ).get(
+            "KIMIFLOW_ADAPTER_TURN_TIMEOUT_SECONDS", str(DEFAULT_TURN_TIMEOUT_SECONDS),
+        )
+        try:
+            self.turn_timeout_seconds = int(timeout_value)
+        except (TypeError, ValueError):
+            raise AdapterError("adapter_turn_timeout_invalid")
+        if not 1 <= self.turn_timeout_seconds <= MAX_TURN_TIMEOUT_SECONDS:
+            raise AdapterError("adapter_turn_timeout_invalid")
 
     def info(self):
         return {
@@ -599,6 +716,7 @@ class CodexExecAdapter:
             "name": "codex-exec",
             "host": "codex",
             "capabilities": {key: True for key in CAPABILITY_KEYS},
+            "features": {"work_unit_policy": True},
         }
 
     def child_environment(self, source=None):
@@ -609,31 +727,69 @@ class CodexExecAdapter:
         env["KIMIFLOW_RUNNER_CONTROLLER"] = "1"
         return env
 
-    def start_argv(self, root, prompt):
-        return [
-            self.codex, "exec", "--json", "--sandbox", "workspace-write", "-C", root,
-            "-c", 'approval_policy="never"', "--", prompt,
+    def start_argv(self, root, prompt, work_unit_policy=None):
+        policy = validate_work_unit_policy(work_unit_policy) if work_unit_policy is not None else None
+        if policy is not None and policy["context_scope"] == "sealed_input":
+            raise AdapterError("work_unit_policy_unavailable")
+        sandbox = "read-only" if policy is not None else "workspace-write"
+        argv = [
+            self.codex, "exec", "--json", "--sandbox", sandbox, "-C", root,
+            "-c", 'approval_policy="never"',
         ]
+        if policy is not None:
+            argv.extend([
+                "--ignore-user-config", "--ignore-rules",
+                "-c", "mcp_servers={}", "-c", "hooks={}",
+            ])
+        return argv + ["--", prompt]
 
-    def resume_argv(self, session_id, prompt):
-        return [
+    def resume_argv(self, session_id, prompt, work_unit_policy=None):
+        policy = validate_work_unit_policy(work_unit_policy) if work_unit_policy is not None else None
+        if policy is not None and policy["context_scope"] == "sealed_input":
+            raise AdapterError("work_unit_policy_unavailable")
+        sandbox = "read-only" if policy is not None else "workspace-write"
+        argv = [
             self.codex, "exec", "resume", "--json", "-c", 'approval_policy="never"',
-            "-c", 'sandbox_mode="workspace-write"', "--", session_id, prompt,
+            "-c", 'sandbox_mode="%s"' % sandbox,
         ]
+        if policy is not None:
+            argv.extend([
+                "--ignore-user-config", "--ignore-rules",
+                "-c", "mcp_servers={}", "-c", "hooks={}",
+            ])
+        return argv + ["--", session_id, prompt]
 
-    def _invoke(self, argv, root, on_session):
+    def _invoke(self, argv, root, on_session, sealed=False):
+        self._cancelled.clear()
+        timed_out = threading.Event()
         try:
             process = subprocess.Popen(
                 argv, cwd=root, env=self.child_environment(self.environ), stdout=subprocess.PIPE,
-                stderr=None, text=True, bufsize=1,
+                stderr=subprocess.DEVNULL if sealed else None, bufsize=0,
+                start_new_session=True,
             )
+            with self._process_lock:
+                self._process = process
         except OSError as exc:
-            return TurnResult(returncode=127, error_code="spawn_failed:%s" % exc.__class__.__name__)
+            return TurnResult(returncode=127, error_code="provider_crash")
         session_id = ""
         failed_event = ""
         usage = None
+        messages = []
+
+        def expire():
+            timed_out.set()
+            _stop_process(process)
+
+        timer = threading.Timer(self.turn_timeout_seconds, expire)
+        timer.daemon = True
+        timer.start()
         try:
-            for raw in process.stdout:
+            for raw, read_error in _bounded_binary_lines(process.stdout):
+                if read_error:
+                    failed_event = read_error
+                    _stop_process(process)
+                    break
                 try:
                     event = json.loads(raw)
                 except (TypeError, ValueError):
@@ -646,35 +802,364 @@ class CodexExecAdapter:
                     session_id = event["thread_id"]
                     on_session(session_id)
                 elif event.get("type") in ("turn.failed", "error"):
-                    failed_event = str(event.get("type"))
+                    failed_event = {
+                        "type": event.get("type"),
+                        "error_code": event.get("error_code"),
+                    }
                 elif event.get("type") == "item.completed":
                     item = event.get("item")
                     if isinstance(item, dict) and item.get("type") == "agent_message" and isinstance(item.get("text"), str):
-                        self.stderr.write(item["text"].rstrip() + "\n")
+                        messages.append(item["text"])
+                        if not sealed:
+                            self.stderr.write(item["text"].rstrip() + "\n")
                 candidate = event.get("usage")
                 if candidate is None and isinstance(event.get("turn"), dict):
                     candidate = event["turn"].get("usage")
                 usage = add_usage(usage, normalize_usage(candidate))
             returncode = process.wait()
+            timer.cancel()
+            _stop_process(process)
         except BaseException:
-            process.terminate()
-            try:
-                process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
+            _stop_process(process)
             raise
+        finally:
+            timer.cancel()
+            with self._process_lock:
+                self._process = None
+        if timed_out.is_set():
+            returncode = 1
         if returncode == 0 and failed_event:
             returncode = 1
-        return TurnResult(returncode=returncode, session_id=session_id, error_code=failed_event, usage=usage)
+        error = normalize_provider_error(
+            failed_event, returncode=returncode, cancelled=self._cancelled.is_set(),
+            timed_out=timed_out.is_set(),
+        )
+        if error and returncode == 0:
+            returncode = 1
+        return TurnResult(
+            returncode=returncode,
+            session_id=session_id,
+            error_code=error,
+            usage=usage,
+            output={"messages": messages},
+        )
 
-    def start(self, root, prompt, on_session):
+    def cancel(self):
+        self._cancelled.set()
+        with self._process_lock:
+            process = self._process
+        if process is not None:
+            _stop_process(process)
+            return True
+        return False
+
+    def start(self, root, prompt, on_session, work_unit_policy=None):
         self.stderr.write("kimiflow: starting Codex headless turn\n")
-        return self._invoke(self.start_argv(root, prompt), root, on_session)
+        policy = (
+            validate_work_unit_policy(work_unit_policy)
+            if work_unit_policy is not None else None
+        )
+        return self._invoke(
+            self.start_argv(root, prompt, policy), root, on_session,
+            sealed=policy is not None and policy["context_scope"] == "sealed_input",
+        )
 
-    def resume(self, root, session_id, prompt, on_session):
+    def resume(self, root, session_id, prompt, on_session, work_unit_policy=None):
         self.stderr.write("kimiflow: continuing Codex thread %s\n" % session_id)
-        return self._invoke(self.resume_argv(session_id, prompt), root, on_session)
+        policy = (
+            validate_work_unit_policy(work_unit_policy)
+            if work_unit_policy is not None else None
+        )
+        return self._invoke(
+            self.resume_argv(session_id, prompt, policy), root, on_session,
+            sealed=policy is not None and policy["context_scope"] == "sealed_input",
+        )
+
+
+class ClaudeCodeAdapter:
+    """Native fixture-lockable transport for Claude Code's stream-json CLI."""
+
+    READ_ONLY_TOOLS = READ_ONLY_WORK_UNIT_TOOLS
+
+    def __init__(
+        self, claude="claude", model=None, event_sink=None, environ=None, stderr=None,
+    ):
+        self.claude = claude
+        self.model = normalize_model(model)
+        self.environ = environ
+        self.stderr = stderr or sys.stderr
+        self.event_sink = event_sink
+        self._process = None
+        self._process_lock = threading.Lock()
+        self._cancelled = threading.Event()
+        timeout_value = (os.environ if environ is None else environ).get(
+            "KIMIFLOW_ADAPTER_TURN_TIMEOUT_SECONDS", str(DEFAULT_TURN_TIMEOUT_SECONDS),
+        )
+        try:
+            self.turn_timeout_seconds = int(timeout_value)
+        except (TypeError, ValueError):
+            raise AdapterError("adapter_turn_timeout_invalid")
+        if not 1 <= self.turn_timeout_seconds <= MAX_TURN_TIMEOUT_SECONDS:
+            raise AdapterError("adapter_turn_timeout_invalid")
+
+    def info(self):
+        return {
+            "schema_version": 1,
+            "name": "claude-code",
+            "host": "claude",
+            "capabilities": {key: True for key in CAPABILITY_KEYS},
+            "features": {"work_unit_policy": True},
+        }
+
+    def child_environment(self, source=None):
+        env = dict(os.environ if source is None else source)
+        for key in ("CODEX_THREAD_ID", "KIMIFLOW_SESSION_ID", "KIMIFLOW_SESSION_HOST"):
+            env.pop(key, None)
+        env["KIMIFLOW_HOST"] = "claude"
+        env["KIMIFLOW_RUNNER_CONTROLLER"] = "1"
+        return env
+
+    def contract_fingerprint(self):
+        source = os.environ if self.environ is None else self.environ
+        resolved = shutil.which(self.claude, path=source.get("PATH")) or self.claude
+        material = {
+            "schema_version": PROTOCOL_VERSION,
+            "adapter": self.info(),
+            "command": os.path.realpath(resolved),
+            "model": self.model,
+        }
+        return "sha256:" + hashlib.sha256(
+            json.dumps(
+                material, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+
+    def _emit(self, event):
+        if self.event_sink is None:
+            return True
+        try:
+            self.event_sink({"schema_version": PROTOCOL_VERSION, **event})
+        except (BrokenPipeError, OSError):
+            return False
+        return True
+
+    def _base_argv(self, work_unit_policy=None):
+        policy = validate_work_unit_policy(work_unit_policy) if work_unit_policy is not None else None
+        argv = [self.claude, "-p", "--output-format", "stream-json", "--verbose"]
+        if self.model is not None:
+            argv.extend(["--model", self.model])
+        if policy is None:
+            argv.extend(["--permission-mode", "bypassPermissions"])
+        else:
+            allowed = tuple(policy["allowed_tools"])
+            if any(tool not in self.READ_ONLY_TOOLS for tool in allowed):
+                raise AdapterError("work_unit_policy_unbound_tool")
+            argv.append("--safe-mode")
+            if policy["context_scope"] == "sealed_input":
+                argv.append("--no-session-persistence")
+            argv.extend([
+                "--permission-mode", "plan",
+                "--tools", ",".join(allowed),
+                "--allowedTools", ",".join(allowed),
+                "--setting-sources", "",
+                "--strict-mcp-config",
+                "--mcp-config", '{"mcpServers":{}}',
+            ])
+        return argv
+
+    def start_argv(self, root, prompt, work_unit_policy=None):
+        del root
+        return self._base_argv(work_unit_policy) + ["--", prompt]
+
+    def resume_argv(self, session_id, prompt, work_unit_policy=None):
+        policy = (
+            validate_work_unit_policy(work_unit_policy)
+            if work_unit_policy is not None else None
+        )
+        if policy is not None and policy["context_scope"] == "sealed_input":
+            raise AdapterError("work_unit_resume_forbidden")
+        return self._base_argv(policy) + ["--resume", session_id, "--", prompt]
+
+    @staticmethod
+    def _usage(event):
+        message = event.get("message") if isinstance(event, dict) else None
+        raw = message.get("usage") if isinstance(message, dict) else event.get("usage")
+        if not isinstance(raw, dict):
+            return None
+        content = message.get("content") if isinstance(message, dict) else ()
+        tool_calls = sum(
+            1 for item in content
+            if isinstance(item, dict) and item.get("type") == "tool_use"
+        ) if isinstance(content, list) else 0
+        input_tokens = raw.get("input_tokens", raw.get("inputTokens"))
+        output_tokens = raw.get("output_tokens", raw.get("outputTokens"))
+        if (
+            isinstance(input_tokens, bool) or not isinstance(input_tokens, int)
+            or isinstance(output_tokens, bool) or not isinstance(output_tokens, int)
+            or input_tokens < 0 or output_tokens < 0
+        ):
+            return None
+        return {
+            "model_calls": 1,
+            "tool_calls": tool_calls,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }
+
+    def _invoke(self, argv, root, on_session, sealed=False):
+        self._cancelled.clear()
+        timed_out = threading.Event()
+        try:
+            process = subprocess.Popen(
+                argv, cwd=root, env=self.child_environment(self.environ),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL if sealed else None,
+                bufsize=0,
+                start_new_session=True,
+            )
+            with self._process_lock:
+                self._process = process
+        except OSError:
+            return TurnResult(returncode=127, error_code="provider_crash")
+
+        def expire():
+            timed_out.set()
+            _stop_process(process)
+
+        timer = threading.Timer(self.turn_timeout_seconds, expire)
+        timer.daemon = True
+        timer.start()
+        session_id = ""
+        failure = None
+        usage = None
+        completed = False
+        messages = []
+        try:
+            for raw, read_error in _bounded_binary_lines(process.stdout):
+                if read_error:
+                    failure = read_error
+                    _stop_process(process)
+                    break
+                try:
+                    event = json.loads(raw)
+                except (TypeError, ValueError):
+                    failure = "provider_crash"
+                    continue
+                if not isinstance(event, dict):
+                    failure = "provider_crash"
+                    continue
+                event_type = event.get("type")
+                if event_type == "system" and event.get("subtype") == "init":
+                    observed = event.get("session_id")
+                    if isinstance(observed, str) and SESSION_RE.fullmatch(observed):
+                        session_id = observed
+                        on_session(observed)
+                        if not self._emit({
+                            "type": "session.started", "session_id": observed,
+                        }):
+                            failure = "event_sink_failed"
+                            _stop_process(process)
+                            break
+                    else:
+                        failure = "provider_crash"
+                elif event_type == "assistant":
+                    candidate = self._usage(event)
+                    usage = add_usage(usage, candidate)
+                    message = event.get("message")
+                    content = message.get("content") if isinstance(message, dict) else None
+                    if isinstance(content, list):
+                        for item in content:
+                            if isinstance(item, dict) and item.get("type") == "text":
+                                text = item.get("text")
+                                if isinstance(text, str) and text:
+                                    messages.append(text)
+                                    if self.event_sink is None and not sealed:
+                                        self.stderr.write(text.rstrip() + "\n")
+                                    elif self.event_sink is not None:
+                                        if not self._emit({
+                                            "type": "message", "text": text,
+                                        }):
+                                            failure = "event_sink_failed"
+                                            _stop_process(process)
+                                            break
+                    if failure == "event_sink_failed":
+                        break
+                    if isinstance(message, dict) and message.get("stop_reason") == "refusal":
+                        failure = "refusal"
+                elif event_type == "result":
+                    completed = True
+                    observed = event.get("session_id")
+                    if not session_id and isinstance(observed, str) and SESSION_RE.fullmatch(observed):
+                        session_id = observed
+                        on_session(observed)
+                    if usage is None:
+                        usage = self._usage(event)
+                    if event.get("is_error") is True or event.get("subtype") != "success":
+                        failure = normalize_provider_error(event, returncode=1)
+            returncode = process.wait()
+            timer.cancel()
+            _stop_process(process)
+        except BaseException:
+            _stop_process(process)
+            raise
+        finally:
+            timer.cancel()
+            if process.stdout is not None:
+                process.stdout.close()
+            with self._process_lock:
+                self._process = None
+        error = normalize_provider_error(
+            failure,
+            returncode=returncode,
+            cancelled=self._cancelled.is_set(),
+            timed_out=timed_out.is_set(),
+        )
+        if returncode == 0 and (not completed or error):
+            returncode = 1
+            error = error or "provider_crash"
+        if returncode == 0 and self.event_sink is not None:
+            completion = {"type": "turn.completed"}
+            if usage is not None:
+                completion["usage"] = usage
+            if not self._emit(completion):
+                returncode = 1
+                error = "event_sink_failed"
+        return TurnResult(
+            returncode=returncode,
+            session_id=session_id,
+            error_code=error,
+            usage=usage,
+            output={"messages": messages},
+        )
+
+    def cancel(self):
+        self._cancelled.set()
+        with self._process_lock:
+            process = self._process
+        if process is not None:
+            _stop_process(process)
+            return True
+        return False
+
+    def start(self, root, prompt, on_session, work_unit_policy=None):
+        policy = (
+            validate_work_unit_policy(work_unit_policy)
+            if work_unit_policy is not None else None
+        )
+        return self._invoke(
+            self.start_argv(root, prompt, policy), root, on_session,
+            sealed=policy is not None and policy["context_scope"] == "sealed_input",
+        )
+
+    def resume(self, root, session_id, prompt, on_session, work_unit_policy=None):
+        policy = (
+            validate_work_unit_policy(work_unit_policy)
+            if work_unit_policy is not None else None
+        )
+        return self._invoke(
+            self.resume_argv(session_id, prompt, policy), root, on_session,
+            sealed=policy is not None and policy["context_scope"] == "sealed_input",
+        )
 
 
 class CommandAgentAdapter:
@@ -701,6 +1186,9 @@ class CommandAgentAdapter:
         self._execution_selection = None
         self._execution_profile_fingerprint = None
         self._usage_turn_ids = set()
+        self._process = None
+        self._process_lock = threading.Lock()
+        self._cancelled = threading.Event()
         timeout_value = (os.environ if environ is None else environ).get(
             "KIMIFLOW_ADAPTER_TURN_TIMEOUT_SECONDS", str(DEFAULT_TURN_TIMEOUT_SECONDS),
         )
@@ -826,7 +1314,9 @@ class CommandAgentAdapter:
         }
         return dict(self._execution_selection)
 
-    def _invoke(self, action, root, session_id, prompt, on_session):
+    def _invoke(
+        self, action, root, session_id, prompt, on_session, work_unit_policy=None,
+    ):
         info = self.info()
         payload = {
             "schema_version": PROTOCOL_VERSION,
@@ -840,14 +1330,25 @@ class CommandAgentAdapter:
             "required_capabilities": list(CAPABILITY_KEYS),
         }
         features = info.get("features", {})
+        policy = (
+            validate_work_unit_policy(work_unit_policy)
+            if work_unit_policy is not None else None
+        )
+        sealed = (
+            policy is not None and policy["context_scope"] == "sealed_input"
+        )
+        if policy is not None:
+            if features.get("work_unit_policy") is not True:
+                raise AdapterError("work_unit_policy_unavailable")
+            payload["work_unit_policy"] = policy
         profile = info.get("execution_profile")
         execution_selection = None
-        if features.get("adaptive_execution_profiles") is True:
+        if not sealed and features.get("adaptive_execution_profiles") is True:
             execution_selection = self._select_execution_variant(root, profile)
             payload["execution_profile"] = execution_selection
-        if features.get("workflow_context") is True:
+        if not sealed and features.get("workflow_context") is True:
             payload["workflow_context"] = workflow_context()
-        if self.model_roles:
+        if not sealed and self.model_roles:
             if features.get("adaptive_model_routes") is True:
                 from . import adaptive_control
 
@@ -885,7 +1386,11 @@ class CommandAgentAdapter:
                 payload["model_routing"] = {"roles": dict(self.model_roles)}
             if self.model is not None:
                 payload["model_routing"]["default_model"] = self.model
-        if action == "resume" and self._context_rollover is not None:
+        if (
+            not sealed
+            and action == "resume"
+            and self._context_rollover is not None
+        ):
             if features.get("context_rollover") is True:
                 payload["context_rollover"] = self._context_rollover
             self._context_rollover = None
@@ -893,9 +1398,10 @@ class CommandAgentAdapter:
         proc = None
         timer = None
         timed_out = threading.Event()
+        self._cancelled.clear()
 
         def expire_turn():
-            if proc is not None and proc.poll() is None:
+            if proc is not None:
                 timed_out.set()
                 _signal_process_group(proc, signal.SIGKILL)
 
@@ -904,8 +1410,15 @@ class CommandAgentAdapter:
             env["KIMIFLOW_RUNNER_CONTROLLER"] = "1"
             proc = subprocess.Popen(
                 argv, cwd=root, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                stderr=None, bufsize=0, start_new_session=True,
+                stderr=(
+                    subprocess.DEVNULL
+                    if sealed
+                    else None
+                ),
+                bufsize=0, start_new_session=True,
             )
+            with self._process_lock:
+                self._process = proc
             timer = threading.Timer(self.turn_timeout_seconds, expire_turn)
             timer.daemon = True
             timer.start()
@@ -922,9 +1435,11 @@ class CommandAgentAdapter:
                             stream.close()
                         except OSError:
                             pass
+            with self._process_lock:
+                self._process = None
             if timed_out.is_set():
                 return TurnResult(returncode=1, error_code="turn_timeout")
-            return TurnResult(returncode=127, error_code="spawn_failed:%s" % exc.__class__.__name__)
+            return TurnResult(returncode=127, error_code="provider_crash")
         observed = session_id or ""
         failed = ""
         usage = None
@@ -933,6 +1448,7 @@ class CommandAgentAdapter:
         context_compaction = None
         model_route = None
         usage_v2 = None
+        messages = []
         try:
             for raw, read_error in _bounded_binary_lines(proc.stdout):
                 if read_error:
@@ -956,9 +1472,16 @@ class CommandAgentAdapter:
                     observed = public["session_id"]
                     on_session(observed)
                 elif event_type in ("turn.failed", "error"):
-                    failed = event_type
-                elif event_type == "message" and self.event_sink is None:
+                    failed = public.get("error_code") or event_type
+                elif (
+                    event_type == "message"
+                    and self.event_sink is None
+                    and not sealed
+                ):
+                    messages.append(public["text"])
                     self.stderr.write(public["text"].rstrip() + "\n")
+                elif event_type == "message":
+                    messages.append(public["text"])
                 elif event_type == "turn.completed":
                     if completed:
                         failed = "duplicate_turn_completed"
@@ -1009,13 +1532,17 @@ class CommandAgentAdapter:
                         failed = "event_sink_failed"
                         _stop_process(proc)
                         break
+            returncode = proc.wait()
+            timer.cancel()
+            _stop_process(proc)
         except BaseException:
             _stop_process(proc)
             raise
         finally:
             timer.cancel()
             proc.stdout.close()
-        returncode = proc.wait()
+            with self._process_lock:
+                self._process = None
         if timed_out.is_set():
             failed = "turn_timeout"
             returncode = 1
@@ -1032,6 +1559,12 @@ class CommandAgentAdapter:
             except (BrokenPipeError, OSError):
                 failed = "event_sink_failed"
                 returncode = 1
+        failed = normalize_provider_error(
+            failed, returncode=returncode, cancelled=self._cancelled.is_set(),
+            timed_out=timed_out.is_set(),
+        )
+        if failed and returncode == 0:
+            returncode = 1
         return TurnResult(
             returncode=returncode,
             session_id=observed,
@@ -1040,10 +1573,32 @@ class CommandAgentAdapter:
             context_compaction=context_compaction,
             model_route=model_route,
             usage_v2=usage_v2,
+            output={"messages": messages},
         )
 
-    def start(self, root, prompt, on_session):
-        return self._invoke("start", root, "", prompt, on_session)
+    def cancel(self):
+        self._cancelled.set()
+        with self._process_lock:
+            process = self._process
+        if process is not None:
+            _stop_process(process)
+            return True
+        return False
 
-    def resume(self, root, session_id, prompt, on_session):
-        return self._invoke("resume", root, session_id, prompt, on_session)
+    def start(self, root, prompt, on_session, work_unit_policy=None):
+        return self._invoke(
+            "start", root, "", prompt, on_session,
+            work_unit_policy=work_unit_policy,
+        )
+
+    def resume(self, root, session_id, prompt, on_session, work_unit_policy=None):
+        policy = (
+            validate_work_unit_policy(work_unit_policy)
+            if work_unit_policy is not None else None
+        )
+        if policy is not None and policy["context_scope"] == "sealed_input":
+            raise AdapterError("work_unit_resume_forbidden")
+        return self._invoke(
+            "resume", root, session_id, prompt, on_session,
+            work_unit_policy=policy,
+        )

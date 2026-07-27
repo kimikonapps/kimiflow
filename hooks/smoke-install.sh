@@ -120,6 +120,108 @@ if [ -x "$ROOT/hooks/adapter-conformance.sh" ] \
 else
   bad "provider-neutral MCP, conformance or code-intelligence wiring incomplete"
 fi
+if [ -x "$ROOT/hooks/work-units.sh" ] \
+  && [ -x "$ROOT/hooks/solution-search.sh" ] \
+  && grep -q 'FreshAdapterExecutor' "$ROOT/hooks/kimiflow_core/solution_search.py" \
+  && grep -q 'args.bounded' "$ROOT/hooks/kimiflow_core/solution_search.py" \
+  && bash -n "$ROOT/hooks/work-units.sh" 2>/dev/null \
+  && bash -n "$ROOT/hooks/solution-search.sh" 2>/dev/null; then
+  ok "Work-Unit and provider-backed Solution-Search wrappers are executable"
+else
+  bad "Work-Unit or provider-backed Solution-Search wrapper missing/not-exec/bad"
+fi
+if PYTHONPATH="$ROOT/hooks" python3 - <<'PY' >/dev/null 2>&1
+import json
+from kimiflow_core import solution_search
+
+off = solution_search.classify({"materially_open": False, "small_reversible": True})
+assert off == {"schema_version": 1, "solution_search": "off", "reason": "small_reversible"}
+assert solution_search.lenses_for("integration") == (
+    "minimal-evolutionary", "assumption-challenge", "security",
+)
+
+class Candidates:
+    enforces_work_unit_policy = True
+    def execute(self, envelope, root, policy, resume):
+        return {
+            "status": "completed",
+            "usage": {"model_calls": 1, "tool_calls": 0, "input_tokens": 1, "output_tokens": 1},
+            "candidate": {
+                "brief_digest": envelope["brief_digest"],
+                "approach": "RAW-CANDIDATE-" + envelope["lens"],
+                "advantage": "smallest safe change",
+                "risk": "fixture risk",
+                "falsification": "run fixture",
+                "checks": {"intent": True, "invariant": True, "privacy": True, "permissions": True},
+                "product_effect": "no material change",
+            },
+        }
+
+class Selector:
+    enforces_work_unit_policy = True
+    def execute(self, envelope, root, policy, resume):
+        return {
+            "status": "completed",
+            "usage": {"model_calls": 1, "tool_calls": 0, "input_tokens": 1, "output_tokens": 1},
+            "selection": {
+                "winner_id": "candidate-1",
+                "alternative_id": "candidate-2",
+                "scores": {
+                    "candidate-%d" % index: {
+                        **{axis: 6 - index for axis in solution_search.SELECTOR_PRIMARY_AXES},
+                        "novelty": index,
+                    }
+                    for index in range(1, 4)
+                },
+                "compliance": {
+                    "candidate-%d" % index: {
+                        "intent": True,
+                        "invariant": True,
+                        "privacy": True,
+                        "permissions": True,
+                    }
+                    for index in range(1, 4)
+                },
+            },
+        }
+
+result = solution_search.execute_bounded(
+    {
+        "intent": "fixture",
+        "non_goals": [],
+        "project_facts": [],
+        "invariants": ["content poor"],
+        "evidence_ids": ["smoke"],
+    },
+    Candidates(),
+    Selector(),
+    budget={"model_calls": 4, "tool_calls": 0, "input_tokens": 8, "output_tokens": 8},
+    candidate_budget={"model_calls": 1, "tool_calls": 0, "input_tokens": 1, "output_tokens": 1},
+    selector_budget={"model_calls": 1, "tool_calls": 0, "input_tokens": 1, "output_tokens": 1},
+    decision_kind="integration",
+)
+assert result["status"] == "completed"
+assert result["receipt"]["candidate_calls"] == 3
+assert result["receipt"]["selector_calls"] == 1
+assert "candidate_digests" not in result["receipt"]
+assert "RAW-CANDIDATE" not in json.dumps(result["receipt"])
+PY
+then
+  ok "Solution Search classification, candidate cap and content-poor retention"
+else
+  bad "Solution Search classification, candidate cap or content-poor retention failed"
+fi
+grep -q 'Mechanical Solution Search (before Architecture Deliberation' "$ROOT/phases/phase-2-understand.md" \
+  && grep -q 'Only the chosen approach and strongest valid alternative' "$ROOT/reference.md" \
+  && ok "Phase 2 documents bounded Solution Search call boundary" \
+  || bad "Phase 2 bounded Solution Search call boundary incomplete"
+if grep -q 'GPT-5.6 System Card' "$ROOT/reference.md" \
+  && grep -q 'claude-opus-5' "$ROOT/reference.md" \
+  && grep -q 'Model cards and prompting guides are threat-model inputs' "$ROOT/reference.md"; then
+  ok "high-capability model safety mapping documented"
+else
+  bad "high-capability model safety mapping incomplete"
+fi
 grep -q 'Project Map Bootstrap' "$ROOT/SKILL.md" && ok "canonical skill documents Project Map Bootstrap" || bad "missing Project Map Bootstrap in SKILL.md"
 grep -q -- '--project-map quick' "$ROOT/reference.md" && ok "reference documents project-map quick tier" || bad "missing project-map quick tier in reference.md"
 if grep -Eq -- '--project-map[^)]*(standard|deep)' "$ROOT/reference.md" "$ROOT/SKILL.md"; then bad "retired project-map tier (standard/deep) resurfaced in live docs"; else ok "no retired project-map tiers in live docs"; fi
