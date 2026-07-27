@@ -461,6 +461,29 @@ Kimiflow routes by four capability tiers so the workflow stays portable across C
 - **Host-declared execution variant per seat (advisory):** start with the adapter-attested host default. Promote a lower-cost opaque variant only after comparable clean outcomes, and a higher-cost variant only after measurable quality gain on the matching role/task class. Never infer `low|medium|high|xhigh|max`, a thinking switch, or a token budget from a model name. Keep the selected variant stable inside one session/cache lineage. Models that self-verify still run the mechanical gates, but do not receive generic "double-check again" prompts or a second semantic reviewer unless the review-routing evidence requires one. Bash hooks carry no model and are out of scope.
 - Record the applied routing once in `STATE.md` (e.g. `model_routing: top=gpt-5.6-sol, balanced=gpt-5.6-terra, cheap=gpt-5.6-luna, cross_family=auto`).
 
+### High-capability model safety compatibility
+
+Model routing never relaxes Kimiflow's task, permission, evidence, or user-decision boundaries. This is
+especially important for long-horizon coding models:
+
+- The [GPT-5.6 System Card](https://deploymentsafety.openai.com/gpt-5-6/introduction) reports a higher
+  tendency than GPT-5.5 to continue beyond user intent in agentic coding trajectories. Kimiflow therefore
+  keeps affected-file scope explicit, preserves foreign workspace state, requires narrow authority for
+  destructive or external actions, and treats phase/review evidence as a completion condition rather than a
+  license to widen the task.
+- Claude Opus 5 (`claude-opus-5`) is accepted by the native Claude adapter through the exact `--model`
+  boundary. Anthropic's
+  [Opus 5 prompting guidance](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5)
+  warns that the model may widen narrow tasks, over-verify, and delegate more readily. Kimiflow preserves the
+  requested scope, keeps subagent counts deterministic, and does not add semantic rechecks merely because the
+  model self-verifies.
+- Work-Units remain read-only or sealed with no inherited settings, MCP servers, hooks, session resume, or
+  unbounded model/tool budget. Materially different product effects return `user_required`; ordinary technical
+  judgment continues autonomously inside the accepted scope.
+- Model cards and prompting guides are threat-model inputs, not provider attestations. A new model slug or
+  alias requires fixture-backed transport compatibility and a fresh review of current official primary
+  sources; an unofficial prompt capture may suggest an eval but never defines Kimiflow's contract.
+
 **Cross-family transport (pinned — the reviewer-output channel is per transport, NOT always stdout):**
 - **Attempt condition:** Claude Code host → `command -v codex` and/or `command -v agy` (either present → available); Codex host → `command -v claude`. None present → same-family seat + `cross_family: unavailable` in STATE.md.
 - **Claude Code host — Codex tier:** review/diagnosis/verify seats run `codex exec -m gpt-5.6-sol -c model_reasoning_effort="high" -s read-only --output-last-message <tmpfile> "<prompt>" </dev/null`. The `<tmpfile>` content is the reviewer output (codex raw stdout is an event/activity stream; never persist it). **Pin model, effort, and `-s` explicitly on every call** — never assume host config: a local `~/.codex/config.toml` can override any of them. **`</dev/null` is mandatory** — without a stdin redirect `codex exec` blocks on "Reading additional input from stdin…". **Every seat call and every malformed-retry is a NEW codex-exec session (never resume/continue a prior one)** — context-sticking between calls is an observed failure mode, so the per-call isolation is part of the transport contract.
@@ -713,6 +736,52 @@ Prefer official or established implementations with the relevant code path plus 
 Marker contract: `depth=none|pulse|focused`; `status=sufficient|not_required|incomplete|conflicting|stale|blocked`; `lanes=none|complete`; `claims=none|sourced`; integer open `technical_gaps`/`user_decisions`; `scope_change=no|confirmed`. `discovery-gate.sh` validates this shape and requires `source_url` plus `source_type` for `claims=sourced`. It cannot prove completeness or source interpretation. New STATE files record `Flow schema: 4` and always declare Discovery: non-trivial feature runs use `yes`, while trivial/fix/audit/review use `no`. Schemas 2–3 remain resumable.
 
 The classification is a one-way scope gate: only `required` may enlarge the plan, `default` may choose an implementation without enlarging it, and `optional` stays out of `PLAN.md`/`ACCEPTANCE.md`. A reviewer may challenge a wrong classification with evidence, but cannot promote optional robustness or a hypothetical future requirement merely by preferring it.
+
+## Bounded Solution Search (Phase 2)
+
+Solution Search is a mechanical call boundary inside Phase 2 immediately before Architecture Deliberation, not
+a phase, worker pool, implementation fan-out, or approval gate. Classify confirmed facts once. Clear, canonical,
+known-cause, and small reversible work returns `solution_search=off`; this path is strictly no-call/no-artifact
+and must not allocate a brief, Work-Unit, selector input, prompt, or receipt. Contradictory facts fail closed with
+`classification_conflict`. `bounded` is valid only for a materially open architecture, integration, scale,
+UX-concept, or fuzzy-diagnosis decision.
+
+The bounded input is one digest-bound sealed brief with exactly `intent`, `non_goals`, `project_facts`,
+`invariants`, and `evidence_ids`. Use at most three deterministic lenses: `minimal-evolutionary`,
+`assumption-challenge`, then the problem-dependent `operations`, `security`, or `domain-transfer` lens. Exactly
+one fresh selector follows. `hooks/solution-search.sh --bounded <input.json> --adapter
+claude|command|codex` is the provider-backed entry point; it constructs a new adapter instance for every
+candidate and selector call. Candidate and selector calls are serial read-only Work-Units with declared and
+measured aggregate budgets. Each call receives a distinct empty temporary root outside project and Vault,
+`context_scope=sealed_input`, `filesystem_access=none`, empty tools, setting sources and MCP servers, disabled
+hooks, and no resume. An adapter must negotiate `features.work_unit_policy=true` and bind that exact request
+policy before spawn; otherwise fail closed. Policy-bound Codex project-root calls use native read-only sandboxing,
+ignore user config/rules, and empty MCP/hooks while retaining the session needed for serial resume. Policy-bound
+Claude calls use safe mode; sealed calls additionally disable provider-side session persistence. Sealed Command
+calls omit optional execution-profile, workflow-context, model-routing, and rollover payloads. A native host that
+cannot enforce the requested boundary rejects the call rather than weakening isolation. Every ordinary callback
+Work-Unit runs in a dedicated killable process group; the per-unit deadline covers EOF/wait and descendants, and
+a timeout returns only after the group is reaped. Native adapters bind the same deadline to their process-group
+timer.
+
+Each candidate returns exactly one compact approach, advantage, carrying risk, smallest falsification test and
+nonempty product effect, with code forbidden. Before scoring, mechanically require four structured checks:
+intent, invariant, privacy, and permissions. The fresh selector receives the same sealed brief and independently
+returns those four checks for every candidate; candidate self-attestation alone is insufficient. Digest mismatch,
+provider failure, missing usage, budget overrun, a missing product effect, or any failed candidate/selector check
+ends or rejects the bounded path without exposing raw content. Materially different product effects return
+`user_required` before selector scoring. The selector scores project fit, evidence, simplicity, reversibility,
+operations/security and cost; novelty is only the tie-breaker. Reserve its declared budget and recheck remaining
+measured aggregate usage after every candidate; do not invoke the selector if its reserve no longer fits.
+Measured selector usage must fit both its declared reserve and the final run budget. A provider-reported failed
+call is still measured before its terminal status is classified; missing usage fails closed and measured overrun
+wins over the provider/selector failure code.
+
+Only the chosen approach and strongest valid alternative pass into Reference Strategy Fit and Architecture
+Deliberation. Persistent output is a content-poor receipt of digests, identifiers, counters, checks, and usage;
+never persist raw prompts, candidates, code, chat, or broad Vault content on success or any failure path.
+Automatic activation remains off until paired same-scenario shadow metrics improve at least one decision-quality
+measure without required regression and stay within token ratio `1.25`, round delta `+1`, and time ratio `1.50`.
 
 **Considered alternatives (conditional material-fork dual-plan only).** Scope size alone never adds a second planner. Use two independent planners only when intent + classified research prove at least two viable architectures with material user-visible/operational trade-offs, or an irreversible public API/data/migration contract. Internal-interface novelty, general complexity, and optional robustness do not trigger it. If triggered, `PLAN.md` records the losing real approach + selecting trade-off; otherwise omit the section.
 

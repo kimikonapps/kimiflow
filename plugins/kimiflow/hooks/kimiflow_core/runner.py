@@ -25,6 +25,9 @@ RESUMABLE_STATES = RESUMABLE_WAIT_STATES | {"running", "interrupted", "transport
 RECEIPT_STATES = RESUMABLE_STATES | {
     "done", "failed", "aborted", "ownership_conflict", "no_kimiflow_run"
 }
+NON_RETRYABLE_PROVIDER_ERRORS = {
+    "turn_cancelled", "refusal", "quota_exceeded",
+}
 
 
 class RunnerError(Exception):
@@ -37,6 +40,7 @@ class RunnerError(Exception):
 
 TurnResult = model_adapter.TurnResult
 CodexExecAdapter = model_adapter.CodexExecAdapter
+ClaudeCodeAdapter = model_adapter.ClaudeCodeAdapter
 
 
 def iso_now():
@@ -679,6 +683,23 @@ def _drive(root, adapter, receipt, turn, baseline, workflow_aware=False):
             ),
         )
         while turn.returncode != 0:
+            if turn.error_code in NON_RETRYABLE_PROVIDER_ERRORS:
+                if turn.error_code == "turn_cancelled":
+                    receipt = _update_receipt(
+                        root, receipt, "interrupted",
+                        error_code=turn.error_code,
+                    )
+                    return _public_result(receipt)
+                receipt = _update_receipt(
+                    root, receipt, "transport_error",
+                    error_code=turn.error_code,
+                )
+                raise RunnerError(
+                    "provider_failure",
+                    "coding-agent provider returned terminal error: %s"
+                    % turn.error_code,
+                    1,
+                )
             if turn.error_code == "event_sink_failed":
                 _update_receipt(root, receipt, "transport_error", error_code=turn.error_code)
                 raise RunnerError("transport_error", "coding-agent event consumer closed", 1)
@@ -907,7 +928,7 @@ def exit_code(result):
 
 
 def _add_adapter_arguments(parser):
-    parser.add_argument("--adapter", choices=("codex", "command"), default="codex")
+    parser.add_argument("--adapter", choices=("codex", "claude", "command"), default="codex")
     parser.add_argument("--adapter-command")
     parser.add_argument("--model")
     parser.add_argument("--model-role", action="append", default=[])
@@ -931,13 +952,20 @@ def _model_roles(values):
 
 
 def _adapter_from_args(args, event_sink=None):
-    if args.adapter == "codex":
-        if args.adapter_command or args.model_role or args.require_feature or args.events_jsonl:
+    if args.adapter in ("codex", "claude"):
+        if (
+            args.adapter_command or args.model_role or args.require_feature
+            or (args.adapter == "codex" and args.events_jsonl)
+        ):
             raise RunnerError(
                 "adapter_ambiguous",
-                "--adapter-command, --model-role, --require-feature, and --events-jsonl require --adapter command",
+                "these adapter options are not supported by the selected native adapter",
                 2,
             )
+        if args.adapter == "claude":
+            return ClaudeCodeAdapter(model=args.model, event_sink=event_sink)
+        if args.model:
+            raise RunnerError("adapter_ambiguous", "--model requires --adapter claude or command", 2)
         return CodexExecAdapter()
     if not args.adapter_command:
         raise RunnerError("adapter_command_missing", "--adapter command requires --adapter-command", 2)

@@ -6,6 +6,30 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.24
+
+The bounded execution runtime release: Kimiflow can run provider-neutral Codex and Claude Code adapters with
+typed read-only delegation and an opt-in sealed solution search.
+
+### Added
+
+- A model-agnostic execution runtime with native Codex and Claude Code adapters, including exact
+  `claude-opus-5` model selection through the Claude CLI.
+- Strict typed Work-Units with provider isolation, measured budgets, privacy-bounded receipts, and no inherited
+  hooks, settings, MCP capabilities, or resumable sessions.
+- An opt-in Solution Search that evaluates at most three sealed candidates with one fresh selector while clear
+  work retains a zero-call path.
+
+### Changed
+
+- The GitHub README now documents terminal execution, adapter extension, Work-Units, Solution Search, and the
+  applicable GPT-5.6 System Card and Claude Opus 5 safety guidance.
+
+### Fixed
+
+- Structured-event sink failures now produce consistent `event_sink_failed` receipts across execution paths.
+- Adapter-conformance schema tests now resolve their fixture independently of the process working directory.
+
 ## 0.2.23
 
 The evidence-gated review-efficiency release: Kimiflow can reduce repeated semantic review work only after the

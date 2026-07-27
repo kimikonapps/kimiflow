@@ -3,7 +3,7 @@
   "$id": "https://kimiflow.local/schemas/adapter-conformance-v1.schema.json",
   "title": "Kimiflow adapter conformance receipt v1",
   "type": "object",
-  "required": ["schema_version", "status", "adapter", "host", "contract_fingerprint", "capabilities", "features", "assurance", "checks", "failed_checks"],
+  "required": ["schema_version", "status", "adapter", "host", "contract_fingerprint", "capabilities", "features", "assurance", "claims", "checks", "failed_checks"],
   "properties": {
     "schema_version": {"const": 1},
     "status": {"enum": ["compatible", "incompatible"]},
@@ -22,7 +22,20 @@
       },
       "additionalProperties": false
     },
-    "checks": {"type": "object", "additionalProperties": {"enum": ["passed", "failed", "not_claimed", "controller_enforced"]}},
+    "claims": {
+      "type": "object",
+      "required": ["crash_resume", "refusal", "quota", "cancel", "process_group_reaping", "root_confinement"],
+      "properties": {
+        "crash_resume": {"const": "deterministic_fixture"},
+        "refusal": {"const": "deterministic_fixture"},
+        "quota": {"const": "deterministic_fixture"},
+        "cancel": {"const": "deterministic_fixture"},
+        "process_group_reaping": {"const": "controller_enforced"},
+        "root_confinement": {"const": "cooperative_claim"}
+      },
+      "additionalProperties": false
+    },
+    "checks": {"type": "object", "additionalProperties": {"enum": ["passed", "failed", "not_claimed", "controller_enforced", "fixture_contract", "cooperative"]}},
     "failed_checks": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
   },
   "additionalProperties": false
