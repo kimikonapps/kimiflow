@@ -215,6 +215,18 @@ grep -q 'Mechanical Solution Search (before Architecture Deliberation' "$ROOT/ph
   && grep -q 'Only the chosen approach and strongest valid alternative' "$ROOT/reference.md" \
   && ok "Phase 2 documents bounded Solution Search call boundary" \
   || bad "Phase 2 bounded Solution Search call boundary incomplete"
+if grep -q 'solution_search=off.*strictly no-call/no-artifact' "$ROOT/phases/phase-2-understand.md" \
+  && grep -q 'at most three isolated read-only candidates.*fresh selector' "$ROOT/phases/phase-2-understand.md" \
+  && grep -Fq 'Full contract → reference.md "Bounded Solution Search (Phase 2)"' "$ROOT/phases/phase-2-understand.md" \
+  && grep -q 'Architecture deliberation: off|active' "$ROOT/phases/phase-2-understand.md" \
+  && grep -q 'materially crosses subsystems/data flow/integration' "$ROOT/phases/phase-2-understand.md" \
+  && grep -q 'zero-count marker.*Architecture off reason.*no Architecture Note' "$ROOT/phases/phase-2-understand.md" \
+  && grep -q 'kimiflow:architecture-deliberation.*two-approach/≤3-principle/one-critique marker.*≤450-word Architecture Note' "$ROOT/phases/phase-2-understand.md" \
+  && grep -Fq 'Full contract → reference.md "Adaptive Architecture Deliberation"' "$ROOT/phases/phase-2-understand.md"; then
+  ok "Phase 2 preserves compact Solution Search and Architecture contracts"
+else
+  bad "Phase 2 compact Solution Search or Architecture contract incomplete"
+fi
 if grep -q 'GPT-5.6 System Card' "$ROOT/reference.md" \
   && grep -q 'claude-opus-5' "$ROOT/reference.md" \
   && grep -q 'Model cards and prompting guides are threat-model inputs' "$ROOT/reference.md"; then
