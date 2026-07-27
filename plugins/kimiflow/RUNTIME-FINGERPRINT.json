@@ -1,5 +1,5 @@
 {
-  "file_count": 153,
+  "file_count": 155,
   "files": [
     {
       "bytes": 511,
@@ -26,16 +26,16 @@
       "sha256": "sha256:b796986e145d409f27c8ec0edaaf223ee51bdbbc2fa4477fe2d6c0984d5adf5b"
     },
     {
-      "bytes": 25394,
+      "bytes": 28954,
       "mode": "0644",
       "path": "README.de.md",
-      "sha256": "sha256:69723e37a5b04f68d0cd34e698e7593c0ce394550dd5d9b640a78972ec04b4b9"
+      "sha256": "sha256:d5c96c41cd8ec3852b96ee95682e03a0356c8d26b37dc11abc6fcd198a80b686"
     },
     {
-      "bytes": 32592,
+      "bytes": 35649,
       "mode": "0644",
       "path": "README.md",
-      "sha256": "sha256:8b52d620f9fde11cbdaf75584b1a37f2f9febd0e6c2515886ad63a370767d76d"
+      "sha256": "sha256:39ee68765d4ca2e96050e5aa5e8f65a3fe35d396fac92f54956fe4c8aaded5e9"
     },
     {
       "bytes": 17000,
@@ -326,10 +326,16 @@
       "sha256": "sha256:52c34c935568e297898ccdee454746f2dcfe5e4b36cf7ea59338895c415a9d5c"
     },
     {
-      "bytes": 86078,
+      "bytes": 45448,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/release_memory.py",
+      "sha256": "sha256:f2ff9390707178e1014ce29a36abeb9093d8e8465d6a1a0019e18cd57bf18f71"
+    },
+    {
+      "bytes": 185987,
       "mode": "0644",
       "path": "hooks/kimiflow_core/release_profile.py",
-      "sha256": "sha256:53895944940ba8b8ef000f9a0c906bd9d8e0f7c3a73398573465f0bd3322d0c0"
+      "sha256": "sha256:703db6666cfe45006135c7c3900424617dc7165a32e3275588200ed9d8a36abc"
     },
     {
       "bytes": 46597,
@@ -818,10 +824,10 @@
       "sha256": "sha256:61eb87f4439d84dd33fedc1bc4541815a2bff6667914f6ad443b0561141af838"
     },
     {
-      "bytes": 9622,
+      "bytes": 10566,
       "mode": "0644",
       "path": "phases/phase-6-verify.md",
-      "sha256": "sha256:be46d70174cd6efddd14290f4c2c4e1b995a6125cc72797fdd61f2f5d707c85b"
+      "sha256": "sha256:8c44f974192f6610bd72294a0fa5718d195f36144398180c37ee97a7075cbeaf"
     },
     {
       "bytes": 19515,
@@ -830,10 +836,10 @@
       "sha256": "sha256:28932a69bc8614f6f5ca7dfd3a11d886a45e8f651cdfa475c880769d30f90d7d"
     },
     {
-      "bytes": 211765,
+      "bytes": 220440,
       "mode": "0644",
       "path": "reference.md",
-      "sha256": "sha256:b656435e5f0decf92787466f9944e8b07c65f2ede0b789a0b1c357bcb723c14a"
+      "sha256": "sha256:61f5f27c9b85d15855400a3b198fb21c3dfbcc5c179f62c42f1040664aafb183"
     },
     {
       "bytes": 2024,
@@ -896,6 +902,12 @@
       "sha256": "sha256:4ac4a87eae8b935935c39de655d64a9409c533206b6d5f107c6270a433a5a401"
     },
     {
+      "bytes": 10149,
+      "mode": "0644",
+      "path": "references/release-profile-v2.schema.json",
+      "sha256": "sha256:93fdb709e9f834c4f761ec90b66b6406ca3e5d0b98b1167ea4f84c4aeebf6f82"
+    },
+    {
       "bytes": 2696,
       "mode": "0644",
       "path": "references/runtime-distribution.md",
@@ -920,6 +932,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:4beceda07d2ea80099aa31dc7b51c2efd05379c5ede102b443786a3c85c4914a",
+  "runtime_fingerprint": "sha256:3867ca8b7e07bb4a42cf1bf9f83dbd8879e92d0ca26afd0dffdca28b46835bfc",
   "schema_version": 1
 }

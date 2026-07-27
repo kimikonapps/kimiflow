@@ -278,6 +278,20 @@ else
   bad "autonomous worktree broker wiring incomplete"
 fi
 if [ -x "$ROOT/hooks/ci-test-plan.sh" ] && bash -n "$ROOT/hooks/ci-test-plan.sh" 2>/dev/null && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import ci_test_plan' 2>/dev/null; then ok "CI test plan helper ok"; else bad "CI test plan helper missing/not-exec/unloadable"; fi
+if [ -x "$ROOT/hooks/release-profile.sh" ] \
+  && bash -n "$ROOT/hooks/release-profile.sh" 2>/dev/null \
+  && [ -s "$ROOT/references/release-profile-v2.schema.json" ] \
+  && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import release_memory, release_profile; assert callable(release_profile.evidence_execute); assert callable(release_memory.resolve_identity)' 2>/dev/null \
+  && grep -q 'evidence-execute' "$ROOT/phases/phase-6-verify.md" \
+  && grep -q 'METRICS.json' "$ROOT/reference.md" \
+  && grep -q 'status --prefer-v2' "$ROOT/reference.md" \
+  && grep -q 'upgrade_required' "$ROOT/README.md" \
+  && grep -q 'release-profile-v2.schema.json' "$ROOT/README.md" \
+  && grep -q 'release-profile-v2.schema.json' "$ROOT/README.de.md"; then
+  ok "release profile v2 memory, evidence, economics, and docs wiring"
+else
+  bad "release profile v2 memory, evidence, economics, or docs wiring incomplete"
+fi
 if [ -x "$ROOT/hooks/behavior-eval-receipt.sh" ] && bash -n "$ROOT/hooks/behavior-eval-receipt.sh" 2>/dev/null && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import eval_receipt' 2>/dev/null; then ok "behavior eval receipt helper ok"; else bad "behavior eval receipt helper missing/not-exec/unloadable"; fi
 if grep -q 'show one plain summary' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'route --run .kimiflow/<slug> --write' "$ROOT/phases/phase-0-setup.md" \

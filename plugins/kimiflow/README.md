@@ -254,6 +254,38 @@ checks must pass. Audit improvement findings are evidence-bound
 advisories and never modify a live publication. Projects that never invoke release mode load no release
 profile context.
 
+Schema-v2 profiles add typed public runtime inputs, project-and-target-bound private release memory, ephemeral
+provider identity, granular retry classes, and exact Phase-6 evidence reuse. Non-GitHub releases use the generic
+`environment` identity with only project-declared ephemeral credentials and must declare at least one public
+publication target, so changing a registry, App Store or internal destination cannot reuse another target's
+memory. The release effect must consume that target explicitly; GitHub is an optional adapter that
+prefers a native token, then its
+local fallback reuses the account proven by a successful release (or the latest release author on first use)
+and revalidates repository write capability without switching global `gh` state. Credentials, raw inputs,
+command output and absolute paths are never
+persisted. Credential-bearing temporary homes are forced outside the project, guarded by an independent
+controller-death cleanup process and reclaimed through local leases after a host restart. Provider output is
+capped while the command runs, internal repository discovery uses a fixed system Git rather than ambient
+`PATH`, and `env` wrappers cannot replace sealed HOME/XDG/provider configuration. Runtime artifacts named by
+`relative_path`, static local effect arguments or affected paths are streamed through a bounded built-in
+credential scan before an effect. Directory membership and bytes are snapshot-bound; ZIP/tar members are
+inspected, while unsafe, encrypted, nested or unsupported containers fail closed. Secret-looking descendants,
+known token shapes and the active ephemeral credential itself fail closed without persisting content. Unused per-release
+inputs such as a new tag do not invalidate an independent check; every relative-path input actually consumed by
+a command, its affected bytes, environment and adopted external tool fingerprints must still match. Unchanged
+releases therefore skip repeated discovery, audit, model work and already-current checks. Within one interrupted
+generation, completed unauthenticated checks are reused only while their path, environment, PATH and tool
+context still matches; authenticated checks always rerun. Release memory is file- and directory-fsynced
+idempotently before the completed marker; a completed-run retry repairs missing or malformed memory without
+repeating project work;
+actual project checks, builds and provider operations still run whenever their evidence is absent or stale.
+Provider-authenticated checks are never reused; they always run with the current ephemeral release identity.
+Local content-free metrics separate control, check, build and provider work—there is deliberately no fixed
+release time budget. See [`references/release-profile-v2.schema.json`](references/release-profile-v2.schema.json).
+`kimiflow release` reports an existing ready v1 profile as a one-time `upgrade_required` migration and infers
+its real provider from tracked controls; an active v1 generation finishes safely first. Direct v1 execution
+remains compatible.
+
 ## Demo
 
 ![Kimiflow launcher and gated feature/fix flow](docs/demo/kimiflow.gif)

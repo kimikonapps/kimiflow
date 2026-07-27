@@ -1,11 +1,16 @@
 import json
 import os
+import re
+import signal
 import subprocess
+import sys
 import tempfile
+import time
 import unittest
+import zipfile
 from unittest import mock
 
-from kimiflow_core import release_profile
+from kimiflow_core import release_memory, release_profile
 
 
 def write(path, text, mode=0o644):
@@ -64,7 +69,7 @@ class ReleaseProfileTests(unittest.TestCase):
                 "p=Path('order.log'); p.write_text((p.read_text() if p.exists() else '')+'final\\n')\n"
                 "raise SystemExit(0 if Path('counter.txt').exists() else 1)\n"
             ),
-            "fail.py": "raise SystemExit(7)\n",
+            "fail.py": "print('unauthorized'); raise SystemExit(7)\n",
         }
         for name, payload in scripts.items():
             write(os.path.join(self.root, "scripts", name), payload)
@@ -80,6 +85,8 @@ class ReleaseProfileTests(unittest.TestCase):
             os.path.join(self.root, ".github", "workflows", "release.yml"),
             "name: release\non: workflow_dispatch\n",
         )
+        write(os.path.join(self.root, "artifact.txt"), "stable\n")
+        write(os.path.join(self.root, "artifact2.txt"), "stable\n")
         subprocess.run(["git", "-C", self.root, "add", "."], check=True)
         subprocess.run(
             ["git", "-C", self.root, "commit", "-qm", "fixture"], check=True
@@ -153,8 +160,110 @@ class ReleaseProfileTests(unittest.TestCase):
             ],
         }
 
+    def _policy(
+        self,
+        *,
+        auth="none",
+        stage="project_checks",
+        failure="semantic",
+        reuse="never",
+        affected_paths=None,
+        declared_env=None,
+    ):
+        return {
+            "auth": auth,
+            "stage": stage,
+            "failure": failure,
+            "reuse": reuse,
+            "affected_paths": list(affected_paths or []),
+            "declared_env": list(declared_env or []),
+        }
+
+    def _profile_v2(self, post_script="scripts/post.py"):
+        profile = self._profile()
+        profile["schema_version"] = 2
+        profile["inputs"] = [
+            {
+                "name": "repository",
+                "type": "repository",
+                "publication_target": True,
+            },
+            {
+                "name": "tag",
+                "type": "tag",
+                "publication_target": False,
+            },
+        ]
+        profile["identity"] = {
+            "provider": "environment",
+            "environment": ["DEPLOY_TOKEN"],
+        }
+        profile["steps"][0]["policy"] = self._policy(
+            reuse="kimiflow_verification",
+            affected_paths=["artifact.txt"],
+        )
+        profile["steps"].insert(
+            1,
+            {
+                "id": "preflight-independent",
+                "kind": "check",
+                "argv": ["python3", "scripts/check.py"],
+                "cwd": ".",
+                "timeout_seconds": 10,
+                "policy": self._policy(
+                    reuse="kimiflow_verification",
+                    affected_paths=["artifact2.txt"],
+                ),
+            },
+        )
+        effect = profile["steps"][2]
+        effect["argv"].extend(["{{tag}}", "{{repository}}"])
+        effect["policy"] = self._policy(
+            auth="provider",
+            stage="provider",
+            failure="operational",
+        )
+        effect["precondition"]["policy"] = self._policy(
+            auth="provider",
+            stage="provider",
+            failure="operational",
+        )
+        effect["postcondition"]["argv"] = ["python3", post_script]
+        effect["postcondition"]["policy"] = self._policy(
+            auth="provider",
+            stage="provider",
+            failure="operational",
+        )
+        profile["final_checks"][0]["policy"] = self._policy()
+        return profile
+
+    def _v2_inputs(self):
+        return {"repository": "org/project", "tag": "v1.2.3"}
+
+    def _verification_run(self):
+        run = os.path.join(self.root, ".kimiflow", "fixture-run")
+        os.makedirs(run, exist_ok=True)
+        write(os.path.join(run, "STATE.md"), "Phase 6: done\n")
+        write(
+            os.path.join(run, "VERIFICATION.md"),
+            "<!-- kimiflow:verification outcome=passed criteria=passed "
+            "regression=passed -->\n"
+            "<!-- kimiflow:conformance contract=1 status=converged "
+            "diff=passed strategy=passed -->\n",
+        )
+        return run
+
     def _audit(self, profile, findings=None, failure_sha256=None):
         evidence = "scripts/release-control.py"
+        probe_ids = []
+        for step in profile["steps"]:
+            if step["kind"] == "check":
+                probe_ids.append(step["id"])
+            else:
+                probe_ids.extend(
+                    [step["precondition"]["id"], step["postcondition"]["id"]]
+                )
+        probe_ids.extend(check["id"] for check in profile["final_checks"])
         return {
             "schema_version": 1,
             "document_type": "release_audit",
@@ -171,12 +280,7 @@ class ReleaseProfileTests(unittest.TestCase):
                     "read_only": True,
                     "evidence_path": evidence,
                 }
-                for probe_id in (
-                    "preflight",
-                    "publish-safe",
-                    "publish-done",
-                    "release-verified",
-                )
+                for probe_id in probe_ids
             ],
             "findings": [] if findings is None else findings,
         }
@@ -1473,6 +1577,2202 @@ class ReleaseProfileTests(unittest.TestCase):
                 write=True,
             )["status"],
             "adopted",
+        )
+
+    def test_v2_inputs_expand_and_v1_remains_compatible(self):
+        v1 = self._profile()
+        self.assertEqual(release_profile.validate_profile(v1), v1)
+        self._adopt(v1)
+        migration = release_profile.status(self.root, prefer_v2=True)
+        self.assertEqual(migration["status"], "upgrade_required")
+        self.assertEqual(migration["profile_schema_version"], 1)
+        self.assertEqual(migration["migration_status"], "v2_available")
+        self.assertTrue(
+            release_profile._parser().parse_args(
+                ["status", "--prefer-v2"]
+            ).prefer_v2
+        )
+        self.assertEqual(
+            release_profile.run_profile(
+                self.root, authorize=True, write=True
+            )["status"],
+            "completed",
+        )
+
+        v2 = self._profile_v2()
+        self.assertEqual(release_profile.validate_profile(v2), v2)
+        self.assertTrue(
+            release_profile._validate_input_value(
+                "git_oid",
+                "Ab" * 20,
+            )
+        )
+        self.assertTrue(
+            release_profile._validate_input_value(
+                "repository", "group/subgroup/project"
+            )
+        )
+        unsafe_public = json.loads(json.dumps(v2))
+        unsafe_public["steps"][0]["policy"]["declared_env"] = ["HOME"]
+        with self.assertRaisesRegex(
+            release_profile.ReleaseProfileError,
+            "declared_env_invalid",
+        ):
+            release_profile.validate_profile(unsafe_public)
+        unsafe_identity = json.loads(json.dumps(v2))
+        unsafe_identity["identity"]["environment"] = ["LD_PRELOAD"]
+        with self.assertRaisesRegex(
+            release_profile.ReleaseProfileError,
+            "profile_identity_invalid",
+        ):
+            release_profile.validate_profile(unsafe_identity)
+        github_profile = json.loads(json.dumps(v2))
+        github_profile["identity"] = {"provider": "github"}
+        github_profile["inputs"][0]["publication_target"] = True
+        self.assertEqual(
+            release_profile.validate_profile(github_profile),
+            github_profile,
+        )
+        github_profile["inputs"].append(
+            {
+                "name": "other_repository",
+                "type": "repository",
+                "publication_target": False,
+            }
+        )
+        with self.assertRaisesRegex(
+            release_profile.ReleaseProfileError,
+            "profile_identity_target_invalid",
+        ):
+            release_profile.validate_profile(github_profile)
+        schema_path = os.path.realpath(
+            os.path.join(
+                os.path.dirname(release_profile.__file__),
+                "..",
+                "..",
+                "references",
+                "release-profile-v2.schema.json",
+            )
+        )
+        with open(schema_path, encoding="utf-8") as handle:
+            schema = json.load(handle)
+        safe_pattern = schema["$defs"]["safeEnvironmentName"]["pattern"]
+        self.assertIsNotNone(re.fullmatch(safe_pattern, "PUBLIC_BUILD"))
+        for unsafe in (
+            "HOME", "PATH", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES",
+            "JAVA_TOOL_OPTIONS", "CI", "XDG_DATA_HOME",
+            "XDG_RUNTIME_DIR", "XDG_STATE_HOME",
+        ):
+            self.assertIsNone(re.fullmatch(safe_pattern, unsafe))
+        github_condition = schema["$defs"]["profile"]["allOf"][0]["then"]
+        input_contracts = github_condition["properties"]["inputs"]["allOf"]
+        self.assertEqual(input_contracts[0]["minContains"], 1)
+        self.assertEqual(input_contracts[0]["maxContains"], 1)
+        self.assertEqual(
+            schema["$defs"]["profile"]["properties"]["inputs"][
+                "minContains"
+            ],
+            1,
+        )
+        check_schema = schema["$defs"]["checkStep"]
+        self.assertEqual(check_schema["properties"]["kind"]["const"], "check")
+        self.assertFalse(check_schema["additionalProperties"])
+        resolved, input_sha256, resolved_sha256 = (
+            release_profile._resolved_v2_profile(
+                self.root, v2, self._v2_inputs()
+            )
+        )
+        self.assertEqual(
+            resolved["steps"][2]["argv"][-2:],
+            ["v1.2.3", "org/project"],
+        )
+        serialized = json.dumps(
+            {
+                "input_sha256": input_sha256,
+                "resolved_profile_sha256": resolved_sha256,
+            }
+        )
+        self.assertNotIn("org/project", serialized)
+        self.assertNotIn("v1.2.3", serialized)
+        with self.assertRaisesRegex(
+            release_profile.ReleaseProfileError, "input_value_invalid"
+        ):
+            release_profile._resolved_v2_profile(
+                self.root,
+                v2,
+                {
+                    "repository": "org/project",
+                    "tag": "AbCdEf0123456789AbCdEf0123456789",
+                },
+            )
+        self._adopt(v2)
+        current = release_profile.status(self.root, prefer_v2=True)
+        self.assertEqual(current["status"], "ready")
+        self.assertEqual(current["profile_schema_version"], 2)
+        self.assertEqual(current["migration_status"], "current")
+        with mock.patch.dict(
+            os.environ, {"DEPLOY_TOKEN": "runtime-only"}, clear=False
+        ):
+            first = release_profile.run_profile(
+                self.root,
+                authorize=True,
+                write=True,
+                inputs=self._v2_inputs(),
+            )
+            changed_inputs = dict(self._v2_inputs(), tag="v1.2.4")
+            second = release_profile.run_profile(
+                self.root,
+                authorize=True,
+                write=True,
+                new=True,
+                inputs=changed_inputs,
+            )
+        self.assertEqual(first["generation"], 1)
+        self.assertEqual(second["generation"], 2)
+        self.assertNotIn("v1.2.4", json.dumps(second))
+
+        with tempfile.TemporaryDirectory() as tools:
+            benign = os.path.join(tools, "benign")
+            replaced = os.path.join(tools, "replaced")
+            os.makedirs(benign)
+            os.makedirs(replaced)
+            write(
+                os.path.join(benign, "provider-tool"),
+                "#!/bin/sh\nexit 0\n",
+                mode=0o755,
+            )
+            write(
+                os.path.join(replaced, "provider-tool"),
+                "#!/bin/sh\nprintf invoked > path-shim-invoked\n",
+                mode=0o755,
+            )
+            original_path = os.environ.get("PATH", os.defpath)
+            tool_profile = self._profile_v2()
+            tool_profile["steps"][2]["argv"] = [
+                "provider-tool", "{{repository}}"
+            ]
+            with mock.patch.dict(
+                os.environ,
+                {"PATH": benign + os.pathsep + original_path},
+                clear=False,
+            ):
+                self._adopt(tool_profile)
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "PATH": replaced + os.pathsep + original_path,
+                    "DEPLOY_TOKEN": "runtime-only",
+                },
+                clear=False,
+            ):
+                with self.assertRaisesRegex(
+                    release_profile.ReleaseProfileError,
+                    "adopted_tool_drift",
+                ):
+                    release_profile.run_profile(
+                        self.root,
+                        authorize=True,
+                        write=True,
+                        inputs=self._v2_inputs(),
+                    )
+            self.assertFalse(
+                os.path.exists(
+                    os.path.join(self.root, "path-shim-invoked")
+                )
+            )
+
+    def test_v2_runtime_boundary_rejects_drift_forgery_and_unsafe_inputs(self):
+        profile = self._profile_v2()
+        no_target = json.loads(json.dumps(profile))
+        for row in no_target["inputs"]:
+            row["publication_target"] = False
+        with self.assertRaisesRegex(
+            release_profile.ReleaseProfileError,
+            "profile_publication_target_missing",
+        ):
+            release_profile.validate_profile(no_target)
+
+        with tempfile.TemporaryDirectory() as outside:
+            outside_file = os.path.join(outside, "sentinel.txt")
+            write(outside_file, "outside\n")
+            os.symlink(outside_file, os.path.join(self.root, "artifact-link"))
+            path_profile = json.loads(json.dumps(profile))
+            path_profile["inputs"].append(
+                {
+                    "name": "artifact_path",
+                    "type": "relative_path",
+                    "publication_target": False,
+                }
+            )
+            path_profile["steps"][2]["argv"].append("{{artifact_path}}")
+            unsafe_inputs = dict(
+                self._v2_inputs(), artifact_path="artifact-link"
+            )
+            with self.assertRaisesRegex(
+                release_profile.ReleaseProfileError, "input_value_invalid"
+            ):
+                release_profile._resolved_v2_profile(
+                    self.root, path_profile, unsafe_inputs
+                )
+            with self.assertRaisesRegex(
+                release_profile.ReleaseProfileError, "input_value_invalid"
+            ):
+                release_profile._resolved_v2_profile(
+                    self.root,
+                    path_profile,
+                    dict(self._v2_inputs(), artifact_path=".npmrc"),
+                )
+
+        late_profile = json.loads(json.dumps(profile))
+        late_profile["inputs"].append(
+            {
+                "name": "artifact_path",
+                "type": "relative_path",
+                "publication_target": False,
+            }
+        )
+        late_profile["steps"][2]["argv"].append("{{artifact_path}}")
+        late_inputs = dict(
+            self._v2_inputs(), artifact_path="late-artifact.bin"
+        )
+        late_resolved, _, _ = release_profile._resolved_v2_profile(
+            self.root, late_profile, late_inputs, self.discovery
+        )
+        self.assertEqual(
+            late_resolved["steps"][2]["argv"][-1],
+            os.path.join(os.path.realpath(self.root), "late-artifact.bin"),
+        )
+        with tempfile.NamedTemporaryFile() as outside:
+            os.symlink(
+                outside.name,
+                os.path.join(self.root, "late-artifact.bin"),
+            )
+            with self.assertRaisesRegex(
+                release_profile.ReleaseProfileError, "input_path_drift"
+            ):
+                release_profile._require_relative_inputs_current(
+                    self.root, late_profile, late_inputs
+                )
+            os.unlink(os.path.join(self.root, "late-artifact.bin"))
+
+        executable = os.path.join(
+            self.root, "scripts", "untracked-tool"
+        )
+        write(executable, "#!/bin/sh\nexit 0\n", mode=0o755)
+        command_profile = json.loads(json.dumps(profile))
+        command_profile["inputs"].append(
+            {
+                "name": "tool",
+                "type": "relative_path",
+                "publication_target": False,
+            }
+        )
+        command_profile["steps"][0]["argv"] = ["{{tool}}"]
+        with self.assertRaisesRegex(
+            release_profile.ReleaseProfileError,
+            "command_local_input_untracked",
+        ):
+            release_profile._resolved_v2_profile(
+                self.root,
+                command_profile,
+                dict(self._v2_inputs(), tool="scripts/untracked-tool"),
+                self.discovery,
+            )
+        environment = release_memory.sealed_environment(os.environ)
+        self.assertEqual(
+            release_memory.tool_fingerprints(
+                ["./untracked-tool"],
+                environment,
+                cwd=os.path.join(self.root, "scripts"),
+            ),
+            release_memory.tool_fingerprints(
+                [executable],
+                environment,
+                cwd=self.root,
+            ),
+        )
+
+        self._adopt(profile)
+        bundle = release_profile._load_bundle(self.root)
+        resolved, input_sha256, resolved_sha256 = (
+            release_profile._resolved_v2_profile(
+                self.root,
+                profile,
+                self._v2_inputs(),
+                bundle["discovery"],
+            )
+        )
+        bound = release_memory.binding(
+            self.root,
+            self._v2_inputs(),
+            profile["inputs"],
+            provider="environment",
+        )
+        receipt = release_profile._v2_empty_run(
+            self.root, bundle, resolved_sha256, input_sha256, 1, bound
+        )
+        invalid_check = json.loads(json.dumps(receipt))
+        invalid_check["steps"][0]["status"] = "started"
+        with self.assertRaisesRegex(
+            release_profile.ReleaseProfileError,
+            "run_step_evidence_invalid",
+        ):
+            release_profile._validate_run_v2(
+                invalid_check, bundle, resolved_profile=resolved
+            )
+        invalid_started = json.loads(json.dumps(receipt))
+        invalid_effect = next(
+            row for row in invalid_started["steps"]
+            if row["kind"] == "effect"
+        )
+        invalid_effect["status"] = "started"
+        with self.assertRaisesRegex(
+            release_profile.ReleaseProfileError,
+            "run_step_evidence_invalid",
+        ):
+            release_profile._validate_run_v2(
+                invalid_started, bundle, resolved_profile=resolved
+            )
+        successful_precondition = release_profile._execute_v2(
+            self.root,
+            resolved["steps"][2]["precondition"],
+            credentials={"DEPLOY_TOKEN": "runtime-only"},
+        )
+        invalid_retryable = json.loads(json.dumps(receipt))
+        invalid_effect = next(
+            row for row in invalid_retryable["steps"]
+            if row["kind"] == "effect"
+        )
+        invalid_effect["status"] = "retryable"
+        invalid_effect["evidence"] = {
+            "precondition": successful_precondition
+        }
+        with self.assertRaisesRegex(
+            release_profile.ReleaseProfileError,
+            "run_step_evidence_invalid",
+        ):
+            release_profile._validate_run_v2(
+                invalid_retryable, bundle, resolved_profile=resolved
+            )
+        forged = json.loads(json.dumps(receipt))
+        forged["identity"] = {
+            "kind": "environment",
+            "account_sha256": release_memory.digest(
+                {"names": ["DEPLOY_TOKEN"]}
+            ),
+            "resolver_probes": 0,
+        }
+        for row in forged["steps"] + forged["final_checks"]:
+            row["status"] = "completed"
+        forged["status"] = "completed"
+        forged["completion_sha256"] = release_profile._value_sha(
+            {
+                key: forged[key]
+                for key in (
+                    "profile_sha256", "resolved_profile_sha256",
+                    "input_sha256", "control_set_sha256", "binding", "head",
+                    "generation", "identity", "steps", "final_checks",
+                )
+            }
+        )
+        with self.assertRaisesRegex(
+            release_profile.ReleaseProfileError,
+            "run_completed_evidence_invalid",
+        ):
+            release_profile._validate_run_v2(
+                forged, bundle, resolved_profile=resolved
+            )
+
+        with mock.patch.dict(
+            os.environ, {"DEPLOY_TOKEN": "runtime-only"}, clear=False
+        ):
+            recovered = release_profile.run_profile(
+                self.root,
+                authorize=True,
+                write=True,
+                inputs=self._v2_inputs(),
+            )
+        publish = next(
+            row for row in recovered["steps"] if row["kind"] == "effect"
+        )
+        del publish["evidence"]["effect"]
+        recovered["completion_sha256"] = release_profile._value_sha(
+            {
+                key: recovered[key]
+                for key in (
+                    "profile_sha256", "resolved_profile_sha256",
+                    "input_sha256", "control_set_sha256", "binding", "head",
+                    "generation", "identity", "steps", "final_checks",
+                )
+            }
+        )
+        release_profile._validate_run_v2(
+            recovered, bundle, resolved_profile=resolved
+        )
+
+        with mock.patch.object(
+            release_profile.os, "fsync", wraps=os.fsync
+        ) as fsync:
+            release_profile._persist_run(self.root, receipt)
+        self.assertGreaterEqual(fsync.call_count, 2)
+        write(os.path.join(self.root, "head-drift.txt"), "drift\n")
+        subprocess.run(
+            ["git", "-C", self.root, "add", "head-drift.txt"], check=True
+        )
+        subprocess.run(
+            ["git", "-C", self.root, "commit", "-qm", "head drift"],
+            check=True,
+        )
+        with mock.patch.dict(
+            os.environ, {"DEPLOY_TOKEN": "runtime-only"}, clear=False
+        ):
+            with self.assertRaisesRegex(
+                release_profile.ReleaseProfileError, "run_head_drift"
+            ):
+                release_profile.run_profile(
+                    self.root,
+                    authorize=True,
+                    write=True,
+                    inputs=self._v2_inputs(),
+                )
+
+    def test_v2_timeout_terminates_provider_process_group(self):
+        marker = os.path.join(self.root, "late-provider-effect.txt")
+        child = (
+            "import pathlib,time;"
+            "time.sleep(1.5);"
+            f"pathlib.Path({marker!r}).write_text('late')"
+        )
+        script = os.path.join(self.root, "scripts", "spawn-child.py")
+        write(
+            script,
+            "import subprocess,time\n"
+            f"subprocess.Popen(['python3','-c',{child!r}])\n"
+            "time.sleep(10)\n",
+        )
+        command = {
+            "id": "timeout-provider",
+            "kind": "check",
+            "argv": ["python3", "scripts/spawn-child.py"],
+            "cwd": ".",
+            "timeout_seconds": 1,
+            "policy": self._policy(
+                auth="provider",
+                stage="provider",
+                failure="operational",
+            ),
+        }
+        evidence = release_profile._execute_v2(
+            self.root, command, credentials={"DEPLOY_TOKEN": "runtime-only"}
+        )
+        self.assertEqual(evidence["failure_class"], "timeout")
+        time.sleep(1)
+        self.assertFalse(os.path.exists(marker))
+
+    def test_v2_success_terminates_lingering_provider_process_group(self):
+        marker = os.path.join(self.root, "lingering-provider-secret.txt")
+        child = (
+            "import os,pathlib,time;"
+            "time.sleep(0.5);"
+            f"pathlib.Path({marker!r}).write_text("
+            "os.environ['DEPLOY_TOKEN'])"
+        )
+        script = os.path.join(
+            self.root, "scripts", "spawn-lingering-child.py"
+        )
+        write(
+            script,
+            "import subprocess\n"
+            f"subprocess.Popen(['python3','-c',{child!r}],"
+            "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,"
+            "stderr=subprocess.DEVNULL)\n",
+        )
+        command = {
+            "id": "successful-provider",
+            "kind": "effect",
+            "argv": ["python3", "scripts/spawn-lingering-child.py"],
+            "cwd": ".",
+            "timeout_seconds": 5,
+            "policy": self._policy(
+                auth="provider",
+                stage="provider",
+                failure="operational",
+            ),
+        }
+        evidence = release_profile._execute_v2(
+            self.root, command, credentials={"DEPLOY_TOKEN": "runtime-only"}
+        )
+        self.assertEqual(evidence["exit_code"], 0)
+        time.sleep(1)
+        self.assertFalse(os.path.exists(marker))
+
+    def test_v2_controller_signal_terminates_provider_process_group(self):
+        child_pid = os.path.join(self.root, "provider-child.pid")
+        long_running = os.path.join(
+            self.root, "scripts", "long-provider.py"
+        )
+        write(
+            long_running,
+            "import os,time\n"
+            f"open({child_pid!r}, 'w').write(str(os.getpid()))\n"
+            "time.sleep(30)\n",
+        )
+        controller = os.path.join(self.root, "controller.py")
+        write(
+            controller,
+            "from kimiflow_core import release_profile\n"
+            f"root={self.root!r}\n"
+            "command={"
+            "'id':'provider','kind':'check',"
+            "'argv':['python3','scripts/long-provider.py'],"
+            "'cwd':'.','timeout_seconds':30,"
+            "'policy':{'auth':'provider','stage':'provider',"
+            "'failure':'operational','reuse':'never',"
+            "'affected_paths':[],'declared_env':[]}}\n"
+            "release_profile._execute_v2("
+            "root,command,credentials={'DEPLOY_TOKEN':'runtime-only'})\n",
+        )
+        environment = os.environ.copy()
+        environment["PYTHONPATH"] = os.path.dirname(
+            os.path.dirname(release_profile.__file__)
+        )
+        process = subprocess.Popen(
+            ["python3", controller],
+            cwd=self.root,
+            env=environment,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        deadline = time.monotonic() + 5
+        while not os.path.exists(child_pid) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertTrue(os.path.exists(child_pid))
+        with open(child_pid, encoding="utf-8") as handle:
+            pid = int(handle.read())
+        process.terminate()
+        process.wait(timeout=5)
+        time.sleep(0.1)
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            pass
+        else:
+            os.killpg(pid, signal.SIGKILL)
+            self.fail("provider child survived controller SIGTERM")
+
+    def test_resolved_placeholder_tool_is_bound_before_effect(self):
+        tool_path = os.path.join(self.root, "scripts", "provider-tool")
+        write(
+            tool_path,
+            "#!/bin/sh\n"
+            "printf 'effect\\n' >> order.log\n"
+            "printf '1' > counter.txt\n",
+            mode=0o755,
+        )
+        subprocess.run(
+            ["git", "-C", self.root, "add", "scripts/provider-tool"],
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", self.root, "commit", "-qm", "add provider tool"],
+            check=True,
+        )
+        self.EXPLICIT_SCRIPTS = [
+            *self.EXPLICIT_SCRIPTS,
+            "scripts/provider-tool",
+        ]
+        self.discovery = self._discover()
+        profile = self._profile_v2()
+        profile["inputs"].append(
+            {
+                "name": "tool",
+                "type": "relative_path",
+                "publication_target": False,
+            }
+        )
+        profile["steps"][2]["argv"] = [
+            "{{tool}}", "{{repository}}"
+        ]
+        self._adopt(profile)
+        inputs = dict(
+            self._v2_inputs(), tool="scripts/provider-tool"
+        )
+        leaked = os.path.join(self.root, "runtime-secret")
+        real_require = release_profile._require_relative_inputs_current
+        calls = 0
+
+        def replace_after_path_check(root, candidate, runtime_inputs):
+            nonlocal calls
+            real_require(root, candidate, runtime_inputs)
+            calls += 1
+            if calls == 7:
+                write(
+                    tool_path,
+                    "#!/bin/sh\n"
+                    'printf \"%s\" \"$DEPLOY_TOKEN\" > runtime-secret\n',
+                    mode=0o755,
+                )
+
+        with mock.patch.object(
+            release_profile,
+            "_require_relative_inputs_current",
+            side_effect=replace_after_path_check,
+        ):
+            with mock.patch.dict(
+                os.environ, {"DEPLOY_TOKEN": "runtime-only"}, clear=False
+            ):
+                with self.assertRaisesRegex(
+                    release_profile.ReleaseProfileError,
+                    "(?:control|adopted_tool)_drift",
+                ):
+                    release_profile.run_profile(
+                        self.root,
+                        authorize=True,
+                        write=True,
+                        inputs=inputs,
+                    )
+        self.assertFalse(os.path.exists(leaked))
+
+    def test_control_source_is_rechecked_after_runtime_path_guard(self):
+        profile = self._profile_v2()
+        self._adopt(profile)
+        effect_path = os.path.join(self.root, "scripts", "effect.py")
+        leaked = os.path.join(self.root, "runtime-secret")
+        real_require = release_profile._require_relative_inputs_current
+        calls = 0
+
+        def replace_after_path_check(root, candidate, runtime_inputs):
+            nonlocal calls
+            real_require(root, candidate, runtime_inputs)
+            calls += 1
+            if calls == 7:
+                write(
+                    effect_path,
+                    "import os\n"
+                    "from pathlib import Path\n"
+                    "Path('runtime-secret').write_text("
+                    "os.environ['DEPLOY_TOKEN'])\n",
+                )
+
+        with mock.patch.object(
+            release_profile,
+            "_require_relative_inputs_current",
+            side_effect=replace_after_path_check,
+        ):
+            with mock.patch.dict(
+                os.environ, {"DEPLOY_TOKEN": "runtime-only"}, clear=False
+            ):
+                with self.assertRaisesRegex(
+                    release_profile.ReleaseProfileError,
+                    "control_drift",
+                ):
+                    release_profile.run_profile(
+                        self.root,
+                        authorize=True,
+                        write=True,
+                        inputs=self._v2_inputs(),
+                    )
+        self.assertFalse(os.path.exists(leaked))
+
+    def test_relative_input_is_rechecked_immediately_before_effect(self):
+        effect_path = os.path.join(self.root, "scripts", "effect.py")
+        write(
+            effect_path,
+            "import sys\n"
+            "from pathlib import Path\n"
+            "Path(sys.argv[-1]).write_text('effect')\n"
+            "Path('counter.txt').write_text('1')\n",
+        )
+        subprocess.run(
+            ["git", "-C", self.root, "add", "scripts/effect.py"],
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", self.root, "commit", "-qm", "consume artifact"],
+            check=True,
+        )
+        self.discovery = self._discover()
+        profile = self._profile_v2()
+        profile["inputs"].append(
+            {
+                "name": "artifact_path",
+                "type": "relative_path",
+                "publication_target": False,
+            }
+        )
+        profile["steps"][2]["argv"].append("{{artifact_path}}")
+        self._adopt(profile)
+        inputs = dict(
+            self._v2_inputs(), artifact_path="artifact.txt"
+        )
+        artifact = os.path.join(self.root, "artifact.txt")
+        real_require = release_profile._require_relative_inputs_current
+        calls = 0
+        with tempfile.NamedTemporaryFile() as outside:
+            outside.write(b"outside-secret")
+            outside.flush()
+
+            def replace_after_first_effect_guard(
+                root, candidate, runtime_inputs
+            ):
+                nonlocal calls
+                real_require(root, candidate, runtime_inputs)
+                calls += 1
+                if calls == 7:
+                    os.unlink(artifact)
+                    os.symlink(outside.name, artifact)
+
+            with mock.patch.object(
+                release_profile,
+                "_require_relative_inputs_current",
+                side_effect=replace_after_first_effect_guard,
+            ):
+                with mock.patch.dict(
+                    os.environ,
+                    {"DEPLOY_TOKEN": "runtime-only"},
+                    clear=False,
+                ):
+                    with self.assertRaisesRegex(
+                        release_profile.ReleaseProfileError,
+                        "input_path_drift",
+                    ):
+                        release_profile.run_profile(
+                            self.root,
+                            authorize=True,
+                            write=True,
+                            inputs=inputs,
+                        )
+            outside.seek(0)
+            self.assertEqual(outside.read(), b"outside-secret")
+
+    def test_github_resolver_tool_is_rechecked_before_token_injection(self):
+        gh_directory = os.path.join(self.root, "gh-bin")
+        gh_path = os.path.join(gh_directory, "gh")
+        write(
+            gh_path,
+            "#!/bin/sh\nprintf 'true\\n'\n",
+            mode=0o755,
+        )
+        profile = self._profile_v2()
+        profile["identity"] = {"provider": "github"}
+        original_path = os.environ.get("PATH", os.defpath)
+        runtime_path = gh_directory + os.pathsep + original_path
+        with mock.patch.dict(
+            os.environ, {"PATH": runtime_path}, clear=False
+        ):
+            self._adopt(profile)
+        subprocess.run(
+            [
+                "git", "-C", self.root, "remote", "add", "origin",
+                "https://github.com/org/project.git",
+            ],
+            check=True,
+        )
+        real_binding = release_memory.binding
+
+        def replace_after_resolved_binding(*args, **kwargs):
+            result = real_binding(*args, **kwargs)
+            write(
+                gh_path,
+                "#!/bin/sh\n"
+                'printf "%s" "$GH_TOKEN" > github-secret\n'
+                "printf 'true\\n'\n",
+                mode=0o755,
+            )
+            return result
+
+        with mock.patch.object(
+            release_memory,
+            "binding",
+            side_effect=replace_after_resolved_binding,
+        ):
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "PATH": runtime_path,
+                    "GITHUB_TOKEN": "native-runtime-secret",
+                },
+                clear=False,
+            ):
+                with self.assertRaisesRegex(
+                    release_profile.ReleaseProfileError,
+                    "identity_tool_drift",
+                ):
+                    release_profile.run_profile(
+                        self.root,
+                        authorize=True,
+                        write=True,
+                        inputs=self._v2_inputs(),
+                    )
+        self.assertFalse(
+            os.path.exists(os.path.join(self.root, "github-secret"))
+        )
+
+    def test_evidence_drift_executes_only_invalidated_checks(self):
+        profile = self._profile_v2()
+        self._adopt(profile)
+        run = self._verification_run()
+        inputs = self._v2_inputs()
+        check_path = os.path.join(self.root, "scripts", "check.py")
+        with open(check_path, encoding="utf-8") as handle:
+            check_source = handle.read()
+        write(check_path, check_source + "# drift\n")
+        with self.assertRaisesRegex(
+            release_profile.ReleaseProfileError, "control_drift"
+        ):
+            release_profile.evidence_execute(
+                self.root,
+                run,
+                "preflight",
+                inputs=inputs,
+                write=True,
+            )
+        write(check_path, check_source)
+
+        real_execute = release_profile._execute_v2
+
+        def mutate_affected(root, command, credentials=None):
+            evidence = real_execute(
+                root, command, credentials=credentials
+            )
+            if command["id"] == "preflight":
+                write(os.path.join(root, "artifact.txt"), "mutated\n")
+            return evidence
+
+        with mock.patch.object(
+            release_profile, "_execute_v2", side_effect=mutate_affected
+        ):
+            with self.assertRaisesRegex(
+                release_profile.ReleaseProfileError,
+                "evidence_inputs_changed",
+            ):
+                release_profile.evidence_execute(
+                    self.root,
+                    run,
+                    "preflight",
+                    inputs=inputs,
+                    write=True,
+                )
+        write(os.path.join(self.root, "artifact.txt"), "stable\n")
+        with mock.patch.object(
+            release_profile, "_conformance_open", return_value=True
+        ):
+            release_profile.evidence_execute(
+                self.root,
+                run,
+                "preflight",
+                inputs=inputs,
+                write=True,
+            )
+            release_profile.evidence_execute(
+                self.root,
+                run,
+                "preflight-independent",
+                inputs=inputs,
+                write=True,
+            )
+            bundle = release_profile._load_bundle(self.root)
+            resolved, input_sha256, resolved_sha256 = (
+                release_profile._resolved_v2_profile(
+                    self.root, profile, inputs
+                )
+            )
+            changed_inputs = dict(inputs, tag="v1.2.4")
+            changed_resolved, _, _ = release_profile._resolved_v2_profile(
+                self.root,
+                profile,
+                changed_inputs,
+                bundle["discovery"],
+            )
+            self.assertIsNotNone(
+                release_profile._current_evidence(
+                    self.root,
+                    bundle,
+                    changed_resolved["steps"][0],
+                    changed_inputs,
+                )
+            )
+            self.assertIsNotNone(
+                release_profile._current_evidence(
+                    self.root,
+                    bundle,
+                    changed_resolved["steps"][1],
+                    changed_inputs,
+                )
+            )
+            with mock.patch.object(
+                release_profile, "_conformance_open", return_value=False
+            ):
+                self.assertIsNone(
+                    release_profile._current_evidence(
+                        self.root,
+                        bundle,
+                        resolved["steps"][0],
+                        inputs,
+                    )
+                )
+            order = os.path.join(self.root, "order.log")
+            os.unlink(order)
+            with mock.patch.dict(
+                os.environ, {"DEPLOY_TOKEN": "runtime-only"}, clear=False
+            ):
+                first = release_profile.run_profile(
+                    self.root,
+                    authorize=True,
+                    write=True,
+                    inputs=inputs,
+                )
+        self.assertEqual(first["steps"][0]["evidence"]["source"],
+                         "kimiflow_verification")
+        self.assertEqual(
+            first["steps"][1]["evidence"]["source"],
+            "kimiflow_verification",
+        )
+        with open(order, encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), "effect\nfinal\n")
+
+        write(os.path.join(self.root, "artifact.txt"), "drifted\n")
+        with mock.patch.object(
+            release_profile, "_conformance_open", return_value=True
+        ):
+            with mock.patch.dict(
+                os.environ, {"DEPLOY_TOKEN": "runtime-only"}, clear=False
+            ):
+                second = release_profile.run_profile(
+                    self.root,
+                    authorize=True,
+                    write=True,
+                    new=True,
+                    inputs=inputs,
+                )
+        self.assertEqual(second["steps"][0]["evidence"]["source"], "executed")
+        self.assertEqual(
+            second["steps"][1]["evidence"]["source"],
+            "kimiflow_verification",
+        )
+        with open(order, encoding="utf-8") as handle:
+            self.assertEqual(
+                handle.read(), "effect\nfinal\ncheck\neffect\nfinal\n"
+            )
+
+    def test_retryable_failure_preserves_audit_and_uncertain_effect_never_replays(self):
+        profile = self._profile_v2(post_script="scripts/fail.py")
+        provider_command = profile["steps"][2]["precondition"]
+        project_command = profile["steps"][0]
+        self.assertEqual(
+            release_profile._classify_v2_failure(
+                1,
+                b"HTTP 429 rate limit",
+                provider_command,
+                timed_out=False,
+                unavailable=False,
+            ),
+            "rate_limit",
+        )
+        semantic_provider = json.loads(json.dumps(provider_command))
+        semantic_provider["policy"]["failure"] = "semantic"
+        self.assertEqual(
+            release_profile._classify_v2_failure(
+                1,
+                b"HTTP 429 rate limit",
+                semantic_provider,
+                timed_out=False,
+                unavailable=False,
+            ),
+            "semantic",
+        )
+        self.assertEqual(
+            release_profile._classify_v2_failure(
+                1,
+                b"HTTP 429 rate limit",
+                project_command,
+                timed_out=False,
+                unavailable=False,
+            ),
+            "semantic",
+        )
+        retryable_row = {
+            "id": "publish",
+            "kind": "effect",
+            "status": "pending",
+            "failure_class": None,
+            "evidence": None,
+        }
+        retryable_receipt = {"status": "active"}
+        with mock.patch.object(release_profile, "_persist_run"):
+            with mock.patch.object(release_profile, "_failure") as failure:
+                with self.assertRaisesRegex(
+                    release_profile.ReleaseProfileError,
+                    "retryable_failure",
+                ):
+                    release_profile._v2_failure(
+                        self.root,
+                        {},
+                        retryable_receipt,
+                        retryable_row,
+                        {"failure_class": "rate_limit"},
+                        "precondition_failed",
+                    )
+        self.assertEqual(retryable_row["status"], "retryable")
+        self.assertEqual(retryable_receipt["status"], "retryable_failure")
+        failure.assert_not_called()
+        semantic_row = {
+            "id": "preflight",
+            "kind": "check",
+            "status": "pending",
+            "failure_class": None,
+            "evidence": None,
+        }
+        semantic_receipt = {"status": "active"}
+        with mock.patch.object(release_profile, "_persist_run"):
+            with mock.patch.object(release_profile, "_failure") as failure:
+                with self.assertRaisesRegex(
+                    release_profile.ReleaseProfileError, "step_failed"
+                ):
+                    release_profile._v2_failure(
+                        self.root,
+                        {},
+                        semantic_receipt,
+                        semantic_row,
+                        {"failure_class": "semantic"},
+                        "step_failed",
+                    )
+        self.assertEqual(semantic_row["status"], "failed")
+        self.assertEqual(semantic_receipt["status"], "audit_required")
+        failure.assert_called_once()
+
+        self._adopt(profile)
+        inputs = self._v2_inputs()
+        environment = {"DEPLOY_TOKEN": "runtime-only"}
+        with mock.patch.dict(os.environ, environment, clear=False):
+            with self.assertRaisesRegex(
+                release_profile.ReleaseProfileError, "retryable_failure"
+            ):
+                release_profile.run_profile(
+                    self.root,
+                    authorize=True,
+                    write=True,
+                    inputs=inputs,
+                )
+        run_path = os.path.join(
+            self.root, ".kimiflow", "release", "RUN.json"
+        )
+        with open(run_path, encoding="utf-8") as handle:
+            first = json.load(handle)
+        publish = next(row for row in first["steps"] if row["id"] == "publish")
+        self.assertEqual(publish["status"], "started")
+        self.assertEqual(publish["failure_class"], "auth")
+        first_postcondition = publish["evidence"]["postcondition"]
+        self.assertRegex(
+            first_postcondition["output_sha256"], r"^sha256:[0-9a-f]{64}$"
+        )
+        self.assertNotIn("unauthorized", json.dumps(first_postcondition))
+
+        with mock.patch.dict(os.environ, environment, clear=False):
+            with self.assertRaisesRegex(
+                release_profile.ReleaseProfileError, "retryable_failure"
+            ):
+                release_profile.run_profile(
+                    self.root,
+                    authorize=True,
+                    write=True,
+                    inputs=inputs,
+                )
+        with open(os.path.join(self.root, "counter.txt"), encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), "1")
+        with open(
+            os.path.join(self.root, "order.log"), encoding="utf-8"
+        ) as handle:
+            self.assertEqual(handle.read(), "check\ncheck\neffect\n")
+
+    def test_completed_run_backfills_memory_without_repeating_work(self):
+        profile = self._profile_v2()
+        self._adopt(profile)
+        environment = {"DEPLOY_TOKEN": "runtime-only"}
+        with mock.patch.dict(os.environ, environment, clear=False):
+            completed = release_profile.run_profile(
+                self.root,
+                authorize=True,
+                write=True,
+                inputs=self._v2_inputs(),
+            )
+        self.assertEqual(completed["status"], "completed")
+        with open(
+            os.path.join(self.root, "order.log"), encoding="utf-8"
+        ) as handle:
+            original_order = handle.read()
+        memory_path = os.path.join(
+            self.root, ".kimiflow", "release", "MEMORY.json"
+        )
+        with open(memory_path, "w", encoding="utf-8"):
+            pass
+        with mock.patch.object(
+            release_memory.os, "fsync", wraps=os.fsync
+        ) as fsync, mock.patch.dict(
+            os.environ, environment, clear=False
+        ):
+            recovered = release_profile.run_profile(
+                self.root,
+                authorize=True,
+                write=True,
+                inputs=self._v2_inputs(),
+            )
+        self.assertGreaterEqual(fsync.call_count, 2)
+        self.assertEqual(recovered["status"], "completed")
+        with open(
+            os.path.join(self.root, "order.log"), encoding="utf-8"
+        ) as handle:
+            self.assertEqual(handle.read(), original_order)
+        learned = release_memory.read_memory(
+            self.root, recovered["binding"]
+        )
+        self.assertEqual(learned["generation"], recovered["generation"])
+        self.assertEqual(
+            learned["successful_steps"],
+            [
+                "preflight",
+                "preflight-independent",
+                "publish",
+                "release-verified",
+            ],
+        )
+
+    def test_provider_check_retry_clears_transient_failure_state(self):
+        profile = self._profile_v2()
+        profile["steps"][0]["policy"] = self._policy(
+            auth="provider",
+            failure="operational",
+        )
+        self._adopt(profile)
+        real_execute = release_profile._execute_v2
+        attempts = [0]
+
+        def fail_once(root, command, credentials=None):
+            if command["id"] == "preflight" and attempts[0] == 0:
+                attempts[0] += 1
+                return {
+                    "exit_code": 7,
+                    "output_sha256": "sha256:" + "1" * 64,
+                    "output_bytes": 0,
+                    "command_sha256": release_profile._command_digest(
+                        command
+                    ),
+                    "duration_milliseconds": 1,
+                    "failure_class": "auth",
+                    "source": "executed",
+                }
+            return real_execute(
+                root, command, credentials=credentials
+            )
+
+        environment = {"DEPLOY_TOKEN": "runtime-only"}
+        with mock.patch.object(
+            release_profile, "_execute_v2", side_effect=fail_once
+        ), mock.patch.dict(os.environ, environment, clear=False):
+            with self.assertRaisesRegex(
+                release_profile.ReleaseProfileError,
+                "retryable_failure",
+            ):
+                release_profile.run_profile(
+                    self.root,
+                    authorize=True,
+                    write=True,
+                    inputs=self._v2_inputs(),
+                )
+            completed = release_profile.run_profile(
+                self.root,
+                authorize=True,
+                write=True,
+                inputs=self._v2_inputs(),
+            )
+        self.assertEqual(completed["status"], "completed")
+        self.assertIsNone(completed["steps"][0]["failure_class"])
+        self.assertEqual(
+            release_profile.status(self.root)["run_status"], "completed"
+        )
+
+    def test_release_effect_rejects_secret_bearing_runtime_artifact(self):
+        profile = self._profile_v2()
+        profile["inputs"].append(
+            {
+                "name": "artifact_path",
+                "type": "relative_path",
+                "publication_target": False,
+            }
+        )
+        profile["steps"][2]["argv"].append("{{artifact_path}}")
+        self._adopt(profile)
+        artifact = os.path.join(self.root, "dist", "release.bin")
+        write(
+            artifact,
+            "public bytes\nghp_1234567890abcdefghijklmnop\n",
+        )
+        with mock.patch.dict(
+            os.environ, {"DEPLOY_TOKEN": "runtime-only"}, clear=False
+        ):
+            with self.assertRaisesRegex(
+                release_profile.ReleaseProfileError,
+                "release_artifact_secret_detected",
+            ):
+                release_profile.run_profile(
+                    self.root,
+                    authorize=True,
+                    write=True,
+                    inputs=dict(
+                        self._v2_inputs(),
+                        artifact_path="dist/release.bin",
+                    ),
+                )
+        self.assertFalse(
+            os.path.exists(os.path.join(self.root, "counter.txt"))
+        )
+
+    def test_release_effect_scans_static_paths_and_archive_members(self):
+        static_profile = self._profile_v2()
+        static_profile["steps"][2]["argv"].append(
+            "dist/static-release.bin"
+        )
+        static_artifact = os.path.join(
+            self.root, "dist", "static-release.bin"
+        )
+        write(
+            static_artifact,
+            "ghp_1234567890abcdefghijklmnop\n",
+        )
+        self._adopt(static_profile)
+        with mock.patch.dict(
+            os.environ, {"DEPLOY_TOKEN": "runtime-only"}, clear=False
+        ):
+            with self.assertRaisesRegex(
+                release_profile.ReleaseProfileError,
+                "release_artifact_secret_detected",
+            ):
+                release_profile.run_profile(
+                    self.root,
+                    authorize=True,
+                    write=True,
+                    inputs=self._v2_inputs(),
+                )
+        self.assertFalse(
+            os.path.exists(os.path.join(self.root, "counter.txt"))
+        )
+
+        archive_profile = self._profile_v2()
+        archive_profile["inputs"].append(
+            {
+                "name": "artifact_path",
+                "type": "relative_path",
+                "publication_target": False,
+            }
+        )
+        archive_profile["steps"][2]["argv"].append(
+            "{{artifact_path}}"
+        )
+        self._adopt(archive_profile)
+        archive_path = os.path.join(self.root, "dist", "release.zip")
+        with zipfile.ZipFile(
+            archive_path, "w", compression=zipfile.ZIP_DEFLATED
+        ) as archive:
+            archive.writestr(
+                "payload.txt",
+                "ghp_1234567890abcdefghijklmnop\n",
+            )
+        with mock.patch.dict(
+            os.environ, {"DEPLOY_TOKEN": "runtime-only"}, clear=False
+        ):
+            with self.assertRaisesRegex(
+                release_profile.ReleaseProfileError,
+                "release_artifact_secret_detected",
+            ):
+                release_profile.run_profile(
+                    self.root,
+                    authorize=True,
+                    write=True,
+                    new=True,
+                    inputs=dict(
+                        self._v2_inputs(),
+                        artifact_path="dist/release.zip",
+                    ),
+                )
+
+    def test_release_effect_rejects_unsafe_static_artifact_paths(self):
+        outside_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(outside_dir.cleanup)
+        outside = os.path.join(outside_dir.name, "outside-release.bin")
+        write(outside, "runtime-only\n")
+        for candidate in ("dist/release-link.bin", outside):
+            profile = self._profile_v2()
+            profile["steps"][2]["argv"].append(candidate)
+            if not os.path.isabs(candidate):
+                os.makedirs(os.path.join(self.root, "dist"), exist_ok=True)
+                os.symlink(
+                    outside,
+                    os.path.join(self.root, *candidate.split("/")),
+                )
+            self._adopt(profile)
+            with mock.patch.dict(
+                os.environ, {"DEPLOY_TOKEN": "runtime-only"}, clear=False
+            ):
+                with self.assertRaisesRegex(
+                    release_profile.ReleaseProfileError,
+                    "release_artifact_unsafe",
+                ):
+                    release_profile.run_profile(
+                        self.root,
+                        authorize=True,
+                        write=True,
+                        new=True,
+                        inputs=self._v2_inputs(),
+                    )
+            self.assertFalse(
+                os.path.exists(os.path.join(self.root, "counter.txt"))
+            )
+
+    def test_release_directory_snapshot_rejects_late_secret_entry(self):
+        profile = self._profile_v2()
+        profile["inputs"].append(
+            {
+                "name": "artifact_path",
+                "type": "relative_path",
+                "publication_target": False,
+            }
+        )
+        profile["steps"][2]["argv"].append("{{artifact_path}}")
+        self._adopt(profile)
+        write(os.path.join(self.root, "dist", "public.txt"), "public\n")
+        real_persist = release_profile._persist_run
+        injected = [False]
+
+        def inject_after_started(root, receipt):
+            result = real_persist(root, receipt)
+            publish = next(
+                row for row in receipt["steps"] if row["id"] == "publish"
+            )
+            if publish["status"] == "started" and not injected[0]:
+                injected[0] = True
+                write(
+                    os.path.join(self.root, "dist", "late.bin"),
+                    "runtime-only\n",
+                )
+            return result
+
+        with mock.patch.object(
+            release_profile,
+            "_persist_run",
+            side_effect=inject_after_started,
+        ), mock.patch.dict(
+            os.environ, {"DEPLOY_TOKEN": "runtime-only"}, clear=False
+        ):
+            with self.assertRaisesRegex(
+                release_profile.ReleaseProfileError,
+                "release_artifact_drift",
+            ):
+                release_profile.run_profile(
+                    self.root,
+                    authorize=True,
+                    write=True,
+                    inputs=dict(
+                        self._v2_inputs(),
+                        artifact_path="dist",
+                    ),
+                )
+        self.assertFalse(
+            os.path.exists(os.path.join(self.root, "counter.txt"))
+        )
+
+    def test_sigkill_watchdog_removes_credential_home(self):
+        provider = os.path.join(self.root, "scripts", "provider-sleep.py")
+        controller = os.path.join(
+            self.root, "scripts", "controller-sleep.py"
+        )
+        write(
+            provider,
+            "import os,time\n"
+            "from pathlib import Path\n"
+            "home=Path(os.environ['HOME'])\n"
+            "(home/'credential-cache').write_text("
+            "os.environ['DEPLOY_TOKEN'])\n"
+            "Path('home-path').write_text(str(home))\n"
+            "time.sleep(60)\n",
+        )
+        write(
+            controller,
+            "import sys\n"
+            "from kimiflow_core import release_profile\n"
+            "root=sys.argv[1]\n"
+            "release_profile._execute_v2(root,{"
+            "'id':'provider-sleep','kind':'effect',"
+            "'argv':[sys.executable,'scripts/provider-sleep.py'],"
+            "'cwd':'.','timeout_seconds':120,'policy':{"
+            "'auth':'provider','stage':'provider',"
+            "'failure':'operational','reuse':'never',"
+            "'affected_paths':[],'declared_env':[]}},"
+            "credentials={'DEPLOY_TOKEN':'runtime-only'})\n",
+        )
+        environment = os.environ.copy()
+        environment["PYTHONPATH"] = os.path.join(
+            os.path.dirname(
+                os.path.dirname(os.path.dirname(__file__))
+            )
+        )
+        process = subprocess.Popen(
+            [sys.executable, controller, self.root],
+            cwd=self.root,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        marker = os.path.join(self.root, "home-path")
+        deadline = time.time() + 10
+        while not os.path.exists(marker) and time.time() < deadline:
+            time.sleep(0.05)
+        if not os.path.exists(marker):
+            process.kill()
+            process.wait()
+            self.fail("provider did not create the temporary-home marker")
+        with open(marker, encoding="utf-8") as handle:
+            home = handle.read()
+        self.assertTrue(
+            os.path.exists(os.path.join(home, "credential-cache"))
+        )
+        os.kill(process.pid, signal.SIGKILL)
+        process.wait()
+        deadline = time.time() + 10
+        while os.path.exists(home) and time.time() < deadline:
+            time.sleep(0.05)
+        self.assertFalse(os.path.exists(home))
+
+    def test_nonzero_effect_requires_exact_audit_before_post_only_resume(self):
+        effect_path = os.path.join(self.root, "scripts", "effect.py")
+        with open(effect_path, encoding="utf-8") as handle:
+            effect_source = handle.read()
+        write(effect_path, effect_source + "raise SystemExit(7)\n")
+        subprocess.run(
+            ["git", "-C", self.root, "add", "scripts/effect.py"],
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", self.root, "commit", "-qm", "failing effect"],
+            check=True,
+        )
+        self.discovery = self._discover()
+        profile = self._profile_v2()
+        self._adopt(profile)
+        inputs = self._v2_inputs()
+        environment = {"DEPLOY_TOKEN": "runtime-only"}
+
+        with mock.patch.dict(os.environ, environment, clear=False):
+            with self.assertRaisesRegex(
+                release_profile.ReleaseProfileError,
+                "effect_reported_failure",
+            ):
+                release_profile.run_profile(
+                    self.root,
+                    authorize=True,
+                    write=True,
+                    inputs=inputs,
+                )
+        run_path = os.path.join(
+            self.root, ".kimiflow", "release", "RUN.json"
+        )
+        with open(run_path, encoding="utf-8") as handle:
+            blocked = json.load(handle)
+        publish = next(
+            row for row in blocked["steps"] if row["id"] == "publish"
+        )
+        self.assertEqual(blocked["status"], "audit_required")
+        self.assertEqual(publish["status"], "started")
+        self.assertEqual(publish["evidence"]["effect"]["exit_code"], 7)
+        self.assertEqual(publish["failure_audit_sha256s"], [])
+        self.assertTrue(
+            os.path.exists(
+                os.path.join(
+                    self.root, ".kimiflow", "release", "FAILURE.json"
+                )
+            )
+        )
+        bundle = release_profile._load_bundle(self.root)
+        resolved, _, _ = release_profile._resolved_v2_profile(
+            self.root, profile, inputs, bundle["discovery"]
+        )
+        forged = json.loads(json.dumps(blocked))
+        forged_publish = next(
+            row for row in forged["steps"] if row["id"] == "publish"
+        )
+        forged_publish["status"] = "completed"
+        forged_publish["failure_audit_sha256s"] = [
+            "sha256:" + "0" * 64
+        ]
+        forged_publish["evidence"]["postcondition"] = (
+            release_profile._execute_v2(
+                self.root,
+                resolved["steps"][2]["postcondition"],
+                credentials=environment,
+            )
+        )
+        with self.assertRaisesRegex(
+            release_profile.ReleaseProfileError, "run_step_invalid"
+        ):
+            release_profile._validate_run_v2(
+                forged, bundle, resolved_profile=resolved
+            )
+
+        with mock.patch.dict(os.environ, environment, clear=False):
+            with self.assertRaisesRegex(
+                release_profile.ReleaseProfileError, "release_failure"
+            ):
+                release_profile.run_profile(
+                    self.root,
+                    authorize=True,
+                    write=True,
+                    inputs=inputs,
+                )
+
+        audit = self._audit(
+            profile, failure_sha256=self._failure_sha256()
+        )
+        self._adopt(profile, audit)
+        with mock.patch.dict(os.environ, environment, clear=False):
+            completed = release_profile.run_profile(
+                self.root,
+                authorize=True,
+                write=True,
+                inputs=inputs,
+            )
+        self.assertEqual(completed["status"], "completed")
+        publish = next(
+            row for row in completed["steps"] if row["id"] == "publish"
+        )
+        self.assertTrue(
+            any(
+                release_profile._failure_audit_matches(
+                    release_profile._load_bundle(self.root),
+                    marker,
+                    publish["id"],
+                    publish["evidence"]["effect"],
+                )
+                for marker in publish["failure_audit_sha256s"]
+            )
+        )
+        self.assertEqual(publish["evidence"]["effect"]["exit_code"], 7)
+        with open(
+            os.path.join(self.root, "counter.txt"), encoding="utf-8"
+        ) as handle:
+            self.assertEqual(handle.read(), "1")
+
+    def test_nonzero_effect_crash_reconciles_failure_without_replay(self):
+        effect_path = os.path.join(self.root, "scripts", "effect.py")
+        with open(effect_path, encoding="utf-8") as handle:
+            effect_source = handle.read()
+        write(effect_path, effect_source + "raise SystemExit(7)\n")
+        subprocess.run(
+            ["git", "-C", self.root, "add", "scripts/effect.py"],
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", self.root, "commit", "-qm", "failing effect"],
+            check=True,
+        )
+        self.discovery = self._discover()
+        profile = self._profile_v2()
+        self._adopt(profile)
+        inputs = self._v2_inputs()
+        environment = {"DEPLOY_TOKEN": "runtime-only"}
+        real_persist = release_profile._persist_run
+        crashed = False
+
+        def crash_after_effect_receipt(root, receipt):
+            nonlocal crashed
+            real_persist(root, receipt)
+            publish = next(
+                row for row in receipt["steps"]
+                if row["id"] == "publish"
+            )
+            effect = (publish.get("evidence") or {}).get("effect")
+            if (
+                not crashed
+                and receipt["status"] == "active"
+                and effect is not None
+                and effect["exit_code"] != 0
+            ):
+                crashed = True
+                raise RuntimeError("simulated_crash")
+
+        with mock.patch.object(
+            release_profile,
+            "_persist_run",
+            side_effect=crash_after_effect_receipt,
+        ):
+            with mock.patch.dict(
+                os.environ, environment, clear=False
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError, "simulated_crash"
+                ):
+                    release_profile.run_profile(
+                        self.root,
+                        authorize=True,
+                        write=True,
+                        inputs=inputs,
+                    )
+        failure_path = os.path.join(
+            self.root, ".kimiflow", "release", "FAILURE.json"
+        )
+        self.assertFalse(os.path.exists(failure_path))
+
+        with mock.patch.dict(os.environ, environment, clear=False):
+            with self.assertRaisesRegex(
+                release_profile.ReleaseProfileError,
+                "effect_reported_failure",
+            ):
+                release_profile.run_profile(
+                    self.root,
+                    authorize=True,
+                    write=True,
+                    inputs=inputs,
+                )
+        self.assertTrue(os.path.exists(failure_path))
+        with open(
+            os.path.join(
+                self.root, ".kimiflow", "release", "RUN.json"
+            ),
+            encoding="utf-8",
+        ) as handle:
+            reconciled = json.load(handle)
+        self.assertEqual(reconciled["status"], "audit_required")
+
+        audit = self._audit(
+            profile, failure_sha256=self._failure_sha256()
+        )
+        self._adopt(profile, audit)
+        with mock.patch.dict(os.environ, environment, clear=False):
+            completed = release_profile.run_profile(
+                self.root,
+                authorize=True,
+                write=True,
+                inputs=inputs,
+            )
+        self.assertEqual(completed["status"], "completed")
+        with open(
+            os.path.join(self.root, "counter.txt"), encoding="utf-8"
+        ) as handle:
+            self.assertEqual(handle.read(), "1")
+
+    def test_release_metrics_separate_control_check_build_provider_time(self):
+        profile = self._profile_v2()
+        self._adopt(profile)
+        with mock.patch.dict(
+            os.environ, {"DEPLOY_TOKEN": "runtime-only"}, clear=False
+        ):
+            release_profile.run_profile(
+                self.root,
+                authorize=True,
+                write=True,
+                inputs=self._v2_inputs(),
+            )
+        metrics_path = os.path.join(
+            self.root, ".kimiflow", "release", "METRICS.json"
+        )
+        with open(metrics_path, encoding="utf-8") as handle:
+            metrics = json.load(handle)
+        self.assertEqual(
+            set(metrics["duration_milliseconds"]),
+            {"kimiflow_control", "project_checks", "build", "provider"},
+        )
+        self.assertEqual(metrics["counts"]["model_calls"], 0)
+        self.assertEqual(metrics["counts"]["audits_executed"], 0)
+        self.assertEqual(metrics["counts"]["discovery_content_reads"], 0)
+        self.assertGreaterEqual(metrics["counts"]["checks_executed"], 3)
+        memory_path = os.path.join(
+            self.root, ".kimiflow", "release", "MEMORY.json"
+        )
+        with open(memory_path, encoding="utf-8") as handle:
+            learned = json.load(handle)
+        self.assertEqual(
+            set(learned["duration_totals"]),
+            {"kimiflow_control", "project_checks", "build", "provider"},
+        )
+        self.assertEqual(
+            learned["duration_totals"]["kimiflow_control"]["milliseconds"],
+            metrics["duration_milliseconds"]["kimiflow_control"],
+        )
+        self.assertTrue(
+            all(
+                set(item) == {"runs", "milliseconds"}
+                and item["runs"] == 1
+                and item["milliseconds"] >= 0
+                for item in learned["duration_totals"].values()
+            )
+        )
+
+    def test_relative_input_evidence_and_directory_descendants_are_bound(self):
+        profile = self._profile_v2()
+        profile["inputs"].append(
+            {
+                "name": "artifact_path",
+                "type": "relative_path",
+                "publication_target": False,
+            }
+        )
+        profile["steps"][0]["argv"].append("{{artifact_path}}")
+        profile["steps"][0]["policy"]["affected_paths"] = ["artifact2.txt"]
+        self._adopt(profile)
+        inputs = dict(
+            self._v2_inputs(), artifact_path="artifact.txt"
+        )
+        run = self._verification_run()
+        with mock.patch.object(
+            release_profile, "_conformance_open", return_value=True
+        ):
+            release_profile.evidence_execute(
+                self.root,
+                run,
+                "preflight",
+                inputs=inputs,
+                write=True,
+            )
+            bundle = release_profile._load_bundle(self.root)
+            resolved = release_profile._resolved_v2_profile(
+                self.root, profile, inputs, bundle["discovery"]
+            )[0]
+            write(os.path.join(self.root, "artifact.txt"), "changed\n")
+            self.assertIsNone(
+                release_profile._current_evidence(
+                    self.root,
+                    bundle,
+                    resolved["steps"][0],
+                    inputs,
+                )
+            )
+
+        directory = os.path.join(self.root, "dist")
+        os.mkdir(directory)
+        outside = tempfile.NamedTemporaryFile()
+        self.addCleanup(outside.close)
+        os.symlink(outside.name, os.path.join(directory, "artifact"))
+        self.assertFalse(
+            release_profile._relative_input_path_safe(
+                self.root, "dist"
+            )
+        )
+
+    def test_v2_process_boundary_isolated_and_output_bounded(self):
+        with self.assertRaisesRegex(
+            release_profile.ReleaseProfileError,
+            "command_environment_override_forbidden",
+        ):
+            release_profile._validate_argv(
+                [
+                    "env",
+                    "HOME=.",
+                    "XDG_STATE_HOME=.",
+                    "GH_CONFIG_DIR=.",
+                    "gh",
+                    "version",
+                ],
+                "fixture",
+                sealed=True,
+            )
+        for argv in (
+            ["env", "-u", "HOME", "printenv", "HOME"],
+            ["env", "--unset=HOME", "printenv", "HOME"],
+            ["env", "-i", "printenv", "HOME"],
+            ["env", "--", "HOME=.", "printenv", "HOME"],
+        ):
+            with self.subTest(argv=argv), self.assertRaisesRegex(
+                release_profile.ReleaseProfileError,
+                "command_environment_override_forbidden",
+            ):
+                release_profile._validate_argv(
+                    argv, "fixture", sealed=True
+                )
+        unsafe_profile = self._profile_v2()
+        unsafe_profile["steps"][2]["argv"] = [
+            "env", "-u", "HOME", "python3", "scripts/effect.py"
+        ]
+        with self.assertRaisesRegex(
+            release_profile.ReleaseProfileError,
+            "command_environment_override_forbidden",
+        ):
+            release_profile.validate_profile(unsafe_profile)
+        unused_target = self._profile_v2()
+        unused_target["steps"][2]["argv"] = [
+            "python3", "scripts/effect.py", "{{tag}}"
+        ]
+        with self.assertRaisesRegex(
+            release_profile.ReleaseProfileError,
+            "profile_publication_target_unused",
+        ):
+            release_profile.validate_profile(unused_target)
+        unsafe_reuse = self._profile_v2()
+        unsafe_reuse["steps"][0]["policy"]["auth"] = "provider"
+        with self.assertRaisesRegex(
+            release_profile.ReleaseProfileError,
+            "check_step_reuse_invalid",
+        ):
+            release_profile.validate_profile(unsafe_reuse)
+        self.assertEqual(
+            release_profile._validate_argv(
+                ["env", "PUBLIC_BUILD=1", "printenv", "PUBLIC_BUILD"],
+                "fixture",
+                sealed=True,
+            )[1],
+            "PUBLIC_BUILD=1",
+        )
+
+        noisy = os.path.join(self.root, "scripts", "noisy.sh")
+        write(
+            noisy,
+            "#!/bin/sh\n"
+            "i=0\n"
+            "while [ \"$i\" -lt 20000 ]; do\n"
+            "  printf 0123456789\n"
+            "  i=$((i+1))\n"
+            "done\n",
+            mode=0o755,
+        )
+        command = {
+            "id": "bounded-output",
+            "kind": "check",
+            "argv": [noisy],
+            "cwd": ".",
+            "timeout_seconds": 5,
+            "policy": self._policy(),
+        }
+        with mock.patch.object(
+            release_profile, "MAX_OUTPUT_BYTES", 1024
+        ):
+            evidence = release_profile._execute_v2(
+                self.root, command
+            )
+        self.assertEqual(evidence["exit_code"], 125)
+        self.assertEqual(evidence["failure_class"], "unavailable")
+        self.assertEqual(evidence["output_bytes"], 1025)
+
+    def test_failure_history_is_typed_profile_scoped_and_durable(self):
+        profile = self._profile_v2()
+        adopted = self._adopt(profile)
+        evidence = {
+            "exit_code": 1,
+            "output_sha256": "sha256:" + "0" * 64,
+            "output_bytes": 0,
+            "command_sha256": "sha256:" + "1" * 64,
+            "duration_milliseconds": 1,
+            "failure_class": "semantic",
+            "source": "executed",
+        }
+        failure = {
+            "schema_version": 1,
+            "event_id": "1" * 32,
+            "profile_sha256": adopted["profile_sha256"],
+            "step_id": "preflight",
+            "evidence": evidence,
+        }
+        failure_path = os.path.join(
+            self.root, ".kimiflow", "release", "FAILURE.json"
+        )
+        json_write(failure_path, failure)
+        recovered = self._profile_v2()
+        recovered["id"] = "recovered-release"
+        self._adopt(
+            recovered,
+            self._audit(
+                recovered,
+                failure_sha256=release_profile._value_sha(failure),
+            ),
+        )
+        self.assertEqual(
+            release_profile.status(self.root)["status"], "ready"
+        )
+        self.assertEqual(
+            release_profile._load_bundle(self.root)["failure_audits"],
+            [],
+        )
+
+        self._adopt(profile)
+        malformed = dict(
+            failure,
+            evidence={
+                "raw_token": "ghp_fixture_secret_that_must_never_persist"
+            },
+        )
+        json_write(failure_path, malformed)
+        with self.assertRaisesRegex(
+            release_profile.ReleaseProfileError,
+            "failure_evidence_invalid",
+        ):
+            self._adopt(
+                profile,
+                self._audit(
+                    profile,
+                    failure_sha256=release_profile._value_sha(malformed),
+                ),
+            )
+        with open(
+            os.path.join(
+                self.root, ".kimiflow", "release", "PROFILE.json"
+            ),
+            encoding="utf-8",
+        ) as handle:
+            self.assertNotIn("ghp_fixture", handle.read())
+
+    def test_audit_adoption_persists_run_before_clearing_failure(self):
+        profile = self._profile_v2()
+        profile["steps"][0]["argv"] = [
+            "python3", "scripts/fail.py"
+        ]
+        self._adopt(profile)
+        failure_events = []
+        real_persist = release_profile._persist_local
+
+        def record_failure_persist(path, value, error):
+            failure_events.append(os.path.basename(path))
+            return real_persist(path, value, error)
+
+        with mock.patch.object(
+            release_profile,
+            "_persist_local",
+            side_effect=record_failure_persist,
+        ), mock.patch.dict(
+            os.environ, {"DEPLOY_TOKEN": "runtime-only"}, clear=False
+        ):
+            with self.assertRaisesRegex(
+                release_profile.ReleaseProfileError, "step_failed"
+            ):
+                release_profile.run_profile(
+                    self.root,
+                    authorize=True,
+                    write=True,
+                    inputs=self._v2_inputs(),
+                )
+        self.assertLess(
+            failure_events.index("FAILURE.json"),
+            len(failure_events) - 1
+            - failure_events[::-1].index("RUN.json"),
+        )
+        failure_path = os.path.join(
+            self.root, ".kimiflow", "release", "FAILURE.json"
+        )
+        audit = self._audit(
+            profile, failure_sha256=self._failure_sha256()
+        )
+        with mock.patch.object(
+            release_profile,
+            "_persist_run",
+            side_effect=RuntimeError("durability fault"),
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError, "durability fault"
+            ):
+                self._adopt(profile, audit)
+        self.assertTrue(os.path.exists(failure_path))
+
+        events = []
+
+        def persist(path, value, error):
+            events.append(("persist", os.path.basename(path)))
+            return real_persist(path, value, error)
+
+        real_unlink = os.unlink
+
+        def unlink(path):
+            events.append(("unlink", os.path.basename(path)))
+            return real_unlink(path)
+
+        with mock.patch.object(
+            release_profile, "_persist_local", side_effect=persist
+        ), mock.patch.object(
+            release_profile.os, "unlink", side_effect=unlink
+        ), mock.patch.object(
+            release_profile,
+            "_durable_unlink",
+            wraps=release_profile._durable_unlink,
+        ) as durable_unlink, mock.patch.object(
+            release_profile.os, "fsync", wraps=os.fsync
+        ) as fsync:
+            self._adopt(profile, audit)
+        durable_unlink.assert_called_once()
+        self.assertEqual(
+            os.path.realpath(durable_unlink.call_args.args[0]),
+            os.path.realpath(failure_path),
+        )
+        self.assertEqual(
+            durable_unlink.call_args.args[1], "failure_retire_failed"
+        )
+        self.assertGreaterEqual(fsync.call_count, 4)
+        self.assertLess(
+            events.index(("persist", "PROFILE.json")),
+            events.index(("persist", "RUN.json")),
+        )
+        self.assertLess(
+            events.index(("persist", "RUN.json")),
+            events.index(("unlink", "FAILURE.json")),
+        )
+
+    def test_profile_replacement_keeps_completed_run_until_profile_durable(self):
+        profile = self._profile_v2()
+        self._adopt(profile)
+        with mock.patch.dict(
+            os.environ, {"DEPLOY_TOKEN": "runtime-only"}, clear=False
+        ):
+            release_profile.run_profile(
+                self.root,
+                authorize=True,
+                write=True,
+                inputs=self._v2_inputs(),
+            )
+        run_path = os.path.join(
+            self.root, ".kimiflow", "release", "RUN.json"
+        )
+        replacement = self._profile_v2()
+        replacement["id"] = "replacement-release"
+        real_persist = release_profile._persist_local
+
+        def fail_profile(path, value, error):
+            if os.path.basename(path) == "PROFILE.json":
+                raise RuntimeError("profile durability fault")
+            return real_persist(path, value, error)
+
+        with mock.patch.object(
+            release_profile,
+            "_persist_local",
+            side_effect=fail_profile,
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError, "profile durability fault"
+            ):
+                self._adopt(replacement)
+        self.assertTrue(os.path.exists(run_path))
+        with mock.patch.dict(
+            os.environ, {"DEPLOY_TOKEN": "runtime-only"}, clear=False
+        ):
+            old = release_profile.run_profile(
+                self.root,
+                authorize=True,
+                write=True,
+                inputs=self._v2_inputs(),
+            )
+        self.assertEqual(old["status"], "completed")
+        with open(
+            os.path.join(self.root, "counter.txt"), encoding="utf-8"
+        ) as handle:
+            self.assertEqual(handle.read(), "1")
+
+        self._adopt(replacement)
+        self.assertFalse(os.path.exists(run_path))
+        self.assertEqual(
+            release_profile.status(self.root)["run_status"], "none"
+        )
+
+    def test_workspace_root_ignores_ambient_git_redirection(self):
+        with tempfile.TemporaryDirectory() as foreign:
+            subprocess.run(["git", "init", "-q", foreign], check=True)
+            shim_directory = os.path.join(foreign, "shim")
+            write(
+                os.path.join(shim_directory, "git"),
+                "#!/bin/sh\nprintf '%s\\n' "
+                + repr(os.path.realpath(foreign))
+                + "\n",
+                mode=0o755,
+            )
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "GIT_DIR": os.path.join(foreign, ".git"),
+                    "GIT_WORK_TREE": foreign,
+                    "PATH": shim_directory
+                    + os.pathsep
+                    + os.environ.get("PATH", os.defpath),
+                },
+                clear=False,
+            ):
+                self.assertEqual(
+                    release_profile.workspace_root(self.root),
+                    os.path.realpath(self.root),
+                )
+
+    def test_active_resume_rechecks_relative_input_consuming_check(self):
+        profile = self._profile_v2()
+        profile["inputs"].append(
+            {
+                "name": "artifact_path",
+                "type": "relative_path",
+                "publication_target": False,
+            }
+        )
+        profile["steps"][0]["argv"].append("{{artifact_path}}")
+        self._adopt(profile)
+        inputs = dict(
+            self._v2_inputs(), artifact_path="artifact.txt"
+        )
+        real_execute = release_profile._execute_v2
+
+        def interrupt_after_first_check(root, command, credentials=None):
+            if command["id"] == "preflight-independent":
+                raise RuntimeError("fixture interruption")
+            return real_execute(
+                root, command, credentials=credentials
+            )
+
+        with mock.patch.object(
+            release_profile,
+            "_execute_v2",
+            side_effect=interrupt_after_first_check,
+        ), mock.patch.dict(
+            os.environ, {"DEPLOY_TOKEN": "runtime-only"}, clear=False
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError, "fixture interruption"
+            ):
+                release_profile.run_profile(
+                    self.root,
+                    authorize=True,
+                    write=True,
+                    inputs=inputs,
+                )
+        write(os.path.join(self.root, "artifact.txt"), "changed\n")
+        with mock.patch.dict(
+            os.environ, {"DEPLOY_TOKEN": "runtime-only"}, clear=False
+        ):
+            resumed = release_profile.run_profile(
+                self.root,
+                authorize=True,
+                write=True,
+                inputs=inputs,
+            )
+        self.assertEqual(resumed["status"], "completed")
+        with open(
+            os.path.join(self.root, "order.log"), encoding="utf-8"
+        ) as handle:
+            self.assertEqual(
+                handle.read(),
+                "check\ncheck\ncheck\neffect\nfinal\n",
+            )
+
+    def test_v1_failure_can_be_audited_during_v2_upgrade(self):
+        legacy = self._profile(failing_check=True)
+        self._adopt(legacy)
+        with self.assertRaisesRegex(
+            release_profile.ReleaseProfileError, "step_failed"
+        ):
+            release_profile.run_profile(
+                self.root, authorize=True, write=True
+            )
+        upgraded = self._profile_v2()
+        result = self._adopt(
+            upgraded,
+            self._audit(
+                upgraded, failure_sha256=self._failure_sha256()
+            ),
+        )
+        self.assertEqual(result["status"], "adopted")
+        self.assertEqual(
+            release_profile.status(self.root)["status"], "ready"
+        )
+        self.assertEqual(
+            release_profile._load_bundle(self.root)["failure_audits"],
+            [],
         )
 
 

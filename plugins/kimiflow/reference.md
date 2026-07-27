@@ -1944,15 +1944,22 @@ This is an explicit, optional path for “Release Flow”/`kimiflow release`; it
 fix, review, or audit runs. State stays local below `.kimiflow/release/`, no credentials or command logs are
 persisted, and no provider, daemon, hosted service, or paid API is required.
 
-1. Run `hooks/release-profile.sh status`. `import_required` or `audit_required` means the agent runs
-   `hooks/release-profile.sh discover --write` and reads only the bounded tracked sources listed in
-   `DISCOVERY.json`. Discovery stores path/kind/role/size/digest, never source contents, untracked files, secret
+1. For `kimiflow release`, run `hooks/release-profile.sh status --prefer-v2`. `import_required`,
+   `audit_required`, or `upgrade_required` means the agent runs `hooks/release-profile.sh discover --write`
+   and reads only the bounded tracked sources listed in `DISCOVERY.json`. `upgrade_required` is the one-time
+   safe migration edge for an existing ready v1 profile: infer its actual provider from tracked project
+   controls, create and audit the corresponding provider-neutral v2 candidate, then validate/adopt it before
+   release. Never assume GitHub. A nonterminal v1 generation reports `migration_status=deferred_active_v1` and
+   must reach a proven terminal state before migration; a started effect is never replaced. Plain `status` and
+   direct v1 `run` remain compatible, but Kimiflow release defaults to v2 instead of silently bypassing its
+   memory/economics controls. Discovery stores path/kind/role/size/digest, never source contents, untracked files, secret
    paths, or `.kimiflow/`. If a discovered release control directly invokes another tracked local executable or
    interpreter script, rerun discovery with one bounded `--include <repo-relative-path>` per direct input; this is
    autonomous model work, not a user prompt. Package manifests expose a projected `scripts` digest so release
    behavior is bound without treating version/product fields as immutable controls.
-2. The model writes local candidate `release_profile` and `release_audit` documents following
-   `references/release-profile-v1.schema.json`. Controls declare `digest_mode=file|package-scripts`; every direct
+2. The model writes a local candidate `release_profile` following
+   `references/release-profile-v1.schema.json` or `references/release-profile-v2.schema.json` and a
+   `release_audit` following the v1 audit contract. Controls declare `digest_mode=file|package-scripts`; every direct
    local executable/interpreter script must be a selected full-file control, while mutable version/changelog
    product fields stay outside projected package controls. Every non-mutating check and effect pre/postcondition
    gets an exact read-only audit attestation. `failure_sha256` is `null` on first import/control drift and must
@@ -1977,6 +1984,99 @@ failure receipt; a changed profile cannot replace a run with a started effect. A
 postcondition already proves success may become complete only after that fresh audit, without replay.
 Completion requires at least one project-specific final check and stores only exit codes, byte counts, and
 SHA-256 evidence in `RUN.json`.
+
+### Release profile v2: deterministic steady state
+
+V2 preserves v1 unchanged and adds only stable, public runtime inputs. A profile declares each input as
+`git_oid|tag|semver|repository|relative_path`; callers repeat `--input name=value` on `run`, resume and
+`evidence-execute`. Placeholders are expanded only in process memory. Secret-like names/values, undeclared
+placeholders and malformed values are rejected, while durable state contains only canonical input and resolved
+profile digests. Destination selectors such as repository/registry/environment use
+`publication_target=true`; per-release artifact values such as tag/version/ref use `false`.
+At least one publication-target input is mandatory for every v2 provider and must be consumed explicitly by a
+release effect, so an implicit provider destination cannot disagree with the declared target. Publication-target
+inputs additionally bind private memory to the current repository, worktree and target; the GitHub adapter
+requires the declared repository to equal canonical `origin`.
+`relative_path` inputs are rooted at the workspace independent of command `cwd`, may not traverse a symlink,
+contain a symlink descendant when they name a directory, or name a known credential file. They are revalidated
+both before and after control/tool checks immediately before every command so a build cannot replace an artifact
+with an outward symlink. Before an effect runs, the runtime collects consumed `relative_path` inputs, declared
+affected paths and existing static local argv paths, then streams their regular files through a bounded built-in
+scan for secret-looking descendants, common credential shapes and the exact current ephemeral credential.
+Directory entries and file metadata are rebound after the durable `started` marker. ZIP and tar members are
+streamed under the same entry/byte caps; unsafe, encrypted, nested or unsupported archive shapes fail closed.
+The scanner stores no bytes and fails closed on unsafe types, membership/byte drift, secrets or the scan cap.
+Resolved local executables,
+including input-selected tools, and direct interpreter scripts are checked against the adopted tracked controls
+again before execution. Control-plane Git operations resolve only from the fixed system executable path, not
+the caller's mutable `PATH`; release command tools remain explicitly fingerprinted as described below.
+
+Identity is a provider-neutral capability. `environment` injects only explicitly declared credential variables
+whose UTF-8 values are 8–16384 bytes
+into commands marked `auth=provider`. `github` first uses `GITHUB_TOKEN`/`GH_TOKEN`; without one it reads local
+`gh` account metadata, reuses the account digest from the last verified release, or on first use derives the
+latest release author before accepting the only locally available account. Multiple accounts without
+project-bound evidence fail closed. Before publication it proves repository write capability with the selected
+token, which remains only in memory, and never calls `gh auth switch`. Ordinary checks receive no provider credentials. Every v2
+child uses a fixed noninteractive locale/time/Git environment, an empty temporary HOME outside the project plus isolated XDG
+cache/config/data/runtime/state roots, and only PATH plus declared public variables. Credential-like ambient variables
+and externally routed XDG locations are stripped; nested `env` wrappers cannot override those reserved roots.
+An independent credential-free watchdog kills the provider process group and removes that home if the controller
+dies; lease-locked startup cleanup reclaims crash residue without touching another active release.
+Adoption stores content-only fingerprints for every external
+v2 command tool and the optional GitHub resolver; the resolver rechecks `gh` before each account/capability
+probe and before token injection, so PATH/tool substitution fails before credentials reach it.
+
+Reusable checks opt in with `policy.reuse=kimiflow_verification`, use `auth=none`, and name all affected paths
+and declared public environment inputs. Provider-authenticated checks are never reused because their result
+depends on the ephemeral release identity. During the real Phase-6 criterion, run:
+
+```sh
+hooks/release-profile.sh evidence-execute \
+  --run .kimiflow/<slug> \
+  --check <check-id> \
+  --input <name=value> \
+  --write
+```
+
+This executes the check once under the same sealed environment used by release and stores no output content.
+Release reuses it only when the exact resolved command and adopted profile, affected HEAD bytes plus every
+relative-path input consumed by that command,
+declared-environment presence/value digests, PATH, tool binary, terminal passed/converged Verification and
+terminal-open Conformance still match. Generation-wide inputs that the check does not consume do not invalidate
+it; a consumed tag/path/repository still changes the command digest. After an interrupted active release,
+each completed unauthenticated check carries an in-run context digest and is skipped only while its affected
+paths, consumed relative inputs, declared environment, PATH and tool remain identical. Drift reruns only that
+check; provider-authenticated checks always rerun with the current ephemeral identity. This in-generation
+resume optimization also applies to `reuse=never`; cross-generation Phase-6 reuse still requires the explicit
+policy above. Effects remain non-replayable.
+
+V2 classifies timeout/unavailable mechanically, streams combined output through a hard byte cap, terminates the
+command process group on timeout, output overflow or controller termination and recognizes
+auth/network/rate-limit text only for provider-auth commands whose policy declares operational failure. Commands
+declared semantic remain semantic regardless of output text. Those pre-effect operational failures remain retryable without another semantic
+audit. The pre-effect `started` receipt is file- and directory-fsynced and its status-specific evidence is
+validated before recovery. A started effect is never replayed; resume runs only its postcondition and leaves
+unproven remote state fail-closed. A nonzero effect writes a content-free failure receipt and stops before its
+postcondition; only an adopted audit bound to that exact step/evidence can unlock a postcondition-only resume.
+Failure evidence uses the same typed content-free execution shape as run evidence, history remains scoped to
+the exact profile digest, and audit adoption durably persists the repaired run before clearing the failure
+marker. If a crash lands between the durable effect receipt and failure receipt, resume reconstructs the latter from
+the exact stored evidence without replaying the effect. Bounded failure/audit history makes later failures
+unable to erase that proof. On verified completion, the generation-keyed memory write is idempotent, fsyncs
+both its file and directory, and becomes durable before the completed run marker. Re-entering an older completed
+run repairs missing or malformed memory
+without repeating commands. Mode-0600 `.kimiflow/release/MEMORY.json` learns only binding/profile/
+identity digests, successful step IDs, bounded failure-class counts and cumulative run/millisecond aggregates
+per stage. `METRICS.json`
+contains only executed/reused-check and resolver counts plus nonnegative `kimiflow_control`, `project_checks`,
+`build` and `provider` durations. It records no prompt, output, token, deadline or fixed time budget.
+
+The steady state is consequently model-free: an unchanged profile needs no discovery, audit, source reread or
+model call, resolves the previously verified identity mechanically, reuses exact current Phase-6 evidence
+across generations and preserves still-current unauthenticated check results inside one interrupted generation.
+This removes duplicated control work; it does not hide or bypass stale project tests, builds or provider
+operations.
 
 The core proves state/evidence integrity, not the semantics of an arbitrary project executable. It rejects known
 mutating probe argv and requires model audit coverage; stronger remote guarantees should use provider-enforced

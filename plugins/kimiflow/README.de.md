@@ -153,6 +153,45 @@ bestehen. Nach echten Fehlern muss das neue Audit an den exakten Fehlerbeleg geb
 Audit-Verbesserungen bleiben evidenzgebundene Hinweise und verändern keine laufende Veröffentlichung.
 Ohne Release-Auftrag wird kein Profil-Kontext geladen.
 
+Schema-v2-Profile ergänzen typisierte öffentliche Laufzeit-Inputs, projekt- und zielgebundenes privates
+Release-Memory, kurzlebige Provider-Identität, granulare Retry-Klassen und die exakte Wiederverwendung von
+Phase-6-Evidence. Nicht-GitHub-Releases verwenden die generische `environment`-Identität mit ausschließlich
+projektseitig deklarierten kurzlebigen Credentials und müssen mindestens ein öffentliches Publikationsziel
+deklarieren, damit ein Wechsel zwischen Registry, App Store oder internem Ziel keine fremde Memory übernimmt.
+Der Release-Effekt muss dieses Ziel explizit verwenden. GitHub ist ein optionaler Adapter und bevorzugt ein natives
+Token. Der lokale GitHub-Fallback verwendet den durch einen
+erfolgreichen Release bestätigten Account weiter (beim ersten Lauf alternativ den Autor des letzten Releases),
+validiert die Schreibberechtigung für das Repository erneut und schaltet den globalen `gh`-Account nicht um.
+Credentials, rohe Inputs, Kommandoausgaben und absolute Pfade
+werden nie gespeichert. Credential-haltige temporäre Homes liegen zwingend außerhalb des Projekts, werden
+durch einen unabhängigen Controller-Death-Wächter bereinigt und nach einem Host-Neustart über lokale Leases
+wieder eingesammelt.
+Provider-Output wird schon während der Ausführung begrenzt und `env`-Wrapper dürfen die versiegelte
+HOME-/XDG-/Provider-Konfiguration nicht ersetzen. Die interne Repository-Erkennung verwendet ein festes
+System-Git statt des umgebenden `PATH`. Mit `relative_path`, statischen lokalen Effect-Argumenten oder
+Affected-Paths benannte Laufzeit-Artefakte durchlaufen vor einem Effekt einen begrenzten eingebauten
+Credential-Scan. Verzeichnisinhalt und Bytes sind snapshot-gebunden; ZIP-/tar-Inhalte werden geprüft, während
+unsichere, verschlüsselte, verschachtelte oder nicht unterstützte Container fail-closed stoppen. Verdächtige
+Unterpfade, bekannte Token-Formen und das aktuelle kurzlebige Credential stoppen, ohne Inhalte zu speichern.
+Nicht verwendete Release-Inputs
+wie ein neuer Tag invalidieren
+einen davon unabhängigen Check nicht; jedes vom Kommando tatsächlich verwendete Relative-Path-Input, seine
+betroffenen Bytes, Umgebung und adoptierten externen Tool-Fingerprints müssen weiterhin exakt übereinstimmen.
+Unveränderte Releases überspringen damit wiederholte Discovery, Audits, Modellarbeit
+und bereits aktuelle Checks. Innerhalb einer unterbrochenen Generation werden abgeschlossene
+nicht-authentisierte Checks nur bei weiterhin identischem Pfad-, Umgebungs-, PATH- und Tool-Kontext
+wiederverwendet; authentisierte Checks laufen stets erneut. Das Release-Memory wird datei- und
+verzeichnis-fsynced idempotent vor dem Completed-Marker geschrieben und bei einem alten abgeschlossenen Lauf
+mit fehlendem oder malformed Memory repariert, ohne Projektarbeit zu wiederholen. Echte Projektprüfungen,
+Builds und Provider-Schritte laufen weiterhin, sobald
+Evidence fehlt oder veraltet ist. Provider-authentisierte Checks werden nie wiederverwendet; sie laufen immer
+mit der aktuellen kurzlebigen Release-Identität. Lokale inhaltsfreie Metriken trennen Control-, Check-, Build-
+und Provider-Arbeit—ein fixes Release-Zeitbudget gibt es bewusst nicht. Siehe
+[`references/release-profile-v2.schema.json`](references/release-profile-v2.schema.json).
+`kimiflow release` meldet ein bestehendes bereites v1-Profil einmalig als `upgrade_required` und leitet den
+tatsächlichen Provider aus getrackten Controls ab; ein aktiver v1-Lauf wird zuerst sicher beendet. Direkte
+v1-Ausführung bleibt kompatibel.
+
 ## Demo
 
 ![Kimiflow-Launcher und gegateter Feature-/Fix-Flow](docs/demo/kimiflow.gif)

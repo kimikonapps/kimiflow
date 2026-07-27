@@ -1,0 +1,341 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kimikonapps/kimiflow/references/release-profile-v2.schema.json",
+  "title": "Kimiflow project release profile v2",
+  "$ref": "#/$defs/profile",
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "inputName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "safeEnvironmentName": {
+      "type": "string",
+      "pattern": "^(?!(?:CI|LANG|LC_ALL|TZ|PATH|HOME|XDG_CACHE_HOME|XDG_CONFIG_HOME|XDG_DATA_HOME|XDG_RUNTIME_DIR|XDG_STATE_HOME|BASH_ENV|CLASSPATH|DYLD_INSERT_LIBRARIES|DYLD_LIBRARY_PATH|ENV|GH_CONFIG_DIR|GH_ENTERPRISE_TOKEN|GH_HOST|GIT_ALLOW_PROTOCOL|GIT_ALTERNATE_OBJECT_DIRECTORIES|GIT_ASKPASS|GIT_CEILING_DIRECTORIES|GIT_COMMON_DIR|GIT_CONFIG_COUNT|GIT_CONFIG_GLOBAL|GIT_CONFIG_NOSYSTEM|GIT_CONFIG_PARAMETERS|GIT_CONFIG_SYSTEM|GIT_DIFF_OPTS|GIT_DIR|GIT_EXEC_PATH|GIT_EXTERNAL_DIFF|GIT_INDEX_FILE|GIT_NO_LAZY_FETCH|GIT_OBJECT_DIRECTORY|GIT_OPTIONAL_LOCKS|GIT_PAGER|GIT_PROXY_COMMAND|GIT_SSH|GIT_SSH_COMMAND|GIT_TERMINAL_PROMPT|GIT_WORK_TREE|JAVA_TOOL_OPTIONS|JDK_JAVA_OPTIONS|LD_LIBRARY_PATH|LD_PRELOAD|NODE_OPTIONS|NODE_PATH|NPM_CONFIG_GLOBAL|NPM_CONFIG_GLOBALCONFIG|NPM_CONFIG_PREFIX|NPM_CONFIG_USERCONFIG|NPM_CONFIG_WORKSPACE|NPM_CONFIG_WORKSPACES|PAGER|PERL5LIB|PERL5OPT|PYTHONHOME|PYTHONPATH|PYTHONSTARTUP|RUBYLIB|RUBYOPT|SSH_ASKPASS|YARN_PROJECT_CWD|YARN_RC_FILENAME|ZDOTDIR|_JAVA_OPTIONS)$)(?!BASH_FUNC_)(?!GIT_CONFIG_)(?!GIT_TRACE)[A-Z][A-Z0-9_]{0,63}$"
+    },
+    "publicEnvironmentName": {
+      "allOf": [
+        {"$ref": "#/$defs/safeEnvironmentName"},
+        {
+          "not": {
+            "pattern": "(?:^|_)(?:AUTH|CREDENTIAL|KEY|PASSWORD|SECRET|TOKEN)(?:_|$)"
+          }
+        }
+      ]
+    },
+    "credentialEnvironmentName": {
+      "allOf": [
+        {"$ref": "#/$defs/safeEnvironmentName"},
+        {"not": {"enum": ["GH_TOKEN", "GITHUB_TOKEN"]}}
+      ]
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+    },
+    "cwd": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?:\\.|(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+)$"
+    },
+    "argv": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      }
+    },
+    "policy": {
+      "type": "object",
+      "properties": {
+        "auth": {"enum": ["none", "provider"]},
+        "stage": {
+          "enum": ["kimiflow_control", "project_checks", "build", "provider"]
+        },
+        "failure": {"enum": ["semantic", "operational"]},
+        "reuse": {"enum": ["never", "kimiflow_verification"]},
+        "affected_paths": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/path"}
+        },
+        "declared_env": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/publicEnvironmentName"}
+        }
+      },
+      "required": [
+        "auth",
+        "stage",
+        "failure",
+        "reuse",
+        "affected_paths",
+        "declared_env"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "reuse": {"const": "kimiflow_verification"}
+            },
+            "required": ["reuse"]
+          },
+          "then": {
+            "properties": {
+              "auth": {"const": "none"}
+            },
+            "required": ["auth"]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "probe": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "argv": {"$ref": "#/$defs/argv"},
+        "cwd": {"$ref": "#/$defs/cwd"},
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "policy": {"$ref": "#/$defs/policy"}
+      },
+      "required": ["id", "argv", "cwd", "timeout_seconds", "policy"],
+      "additionalProperties": false
+    },
+    "checkStep": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "kind": {"const": "check"},
+        "argv": {"$ref": "#/$defs/argv"},
+        "cwd": {"$ref": "#/$defs/cwd"},
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "policy": {"$ref": "#/$defs/policy"}
+      },
+      "required": [
+        "id",
+        "kind",
+        "argv",
+        "cwd",
+        "timeout_seconds",
+        "policy"
+      ],
+      "additionalProperties": false
+    },
+    "effectPolicy": {
+      "allOf": [
+        {"$ref": "#/$defs/policy"},
+        {
+          "type": "object",
+          "properties": {"reuse": {"const": "never"}}
+        }
+      ]
+    },
+    "effectStep": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "kind": {"const": "effect"},
+        "scope": {"enum": ["local", "remote"]},
+        "argv": {"$ref": "#/$defs/argv"},
+        "cwd": {"$ref": "#/$defs/cwd"},
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "policy": {"$ref": "#/$defs/effectPolicy"},
+        "precondition": {"$ref": "#/$defs/probe"},
+        "postcondition": {"$ref": "#/$defs/probe"}
+      },
+      "required": [
+        "id",
+        "kind",
+        "scope",
+        "argv",
+        "cwd",
+        "timeout_seconds",
+        "policy",
+        "precondition",
+        "postcondition"
+      ],
+      "additionalProperties": false
+    },
+    "controlSource": {
+      "type": "object",
+      "properties": {
+        "path": {"$ref": "#/$defs/path"},
+        "digest_mode": {"enum": ["file", "package-scripts"]},
+        "sha256": {"$ref": "#/$defs/digest"}
+      },
+      "required": ["path", "digest_mode", "sha256"],
+      "additionalProperties": false
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "name": {"$ref": "#/$defs/inputName"},
+        "type": {
+          "enum": ["git_oid", "tag", "semver", "repository", "relative_path"]
+        },
+        "publication_target": {"type": "boolean"}
+      },
+      "required": ["name", "type", "publication_target"],
+      "additionalProperties": false
+    },
+    "environmentIdentity": {
+      "type": "object",
+      "properties": {
+        "provider": {"const": "environment"},
+        "environment": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/credentialEnvironmentName"}
+        }
+      },
+      "required": ["provider", "environment"],
+      "additionalProperties": false
+    },
+    "githubIdentity": {
+      "type": "object",
+      "properties": {
+        "provider": {"const": "github"}
+      },
+      "required": ["provider"],
+      "additionalProperties": false
+    },
+    "profile": {
+      "type": "object",
+      "properties": {
+        "schema_version": {"const": 2},
+        "document_type": {"const": "release_profile"},
+        "id": {"$ref": "#/$defs/id"},
+        "control_sources": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {"$ref": "#/$defs/controlSource"}
+        },
+        "inputs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {"$ref": "#/$defs/input"},
+          "contains": {
+            "type": "object",
+            "properties": {
+              "publication_target": {"const": true}
+            },
+            "required": ["publication_target"]
+          },
+          "minContains": 1
+        },
+        "identity": {
+          "oneOf": [
+            {"$ref": "#/$defs/environmentIdentity"},
+            {"$ref": "#/$defs/githubIdentity"}
+          ]
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "oneOf": [
+              {"$ref": "#/$defs/checkStep"},
+              {"$ref": "#/$defs/effectStep"}
+            ]
+          }
+        },
+        "final_checks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {"$ref": "#/$defs/probe"}
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "identity": {
+                "properties": {"provider": {"const": "github"}},
+                "required": ["provider"]
+              }
+            },
+            "required": ["identity"]
+          },
+          "then": {
+            "properties": {
+              "inputs": {
+                "allOf": [
+                  {
+                    "contains": {
+                      "type": "object",
+                      "properties": {
+                        "type": {"const": "repository"},
+                        "publication_target": {"const": true}
+                      },
+                      "required": ["type", "publication_target"]
+                    },
+                    "minContains": 1,
+                    "maxContains": 1
+                  },
+                  {
+                    "not": {
+                      "contains": {
+                        "type": "object",
+                        "properties": {
+                          "type": {"const": "repository"},
+                          "publication_target": {"const": false}
+                        },
+                        "required": ["type", "publication_target"]
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "required": [
+        "schema_version",
+        "document_type",
+        "id",
+        "control_sources",
+        "inputs",
+        "identity",
+        "steps",
+        "final_checks"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
