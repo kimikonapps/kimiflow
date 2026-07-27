@@ -116,7 +116,11 @@ print(json.dumps({'type':'turn.completed','usage':{'model_calls':1,'tool_calls':
     def test_adapter_conformance_contract_covers_required_failures(self):
         result = adapter_conformance.run(self.harness(), self.project)
         schema = json.loads(
-            Path("references/adapter-conformance-v1.schema.json")
+            (
+                Path(__file__).resolve().parents[3]
+                / "references"
+                / "adapter-conformance-v1.schema.json"
+            )
             .read_text(encoding="utf-8")
         )
         self.assertEqual(result["status"], "compatible")
