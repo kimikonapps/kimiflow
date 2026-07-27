@@ -1,12 +1,16 @@
+import io
 import json
 import os
+import shutil
 import stat
 import subprocess
 import tempfile
 import textwrap
+import threading
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from kimiflow_core import adaptive_control, model_adapter, runner
 
@@ -828,6 +832,49 @@ time.sleep(30)
             set(definitions["features"]["properties"]), set(model_adapter.FEATURE_KEYS),
         )
         self.assertEqual(
+            set(definitions["workUnitPolicy"]["properties"]),
+            set(model_adapter.WORK_UNIT_POLICY_KEYS),
+        )
+        self.assertFalse(definitions["workUnitPolicy"]["additionalProperties"])
+        self.assertEqual(
+            definitions["turnRequest"]["properties"]["work_unit_policy"]["$ref"],
+            "#/$defs/workUnitPolicy",
+        )
+        self.assertIn(
+            {
+                "if": {
+                    "properties": {
+                        "work_unit_policy": {
+                            "properties": {
+                                "context_scope": {"const": "sealed_input"},
+                            },
+                            "required": ["context_scope"],
+                        },
+                    },
+                    "required": ["work_unit_policy"],
+                },
+                "then": {
+                    "properties": {
+                        "action": {"const": "start"},
+                        "session_id": {"type": "null"},
+                    },
+                    "not": {
+                        "anyOf": [
+                            {"required": ["workflow_context"]},
+                            {"required": ["model_routing"]},
+                            {"required": ["context_rollover"]},
+                            {"required": ["execution_profile"]},
+                        ],
+                    },
+                },
+            },
+            definitions["turnRequest"]["allOf"],
+        )
+        self.assertEqual(
+            definitions["features"]["properties"]["work_unit_policy"],
+            {"type": "boolean"},
+        )
+        self.assertEqual(
             set(definitions["modelRouting"]["properties"]["roles"]["properties"]),
             set(model_adapter.MODEL_ROLE_KEYS),
         )
@@ -945,6 +992,527 @@ time.sleep(30)
         result = model_adapter.CommandAgentAdapter(path).start(self.root, "task", lambda _: None)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(result.error_code, "invalid_usage")
+
+    def test_claude_start_resume_and_usage(self):
+        path = os.path.join(self.tmp.name, "claude-fixture")
+        log = os.path.join(self.tmp.name, "claude-argv.jsonl")
+        Path(path).write_text(textwrap.dedent("""\
+            #!/usr/bin/env python3
+            import json, os, sys
+            with open(os.environ["ARGV_LOG"], "a", encoding="utf-8") as handle:
+                handle.write(json.dumps(sys.argv[1:]) + "\\n")
+            session = "abc12345"
+            print(json.dumps({"type":"system","subtype":"init","session_id":session}))
+            print(json.dumps({
+                "type":"assistant",
+                "message":{
+                    "content":[{"type":"text","text":"fixture answer"}],
+                    "usage":{"input_tokens":12,"output_tokens":4}
+                }
+            }))
+            print(json.dumps({
+                "type":"result","subtype":"success","is_error":False,
+                "session_id":session
+            }))
+        """), encoding="utf-8")
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+        adapter = model_adapter.ClaudeCodeAdapter(
+            claude=path, environ={"PATH": os.environ.get("PATH", ""), "ARGV_LOG": log},
+        )
+        sessions = []
+        started = adapter.start(self.root, "start", sessions.append)
+        resumed = adapter.resume(self.root, started.session_id, "resume", sessions.append)
+        self.assertEqual((started.returncode, resumed.returncode), (0, 0))
+        self.assertEqual((started.session_id, resumed.session_id), ("abc12345", "abc12345"))
+        self.assertEqual(started.usage, {
+            "model_calls": 1, "tool_calls": 0, "input_tokens": 12, "output_tokens": 4,
+        })
+        self.assertEqual(started.output, {"messages": ["fixture answer"]})
+        argv = [json.loads(line) for line in Path(log).read_text(encoding="utf-8").splitlines()]
+        self.assertNotIn("--resume", argv[0])
+        self.assertIn("--permission-mode", argv[0])
+        self.assertEqual(
+            argv[0][argv[0].index("--permission-mode") + 1],
+            "bypassPermissions",
+        )
+        self.assertEqual(argv[1][argv[1].index("--resume") + 1], "abc12345")
+        self.assertEqual(sessions, ["abc12345", "abc12345"])
+
+    def test_claude_event_sink_failures_are_normalized(self):
+        path = os.path.join(self.tmp.name, "claude-sink-fixture")
+        Path(path).write_text(textwrap.dedent("""\
+            #!/usr/bin/env python3
+            import json
+            print(json.dumps({
+                "type":"system","subtype":"init","session_id":"abc12345"
+            }), flush=True)
+            print(json.dumps({
+                "type":"assistant",
+                "message":{
+                    "content":[{"type":"text","text":"fixture answer"}],
+                    "usage":{"input_tokens":12,"output_tokens":4}
+                }
+            }), flush=True)
+            print(json.dumps({
+                "type":"result","subtype":"success","is_error":False,
+                "session_id":"abc12345"
+            }), flush=True)
+        """), encoding="utf-8")
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+
+        for failed_type in ("session.started", "message", "turn.completed"):
+            with self.subTest(failed_type=failed_type):
+                def sink(event):
+                    if event["type"] == failed_type:
+                        raise BrokenPipeError()
+
+                result = model_adapter.ClaudeCodeAdapter(
+                    claude=path,
+                    event_sink=sink,
+                    environ={"PATH": os.environ.get("PATH", "")},
+                ).start(self.root, "task", lambda _session: None)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.error_code, "event_sink_failed")
+
+    def test_provider_errors_and_cancel_are_normalized(self):
+        path = os.path.join(self.tmp.name, "claude-error-fixture")
+        Path(path).write_text(textwrap.dedent("""\
+            #!/usr/bin/env python3
+            import json, os, subprocess, sys, time
+            mode = os.environ.get("FIXTURE_MODE", "")
+            if mode == "cancel":
+                child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+                with open(os.environ["CHILD_PID"], "w", encoding="utf-8") as handle:
+                    handle.write(str(child.pid))
+                print(json.dumps({"type":"system","subtype":"init","session_id":"abc12345"}), flush=True)
+                time.sleep(30)
+            elif mode == "timeout":
+                time.sleep(30)
+            elif mode == "crash":
+                raise SystemExit(9)
+            else:
+                print(json.dumps({"type":"system","subtype":"init","session_id":"abc12345"}))
+                print(json.dumps({
+                    "type":"result","subtype":mode,"is_error":True,
+                    "result":(
+                        "quota exceeded" if mode == "quota"
+                        else "request refused" if mode == "refusal"
+                        else "unknown provider failure"
+                    ),
+                    "session_id":"abc12345"
+                }))
+        """), encoding="utf-8")
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+        for mode, expected in (
+            ("refusal", "refusal"),
+            ("quota", "quota_exceeded"),
+            ("error_max_budget_usd", "quota_exceeded"),
+            ("unexpected_error", "provider_crash"),
+            ("crash", "provider_crash"),
+        ):
+            adapter = model_adapter.ClaudeCodeAdapter(
+                claude=path,
+                environ={"PATH": os.environ.get("PATH", ""), "FIXTURE_MODE": mode},
+            )
+            result = adapter.start(self.root, mode, lambda _: None)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.error_code, expected)
+
+        timeout = model_adapter.ClaudeCodeAdapter(
+            claude=path,
+            environ={
+                "PATH": os.environ.get("PATH", ""),
+                "FIXTURE_MODE": "timeout",
+                "KIMIFLOW_ADAPTER_TURN_TIMEOUT_SECONDS": "1",
+            },
+        ).start(self.root, "timeout", lambda _: None)
+        self.assertEqual(timeout.error_code, "turn_timeout")
+
+        child_pid_path = os.path.join(self.tmp.name, "child.pid")
+        adapter = model_adapter.ClaudeCodeAdapter(
+            claude=path,
+            environ={
+                "PATH": os.environ.get("PATH", ""),
+                "FIXTURE_MODE": "cancel",
+                "CHILD_PID": child_pid_path,
+            },
+        )
+        turns = []
+        thread = threading.Thread(
+            target=lambda: turns.append(adapter.start(self.root, "cancel", lambda _: None)),
+        )
+        thread.start()
+        deadline = time.time() + 3
+        while not os.path.exists(child_pid_path) and time.time() < deadline:
+            time.sleep(0.01)
+        self.assertTrue(os.path.exists(child_pid_path))
+        self.assertTrue(adapter.cancel())
+        thread.join(5)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(turns[0].error_code, "turn_cancelled")
+        child_pid = int(Path(child_pid_path).read_text(encoding="utf-8"))
+        deadline = time.time() + 3
+        while time.time() < deadline:
+            try:
+                os.kill(child_pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.02)
+        else:
+            self.fail("Claude fixture descendant survived cancellation")
+
+    def test_work_unit_policy_is_bound_on_start_and_resume(self):
+        payload_log = os.path.join(self.tmp.name, "policy.jsonl")
+        features = {"work_unit_policy": True}
+        adapter = model_adapter.CommandAgentAdapter(
+            self.write_harness(features=features),
+            environ={"PATH": os.environ.get("PATH", ""), "PAYLOAD_LOG": payload_log},
+        )
+        policy = {
+            "schema_version": 1,
+            "unit_kind": "research",
+            "context_scope": "project_root",
+            "filesystem_access": "read_only",
+            "allowed_tools": ["Read", "Glob", "Grep"],
+            "settings_sources": [],
+            "mcp_servers": [],
+            "hooks": False,
+            "input_digest": "sha256:" + "d" * 64,
+        }
+        started = adapter.start(
+            self.root, "start", lambda _: None, work_unit_policy=policy,
+        )
+        resumed = adapter.resume(
+            self.root, started.session_id, "resume", lambda _: None,
+            work_unit_policy=policy,
+        )
+        self.assertEqual((started.returncode, resumed.returncode), (0, 0))
+        payloads = [
+            json.loads(line)
+            for line in Path(payload_log).read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(payloads[0]["work_unit_policy"], policy)
+        self.assertEqual(payloads[1]["work_unit_policy"], policy)
+        codex = model_adapter.CodexExecAdapter()
+        codex_argv = codex.start_argv(self.root, "task", policy)
+        self.assertIn("read-only", codex_argv)
+        self.assertNotIn("--ephemeral", codex_argv)
+        for flag in ("--ignore-user-config", "--ignore-rules"):
+            self.assertIn(flag, codex_argv)
+        resumed_argv = codex.resume_argv("abc12345", "task", policy)
+        for setting in ("mcp_servers={}", "hooks={}"):
+            self.assertIn(setting, codex_argv)
+            self.assertIn(setting, resumed_argv)
+        codex_cli = shutil.which("codex")
+        if codex_cli is not None:
+            parsed = subprocess.run(
+                [
+                    codex_cli, "debug", "prompt-input",
+                    "-c", "hooks={}", "test",
+                ],
+                cwd=self.root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                text=True,
+            )
+            self.assertEqual(parsed.returncode, 0, parsed.stderr)
+        claude = model_adapter.ClaudeCodeAdapter()
+        argv = claude.start_argv(self.root, "task", policy)
+        for flag in (
+            "--safe-mode", "--allowedTools", "--setting-sources",
+            "--strict-mcp-config", "--mcp-config",
+        ):
+            self.assertIn(flag, argv)
+        self.assertIn('{"mcpServers":{}}', argv)
+        sealed = {
+            **policy,
+            "unit_kind": "solution_candidate",
+            "context_scope": "sealed_input",
+            "filesystem_access": "none",
+            "allowed_tools": [],
+        }
+        with self.assertRaisesRegex(
+            model_adapter.AdapterError, "work_unit_policy_unavailable",
+        ):
+            codex.start_argv(self.root, "task", sealed)
+        sealed_argv = claude.start_argv(self.root, "task", sealed)
+        self.assertIn("--no-session-persistence", sealed_argv)
+        self.assertNotIn("--resume", sealed_argv)
+        opus_argv = model_adapter.ClaudeCodeAdapter(
+            model="claude-opus-5",
+        ).start_argv(self.root, "task", sealed)
+        self.assertEqual(
+            opus_argv[opus_argv.index("--model") + 1],
+            "claude-opus-5",
+        )
+        with self.assertRaisesRegex(
+            model_adapter.AdapterError, "work_unit_resume_forbidden",
+        ):
+            claude.resume_argv("abc12345", "task", sealed)
+        with self.assertRaisesRegex(
+            model_adapter.AdapterError, "work_unit_resume_forbidden",
+        ):
+            adapter.resume(
+                self.root, "abc12345", "task", lambda _: None,
+                work_unit_policy=sealed,
+            )
+        self.assertEqual(
+            len(
+                Path(payload_log)
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ),
+            2,
+        )
+        invalid = {
+            **sealed,
+            "context_scope": "project_root",
+            "filesystem_access": "read_only",
+            "allowed_tools": ["Write"],
+        }
+        with self.assertRaisesRegex(
+            model_adapter.AdapterError, "work_unit_policy_invalid",
+        ):
+            model_adapter.validate_work_unit_policy(invalid)
+
+    def test_sealed_command_policy_omits_optional_context_and_customizations(self):
+        payload_log = os.path.join(self.tmp.name, "sealed-policy.jsonl")
+        features = {
+            "work_unit_policy": True,
+            "structured_events": True,
+            "workflow_context": True,
+            "model_roles": True,
+            "adaptive_execution_profiles": True,
+            "adaptive_model_routes": True,
+            "context_rollover": True,
+        }
+        adapter = model_adapter.CommandAgentAdapter(
+            self.write_harness(features=features),
+            model="local-default",
+            model_roles={"top": "local-top", "balanced": "local-balanced"},
+            environ={
+                "PATH": os.environ.get("PATH", ""),
+                "PAYLOAD_LOG": payload_log,
+            },
+        )
+        adapter._context_rollover = {"private": "must not cross boundary"}
+        policy = {
+            "schema_version": 1,
+            "unit_kind": "solution_selector",
+            "context_scope": "sealed_input",
+            "filesystem_access": "none",
+            "allowed_tools": [],
+            "settings_sources": [],
+            "mcp_servers": [],
+            "hooks": False,
+            "input_digest": "sha256:" + "f" * 64,
+        }
+        state_dir = os.path.join(self.root, ".kimiflow", "session")
+        os.makedirs(state_dir, exist_ok=True)
+        Path(os.path.join(state_dir, "ACTIVE_RUN.json")).write_text(
+            "{}", encoding="utf-8",
+        )
+        result = adapter.start(
+            self.root, "sealed", lambda _: None,
+            work_unit_policy=policy,
+        )
+        self.assertEqual(result.returncode, 0)
+        payload = json.loads(
+            Path(payload_log).read_text(encoding="utf-8").splitlines()[0],
+        )
+        self.assertEqual(payload["work_unit_policy"], policy)
+        for key in (
+            "execution_profile", "workflow_context", "model_routing",
+            "context_rollover",
+        ):
+            self.assertNotIn(key, payload)
+
+    def test_eof_does_not_disable_deadline_or_public_cancel(self):
+        claude_path = os.path.join(self.tmp.name, "claude-eof-fixture")
+        marker = os.path.join(self.tmp.name, "claude-eof-ready")
+        Path(claude_path).write_text(textwrap.dedent("""\
+            #!/usr/bin/env python3
+            import os, time
+            with open(os.environ["EOF_READY"], "w", encoding="utf-8") as handle:
+                handle.write("ready")
+            os.close(1)
+            time.sleep(30)
+        """), encoding="utf-8")
+        os.chmod(claude_path, 0o700)
+        started = time.monotonic()
+        timeout = model_adapter.ClaudeCodeAdapter(
+            claude=claude_path,
+            environ={
+                "PATH": os.environ.get("PATH", ""),
+                "EOF_READY": marker,
+                "KIMIFLOW_ADAPTER_TURN_TIMEOUT_SECONDS": "1",
+            },
+        ).start(self.root, "timeout", lambda _: None)
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertEqual(timeout.error_code, "turn_timeout")
+
+        os.unlink(marker)
+        adapter = model_adapter.ClaudeCodeAdapter(
+            claude=claude_path,
+            environ={
+                "PATH": os.environ.get("PATH", ""),
+                "EOF_READY": marker,
+            },
+        )
+        turns = []
+        thread = threading.Thread(
+            target=lambda: turns.append(
+                adapter.start(self.root, "cancel", lambda _: None),
+            ),
+        )
+        thread.start()
+        deadline = time.monotonic() + 3
+        while not os.path.exists(marker) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertTrue(os.path.exists(marker))
+        self.assertTrue(adapter.cancel())
+        thread.join(5)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(turns[0].error_code, "turn_cancelled")
+
+        command_path = os.path.join(self.tmp.name, "command-eof-fixture")
+        Path(command_path).write_text(textwrap.dedent("""\
+            #!/usr/bin/env python3
+            import json, os, sys, time
+            if sys.argv[1] == "capabilities":
+                print(json.dumps({
+                    "schema_version":1,
+                    "name":"eof-fixture",
+                    "host":"local",
+                    "capabilities":{
+                        "files":True,"shell":True,"tests":True,
+                        "resume":True,"gates":True
+                    }
+                }))
+                raise SystemExit(0)
+            json.loads(sys.stdin.readline())
+            os.close(1)
+            time.sleep(30)
+        """), encoding="utf-8")
+        os.chmod(command_path, 0o700)
+        started = time.monotonic()
+        command_timeout = model_adapter.CommandAgentAdapter(
+            command_path,
+            environ={
+                "PATH": os.environ.get("PATH", ""),
+                "KIMIFLOW_ADAPTER_TURN_TIMEOUT_SECONDS": "1",
+            },
+        ).start(self.root, "timeout", lambda _: None)
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertEqual(command_timeout.error_code, "turn_timeout")
+
+    def test_claude_parent_exit_reaps_same_group_descendants(self):
+        path = os.path.join(self.tmp.name, "claude-orphan-fixture")
+        marker = os.path.join(self.tmp.name, "orphan-effect")
+        Path(path).write_text(textwrap.dedent("""\
+            #!/usr/bin/env python3
+            import os, subprocess, sys
+            code = (
+                "import os,time; mode=os.environ['ORPHAN_MODE']; "
+                "marker=os.environ['ORPHAN_MARKER']; "
+                "os.close(1) if mode == 'closed' else None; "
+                "time.sleep(float(os.environ['ORPHAN_DELAY'])); "
+                "open(marker,'w').write('late')"
+            )
+            subprocess.Popen([sys.executable, "-c", code])
+            os._exit(9)
+        """), encoding="utf-8")
+        os.chmod(path, 0o700)
+        for mode, delay in (("inherit", "1.5"), ("closed", "0.4")):
+            with self.subTest(mode=mode):
+                if os.path.exists(marker):
+                    os.unlink(marker)
+                adapter = model_adapter.ClaudeCodeAdapter(
+                    claude=path,
+                    environ={
+                        "PATH": os.environ.get("PATH", ""),
+                        "ORPHAN_MODE": mode,
+                        "ORPHAN_MARKER": marker,
+                        "ORPHAN_DELAY": delay,
+                        "KIMIFLOW_ADAPTER_TURN_TIMEOUT_SECONDS": "1",
+                    },
+                )
+                started = time.monotonic()
+                result = adapter.start(self.root, "orphan", lambda _: None)
+                self.assertLess(time.monotonic() - started, 3)
+                self.assertEqual(
+                    result.error_code,
+                    "turn_timeout" if mode == "inherit" else "provider_crash",
+                )
+                time.sleep(0.7)
+                self.assertFalse(os.path.exists(marker))
+
+    def test_claude_sealed_output_is_private_and_streams_are_bounded(self):
+        path = os.path.join(self.tmp.name, "claude-bounded-fixture")
+        Path(path).write_text(textwrap.dedent("""\
+            #!/usr/bin/env python3
+            import json, os
+            mode = os.environ.get("FIXTURE_MODE", "success")
+            print(json.dumps({"type":"system","subtype":"init","session_id":"abc12345"}))
+            if mode == "oversized":
+                print("x" * 300000)
+            else:
+                for index in range(4):
+                    print(json.dumps({
+                        "type":"assistant",
+                        "message":{
+                            "content":[{"type":"text","text":"sealed-secret-%d" % index}],
+                            "usage":{"input_tokens":1,"output_tokens":1}
+                        }
+                    }))
+                print(json.dumps({
+                    "type":"result","subtype":"success","is_error":False,
+                    "session_id":"abc12345"
+                }))
+        """), encoding="utf-8")
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+        policy = {
+            "schema_version": 1,
+            "unit_kind": "solution_candidate",
+            "context_scope": "sealed_input",
+            "filesystem_access": "none",
+            "allowed_tools": [],
+            "settings_sources": [],
+            "mcp_servers": [],
+            "hooks": False,
+            "input_digest": "sha256:" + "e" * 64,
+        }
+        diagnostics = io.StringIO()
+        adapter = model_adapter.ClaudeCodeAdapter(
+            claude=path,
+            environ={"PATH": os.environ.get("PATH", "")},
+            stderr=diagnostics,
+        )
+        result = adapter.start(
+            self.root, "sealed", lambda _: None, work_unit_policy=policy,
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("sealed-secret-0", json.dumps(result.output))
+        self.assertNotIn("sealed-secret", diagnostics.getvalue())
+
+        oversized = model_adapter.ClaudeCodeAdapter(
+            claude=path,
+            environ={
+                "PATH": os.environ.get("PATH", ""),
+                "FIXTURE_MODE": "oversized",
+            },
+        ).start(self.root, "bounded", lambda _: None)
+        self.assertNotEqual(oversized.returncode, 0)
+        self.assertEqual(oversized.error_code, "event_too_large")
+
+        with mock.patch.object(model_adapter, "MAX_EVENT_STREAM_BYTES", 100):
+            aggregate = model_adapter.ClaudeCodeAdapter(
+                claude=path,
+                environ={"PATH": os.environ.get("PATH", "")},
+            ).start(self.root, "bounded", lambda _: None)
+        self.assertNotEqual(aggregate.returncode, 0)
+        self.assertEqual(aggregate.error_code, "event_stream_too_large")
 
 
 if __name__ == "__main__":

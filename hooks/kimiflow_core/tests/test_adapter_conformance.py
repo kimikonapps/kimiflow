@@ -113,6 +113,35 @@ print(json.dumps({'type':'turn.completed','usage':{'model_calls':1,'tool_calls':
             ["gates", "shell", "tests"],
         )
 
+    def test_adapter_conformance_contract_covers_required_failures(self):
+        result = adapter_conformance.run(self.harness(), self.project)
+        schema = json.loads(
+            Path("references/adapter-conformance-v1.schema.json")
+            .read_text(encoding="utf-8")
+        )
+        self.assertEqual(result["status"], "compatible")
+        self.assertEqual(set(result), set(schema["properties"]))
+        self.assertEqual(set(result), set(schema["required"]))
+        self.assertEqual(
+            set(result["claims"]),
+            {
+                "crash_resume", "refusal", "quota", "cancel",
+                "process_group_reaping", "root_confinement",
+            },
+        )
+        self.assertEqual(result["claims"]["crash_resume"], "deterministic_fixture")
+        self.assertEqual(result["claims"]["process_group_reaping"], "controller_enforced")
+        self.assertEqual(result["checks"]["root_confinement_claim"], "cooperative")
+        allowed_checks = set(
+            schema["properties"]["checks"]["additionalProperties"]["enum"],
+        )
+        self.assertTrue(set(result["checks"].values()).issubset(allowed_checks))
+        claims_schema = schema["properties"]["claims"]
+        self.assertEqual(set(result["claims"]), set(claims_schema["required"]))
+        for name, value in result["claims"].items():
+            self.assertEqual(value, claims_schema["properties"][name]["const"])
+        self.assertFalse(result["assurance"]["os_process_attestation"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -13,11 +14,15 @@ THREAD = "019f5fa0-567a-70e0-9b07-604ffbdafbf4"
 
 
 class FakeAdapter:
-    def __init__(self, start_action=None, resume_actions=None, returncode=0, usage=None):
+    def __init__(
+        self, start_action=None, resume_actions=None, returncode=0, usage=None,
+        error_code="",
+    ):
         self.start_action = start_action
         self.resume_actions = list(resume_actions or [])
         self.returncode = returncode
         self.usage = usage
+        self.error_code = error_code
         self.starts = []
         self.resumes = []
 
@@ -26,7 +31,10 @@ class FakeAdapter:
         on_thread(THREAD)
         if self.start_action:
             self.start_action()
-        return runner.TurnResult(returncode=self.returncode, thread_id=THREAD, usage=self.usage)
+        return runner.TurnResult(
+            returncode=self.returncode, thread_id=THREAD, usage=self.usage,
+            error_code=self.error_code,
+        )
 
     def resume(self, root, thread_id, prompt, on_thread):
         self.resumes.append((root, thread_id, prompt))
@@ -35,7 +43,10 @@ class FakeAdapter:
             if isinstance(action, BaseException):
                 raise action
             action()
-        return runner.TurnResult(returncode=self.returncode, thread_id=thread_id, usage=self.usage)
+        return runner.TurnResult(
+            returncode=self.returncode, thread_id=thread_id, usage=self.usage,
+            error_code=self.error_code,
+        )
 
 
 class InterruptingAdapter(FakeAdapter):
@@ -145,6 +156,38 @@ class RunnerTests(unittest.TestCase):
         self.assertIsInstance(runner._adapter_from_args(args), runner.CodexExecAdapter)
         self.assertIn("$kimiflow", runner._initial_prompt("build it"))
         self.assertNotIn("$kimiflow", runner._initial_prompt("build it", workflow_aware=True))
+
+    def test_runner_selects_claude_and_pins_resume_identity(self):
+        args = runner._parser().parse_args([
+            "run", "build it", "--adapter", "claude", "--model", "fable",
+        ])
+        adapter = runner._adapter_from_args(args)
+        self.assertIsInstance(adapter, runner.ClaudeCodeAdapter)
+        self.assertEqual(adapter.model, "fable")
+        runner.write_receipt(self.root, {
+            "schema_version": 1,
+            "host": "claude",
+            "adapter": "claude-code",
+            "root": self.root,
+            "session_id": THREAD,
+            "thread_id": THREAD,
+            "status": "interrupted",
+            "turns": 1,
+            "adapter_contract": runner._adapter_contract(adapter),
+            "started_at": "2026-07-27T00:00:00Z",
+            "updated_at": "2026-07-27T00:00:00Z",
+        })
+        with self.assertRaises(runner.RunnerError) as context:
+            runner.resume_task(self.root, adapter=runner.CodexExecAdapter())
+        self.assertEqual(context.exception.status, "adapter_mismatch")
+        self.assertEqual(context.exception.code, 2)
+        with self.assertRaises(runner.RunnerError) as drift:
+            runner.resume_task(
+                self.root,
+                adapter=runner.ClaudeCodeAdapter(model="different-model"),
+            )
+        self.assertEqual(drift.exception.status, "adapter_mismatch")
+        self.assertEqual(drift.exception.code, 2)
 
     def test_run_continues_same_thread_until_terminal_outcome(self):
         adapter = FakeAdapter(
@@ -325,6 +368,35 @@ class RunnerTests(unittest.TestCase):
         finished = runner.resume_task(self.root, adapter=resumed)
         self.assertEqual(finished["status"], "done")
         self.assertGreater(self.read_receipt()["turn_limit"], stored["turn_limit"])
+
+    def test_terminal_provider_errors_are_not_retried(self):
+        for error_code in ("turn_cancelled", "refusal", "quota_exceeded"):
+            with self.subTest(error_code=error_code):
+                shutil.rmtree(
+                    os.path.join(self.root, ".kimiflow"),
+                    ignore_errors=True,
+                )
+                adapter = FakeAdapter(
+                    start_action=self.write_active,
+                    returncode=1,
+                    error_code=error_code,
+                )
+                if error_code == "turn_cancelled":
+                    result = runner.run_task(
+                        self.root, "terminal", adapter=adapter,
+                    )
+                    self.assertEqual(result["status"], "interrupted")
+                else:
+                    with self.assertRaisesRegex(
+                        runner.RunnerError, "terminal error",
+                    ):
+                        runner.run_task(
+                            self.root, "terminal", adapter=adapter,
+                        )
+                    self.assertEqual(
+                        self.read_receipt()["status"], "transport_error",
+                    )
+                self.assertEqual(adapter.resumes, [])
 
     def test_adapter_capability_preflight_fails_before_start(self):
         class Incomplete(FakeAdapter):
