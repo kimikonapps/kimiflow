@@ -34,6 +34,11 @@ the model to declare itself done.
 **findings**.
 <!-- capabilities:end -->
 
+The execution runtime is model-agnostic. Codex and Claude Code are built-in terminal adapters, while
+other coding agents can implement the same versioned JSON-stdio contract. Strict read-only Work-Units
+and an opt-in bounded Solution Search keep delegated research, review, and materially open design
+decisions inside measured permission, usage, privacy, and retention boundaries.
+
 Kimiflow can auto-route actionable implementation requests for substantial feature work. Discussion,
 ideation, recommendations, explanations, status requests, and wish formulations stay direct and
 read-only. Fixes and small low-risk changes also stay direct unless you explicitly invoke `/kimiflow`
@@ -50,7 +55,9 @@ abilities:
 - fixes require reproduction, a proven cause, and red/green evidence;
 - material product/authority decisions stop for human approval; verified local commits are automatic, while push and release stay explicit;
 - successful learnings are curated, while failed or parked attempts are not promoted as truth;
-- the strongest selected model orchestrates and plans, while bounded workers handle cheaper tasks.
+- the strongest selected model orchestrates and plans, while typed bounded workers handle cheaper tasks;
+- mechanically bounded Solution Search stays off for clear work and explores at most three fixed candidate
+  lenses plus one fresh selector only when a material design decision is genuinely open.
 
 The result is not maximum ceremony. The default is the smallest loop that still protects the work.
 
@@ -116,11 +123,13 @@ bash hooks/install-codex-hooks.sh --check
 ### Optional provider-neutral terminal runner
 
 The embedded plugin remains the default. If you want to start a long Kimiflow task from a terminal and let it
-continue without confirming every turn, install the optional thin controller. Codex is the built-in adapter:
+continue without confirming every turn, install the optional thin controller. Codex and Claude Code are
+built-in adapters:
 
 ```bash
 bash hooks/install-kimiflow-cli.sh
 kimiflow run "implement the requested feature"
+kimiflow run --adapter claude --model claude-opus-5 "implement the requested feature"
 kimiflow status --pretty
 ```
 
@@ -159,10 +168,17 @@ role or capability drift before the next coding turn. The complete v1 contract a
 Distribution and adapter execution are separate: a host first verifies the canonical runtime release, then
 negotiates the adapter contract. Kimiflow remains independently installable and neither side imports KimiTalk.
 
-With the built-in adapter it launches the already authenticated Codex CLI in a `workspace-write` sandbox and
-resumes the same thread. Every adapter uses the same `.kimiflow/` state, gates, and memory; none adds a daemon,
-second memory store, or worktree. A persisted turn limit plus one final recovery turn prevents an endless loop;
-an exhausted run stays explicitly resumable instead of claiming completion.
+The native adapters launch the already authenticated Codex or Claude Code CLI and preserve its resumable
+session identity. Ordinary Codex turns retain the `workspace-write` sandbox. Read-only Research/Review
+Work-Units instead require provider-bound read-only policy, empty inherited hooks/settings/MCP capability,
+measured usage, deterministic serial completion, and process-group cleanup. Solution candidates and their
+fresh selector run in separate empty sealed roots with no filesystem, tools, settings, MCP, hooks, or resume.
+Only winner and strongest-alternative digests survive successful selection; raw candidate text is discarded on
+every terminal path.
+
+Every adapter uses the same `.kimiflow/` state, gates, and memory; none adds a daemon, second memory store, or
+worktree. A persisted turn limit plus one final recovery turn prevents an endless loop; an exhausted run stays
+explicitly resumable instead of claiming completion.
 
 Only a material Kimiflow wait or park exits with status 3. Answer it with
 `kimiflow resume --message "<decision>"`; interrupted or transport-failed runs can use `kimiflow resume` without
@@ -307,6 +323,7 @@ trivial work and fixes keep their direct routes.
 | Adaptive execution controller | Run-wide no-progress and budget pressure select a bounded recovery action; mandatory quality gates remain intact. |
 | Evidence evaluation | Four critical workflow behaviors run once in CI against a sealed prior-release baseline; artifacts contain bounded metadata and digests, never prompts, output, code, secrets, or absolute paths. |
 | Local run control plane | Hosts receive one readiness/cursor contract; shared locking, owner proof and action receipts make supported item mutations fail closed and replay-safe. |
+| Work-Unit and Solution Search gates | Typed read-only units bind provider isolation and measured budgets; bounded search has a zero-call off path, sealed candidates, a fresh selector, and content-poor receipts. |
 | Material-decision gate | Reversible technical work continues; only missing authority, material risk, external access, privacy/cost, or irreversibility pauses. |
 | Red/green gate | Fixes cannot finish without recorded failing and passing evidence plus regression coverage. |
 | Atomic commit gate | Schema-4 runs stage named run-owned paths and commit locally under the original build authority. |
@@ -448,6 +465,11 @@ basis is unknown, Kimiflow revalidates before implementation instead of building
   a tool such as gitleaks for content scanning.
 - Project maps and repo docs exclude raw vulnerabilities, secrets, private paths, and Vault
   references unless an explicitly sanitized public note is requested.
+- High-capability model guidance is treated as threat-model input, not runtime attestation. The
+  [GPT-5.6 System Card](https://deploymentsafety.openai.com/gpt-5-6/introduction) and official
+  [Claude Opus 5 prompting guidance](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5)
+  map to provider-neutral scope, permission, delegation, evidence, and `user_required` gates. Unofficial prompt
+  captures may motivate an eval but never define Kimiflow's contract.
 - This is a pre-1.0 workflow plugin; rerun compatibility checks after host upgrades.
 
 ## Documentation
