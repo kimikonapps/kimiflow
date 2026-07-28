@@ -756,13 +756,16 @@ measured aggregate budgets. Each call receives a distinct empty temporary root o
 `context_scope=sealed_input`, `filesystem_access=none`, empty tools, setting sources and MCP servers, disabled
 hooks, and no resume. An adapter must negotiate `features.work_unit_policy=true` and bind that exact request
 policy before spawn; otherwise fail closed. Policy-bound Codex project-root calls use native read-only sandboxing,
-ignore user config/rules, and empty MCP/hooks while retaining the session needed for serial resume. Policy-bound
-Claude calls use safe mode; sealed calls additionally disable provider-side session persistence. Sealed Command
-calls omit optional execution-profile, workflow-context, model-routing, and rollover payloads. A native host that
-cannot enforce the requested boundary rejects the call rather than weakening isolation. Every ordinary callback
-Work-Unit runs in a dedicated killable process group; the per-unit deadline covers EOF/wait and descendants, and
-a timeout returns only after the group is reaped. Native adapters bind the same deadline to their process-group
-timer.
+ignore user config/rules, and empty MCP/hooks while retaining the session needed for serial resume. Sealed Codex
+calls instead run ephemerally in a content-empty temporary workspace and temporary Codex home that exposes only
+the existing authentication file; the child environment is allowlisted, arbitrary project variables do not cross
+the boundary, web/search/shell/apps/plugins/memory and related tool surfaces are disabled, and the temporary
+runtime is deleted after the call. They can never resume. Policy-bound Claude calls use safe mode; sealed calls
+additionally disable provider-side session persistence. Sealed Command calls omit optional execution-profile,
+workflow-context, model-routing, and rollover payloads. A native host that cannot enforce the requested boundary
+rejects the call rather than weakening isolation. Every ordinary callback Work-Unit runs in a dedicated killable
+process group; the per-unit deadline covers EOF/wait and descendants, and a timeout returns only after the group
+is reaped. Native adapters bind the same deadline to their process-group timer.
 
 Each candidate returns exactly one compact approach, advantage, carrying risk, smallest falsification test and
 nonempty product effect, with code forbidden. Before scoring, mechanically require four structured checks:

@@ -1232,10 +1232,29 @@ time.sleep(30)
             "filesystem_access": "none",
             "allowed_tools": [],
         }
-        with self.assertRaisesRegex(
-            model_adapter.AdapterError, "work_unit_policy_unavailable",
+        sealed_codex_argv = codex.start_argv(
+            self.root, "task", sealed,
+        )
+        for flag in (
+            "--ephemeral", "--skip-git-repo-check",
+            "--ignore-user-config", "--ignore-rules",
         ):
-            codex.start_argv(self.root, "task", sealed)
+            self.assertIn(flag, sealed_codex_argv)
+        for setting in (
+            "mcp_servers={}", "hooks={}",
+            'web_search="disabled"',
+        ):
+            self.assertIn(setting, sealed_codex_argv)
+        for feature in (
+            "shell_tool", "unified_exec", "apps", "plugins",
+            "browser_use", "computer_use", "image_generation",
+            "multi_agent", "tool_suggest", "workspace_dependencies",
+        ):
+            self.assertIn(feature, sealed_codex_argv)
+        with self.assertRaisesRegex(
+            model_adapter.AdapterError, "work_unit_resume_forbidden",
+        ):
+            codex.resume_argv("abc12345", "task", sealed)
         sealed_argv = claude.start_argv(self.root, "task", sealed)
         self.assertIn("--no-session-persistence", sealed_argv)
         self.assertNotIn("--resume", sealed_argv)
@@ -1275,6 +1294,78 @@ time.sleep(30)
             model_adapter.AdapterError, "work_unit_policy_invalid",
         ):
             model_adapter.validate_work_unit_policy(invalid)
+
+    def test_codex_sealed_runtime_is_content_empty_auth_only_and_ephemeral(self):
+        source_home = os.path.join(self.tmp.name, "source-codex-home")
+        os.mkdir(source_home, 0o700)
+        auth_path = os.path.join(source_home, "auth.json")
+        Path(auth_path).write_text(
+            '{"token":"CANARY-AUTH"}', encoding="utf-8",
+        )
+        os.chmod(auth_path, 0o600)
+        Path(os.path.join(source_home, "config.toml")).write_text(
+            'model = "ambient-model"\n', encoding="utf-8",
+        )
+        Path(os.path.join(source_home, "AGENTS.md")).write_text(
+            "ambient instructions\n", encoding="utf-8",
+        )
+        os.mkdir(os.path.join(source_home, "skills"))
+        adapter = model_adapter.CodexExecAdapter(
+            environ={
+                "PATH": os.environ.get("PATH", ""),
+                "CODEX_HOME": source_home,
+                "PROJECT_SECRET_CANARY": "must-not-cross",
+            },
+        )
+        policy = {
+            "schema_version": 1,
+            "unit_kind": "solution_selector",
+            "context_scope": "sealed_input",
+            "filesystem_access": "none",
+            "allowed_tools": [],
+            "settings_sources": [],
+            "mcp_servers": [],
+            "hooks": False,
+            "input_digest": "sha256:" + "f" * 64,
+        }
+        captured = {}
+
+        def invoke(argv, root, _on_session, sealed=False, child_environment=None):
+            captured["root"] = root
+            captured["home"] = child_environment["CODEX_HOME"]
+            self.assertTrue(sealed)
+            self.assertNotEqual(root, self.root)
+            self.assertEqual(os.listdir(root), [])
+            self.assertEqual(
+                os.listdir(child_environment["CODEX_HOME"]),
+                ["auth.json"],
+            )
+            linked_auth = os.path.join(
+                child_environment["CODEX_HOME"], "auth.json",
+            )
+            self.assertTrue(os.path.islink(linked_auth))
+            self.assertEqual(
+                os.path.realpath(linked_auth),
+                os.path.realpath(auth_path),
+            )
+            self.assertNotIn("PROJECT_SECRET_CANARY", child_environment)
+            self.assertEqual(
+                child_environment["CODEX_SQLITE_HOME"],
+                child_environment["CODEX_HOME"],
+            )
+            self.assertEqual(argv[argv.index("-C") + 1], root)
+            self.assertNotIn(self.root, argv)
+            self.assertIn("--ephemeral", argv)
+            return model_adapter.TurnResult(0, output={"messages": []})
+
+        with mock.patch.object(adapter, "_invoke", side_effect=invoke):
+            result = adapter.start(
+                self.root, "sealed prompt", lambda _: None,
+                work_unit_policy=policy,
+            )
+        self.assertEqual(result.returncode, 0)
+        self.assertFalse(os.path.exists(captured["root"]))
+        self.assertFalse(os.path.exists(captured["home"]))
 
     def test_sealed_command_policy_omits_optional_context_and_customizations(self):
         payload_log = os.path.join(self.tmp.name, "sealed-policy.jsonl")

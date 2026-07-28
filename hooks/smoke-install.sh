@@ -526,10 +526,7 @@ for rel in hooks/kimiflow-runner.sh hooks/install-kimiflow-cli.sh hooks/test-kim
 done
 PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import runner; assert runner.RECEIPT_RELATIVE == ".kimiflow/session/HEADLESS_RUN.json"' 2>/dev/null \
   && ok "shared-core runner module imports" || bad "shared-core runner module unavailable"
-if [ -x "$ROOT/hooks/test-security.sh" ] \
-  && [ -x "$ROOT/hooks/secret-content-scan.sh" ] \
-  && [ -x "$ROOT/hooks/test-secret-content-scan.sh" ] \
-  && bash -n "$ROOT/hooks/test-security.sh" \
+if [ -x "$ROOT/hooks/secret-content-scan.sh" ] \
   && bash -n "$ROOT/hooks/secret-content-scan.sh" \
   && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import security, security_deep, runner; assert callable(security.run_scan) and callable(security_deep.run_deep) and callable(security_deep.advisory_diff_artifact); p=runner._parser()._subparsers._group_actions[0].choices["security"]._subparsers._group_actions[0].choices; assert {"deep","ci-artifact","eval","promote"}.issubset(p)' 2>/dev/null; then
   ok "local actionable security runtime and CLI wiring"

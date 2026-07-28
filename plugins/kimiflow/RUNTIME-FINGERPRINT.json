@@ -284,10 +284,10 @@
       "sha256": "sha256:73ad266f8758591037f44e63fd27a737efd661582e7292bcee7a1a553b9fda0a"
     },
     {
-      "bytes": 65624,
+      "bytes": 69182,
       "mode": "0644",
       "path": "hooks/kimiflow_core/model_adapter.py",
-      "sha256": "sha256:d9714531118f2a589f0c02b25accb46a6b1553d9bac7f4d177e55b6ca4d30f52"
+      "sha256": "sha256:914d16b9743bb7143681c402011b58c358da20acb40980a6d34e2791ea98a92b"
     },
     {
       "bytes": 2255,
@@ -848,10 +848,10 @@
       "sha256": "sha256:28932a69bc8614f6f5ca7dfd3a11d886a45e8f651cdfa475c880769d30f90d7d"
     },
     {
-      "bytes": 226634,
+      "bytes": 227039,
       "mode": "0644",
       "path": "reference.md",
-      "sha256": "sha256:833188fa37b24f2982d6a0e7fe4dde83e1d1f3f029c80695a0e584eb16a19143"
+      "sha256": "sha256:a3f8f245c887656a256c9fabb18e5487b9941c3511f24f5234efebb725f5003a"
     },
     {
       "bytes": 2024,
@@ -992,6 +992,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:d52638d26e8c8a19c7374230fee5f7b19ea751b6c50bb06ef88b893e89a9ede8",
+  "runtime_fingerprint": "sha256:8fd6a4073a417f3d6e07e42ebe844826b3a2077060616eae713507f47f0ad7af",
   "schema_version": 1
 }

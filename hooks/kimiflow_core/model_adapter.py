@@ -9,7 +9,9 @@ import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 
@@ -727,10 +729,60 @@ class CodexExecAdapter:
         env["KIMIFLOW_RUNNER_CONTROLLER"] = "1"
         return env
 
+    @contextmanager
+    def sealed_runtime(self):
+        """Create a content-empty Codex home/workspace with auth only."""
+        source = dict(os.environ if self.environ is None else self.environ)
+        keep = {
+            "PATH", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TMP", "TEMP",
+            "SSL_CERT_FILE", "SSL_CERT_DIR",
+            "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY",
+            "https_proxy", "http_proxy", "all_proxy", "no_proxy",
+            "OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN",
+            "OPENAI_ORGANIZATION", "OPENAI_ORG_ID",
+            "OPENAI_PROJECT", "OPENAI_PROJECT_ID",
+        }
+        env = {
+            key: value for key, value in source.items()
+            if key in keep and isinstance(value, str)
+        }
+        env["KIMIFLOW_HOST"] = "codex"
+        env["KIMIFLOW_RUNNER_CONTROLLER"] = "1"
+        with tempfile.TemporaryDirectory(
+            prefix="kimiflow-codex-sealed-",
+        ) as temporary:
+            home = os.path.join(temporary, "home")
+            workspace = os.path.join(temporary, "workspace")
+            os.mkdir(home, 0o700)
+            os.mkdir(workspace, 0o700)
+            source_home = source.get("CODEX_HOME")
+            if not source_home:
+                user_home = source.get("HOME") or os.path.expanduser("~")
+                source_home = os.path.join(user_home, ".codex")
+            source_auth = os.path.join(
+                os.path.realpath(source_home), "auth.json",
+            )
+            try:
+                auth_info = os.stat(source_auth, follow_symlinks=True)
+            except OSError:
+                auth_info = None
+            if (
+                auth_info is not None
+                and stat.S_ISREG(auth_info.st_mode)
+                and auth_info.st_size <= 4 * 1024 * 1024
+            ):
+                os.symlink(
+                    os.path.realpath(source_auth),
+                    os.path.join(home, "auth.json"),
+                )
+            env["HOME"] = temporary
+            env["CODEX_HOME"] = home
+            env["CODEX_SQLITE_HOME"] = home
+            yield workspace, env
+
     def start_argv(self, root, prompt, work_unit_policy=None):
         policy = validate_work_unit_policy(work_unit_policy) if work_unit_policy is not None else None
-        if policy is not None and policy["context_scope"] == "sealed_input":
-            raise AdapterError("work_unit_policy_unavailable")
+        sealed = policy is not None and policy["context_scope"] == "sealed_input"
         sandbox = "read-only" if policy is not None else "workspace-write"
         argv = [
             self.codex, "exec", "--json", "--sandbox", sandbox, "-C", root,
@@ -741,12 +793,31 @@ class CodexExecAdapter:
                 "--ignore-user-config", "--ignore-rules",
                 "-c", "mcp_servers={}", "-c", "hooks={}",
             ])
+        if sealed:
+            argv.extend([
+                "--ephemeral", "--skip-git-repo-check",
+                "--disable", "shell_tool",
+                "--disable", "unified_exec",
+                "--disable", "apps",
+                "--disable", "plugins",
+                "--disable", "remote_plugin",
+                "--disable", "browser_use",
+                "--disable", "in_app_browser",
+                "--disable", "computer_use",
+                "--disable", "image_generation",
+                "--disable", "multi_agent",
+                "--disable", "tool_suggest",
+                "--disable", "workspace_dependencies",
+                "--disable", "skill_mcp_dependency_install",
+                "--disable", "memories",
+                "-c", 'web_search="disabled"',
+            ])
         return argv + ["--", prompt]
 
     def resume_argv(self, session_id, prompt, work_unit_policy=None):
         policy = validate_work_unit_policy(work_unit_policy) if work_unit_policy is not None else None
         if policy is not None and policy["context_scope"] == "sealed_input":
-            raise AdapterError("work_unit_policy_unavailable")
+            raise AdapterError("work_unit_resume_forbidden")
         sandbox = "read-only" if policy is not None else "workspace-write"
         argv = [
             self.codex, "exec", "resume", "--json", "-c", 'approval_policy="never"',
@@ -759,12 +830,19 @@ class CodexExecAdapter:
             ])
         return argv + ["--", session_id, prompt]
 
-    def _invoke(self, argv, root, on_session, sealed=False):
+    def _invoke(
+        self, argv, root, on_session, sealed=False, child_environment=None,
+    ):
         self._cancelled.clear()
         timed_out = threading.Event()
         try:
             process = subprocess.Popen(
-                argv, cwd=root, env=self.child_environment(self.environ), stdout=subprocess.PIPE,
+                argv, cwd=root,
+                env=(
+                    self.child_environment(self.environ)
+                    if child_environment is None else child_environment
+                ),
+                stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL if sealed else None, bufsize=0,
                 start_new_session=True,
             )
@@ -859,9 +937,24 @@ class CodexExecAdapter:
             validate_work_unit_policy(work_unit_policy)
             if work_unit_policy is not None else None
         )
+        sealed = (
+            policy is not None
+            and policy["context_scope"] == "sealed_input"
+        )
+        if sealed:
+            with self.sealed_runtime() as (sealed_root, environment):
+                return self._invoke(
+                    self.start_argv(sealed_root, prompt, policy),
+                    sealed_root,
+                    on_session,
+                    sealed=True,
+                    child_environment=environment,
+                )
         return self._invoke(
-            self.start_argv(root, prompt, policy), root, on_session,
-            sealed=policy is not None and policy["context_scope"] == "sealed_input",
+            self.start_argv(root, prompt, policy),
+            root,
+            on_session,
+            sealed=False,
         )
 
     def resume(self, root, session_id, prompt, on_session, work_unit_policy=None):
