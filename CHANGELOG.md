@@ -6,6 +6,25 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.27
+
+The deep-security and sealed-search release: Kimiflow can evaluate local security evidence against a trusted
+quality baseline, publish only content-poor CI receipts, and run Codex Solution Search without project context.
+
+### Added
+
+- A project-agnostic Deep Security flow with explicit evidence binding, deterministic worker limits, private
+  cache reuse, portable CI artifacts, synthetic holdout evaluation, and fail-closed promotion policy.
+- Quality metrics for threat-model coverage, finding precision, reachability, refusal fallback, fix verification,
+  false-clean prevention, and measured token cost.
+
+### Fixed
+
+- Codex bounded Solution Search now runs ephemerally in an empty temporary workspace and auth-only Codex home,
+  with allowlisted environment variables, disabled ambient tools/configuration, and no resumable session.
+- Candidate installation smokes now validate shipped security runtime components instead of requiring
+  maintainer-only test files that are intentionally excluded from release artifacts.
+
 ## 0.2.26
 
 The actionable local-security release: Kimiflow can turn bounded scanner evidence into one normal fix run while
