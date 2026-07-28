@@ -6,6 +6,32 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.26
+
+The actionable local-security release: Kimiflow can turn bounded scanner evidence into one normal fix run while
+keeping coverage gaps, secrets, provider identity, and release-target selection fail-closed.
+
+### Added
+
+- Local `kimiflow security scan|diff|accept|close` commands with versioned private evidence artifacts, stable
+  finding identities, exact scope/content sealing, and normal schema-5 fix-child closure.
+- Local, no-install provider adapters for secrets, SARIF, and optional offline OSV evidence, with one provider
+  per lane and zero model calls in the scan path.
+
+### Changed
+
+- Missing, failed, refused, limited, timed-out, stale, malformed, or structurally incomplete provider evidence
+  now dominates findings and yields `incomplete` instead of a false `clean`.
+- Accepted security work resumes before optional Project Map maintenance, while repeated identical sealed scans
+  reuse their private artifact set without repeating model or account discovery.
+
+### Fixed
+
+- Git C-quoted paths, renamed files, binary/unscannable changes, dependency-manifest inventory, provider
+  attestations, artifact modes, and closure evidence now retain their complete proof boundaries.
+- The immutable runtime publisher now consumes an explicit repository input but rejects any target other than
+  the pinned official repository, enabling schema-v2 release profiles to bind and remember the correct target.
+
 ## 0.2.25
 
 The project-bound release control-plane release: Kimiflow can repeat unchanged releases mechanically across

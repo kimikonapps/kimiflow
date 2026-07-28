@@ -2085,6 +2085,36 @@ and any release-discovered product-code/config repair are implemented as one bou
 `feature|fix` child run with Conformance + Convergence Contract 1, then rediscovered/re-audited before the
 release resumes. The release parent itself never becomes a second implementation path.
 
+## Local actionable security
+
+The optional terminal wrapper provides `kimiflow security scan <path>` and `kimiflow security diff <path>`.
+They are local, read-only project inspections: no model turn, provider account, GitHub API, installation or
+publication is part of the command. `scan` accepts a file or directory and also works outside Git. `diff`
+requires Git and scans only current added/modified tracked lines plus non-ignored untracked text.
+
+Each invocation seals scope, content/revision, local guidance and provider receipts into version-1 manifest,
+coverage, findings and redacted Markdown report artifacts under ignored mode-0700
+`.kimiflow/security/scans/<scan-id>/` directories with mode-0600 files. `.git/` and every `.kimiflow/` path
+are excluded from project traversal and content digests. Identical sealed results reuse the existing artifact
+set. A provider failure, absence, timeout, refusal, stale result or incomplete threat model yields
+`incomplete`, never a false `clean`. The normal baseline selects at most one locally installed provider per
+lane: Gitleaks, else mode-compatible TruffleHog, for secrets; and an explicitly enabled offline OSV Scanner
+for supported dependency manifests. SARIF 2.1 is optional supplemental input. Scanner stdout is bounded and
+normalized in memory; raw secrets, exploit payloads, identities and absolute local paths are never persisted.
+
+Repository `SECURITY.md` remains human reporting/context policy and is never executable configuration.
+Machine guidance is local-only `.kimiflow/security/GUIDANCE.json`, selected by longest matching relative
+scope. External, credential or active validation is disabled unless a duplicate-key-safe, scope-bound,
+provider-bound, identity-free and unexpired authorization receipt explicitly permits the action.
+
+`kimiflow security accept <scan-id> <finding-id>` accepts exactly one current finding and emits a parent
+receipt plus a normal schema-5 `mode=fix` child contract. The child follows ordinary Plan, Build, Verify,
+conformance and code-review gates. `kimiflow security close <acceptance-id> --child-run .kimiflow/<slug>`
+closes only after it reads the exact child-owned parent receipt, terminal STATE/SESSION-OUTCOME,
+VERIFICATION, negative original reproduction, regression, legitimate-behavior, bypass and current clean
+re-scan evidence. Caller assertions cannot replace that evidence. None of these commands pushes, releases or
+publishes security data.
+
 ## Code mandate (Phase 3 directive · Phase 5 build · Phase 7 review)
 
 - **Minimum-complete simplicity:** build the smallest complete solution for the approved behavior and verified `required` constraints. Every task, file, abstraction, and test maps to an `AC-N`; unsupported structure is deleted. Research chooses current implementation technique but never adds product scope. No speculative abstractions/configurability, optional providers, future-proofing, or error handling for impossible cases. Prefer a flat linear plan and the smallest architecture that fits the evidenced target: does this need to exist at all? → stdlib → native platform → one line before fifty.
@@ -2113,6 +2143,6 @@ Phase 5 has two narrow early checkpoints. The **Red test commit** remains tests-
 
 **Mechanized (kimiflow repos only):** points 2–3 are also enforced by the `commit-secret-gate` PreToolUse hook — it **blocks** bulk adds (`git add -A`/`.` incl. whole-tree pathspec synonyms) and any `git commit` whose staged (or `-a`-auto-staged) paths match a minimum secret-pattern deny-list. **Skill-only use loads no hook.** The hook is **auto-active only where a `.kimiflow/` directory exists at the git root** (kimiflow creates one in Phase 0), so it never polices unrelated repos. Installer mechanics, the full pattern list, and false-positive handling: → `docs/commit-secret-gate.md`.
 
-**Scope — filename/path hygiene, NOT secret-in-source detection.** The gate matches secret-looking **paths**, never file **contents**. For in-source secrets, run the **optional advisory wrapper** `hooks/secret-content-scan.sh` in Phase 7: it invokes `gitleaks` — else `trufflehog` — over the **staged content** when one is installed and routes any finding to `ADVISORIES.md` for commit-gate triage; it is **non-gating** and skips gracefully (a STDERR note) when no scanner is present, so it never grants a false sense of coverage. **Bottom line: treat the gate as a hygiene backstop, not complete secret protection** — real coverage is `.gitignore` discipline + a content scanner (gitleaks/trufflehog) + not tracking secrets in the first place. Parsing boundaries and residual gaps of the path gate: → `docs/commit-secret-gate.md`.
+**Scope — filename/path hygiene, NOT secret-in-source detection.** The gate matches secret-looking **paths**, never file **contents**. For in-source secrets, run the **optional advisory wrapper** `hooks/secret-content-scan.sh` in Phase 7: it delegates staged content exactly once to the same local, redacted provider facade used by `kimiflow security diff` and routes any finding to `ADVISORIES.md` for commit-gate triage. It is **non-gating** and skips gracefully when no compatible scanner is present, so it never grants a false sense of coverage. **Bottom line: treat the gate as a hygiene backstop, not complete secret protection** — real coverage is `.gitignore` discipline + a content scanner (Gitleaks/TruffleHog) + not tracking secrets in the first place. Parsing boundaries and residual gaps of the path gate: → `docs/commit-secret-gate.md`.
 
 **Local diagnostics / LSP advisory.** `hooks/lsp-diagnostics.sh` — advisory-only, same triage channel as the secret content scanner; full behavior (selection order, safety rules, classification): → "Verification (goal-backward) (Phase 6)". Treat its output as a cheap extra signal before review/commit, not a substitute for acceptance tests or manual app verification.

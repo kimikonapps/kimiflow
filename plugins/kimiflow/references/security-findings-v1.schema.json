@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kimiflow.local/schemas/security-findings-v1.schema.json",
+  "title": "Kimiflow Security Findings v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "scan_id", "findings"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "scan_id": {"type": "string", "pattern": "^scan_[0-9a-f]{32}$"},
+    "findings": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/finding"}
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "string_list": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "occurrence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["occurrence_id", "path", "start_line", "fingerprint"],
+      "properties": {
+        "occurrence_id": {"type": "string", "pattern": "^occ_[0-9a-f]{32}$"},
+        "path": {"type": "string", "minLength": 1},
+        "start_line": {"type": "integer", "minimum": 1},
+        "fingerprint": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "provider_version", "normalizer"],
+      "properties": {
+        "provider": {"type": "string", "minLength": 1},
+        "provider_version": {"type": "string"},
+        "normalizer": {"const": "kimiflow-security-v1"}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finding_id",
+        "rule_id",
+        "title",
+        "severity",
+        "confidence",
+        "cwe",
+        "source",
+        "sink",
+        "reachability",
+        "impact",
+        "counterevidence",
+        "proof_gaps",
+        "remediation",
+        "provenance",
+        "occurrences"
+      ],
+      "properties": {
+        "finding_id": {"type": "string", "pattern": "^finding_[0-9a-f]{32}$"},
+        "rule_id": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1},
+        "severity": {"enum": ["critical", "high", "medium", "low", "info"]},
+        "confidence": {"enum": ["high", "medium", "low"]},
+        "cwe": {"$ref": "#/$defs/string_list"},
+        "source": {"type": "string", "minLength": 1},
+        "sink": {"type": "string", "minLength": 1},
+        "reachability": {"type": "string", "minLength": 1},
+        "impact": {"type": "string", "minLength": 1},
+        "counterevidence": {"$ref": "#/$defs/string_list"},
+        "proof_gaps": {"$ref": "#/$defs/string_list"},
+        "remediation": {"type": "string", "minLength": 1},
+        "provenance": {"$ref": "#/$defs/provenance"},
+        "occurrences": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/occurrence"}
+        }
+      }
+    }
+  }
+}

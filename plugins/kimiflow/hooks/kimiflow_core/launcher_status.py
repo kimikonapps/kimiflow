@@ -540,6 +540,8 @@ def primary_action(snapshot):
         return {"id": "continue_active_session", "label_key": "continue_active_session", "priority": "high", "blocking": False, "reason_key": "active_session_open"}
     if snapshot["installation"]["cache_status"] == "stale_cache":
         return {"id": "update_installed_plugin", "label_key": "update_installed_plugin", "priority": "high", "blocking": False, "reason_key": "installed_cache_stale"}
+    if snapshot["runs"]["backlog"] > 0:
+        return {"id": "resume_backlog", "label_key": "resume_backlog", "priority": "medium", "blocking": False, "reason_key": "backlog_runs_open"}
     if snapshot["project_map"]["present"] is not True:
         return {"id": "project_map_bootstrap", "label_key": "project_map_bootstrap", "priority": "recommended", "blocking": False, "reason_key": "project_map_missing"}
     if snapshot["project_map"]["valid"] is not True:
@@ -550,8 +552,6 @@ def primary_action(snapshot):
         return {"id": "curate_memory", "label_key": "curate_memory", "priority": "recommended", "blocking": False, "reason_key": "memory_over_budget"}
     if snapshot["findings"]["open"] > 0:
         return {"id": "review_findings", "label_key": "review_findings", "priority": "medium", "blocking": False, "reason_key": "findings_open"}
-    if snapshot["runs"]["backlog"] > 0:
-        return {"id": "resume_backlog", "label_key": "resume_backlog", "priority": "medium", "blocking": False, "reason_key": "backlog_runs_open"}
     if snapshot["memory_summary"]["provider_sync"]["pending_count"] > 0 and snapshot["memory_summary"]["provider_sync"]["direct_write_ready"]:
         return {"id": "sync_vault", "label_key": "sync_vault", "priority": "optional", "blocking": False, "reason_key": "vault_sync_pending"}
     return {"id": "start_kimiflow", "label_key": "start_kimiflow", "priority": "normal", "blocking": False, "reason_key": "ready"}

@@ -10,7 +10,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-from . import active_run, model_adapter, workspace_preflight
+from . import active_run, model_adapter, security, workspace_preflight
 from .paths import RootResolutionError, resolve_root
 
 
@@ -1005,6 +1005,7 @@ def _parser():
     check.add_argument("--require-feature", action="append", default=[])
     check.add_argument("--pretty", action="store_true")
     check.set_defaults(adapter="command", events_jsonl=False)
+    security.add_runner_parser(subparsers)
     return parser
 
 
@@ -1038,12 +1039,19 @@ def main(argv=None):
                 "adapter": info,
                 "adapter_contract": _adapter_contract(adapter),
             }
+        elif args.command == "security":
+            result = security.run_from_args(args)
+            code = 0
         else:
             result = runner_status(args.root)
-        code = exit_code(result)
+        if args.command != "security":
+            code = exit_code(result)
     except RunnerError as exc:
         result = {"schema_version": 1, "status": exc.status, "error": exc.message}
         code = exc.code
+    except security.SecurityError as exc:
+        result = {"schema_version": 1, "status": exc.code, "error": exc.message}
+        code = exc.exit_code
     except model_adapter.AdapterError as exc:
         result = {"schema_version": 1, "status": "adapter_incompatible", "error": str(exc)}
         code = 2

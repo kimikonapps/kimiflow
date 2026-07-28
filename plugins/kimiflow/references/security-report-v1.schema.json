@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kimiflow.local/schemas/security-report-v1.schema.json",
+  "title": "Kimiflow Security Report Model v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "scan_id",
+    "verdict",
+    "summary",
+    "gaps",
+    "reason_codes"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "scan_id": {"type": "string", "pattern": "^scan_[0-9a-f]{32}$"},
+    "verdict": {"enum": ["clean", "findings", "incomplete"]},
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finding_count", "coverage_gap_count"],
+      "properties": {
+        "finding_count": {"type": "integer", "minimum": 0},
+        "coverage_gap_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}
