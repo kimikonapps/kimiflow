@@ -94,6 +94,7 @@ chmod +x "$BIN/gh"
 LOG="$STATE/log"
 PATH="$BIN:$PATH" PUBLISH_TEST_LOG="$LOG" PUBLISH_TEST_SOURCE="$SOURCE" PUBLISH_TEST_GH_STATE="$STATE" \
   "$REPO/hooks/publish-runtime-release.sh" \
+  --repository kimikonapps/kimiflow \
   --tag kimiflow--v1.2.3 \
   --source-commit "$SOURCE" \
   --notes-file "$REPO/notes.md" \
@@ -138,6 +139,19 @@ if PATH="$BIN:$PATH" PUBLISH_TEST_LOG="$LOG" PUBLISH_TEST_SOURCE="$SOURCE" PUBLI
 fi
 ! grep -q 'release create' "$LOG"
 
+: >"$LOG"
+if PATH="$BIN:$PATH" PUBLISH_TEST_LOG="$LOG" PUBLISH_TEST_SOURCE="$SOURCE" PUBLISH_TEST_GH_STATE="$STATE" \
+  "$REPO/hooks/publish-runtime-release.sh" \
+    --repository another/project \
+    --tag kimiflow--v1.2.3 \
+    --source-commit "$SOURCE" \
+    --notes-file "$REPO/notes.md" \
+    --output "$WORK/repository-reject" >/dev/null 2>&1; then
+  echo "publisher accepted an unpinned repository" >&2
+  exit 1
+fi
+! grep -q 'release create' "$LOG"
+
 if grep -Eq 'gh release (create|upload|edit)' "$ROOT/.claude/skills/release/SKILL.md"; then
   echo "release skill bypasses the tracked publisher" >&2
   exit 1
@@ -161,6 +175,7 @@ printf 'ok   immutable_draft_publish_order\n'
 printf 'ok   transient_release_metadata_visibility_retried\n'
 printf 'ok   mutable_repository_rejected_prepublication\n'
 printf 'ok   remote_tag_mismatch_rejected_prepublication\n'
+printf 'ok   unpinned_repository_rejected_prepublication\n'
 printf 'ok   replacement_refs_cannot_change_exported_candidate\n'
 printf 'ok   release_skill_delegates_publication\n'
 printf 'ok   test_publish_runtime_release_is_draft_first_and_fail_closed\n'

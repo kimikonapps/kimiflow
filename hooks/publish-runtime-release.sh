@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
 ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 REPOSITORY="kimikonapps/kimiflow"
+REQUESTED_REPOSITORY=""
 TAG=""
 SOURCE_COMMIT=""
 NOTES_FILE=""
@@ -12,18 +13,23 @@ OUTPUT=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --repository) [ "$#" -ge 2 ] || { echo "publish-runtime-release: --repository requires a value" >&2; exit 2; }; REQUESTED_REPOSITORY="$2"; shift 2 ;;
     --tag) [ "$#" -ge 2 ] || { echo "publish-runtime-release: --tag requires a value" >&2; exit 2; }; TAG="$2"; shift 2 ;;
     --source-commit) [ "$#" -ge 2 ] || { echo "publish-runtime-release: --source-commit requires a value" >&2; exit 2; }; SOURCE_COMMIT="$2"; shift 2 ;;
     --notes-file) [ "$#" -ge 2 ] || { echo "publish-runtime-release: --notes-file requires a value" >&2; exit 2; }; NOTES_FILE="$2"; shift 2 ;;
     --output) [ "$#" -ge 2 ] || { echo "publish-runtime-release: --output requires a value" >&2; exit 2; }; OUTPUT="$2"; shift 2 ;;
     -h|--help)
-      echo "Usage: hooks/publish-runtime-release.sh --tag TAG --source-commit SHA --notes-file FILE [--output DIR]"
+      echo "Usage: hooks/publish-runtime-release.sh [--repository OWNER/REPO] --tag TAG --source-commit SHA --notes-file FILE [--output DIR]"
       exit 0
       ;;
     *) echo "publish-runtime-release: unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 
+[ -z "$REQUESTED_REPOSITORY" ] || [ "$REQUESTED_REPOSITORY" = "$REPOSITORY" ] || {
+  echo "publish-runtime-release: repository does not match the pinned publication target" >&2
+  exit 2
+}
 [ -n "$TAG" ] && [ -n "$SOURCE_COMMIT" ] && [ -n "$NOTES_FILE" ] || {
   echo "publish-runtime-release: --tag, --source-commit and --notes-file are required" >&2
   exit 2
