@@ -46,6 +46,30 @@ bash hooks/evidence-eval.sh model-plan \
 It always declares `release_only`, zero model calls, and zero network calls. Normal runs and CI never
 start a model evaluation.
 
+## Deterministic security quality and promotion
+
+The Run-4 security holdout is local and model-free. Its cases store provider observations independently
+from the oracle classification; the evaluator executes the Deep-Security engine against synthetic safe,
+vulnerable, refusal and before/after-fix evidence, derives every metric from the observed sealed results,
+and rejects missing dimensions or any exact oracle mismatch.
+
+```bash
+kimiflow security eval \
+  evals/fixtures/security-quality-holdout-v1.json \
+  > /tmp/security-quality-candidate.json
+kimiflow security promote \
+  /tmp/security-quality-candidate.json \
+  evals/baselines/security-quality-v1.json \
+  evals/fixtures/security-quality-holdout-v1.json
+```
+
+The versioned baseline is sealed and bound to the current security engine/runtime/evaluator contract.
+The evaluator also pins the trusted fixture identity and promotion policy in reviewed engine code, so a
+caller cannot coordinate a weaker fixture and lower thresholds into a promotion. Promotion is fail-closed
+for stale evidence, insufficient per-dimension samples, quality/coverage regressions, or token cost above
+policy. This command only returns evidence for an advisory-to-required decision; it does not edit CI,
+install a scanner, authenticate a provider, or enable a required gate.
+
 ## Behavioral release calibration
 
 These are on-demand, **out-of-CI** pressure tests for kimiflow's gates. They check whether the

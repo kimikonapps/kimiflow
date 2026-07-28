@@ -2092,6 +2092,49 @@ They are local, read-only project inspections: no model turn, provider account, 
 publication is part of the command. `scan` accepts a file or directory and also works outside Git. `diff`
 requires Git and scans only current added/modified tracked lines plus non-ignored untracked text.
 
+Run 4 adds four provider-neutral surfaces over the same normalized Finding/Coverage boundary:
+
+- `kimiflow security deep <plan.json> --evidence <local-evidence.json> --root <project>` validates a
+  complete, plan-bound local evidence envelope, then admits at most four ordered surfaces whose declared
+  model/tool/token reservations fit the plan's worker and token budgets. Evidence is supplied explicitly and locally: the command
+  never discovers a provider, credential, account, or network endpoint. Every evidence row must match the
+  digest declared by its plan surface. Model-backed executors run through the existing isolated Work-Unit engine;
+  local normalized evidence can use the same API with zero model usage. Every omitted,
+  deferred, failed, refused, quota-limited, timed-out, stale, unsupported or observed-overrun lane remains a
+  content-poor gap, so a partial seven-lane plan cannot become clean.
+
+  The evidence file is a strict JSON object with exactly `schema_version`, `contract_fingerprint` and
+  `surfaces`. `schema_version` is `1`; the fingerprint must equal the plan fingerprint; and `surfaces` contains
+  exactly one row for every plan surface, with no duplicates or extras. Each row has exactly `id`, `status`,
+  `usage` and `findings`: `id` matches the plan surface; `status` uses the Deep-Security terminal statuses;
+  `usage` contains the four non-negative integer counters `model_calls`, `tool_calls`, `input_tokens` and
+  `output_tokens`; and `findings` is a list of normalized Security v1 findings. The plan's
+  `provider_evidence_digest` is `sha256` over the canonical complete row, including its `id`. Missing,
+  malformed, mutated or digest-mismatched evidence fails closed before dispatch.
+- `kimiflow security ci-artifact <private-result.json>` projects a strictly validated portable allowlist.
+  `kimiflow security ci-artifact --diff <project> [--base <full-commit>]` first scans either the local worktree
+  diff or a bounded snapshot of the committed `base...HEAD` diff, then emits only sealed statuses, counts,
+  digests and usage. Raw findings, code, prompts, answers, identities, secrets and paths never cross that
+  projection.
+
+- `kimiflow security eval evals/fixtures/security-quality-holdout-v1.json` executes the Deep-Security engine
+  against synthetic safe, vulnerable, refusal and before/after-fix provider observations that are independent
+  from the oracle classification, then computes the versioned oracle for threat coverage, precision, reachability, refusal fallback, fix verification, false-clean
+  prevention and observed token cost. `kimiflow security promote <candidate.json>
+  evals/baselines/security-quality-v1.json evals/fixtures/security-quality-holdout-v1.json` reruns the trusted
+  fixture and returns `PROMOTE` only for a current sealed candidate with exact oracle agreement, an
+  engine-pinned trusted fixture identity and immutable promotion policy, every per-dimension sample minimum,
+  all quality thresholds and no token regression;
+  otherwise it returns a sealed `BLOCK`.
+
+Deep plans, private cache entries, holdouts and baselines bind the current engine/runtime/evaluator contract
+fingerprint. Identical current evidence reuses the private mode-0600 result with zero new provider/model usage
+and the same immutable `result_seal`; scope, guidance, provider evidence, code contract, malformed/legacy data
+or seal drift causes a miss or fail-closed rejection. The shipped GitHub Actions example is only one
+credential-free advisory adapter: it uses `contents: read`, disables persisted checkout credentials, archives
+the portable JSON, and never makes the GitHub-specific workflow part of the project-, host-, account- or
+provider-neutral core.
+
 Each invocation seals scope, content/revision, local guidance and provider receipts into version-1 manifest,
 coverage, findings and redacted Markdown report artifacts under ignored mode-0700
 `.kimiflow/security/scans/<scan-id>/` directories with mode-0600 files. `.git/` and every `.kimiflow/` path

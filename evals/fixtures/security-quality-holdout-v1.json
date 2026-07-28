@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "contract_fingerprint": "sha256:aeffc523c42e3434d88518c5ab72f64be6cd7013094e1f71adfbe1bf2aa6acd2",
+  "expected_metrics": {
+    "threat_model_coverage": 0.875,
+    "finding_precision": 1.0,
+    "reachability": 1.0,
+    "refusal_fallback": 1.0,
+    "fix_verification": 1.0,
+    "false_clean_prevention": 1.0,
+    "token_cost": 16
+  },
+  "cases": [
+    {"id": "safe-local", "kind": "safe", "required_threat_fields": ["asset", "input"], "covered_threat_fields": ["asset", "input"], "provider_results": {"after": {"status": "complete", "reported_finding": false, "reachability": "not_applicable"}}, "usage": {"model_calls": 0, "tool_calls": 0, "input_tokens": 1, "output_tokens": 2}},
+    {"id": "vulnerable-local", "kind": "vulnerable", "required_threat_fields": ["asset", "sink"], "covered_threat_fields": ["asset", "sink"], "provider_results": {"after": {"status": "complete", "reported_finding": true, "reachability": "reachable"}}, "usage": {"model_calls": 0, "tool_calls": 0, "input_tokens": 2, "output_tokens": 3}},
+    {"id": "refusal-local", "kind": "refusal", "required_threat_fields": ["asset", "boundary"], "covered_threat_fields": ["asset"], "provider_results": {"after": {"status": "refused", "reported_finding": false, "reachability": "not_applicable"}}, "usage": {"model_calls": 0, "tool_calls": 0, "input_tokens": 1, "output_tokens": 1}},
+    {"id": "fixed-local", "kind": "fixed", "required_threat_fields": ["asset", "fix"], "covered_threat_fields": ["asset", "fix"], "provider_results": {"before": {"status": "complete", "reported_finding": true, "reachability": "reachable"}, "after": {"status": "complete", "reported_finding": false, "reachability": "not_applicable"}}, "usage": {"model_calls": 0, "tool_calls": 0, "input_tokens": 1, "output_tokens": 2}}
+  ]
+}

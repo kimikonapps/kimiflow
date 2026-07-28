@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kimiflow.local/schemas/security-deep-plan-v1.schema.json",
+  "title": "Kimiflow Deep Security Plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "worker_limit", "token_budget", "contract_fingerprint", "surfaces"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "worker_limit": {"type": "integer", "minimum": 1, "maximum": 4},
+    "token_budget": {"$ref": "#/$defs/usage"},
+    "contract_fingerprint": {"$ref": "#/$defs/digest"},
+    "surfaces": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"$ref": "#/$defs/surface"}}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "usage": {"type": "object", "additionalProperties": false, "required": ["model_calls", "tool_calls", "input_tokens", "output_tokens"], "properties": {"model_calls": {"type": "integer", "minimum": 0}, "tool_calls": {"type": "integer", "minimum": 0}, "input_tokens": {"type": "integer", "minimum": 0}, "output_tokens": {"type": "integer", "minimum": 0}}},
+    "surface": {"type": "object", "additionalProperties": false, "required": ["id", "lane", "scope_digest", "guidance_digest", "provider_evidence_digest", "declared_budget"], "properties": {"id": {"type": "string", "pattern": "^[a-z][a-z0-9._-]{0,63}$"}, "lane": {"enum": ["dependencies", "secrets", "sast", "iac", "container", "sbom", "provenance"]}, "scope_digest": {"$ref": "#/$defs/digest"}, "guidance_digest": {"$ref": "#/$defs/digest"}, "provider_evidence_digest": {"$ref": "#/$defs/digest"}, "declared_budget": {"$ref": "#/$defs/usage"}}}
+  }
+}

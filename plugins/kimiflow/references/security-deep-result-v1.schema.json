@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kimiflow.local/schemas/security-deep-result-v1.schema.json",
+  "title": "Kimiflow Deep Security Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "contract_fingerprint", "cache_key", "result_seal", "status", "verdict", "receipts", "gaps", "findings", "usage", "cache_hits", "executed_units", "seal"],
+  "properties": {
+    "schema_version": {"const": 1}, "contract_fingerprint": {"$ref": "#/$defs/digest"}, "cache_key": {"$ref": "#/$defs/digest"}, "result_seal": {"$ref": "#/$defs/digest"},
+    "status": {"enum": ["complete", "incomplete"]}, "verdict": {"enum": ["clean", "findings", "incomplete"]},
+    "receipts": {"type": "array", "items": {"$ref": "#/$defs/receipt"}}, "gaps": {"type": "array", "items": {"$ref": "#/$defs/digest"}, "uniqueItems": true},
+    "findings": {"type": "array", "items": {"$ref": "security-findings-v1.schema.json#/$defs/finding"}}, "usage": {"$ref": "#/$defs/usage"}, "cache_hits": {"type": "integer", "minimum": 0, "maximum": 1}, "executed_units": {"type": "integer", "minimum": 0}, "seal": {"$ref": "#/$defs/digest"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"verdict": {"const": "clean"}}, "required": ["verdict"]},
+      "then": {
+        "properties": {
+          "status": {"const": "complete"},
+          "gaps": {"maxItems": 0},
+          "findings": {"maxItems": 0},
+          "receipts": {
+            "minItems": 7,
+            "items": {
+              "allOf": [
+                {"$ref": "#/$defs/receipt"},
+                {
+                  "properties": {
+                    "status": {"enum": ["complete", "not_applicable"]},
+                    "coverage": {"const": "complete"},
+                    "finding_count": {"const": 0}
+                  }
+                }
+              ]
+            },
+            "allOf": [
+              {"contains": {"properties": {"lane": {"const": "dependencies"}}, "required": ["lane"]}},
+              {"contains": {"properties": {"lane": {"const": "secrets"}}, "required": ["lane"]}},
+              {"contains": {"properties": {"lane": {"const": "sast"}}, "required": ["lane"]}},
+              {"contains": {"properties": {"lane": {"const": "iac"}}, "required": ["lane"]}},
+              {"contains": {"properties": {"lane": {"const": "container"}}, "required": ["lane"]}},
+              {"contains": {"properties": {"lane": {"const": "sbom"}}, "required": ["lane"]}},
+              {"contains": {"properties": {"lane": {"const": "provenance"}}, "required": ["lane"]}}
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "usage": {"type": "object", "additionalProperties": false, "required": ["model_calls", "tool_calls", "input_tokens", "output_tokens"], "properties": {"model_calls": {"type": "integer", "minimum": 0}, "tool_calls": {"type": "integer", "minimum": 0}, "input_tokens": {"type": "integer", "minimum": 0}, "output_tokens": {"type": "integer", "minimum": 0}}},
+    "receipt": {"type": "object", "additionalProperties": false, "required": ["surface_digest", "lane", "status", "coverage", "finding_count", "usage"], "properties": {"surface_digest": {"$ref": "#/$defs/digest"}, "lane": {"enum": ["dependencies", "secrets", "sast", "iac", "container", "sbom", "provenance"]}, "status": {"enum": ["complete", "findings", "not_applicable", "missing", "failed", "refused", "quota_limited", "timeout", "stale", "unsupported", "deferred", "budget_exceeded"]}, "coverage": {"enum": ["complete", "gap"]}, "finding_count": {"type": "integer", "minimum": 0}, "usage": {"$ref": "#/$defs/usage"}}}
+  }
+}

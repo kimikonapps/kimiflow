@@ -2914,6 +2914,24 @@ def add_runner_parser(subparsers):
     close.add_argument("--child-run", required=True)
     close.add_argument("--root", default=".")
     close.add_argument("--pretty", action="store_true")
+    deep = commands.add_parser("deep", help="synthesize bounded private deep-security evidence")
+    deep.add_argument("plan")
+    deep.add_argument("--evidence", required=True)
+    deep.add_argument("--root", default=".")
+    deep.add_argument("--pretty", action="store_true")
+    artifact = commands.add_parser("ci-artifact", help="project a privacy-filtered advisory deep receipt")
+    artifact.add_argument("result", nargs="?")
+    artifact.add_argument("--diff", dest="diff_path")
+    artifact.add_argument("--base")
+    artifact.add_argument("--pretty", action="store_true")
+    evaluate = commands.add_parser("eval", help="evaluate a deterministic deep-security holdout")
+    evaluate.add_argument("fixture")
+    evaluate.add_argument("--pretty", action="store_true")
+    promote = commands.add_parser("promote", help="fail-closed advisory-to-required promotion decision")
+    promote.add_argument("candidate")
+    promote.add_argument("baseline")
+    promote.add_argument("fixture")
+    promote.add_argument("--pretty", action="store_true")
     return parser
 
 
@@ -2924,6 +2942,41 @@ def run_from_args(args):
             args.path,
             sarif_paths=args.sarif,
             authorization_path=args.authorization,
+        )
+    if args.security_command in ("deep", "ci-artifact", "eval", "promote"):
+        # Delayed import avoids a cycle: the additive Run-4 module reuses this
+        # module's normalized Finding validator.
+        from . import security_deep
+
+        if args.security_command == "deep":
+            plan = load_json_file(args.plan)
+            executor = security_deep.evidence_executor(
+                plan, load_json_file(args.evidence),
+            )
+            return security_deep.run_deep(
+                plan, executor, root=os.path.realpath(args.root),
+            )
+        if args.security_command == "ci-artifact":
+            if bool(args.result) == bool(args.diff_path):
+                raise SecurityError(
+                    "ci_artifact_source_invalid",
+                    "provide exactly one result path or --diff path",
+                )
+            if args.diff_path:
+                return security_deep.advisory_diff_artifact(
+                    args.diff_path, base=args.base,
+                )
+            if args.base:
+                raise SecurityError(
+                    "ci_artifact_source_invalid",
+                    "--base requires --diff",
+                )
+            return security_deep.portable_artifact(load_json_file(args.result))
+        if args.security_command == "eval":
+            return security_deep.evaluate_holdout(load_json_file(args.fixture))
+        return security_deep.promotion(
+            load_json_file(args.candidate), load_json_file(args.baseline),
+            load_json_file(args.fixture),
         )
     root = os.path.realpath(args.root)
     if args.security_command == "accept":

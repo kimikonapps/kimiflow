@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kimiflow.local/schemas/security-promotion-v1.schema.json",
+  "title": "Kimiflow Security Promotion v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "verdict", "seal"],
+  "properties": {"schema_version": {"const": 1}, "verdict": {"enum": ["BLOCK", "PROMOTE"]}, "reason": {"type": "string"}, "candidate_seal": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "contract_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "seal": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}},
+  "allOf": [{"if": {"properties": {"verdict": {"const": "PROMOTE"}}, "required": ["verdict"]}, "then": {"required": ["candidate_seal", "contract_fingerprint", "seal"]}}, {"if": {"properties": {"verdict": {"const": "BLOCK"}}, "required": ["verdict"]}, "then": {"required": ["reason"]}}]
+}
