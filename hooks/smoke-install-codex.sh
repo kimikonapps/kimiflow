@@ -413,6 +413,26 @@ for rel in hooks/kimiflow-runner.sh hooks/install-kimiflow-cli.sh hooks/test-kim
 done
 PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import runner; assert runner.RECEIPT_RELATIVE == ".kimiflow/session/HEADLESS_RUN.json"' 2>/dev/null \
   && ok "shared-core runner module imports" || bad "shared-core runner module unavailable"
+if [ -x "$ROOT/hooks/test-security.sh" ] \
+  && [ -x "$ROOT/hooks/secret-content-scan.sh" ] \
+  && [ -x "$ROOT/hooks/test-secret-content-scan.sh" ] \
+  && bash -n "$ROOT/hooks/test-security.sh" \
+  && bash -n "$ROOT/hooks/secret-content-scan.sh" \
+  && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import security, runner; assert callable(security.run_scan); assert "security" in runner._parser()._subparsers._group_actions[0].choices' 2>/dev/null; then
+  ok "Codex local actionable security runtime and CLI wiring"
+else
+  bad "Codex local actionable security runtime or CLI wiring incomplete"
+fi
+for schema in security-scan-manifest-v1.schema.json security-coverage-v1.schema.json security-findings-v1.schema.json security-report-v1.schema.json; do
+  if jq -e '.["$schema"] == "https://json-schema.org/draft/2020-12/schema"' "$ROOT/references/$schema" >/dev/null 2>&1; then
+    ok "Codex security schema ships: $schema"
+  else
+    bad "Codex security schema missing/invalid: $schema"
+  fi
+done
+grep -q 'kimiflow security scan' "$ROOT/skills/kimiflow/SKILL.md" \
+  && grep -q 'kimiflow security diff' "$ROOT/reference.md" \
+  && ok "Codex actionable security contract documented" || bad "Codex actionable security docs missing"
 grep -q 'embedded plugin remains the default' "$ROOT/README.md" \
   && grep -q 'same `.kimiflow/` state' "$ROOT/README.md" \
   && ok "smoke_runner_surface_visible" || bad "embedded-first runner docs missing"

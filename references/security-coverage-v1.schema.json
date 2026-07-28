@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kimiflow.local/schemas/security-coverage-v1.schema.json",
+  "title": "Kimiflow Security Coverage v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "scan_id",
+    "status",
+    "verdict",
+    "required_lanes",
+    "receipts",
+    "gaps"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "scan_id": {"type": "string", "pattern": "^scan_[0-9a-f]{32}$"},
+    "status": {"enum": ["complete", "incomplete"]},
+    "verdict": {"enum": ["clean", "findings", "incomplete"]},
+    "required_lanes": {
+      "type": "array",
+      "prefixItems": [{"const": "secrets"}, {"const": "dependencies"}],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "receipts": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/receipt"}
+    },
+    "gaps": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "complete"}}, "required": ["status"]},
+      "then": {
+        "properties": {
+          "gaps": {"maxItems": 0},
+          "receipts": {
+            "allOf": [
+              {
+                "contains": {
+                  "type": "object",
+                  "properties": {
+                    "lane": {"const": "secrets"},
+                    "status": {"enum": ["complete", "findings", "not_applicable"]}
+                  },
+                  "required": ["lane", "status"]
+                },
+                "minContains": 1,
+                "maxContains": 1
+              },
+              {
+                "contains": {
+                  "type": "object",
+                  "properties": {
+                    "lane": {"const": "dependencies"},
+                    "status": {"enum": ["complete", "findings", "not_applicable"]}
+                  },
+                  "required": ["lane", "status"]
+                },
+                "minContains": 1,
+                "maxContains": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "incomplete"}}, "required": ["status"]},
+      "then": {"properties": {"gaps": {"minItems": 1}}}
+    },
+    {
+      "if": {"properties": {"verdict": {"const": "clean"}}, "required": ["verdict"]},
+      "then": {
+        "properties": {
+          "status": {"const": "complete"},
+          "gaps": {"maxItems": 0}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "lane",
+        "provider",
+        "capability",
+        "version",
+        "data_freshness",
+        "scope",
+        "side_effects",
+        "status",
+        "coverage"
+      ],
+      "properties": {
+        "schema_version": {"const": 1},
+        "lane": {"enum": ["secrets", "dependencies", "sarif"]},
+        "provider": {"type": "string"},
+        "capability": {"enum": ["secrets", "dependencies", "sarif"]},
+        "version": {"type": "string"},
+        "data_freshness": {"type": "string"},
+        "scope": {"type": "string"},
+        "side_effects": {"type": "string"},
+        "status": {
+          "enum": [
+            "complete",
+            "findings",
+            "not_applicable",
+            "missing",
+            "failed",
+            "refused",
+            "quota_limited",
+            "timeout",
+            "stale",
+            "unauthorized",
+            "output_limit",
+            "unsupported"
+          ]
+        },
+        "coverage": {"enum": ["complete", "gap"]}
+      }
+    }
+  }
+}

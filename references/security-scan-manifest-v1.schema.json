@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kimiflow.local/schemas/security-scan-manifest-v1.schema.json",
+  "title": "Kimiflow Security Scan Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "scan_id",
+    "mode",
+    "scope",
+    "scope_digest",
+    "content_digest",
+    "revision",
+    "guidance_digest",
+    "policy_digest",
+    "authorization_digest",
+    "threat_model",
+    "provider_plan"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "scan_id": {"type": "string", "pattern": "^scan_[0-9a-f]{32}$"},
+    "mode": {"enum": ["scan", "diff"]},
+    "scope": {"type": "string", "minLength": 1},
+    "scope_digest": {"$ref": "#/$defs/digest"},
+    "content_digest": {"$ref": "#/$defs/digest"},
+    "revision": {"type": "string", "minLength": 1},
+    "guidance_digest": {"$ref": "#/$defs/digest"},
+    "policy_digest": {
+      "oneOf": [
+        {"const": ""},
+        {"$ref": "#/$defs/digest"}
+      ]
+    },
+    "authorization_digest": {
+      "oneOf": [
+        {"const": ""},
+        {"$ref": "#/$defs/digest"}
+      ]
+    },
+    "threat_model": {"$ref": "#/$defs/threat_model"},
+    "provider_plan": {
+      "type": "array",
+      "prefixItems": [{"const": "secrets"}, {"const": "dependencies"}],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "string_list": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "threat_model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assets",
+        "entry_points",
+        "untrusted_inputs",
+        "data_flows",
+        "trust_boundaries",
+        "auth_assumptions",
+        "privileged_actions",
+        "security_invariants",
+        "status",
+        "proof_gaps"
+      ],
+      "properties": {
+        "assets": {"$ref": "#/$defs/string_list"},
+        "entry_points": {"$ref": "#/$defs/string_list"},
+        "untrusted_inputs": {"$ref": "#/$defs/string_list"},
+        "data_flows": {"$ref": "#/$defs/string_list"},
+        "trust_boundaries": {"$ref": "#/$defs/string_list"},
+        "auth_assumptions": {"$ref": "#/$defs/string_list"},
+        "privileged_actions": {"$ref": "#/$defs/string_list"},
+        "security_invariants": {"$ref": "#/$defs/string_list"},
+        "status": {"enum": ["complete", "incomplete"]},
+        "proof_gaps": {"$ref": "#/$defs/string_list"}
+      }
+    }
+  }
+}
