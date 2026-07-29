@@ -6,6 +6,25 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.28
+
+The Fleet Safety release: Kimiflow can run up to three isolated worktree tasks concurrently while keeping write
+authority, migration, recovery, revalidation, and Primary delivery fail-closed.
+
+### Added
+
+- A canonical Schema-2 Fleet with three owned worktree slots, deterministic FIFO overflow, durable legacy-state
+  migration, bounded archival, and explicit state-loss detection.
+- Stable cross-run leases with persisted blockers, direct-Primary/worktree mutual exclusion, predecessor
+  revalidation, and exact ownership receipts.
+
+### Changed
+
+- Fleet declaration, revalidation, and candidate-first integration now re-prove Registry, receipt, Git, lock,
+  Primary, and foreign-worktree evidence at every durable publication or ref-CAS boundary.
+- Installation smokes, host documentation, diagrams, scaling guidance, and the packaged runtime now expose the
+  same bounded Fleet contract.
+
 ## 0.2.27
 
 The deep-security and sealed-search release: Kimiflow can evaluate local security evidence against a trusted
