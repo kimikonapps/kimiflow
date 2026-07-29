@@ -254,7 +254,7 @@ Produktkonflikt erzeugt. Fixes und exakt triviale Arbeit behalten ihre direkten 
 
 | Gate | Gesicherte Grenze |
 |---|---|
-| Workspace-Preflight | Alle Worktrees und Dirty-Pfade werden klassifiziert; ein eigener Broker-Tree wird kollisionsgeprüft, ff-only integriert und nur mit Ancestry-Beleg archiviert. |
+| Workspace-Preflight | Alle Worktrees und Dirty-Pfade werden klassifiziert; bis zu drei eigene Fleet-Trees erhalten exklusive Leases, Revalidierung, serialisierte Candidate-first-Integration und Ancestry-gesichertes Archivieren. |
 | Product-Intake-/Clarify-/Discovery-Gates | Unterstützte Planung und Writes bleiben bis zu einer expliziten Produktantwort gesperrt; gesperrter Intent, null technische Fragen, Machbarkeit und Quellen-/Scope-/Entscheidungs-Evidence müssen vor dem Plan stimmen. |
 | Plan-/Review-Gates | AC-Mapping und belegte BLOCKER/HIGHs werden in begrenzten Reparaturrunden gelöst. |
 | Implementation-Conformance-Gate | Rechercheentscheidungen, Invarianten, Pfade, Checks und jede gesperrte Produktanforderung konvergieren in Phase 6; beim Abschluss muss zusätzlich der Commit exakt dem geprüften Stand entsprechen. |
@@ -378,15 +378,18 @@ Details: [`reference.md`](reference.md#memory-router--learning-loop-phase-2-reca
 
 Ein aktiver Run speichert seine Codex- oder Claude-Owner-Session. Andere Sessions dürfen lesen,
 diskutieren und planen. Vor Writes inventarisiert Kimiflow alle Checkouts. Ein sauberes/freies Primary
-bleibt ohne Broker-State direkt; bei dirty oder busy Primary entsteht automatisch genau ein gesperrter,
-eigener `codex/<slug>*`-Worktree. Weitere Runs warten FIFO ohne Bestätigungsfrage. Phase 3 bindet Pfade
-und Contracts an die exakten PLAN-Bytes. Fremde ignorierte Dateien machen einen ansonsten sicheren
+bleibt ohne Fleet-State direkt; bei dirty oder busy Primary entstehen automatisch bis zu drei gesperrte,
+eigene `codex/<slug>*`-Worktrees. Weitere Runs warten FIFO ohne Bestätigungsfrage. Phase 3 bindet Pfade
+und Contracts an die exakten PLAN-Bytes und vergibt exklusive Primary-/Fleet-Leases; `blocked_by`
+nennt den Gewinner. Fremde ignorierte Dateien machen einen ansonsten sicheren
 Checkout nicht busy; Kimiflow-eigene ignorierte Run-Artefakte bleiben beim Retirement erhalten, ohne
-Ancestry-, Ownership- oder Integritätsprüfungen abzuschwächen. Phase 5 prüft den Write-Gate. Integration nutzt
-Merge-Tree-Preflight, argv-basierte Projektchecks vollständig vor der Mutation, bei Bedarf einen
+Ancestry-, Ownership- oder Integritätsprüfungen abzuschwächen. Phase 5 prüft den Write-Gate; nach jedem
+Primary-Fortschritt ist eine Revalidierung nötig. Integration nutzt Merge-Tree-Preflight,
+argv-basierte Projektchecks auf dem kombinierten Kandidaten vollständig vor der Mutation, bei Bedarf einen
 Merge-Commit nur im eigenen Branch und Fast-forward-only für Primary; danach folgen nur mechanische
 Git-Integritätsbelege. Erst terminale, grüne und per Ancestry belegte Trees werden crash-sicher
-vollständig archiviert. Manuelle und Codex-Worktrees bleiben unangetastet.
+vollständig archiviert. Konflikte bleiben als `needs-reconcile` wiederaufnehmbar. Manuelle und
+Codex-Worktrees bleiben unangetastet.
 
 Vorbereitete und geparkte Runs lassen sich aus `.kimiflow/<slug>/` fortsetzen. Bei geänderten Dateien
 oder unbekannter Plan-Basis wird vor der Umsetzung revalidiert.

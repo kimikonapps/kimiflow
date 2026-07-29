@@ -117,7 +117,7 @@ class WorktreeBrokerCase(unittest.TestCase):
         self.assertEqual(result["status"], "integrated")
         return target, basis, result
 
-    def test_route_recovers_allocation_then_caps_and_queues(self):
+    def test_route_recovers_allocation_then_fills_fleet_and_queues(self):
         self.write_active()
         run = ".kimiflow/run-a"
         with mock.patch.object(
@@ -141,12 +141,20 @@ class WorktreeBrokerCase(unittest.TestCase):
         self.assertEqual(len(registry["entries"]), 1)
         self.assertEqual(registry["entries"][0]["path"], interrupted["path"])
 
-        queued = broker.route(self.repo, ".kimiflow/run-b", write=True)
+        self.assertEqual(
+            broker.route(self.repo, ".kimiflow/run-b", write=True)["status"],
+            "allocated",
+        )
+        self.assertEqual(
+            broker.route(self.repo, ".kimiflow/run-c", write=True)["status"],
+            "allocated",
+        )
+        queued = broker.route(self.repo, ".kimiflow/run-d", write=True)
         self.assertEqual(queued["status"], "queued")
         self.assertEqual(queued["queue_position"], 1)
         self.assertEqual(
             self.git(self.repo, "worktree", "list", "--porcelain").stdout.count("worktree "),
-            2,
+            4,
         )
 
     def test_route_recovers_matching_receipt_after_registry_publish_crash(self):
@@ -191,6 +199,154 @@ class WorktreeBrokerCase(unittest.TestCase):
         )
         self.assertFalse(os.path.exists(backup))
 
+    def test_route_resumes_allocation_missing_before_worktree_add(self):
+        self.write_active()
+        run = ".kimiflow/run-a"
+        original_git = broker._git
+        injected = False
+
+        def fail_first_worktree_add(root, args, check=True):
+            nonlocal injected
+            if not injected and args[:2] == ["worktree", "add"]:
+                injected = True
+                raise wp.WorkspaceError("injected pre-allocation crash")
+            return original_git(root, args, check=check)
+
+        with mock.patch.object(
+            broker, "_git", side_effect=fail_first_worktree_add
+        ):
+            with self.assertRaisesRegex(
+                wp.WorkspaceError, "injected pre-allocation crash"
+            ):
+                broker.route(self.repo, run, write=True)
+
+        interrupted = broker._task_for(broker.read_broker(self.repo), run)
+        self.assertEqual(interrupted["state"], "allocating")
+        self.assertFalse(os.path.exists(interrupted["path"]))
+        self.clear_active()
+
+        resumed = broker.route(self.repo, run, write=True)
+
+        self.assertEqual(
+            (resumed["status"], resumed["route"]),
+            ("allocated", "worktree"),
+        )
+        self.assertTrue(os.path.isdir(resumed["root"]))
+        stored = broker._task_for(broker.read_broker(self.repo), run)
+        self.assertEqual((stored["state"], stored["journal"]), ("allocated", None))
+
+    def test_allocation_resume_rejects_a_late_foreign_worktree(self):
+        self.write_active()
+        run = ".kimiflow/run-a"
+        original_git = broker._git
+        injected = False
+
+        def fail_first_worktree_add(root, args, check=True):
+            nonlocal injected
+            if not injected and args[:2] == ["worktree", "add"]:
+                injected = True
+                raise wp.WorkspaceError("injected pre-allocation crash")
+            return original_git(root, args, check=check)
+
+        with mock.patch.object(
+            broker, "_git", side_effect=fail_first_worktree_add
+        ):
+            with self.assertRaisesRegex(
+                wp.WorkspaceError, "injected pre-allocation crash"
+            ):
+                broker.route(self.repo, run, write=True)
+
+        interrupted = broker._task_for(broker.read_broker(self.repo), run)
+        foreign = os.path.join(self.temp, "late-foreign")
+        self.git(
+            self.repo,
+            "worktree",
+            "add",
+            "-b",
+            "late-foreign",
+            foreign,
+        )
+
+        with self.assertRaisesRegex(
+            wp.WorkspaceError, "foreign worktree present"
+        ):
+            broker.route(self.repo, run, write=True)
+
+        stored = broker._task_for(broker.read_broker(self.repo), run)
+        self.assertEqual(stored["state"], "allocating")
+        self.assertFalse(os.path.exists(interrupted["path"]))
+        self.assertTrue(os.path.isdir(foreign))
+
+    def test_allocation_recovery_reproves_pinned_receipt_identity_and_lock(self):
+        run_a = ".kimiflow/run-a"
+        run_b = ".kimiflow/run-b"
+        target_a = self.allocate(run_a)
+        target_b = broker.route(self.repo, run_b, write=True)["root"]
+        state = broker.read_broker(self.repo)
+        task_a = broker._task_for(state, run_a)
+        task_a["state"] = "allocating"
+        task_a["journal"] = {
+            "kind": "allocation",
+            "main": task_a["base"],
+            "task": task_a["base"],
+        }
+        with wp.registry_operation(self.repo, True) as descriptor:
+            broker._write_broker(descriptor, state)
+        registry_before = wp.read_registry(self.repo)
+        peer_head = self.git(target_b, "rev-parse", "HEAD").stdout.strip()
+
+        self.git(self.repo, "worktree", "unlock", target_a)
+        self.git(
+            self.repo,
+            "worktree",
+            "lock",
+            "--reason",
+            "kimiflow:forged:.kimiflow/foreign",
+            target_a,
+        )
+        with self.assertRaisesRegex(
+            wp.WorkspaceError, "ownership proof mismatch"
+        ):
+            broker.route(self.repo, run_a, write=True)
+
+        stored = broker._task_for(broker.read_broker(self.repo), run_a)
+        self.assertEqual(stored["state"], "allocating")
+        self.assertEqual(stored["journal"]["kind"], "allocation")
+        self.assertEqual(wp.read_registry(self.repo), registry_before)
+        self.assertEqual(
+            self.git(target_b, "rev-parse", "HEAD").stdout.strip(),
+            peer_head,
+        )
+        self.assertTrue(os.path.isdir(target_a))
+        self.assertTrue(os.path.isdir(target_b))
+
+        self.git(self.repo, "worktree", "unlock", target_a)
+        self.git(
+            self.repo,
+            "worktree",
+            "lock",
+            "--reason",
+            broker._lock_reason(task_a),
+            target_a,
+        )
+        with open(
+            wp.owner_receipt_path(target_a), "w", encoding="utf-8"
+        ) as handle:
+            json.dump({}, handle)
+        with self.assertRaisesRegex(
+            wp.WorkspaceError, "ownership proof mismatch"
+        ):
+            broker.route(self.repo, run_a, write=True)
+
+        stored = broker._task_for(broker.read_broker(self.repo), run_a)
+        self.assertEqual(stored["state"], "allocating")
+        self.assertEqual(stored["journal"]["kind"], "allocation")
+        self.assertEqual(wp.read_registry(self.repo), registry_before)
+        self.assertEqual(
+            self.git(target_b, "rev-parse", "HEAD").stdout.strip(),
+            peer_head,
+        )
+
     def test_broker_write_heals_a_single_hard_crash_backup(self):
         run = ".kimiflow/run-a"
         target = self.allocate(run)
@@ -216,7 +372,7 @@ class WorktreeBrokerCase(unittest.TestCase):
         self.assertFalse(os.path.exists(backup))
         self.assertEqual(len(broker.read_broker(self.repo)["tasks"]), 1)
 
-    def test_concurrent_routes_publish_one_owned_tree_and_one_queue_entry(self):
+    def test_concurrent_routes_publish_two_owned_fleet_entries(self):
         self.write_active()
         with ThreadPoolExecutor(max_workers=2) as pool:
             results = list(
@@ -225,27 +381,808 @@ class WorktreeBrokerCase(unittest.TestCase):
                     (".kimiflow/run-a", ".kimiflow/run-b"),
                 )
             )
-        self.assertEqual(sorted(result["status"] for result in results), ["allocated", "queued"])
-        self.assertEqual(len(wp.read_registry(self.repo)["entries"]), 1)
+        self.assertEqual(sorted(result["status"] for result in results), ["allocated", "allocated"])
+        self.assertEqual(len(wp.read_registry(self.repo)["entries"]), 2)
         self.assertEqual(
             self.git(self.repo, "worktree", "list", "--porcelain").stdout.count("worktree "),
-            2,
+            3,
         )
 
     def test_fifo_queue_cannot_be_bypassed_when_main_becomes_free(self):
         target = self.allocate(".kimiflow/run-a")
-        queued_b = broker.route(self.repo, ".kimiflow/run-b", write=True)
-        queued_c = broker.route(self.repo, ".kimiflow/run-c", write=True)
-        self.assertEqual((queued_b["queue_position"], queued_c["queue_position"]), (1, 2))
+        allocated_b = broker.route(self.repo, ".kimiflow/run-b", write=True)
+        allocated_c = broker.route(self.repo, ".kimiflow/run-c", write=True)
+        queued_d = broker.route(self.repo, ".kimiflow/run-d", write=True)
+        queued_e = broker.route(self.repo, ".kimiflow/run-e", write=True)
+        self.assertEqual((allocated_b["status"], allocated_c["status"]), ("allocated", "allocated"))
+        self.assertEqual((queued_d["queue_position"], queued_e["queue_position"]), (1, 2))
 
         self.clear_active()
-        still_queued = broker.route(self.repo, ".kimiflow/run-c", write=True)
+        still_queued = broker.route(self.repo, ".kimiflow/run-e", write=True)
         self.assertEqual((still_queued["status"], still_queued["queue_position"]), ("queued", 2))
-        next_ready = broker.route(self.repo, ".kimiflow/run-b", write=True)
+        next_ready = broker.route(self.repo, ".kimiflow/run-d", write=True)
         self.assertEqual((next_ready["status"], next_ready["route"]), ("direct", "main"))
-        self.write_active(run=".kimiflow/run-b")
-        still_queued = broker.route(self.repo, ".kimiflow/run-c", write=True)
+        self.write_active(run=".kimiflow/run-d")
+        still_queued = broker.route(self.repo, ".kimiflow/run-e", write=True)
         self.assertEqual((still_queued["status"], still_queued["queue_position"]), ("queued", 1))
+
+    def test_promoted_direct_queue_head_ignores_later_queued_lease(self):
+        self.write_active(affected=("primary-only.txt",))
+        fleet = []
+        for name in ("a", "b", "c"):
+            run = ".kimiflow/run-%s" % name
+            target = broker.route(self.repo, run, write=True)["root"]
+            basis = self.write_plan(target, run)
+            declaration = broker.declare(
+                target,
+                run,
+                basis,
+                paths=["fleet-%s.txt" % name],
+                write=True,
+            )
+            self.assertEqual(declaration["action"], "disjoint")
+            fleet.append((run, target, basis))
+        run_d = ".kimiflow/run-d"
+        run_e = ".kimiflow/run-e"
+        self.assertEqual(
+            broker.route(self.repo, run_d, write=True)["queue_position"],
+            1,
+        )
+        self.assertEqual(
+            broker.route(self.repo, run_e, write=True)["queue_position"],
+            2,
+        )
+
+        self.clear_active()
+        promoted = broker.route(self.repo, run_d, write=True)
+        self.assertEqual(
+            (promoted["status"], promoted["route"]),
+            ("direct", "main"),
+        )
+        self.write_active(run=run_d, affected=("direct-d.txt",))
+        direct_basis = self.write_plan(self.repo, run_d)
+
+        direct_gate = broker.write_gate(self.repo, run_d, direct_basis)
+        queued = broker.route(self.repo, run_e, write=True)
+
+        self.assertEqual(
+            (direct_gate["status"], direct_gate["reason"]),
+            ("OPEN", "direct-main"),
+        )
+        self.assertEqual(
+            (queued["status"], queued["queue_position"]),
+            ("queued", 1),
+        )
+        for run, _, _ in fleet:
+            integration = broker.integrate(
+                self.repo,
+                run,
+                write=True,
+            )
+            self.assertEqual(
+                (integration["status"], integration["reason"]),
+                ("ready-to-integrate", "primary-busy"),
+            )
+
+    def test_fleet_allocates_three_and_queues_fourth_with_legacy_migration(self):
+        self.write_active(affected=("primary-only.txt",))
+        results = [
+            broker.route(self.repo, ".kimiflow/run-%s" % name, write=True)
+            for name in ("a", "b", "c", "d")
+        ]
+        self.assertEqual(
+            [result["status"] for result in results],
+            ["allocated", "allocated", "allocated", "queued"],
+        )
+        self.assertEqual(len(wp.read_registry(self.repo)["entries"]), 3)
+        state = broker.read_broker(self.repo)
+        legacy = {
+            "schema_version": 1,
+            "tasks": [
+                {key: task[key] for key in broker.LEGACY_TASK_KEYS}
+                for task in state["tasks"]
+            ],
+        }
+        session = os.path.join(self.repo, ".kimiflow", "session")
+        os.unlink(os.path.join(session, broker.BROKER_NAME))
+        with open(
+            os.path.join(session, broker.LEGACY_BROKER_NAME),
+            "w",
+            encoding="utf-8",
+        ) as handle:
+            json.dump(legacy, handle)
+
+        routed = broker.route(self.repo, ".kimiflow/run-d", write=True)
+
+        self.assertEqual((routed["status"], routed["queue_position"]), ("queued", 1))
+        self.assertTrue(os.path.isfile(os.path.join(session, broker.BROKER_NAME)))
+        self.assertTrue(os.path.isfile(os.path.join(session, broker.LEGACY_ARCHIVE_NAME)))
+        self.assertFalse(os.path.exists(os.path.join(session, broker.LEGACY_BROKER_NAME)))
+        self.assertEqual(len(broker.read_broker(self.repo)["tasks"]), 4)
+
+    def test_legacy_migration_requires_revalidation_before_integration(self):
+        run = ".kimiflow/run-a"
+        target = self.allocate(run)
+        basis = self.write_plan(target, run)
+        broker.declare(
+            target,
+            run,
+            basis,
+            paths=["feature.txt"],
+            write=True,
+        )
+        self.clear_active()
+        task_head = self.commit_file(
+            target, "feature.txt", "task\n", "task change"
+        )
+        state = broker.read_broker(self.repo)
+        legacy = {
+            "schema_version": 1,
+            "tasks": [
+                {
+                    key: broker._task_for(state, run)[key]
+                    for key in broker.LEGACY_TASK_KEYS
+                }
+            ],
+        }
+        session = os.path.join(self.repo, ".kimiflow", "session")
+        os.unlink(os.path.join(session, broker.BROKER_NAME))
+        with open(
+            os.path.join(session, broker.LEGACY_BROKER_NAME),
+            "w",
+            encoding="utf-8",
+        ) as handle:
+            json.dump(legacy, handle)
+        self.assertEqual(
+            broker.write_gate(target, run, basis)["reason"],
+            "primary-snapshot-invalid",
+        )
+        main_before = self.git(self.repo, "rev-parse", "HEAD").stdout.strip()
+        check = json.dumps([sys.executable, "-c", "raise SystemExit(0)"])
+
+        result = broker.integrate(
+            self.repo, run, checks=[check], write=True
+        )
+
+        self.assertEqual(
+            (result["status"], result["reason"]),
+            ("needs-reconcile", "primary-snapshot-invalid"),
+        )
+        self.assertEqual(
+            self.git(self.repo, "rev-parse", "HEAD").stdout.strip(),
+            main_before,
+        )
+        self.assertNotEqual(task_head, main_before)
+        self.assertEqual(
+            broker._task_for(broker.read_broker(self.repo), run)["state"],
+            "needs-reconcile",
+        )
+
+    def test_legacy_archive_blocks_state_resurrection(self):
+        self.write_active(affected=("primary-only.txt",))
+        run = ".kimiflow/run-a"
+        target = broker.route(self.repo, run, write=True)["root"]
+        state = broker.read_broker(self.repo)
+        session = os.path.join(self.repo, ".kimiflow", "session")
+        legacy = {
+            "schema_version": 1,
+            "tasks": [
+                {key: task[key] for key in broker.LEGACY_TASK_KEYS}
+                for task in state["tasks"]
+            ],
+        }
+        os.unlink(os.path.join(session, broker.BROKER_NAME))
+        with open(os.path.join(session, broker.LEGACY_BROKER_NAME), "w", encoding="utf-8") as handle:
+            json.dump(legacy, handle)
+        basis = self.write_plan(target, run)
+        broker.declare(target, run, basis, paths=["task.txt"], write=True)
+        os.unlink(os.path.join(session, broker.BROKER_NAME))
+
+        with self.assertRaisesRegex(wp.WorkspaceError, "missing after legacy migration"):
+            broker.read_broker(self.repo)
+
+    def test_legacy_backup_only_recovers_and_migrates_without_state_loss(self):
+        run = ".kimiflow/run-a"
+        task = broker._new_task(run)
+        legacy = {
+            "schema_version": 1,
+            "tasks": [
+                {key: task[key] for key in broker.LEGACY_TASK_KEYS}
+            ],
+        }
+        session = os.path.join(self.repo, ".kimiflow", "session")
+        os.makedirs(session, exist_ok=True)
+        backup = os.path.join(
+            session,
+            ".kimiflow-backup-%s-hard-crash" % broker.LEGACY_BROKER_NAME,
+        )
+        with open(backup, "w", encoding="utf-8") as handle:
+            json.dump(legacy, handle)
+
+        recovered = broker.read_broker(self.repo)
+        self.assertEqual(
+            (recovered["schema_version"], recovered["tasks"][0]["run"]),
+            (2, run),
+        )
+        self.assertEqual(recovered["tasks"][0]["state"], "queued")
+        self.assertEqual(recovered["tasks"][0]["blocked_by"], [])
+        with wp.registry_operation(self.repo, True) as descriptor:
+            broker._write_broker(descriptor, recovered)
+
+        self.assertFalse(os.path.exists(backup))
+        self.assertFalse(
+            os.path.exists(os.path.join(session, broker.LEGACY_BROKER_NAME))
+        )
+        self.assertTrue(
+            os.path.isfile(os.path.join(session, broker.LEGACY_ARCHIVE_NAME))
+        )
+        self.assertEqual(
+            broker.read_broker(self.repo)["tasks"][0]["identity"],
+            task["identity"],
+        )
+        self.assertEqual(wp.read_registry(self.repo)["entries"], [])
+
+    def test_legacy_backup_only_recovery_rejects_ambiguity_and_unsafe_bytes(self):
+        task = broker._new_task(".kimiflow/run-a")
+        legacy = {
+            "schema_version": 1,
+            "tasks": [
+                {key: task[key] for key in broker.LEGACY_TASK_KEYS}
+            ],
+        }
+        session = os.path.join(self.repo, ".kimiflow", "session")
+        os.makedirs(session, exist_ok=True)
+        prefix = ".kimiflow-backup-%s-" % broker.LEGACY_BROKER_NAME
+        for suffix in ("one", "two"):
+            with open(
+                os.path.join(session, prefix + suffix),
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                json.dump(legacy, handle)
+        with self.assertRaisesRegex(wp.WorkspaceError, "ambiguous"):
+            broker.read_broker(self.repo)
+
+        os.unlink(os.path.join(session, prefix + "one"))
+        os.unlink(os.path.join(session, prefix + "two"))
+        outside = os.path.join(self.temp, "legacy-backup.json")
+        with open(outside, "w", encoding="utf-8") as handle:
+            json.dump(legacy, handle)
+        os.symlink(outside, os.path.join(session, prefix + "unsafe"))
+        with self.assertRaisesRegex(wp.WorkspaceError, "unsafe"):
+            broker.read_broker(self.repo)
+
+    def test_live_registry_without_fleet_state_fails_closed(self):
+        self.allocate()
+        session = os.path.join(self.repo, ".kimiflow", "session")
+        os.unlink(os.path.join(session, broker.BROKER_NAME))
+
+        with self.assertRaisesRegex(wp.WorkspaceError, "missing for live Registry"):
+            broker.read_broker(self.repo)
+        with open(
+            os.path.join(session, broker.BROKER_NAME),
+            "w",
+            encoding="utf-8",
+        ) as handle:
+            json.dump({"schema_version": 2, "tasks": []}, handle)
+        with self.assertRaisesRegex(wp.WorkspaceError, "does not own live Registry"):
+            broker.read_broker(self.repo)
+
+    def test_overlapping_leases_name_single_blocker_and_disjoint_open(self):
+        self.write_active(affected=("primary-only.txt",))
+        run_a = ".kimiflow/run-a"
+        run_b = ".kimiflow/run-b"
+        target_a = broker.route(self.repo, run_a, write=True)["root"]
+        target_b = broker.route(self.repo, run_b, write=True)["root"]
+        basis_a = self.write_plan(target_a, run_a)
+        basis_b = self.write_plan(target_b, run_b)
+
+        blocked = broker.declare(
+            target_b, run_b, basis_b, paths=["src/shared.py"], write=True
+        )
+        identity_a = broker._task_for(broker.read_broker(self.repo), run_a)["identity"]
+        self.assertEqual(blocked["blocked_by"], [identity_a])
+        winner = broker.declare(
+            target_a, run_a, basis_a, paths=["src/shared.py"], write=True
+        )
+        self.assertEqual(winner["action"], "disjoint")
+        task_b = broker._task_for(broker.read_broker(self.repo), run_b)
+        self.assertEqual(task_b["blocked_by"], [identity_a])
+        disjoint = broker.declare(
+            target_b, run_b, basis_b, paths=["docs/b.md"], write=True
+        )
+        self.assertEqual((disjoint["action"], disjoint["blocked_by"]), ("disjoint", []))
+        self.assertEqual(broker.write_gate(target_a, run_a, basis_a)["status"], "OPEN")
+        self.assertEqual(broker.write_gate(target_b, run_b, basis_b)["status"], "OPEN")
+
+    def test_winning_lease_integrates_while_overlapping_loser_waits(self):
+        self.write_active(affected=("primary-only.txt",))
+        run_a = ".kimiflow/run-a"
+        run_b = ".kimiflow/run-b"
+        target_a = broker.route(self.repo, run_a, write=True)["root"]
+        target_b = broker.route(self.repo, run_b, write=True)["root"]
+        basis_a = self.write_plan(target_a, run_a)
+        basis_b = self.write_plan(target_b, run_b)
+        loser = broker.declare(
+            target_b, run_b, basis_b, paths=["src/shared.py"], write=True
+        )
+        winner = broker.declare(
+            target_a, run_a, basis_a, paths=["src/shared.py"], write=True
+        )
+        self.assertEqual((winner["action"], loser["action"]), ("disjoint", "serialize"))
+        self.clear_active()
+        self.commit_file(target_a, "src/shared.py", "winner\n", "winner")
+        check = json.dumps(
+            [
+                sys.executable,
+                "-c",
+                "from pathlib import Path; assert Path('src/shared.py').read_text() == 'winner\\n'",
+            ]
+        )
+
+        delivered = broker.integrate(
+            self.repo, run_a, checks=[check], write=True
+        )
+
+        self.assertEqual(delivered["status"], "integrated")
+        task_b = broker._task_for(broker.read_broker(self.repo), run_b)
+        self.assertEqual(task_b["state"], "waiting")
+
+    def test_redeclared_lease_cannot_bypass_primary_plan_drift(self):
+        run = ".kimiflow/run-a"
+        self.write_active(affected=("src/primary.py",))
+        target = broker.route(self.repo, run, write=True)["root"]
+        basis = self.write_plan(target, run)
+        broker.declare(target, run, basis, paths=["src/task.py"], write=True)
+        self.write_active(affected=("src/new-overlap.py",))
+
+        redeclared = broker.declare(
+            target,
+            run,
+            basis,
+            paths=["src/task.py", "src/new-overlap.py"],
+            write=True,
+        )
+
+        task = broker._task_for(broker.read_broker(self.repo), run)
+        self.assertEqual(redeclared["action"], "serialize")
+        self.assertEqual(
+            task["paths"], ["src/new-overlap.py", "src/task.py"]
+        )
+        self.assertEqual(
+            broker.write_gate(target, run, basis)["status"], "CLOSED"
+        )
+
+    def test_redeclared_lease_moves_behind_established_peer(self):
+        self.write_active(affected=("src/primary.py",))
+        run_a = ".kimiflow/run-a"
+        run_b = ".kimiflow/run-b"
+        target_a = broker.route(self.repo, run_a, write=True)["root"]
+        target_b = broker.route(self.repo, run_b, write=True)["root"]
+        basis_a = self.write_plan(target_a, run_a)
+        basis_b = self.write_plan(target_b, run_b)
+        broker.declare(
+            target_a, run_a, basis_a, paths=["src/a.py"], write=True
+        )
+        broker.declare(
+            target_b, run_b, basis_b, paths=["src/b.py"], write=True
+        )
+        identity_b = broker._task_for(
+            broker.read_broker(self.repo), run_b
+        )["identity"]
+
+        redeclared = broker.declare(
+            target_a, run_a, basis_a, paths=["src/b.py"], write=True
+        )
+
+        self.assertEqual(
+            (redeclared["action"], redeclared["blocked_by"]),
+            ("serialize", [identity_b]),
+        )
+
+    def test_blocked_lease_redeclaration_moves_behind_established_peer(self):
+        self.write_active(affected=("src/primary-collision.py",))
+        run_a = ".kimiflow/run-a"
+        run_b = ".kimiflow/run-b"
+        target_a = broker.route(self.repo, run_a, write=True)["root"]
+        target_b = broker.route(self.repo, run_b, write=True)["root"]
+        basis_a = self.write_plan(target_a, run_a)
+        basis_b = self.write_plan(target_b, run_b)
+
+        blocked_a = broker.declare(
+            target_a,
+            run_a,
+            basis_a,
+            paths=["src/primary-collision.py"],
+            write=True,
+        )
+        established_b = broker.declare(
+            target_b,
+            run_b,
+            basis_b,
+            paths=["src/established-b.py"],
+            write=True,
+        )
+        self.assertEqual(blocked_a["action"], "serialize")
+        self.assertEqual(established_b["action"], "disjoint")
+        self.assertEqual(
+            broker.write_gate(target_b, run_b, basis_b)["status"],
+            "OPEN",
+        )
+        self.assertEqual(
+            [task["run"] for task in broker.read_broker(self.repo)["tasks"]],
+            [run_a, run_b],
+        )
+        idempotent_b = broker.declare(
+            target_b,
+            run_b,
+            basis_b,
+            paths=["src/established-b.py"],
+            write=True,
+        )
+        self.assertEqual(idempotent_b["action"], "disjoint")
+        self.assertEqual(
+            [task["run"] for task in broker.read_broker(self.repo)["tasks"]],
+            [run_a, run_b],
+        )
+        identity_b = broker._task_for(
+            broker.read_broker(self.repo), run_b
+        )["identity"]
+
+        redeclared_a = broker.declare(
+            target_a,
+            run_a,
+            basis_a,
+            paths=["src/established-b.py"],
+            write=True,
+        )
+
+        self.assertEqual(
+            (redeclared_a["action"], redeclared_a["blocked_by"]),
+            ("serialize", [identity_b]),
+        )
+        self.assertEqual(
+            broker.write_gate(target_b, run_b, basis_b)["status"],
+            "OPEN",
+        )
+        gate_a = broker.write_gate(target_a, run_a, basis_a)
+        self.assertEqual(
+            (gate_a["status"], gate_a["reason"], gate_a["blocked_by"]),
+            ("CLOSED", "serialize", [identity_b]),
+        )
+        self.assertEqual(
+            [task["run"] for task in broker.read_broker(self.repo)["tasks"]],
+            [run_b, run_a],
+        )
+
+    def test_primary_advance_and_dirty_paths_close_worktree_authority(self):
+        run_a = ".kimiflow/run-a"
+        target_a = self.allocate(run_a, affected=("src/primary.py",))
+        self.clear_active()
+        self.commit_file(
+            self.repo, "src/shared.py", "primary\n", "primary advance"
+        )
+        basis_a = self.write_plan(target_a, run_a)
+
+        declaration = broker.declare(
+            target_a,
+            run_a,
+            basis_a,
+            paths=["src/shared.py"],
+            write=True,
+        )
+
+        self.assertEqual(declaration["action"], "serialize")
+        self.assertEqual(len(declaration["blocked_by"]), 1)
+
+        run_b = ".kimiflow/run-b"
+        self.write_active(affected=("src/primary.py",))
+        target_b = broker.route(self.repo, run_b, write=True)["root"]
+        basis_b = self.write_plan(target_b, run_b)
+        cache = os.path.join(self.repo, ".kimiflow", "cache")
+        os.makedirs(cache, exist_ok=True)
+        for index in range(25):
+            with open(
+                os.path.join(cache, "artifact-%s" % index),
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                handle.write("local\n")
+        broker.declare(
+            target_b, run_b, basis_b, paths=["src/task.py"], write=True
+        )
+        with open(
+            os.path.join(self.repo, "src", "task.py"), "w", encoding="utf-8"
+        ) as handle:
+            handle.write("uncommitted primary\n")
+
+        gate = broker.write_gate(target_b, run_b, basis_b)
+
+        self.assertEqual(
+            (gate["status"], gate["reason"]),
+            ("CLOSED", "primary-dirty-collision"),
+        )
+
+    def test_foreign_tree_added_after_allocation_closes_worktree_gate(self):
+        run = ".kimiflow/run-a"
+        target = self.allocate(run, affected=("src/primary.py",))
+        basis = self.write_plan(target, run)
+        broker.declare(target, run, basis, paths=["src/task.py"], write=True)
+        foreign = os.path.join(self.temp, "late-foreign")
+        self.git(self.repo, "worktree", "add", "-b", "late-foreign", foreign)
+
+        gate = broker.write_gate(target, run, basis)
+
+        self.assertEqual(
+            (gate["status"], gate["reason"]),
+            ("CLOSED", "foreign-worktree-ambiguous"),
+        )
+
+    def test_primary_and_worktree_leases_are_mutually_exclusive(self):
+        run = ".kimiflow/run-a"
+        self.write_active(affected=("src/primary.py",))
+        primary_basis = self.write_plan(
+            self.repo, ".kimiflow/run-main", "# Primary plan\n"
+        )
+        target = broker.route(self.repo, run, write=True)["root"]
+        basis = self.write_plan(target, run)
+        broker.declare(target, run, basis, paths=["src/task.py"], write=True)
+
+        self.write_active(affected=("src/task.py",))
+        direct = broker.write_gate(
+            self.repo, ".kimiflow/run-main", primary_basis
+        )
+
+        task = broker._task_for(broker.read_broker(self.repo), run)
+        self.assertEqual((direct["status"], direct["blocked_by"]), ("CLOSED", [task["identity"]]))
+        self.assertEqual(broker.write_gate(target, run, basis)["status"], "OPEN")
+        active_path = os.path.join(
+            self.repo, ".kimiflow", "session", "ACTIVE_RUN.json"
+        )
+        with open(active_path, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "run": ".kimiflow/run-main",
+                    "owner": {"session_id": "changed-owner"},
+                },
+                handle,
+            )
+        self.assertEqual(
+            broker.write_gate(target, run, basis)["reason"],
+            "primary-owner-drift",
+        )
+        self.assertEqual(
+            broker.write_gate(
+                self.repo, ".kimiflow/run-main", primary_basis
+            )["status"],
+            "CLOSED",
+        )
+
+    def test_direct_primary_plan_drift_restart_preserves_worktree_precedence(self):
+        task_run = ".kimiflow/run-a"
+        primary_run = ".kimiflow/run-main"
+        self.write_active(run=primary_run, affected=("src/primary.py",))
+        original_primary_basis = self.write_plan(
+            self.repo, primary_run, "# Primary v1\n"
+        )
+        target = broker.route(self.repo, task_run, write=True)["root"]
+        task_basis = self.write_plan(target, task_run)
+        broker.declare(
+            target,
+            task_run,
+            task_basis,
+            paths=["src/task.py"],
+            write=True,
+        )
+        self.assertEqual(
+            broker.write_gate(target, task_run, task_basis)["status"],
+            "OPEN",
+        )
+
+        drifted_primary_basis = self.write_plan(
+            self.repo, primary_run, "# Primary v2\n"
+        )
+        self.write_active(run=primary_run, affected=("src/task.py",))
+        stale = broker.write_gate(
+            self.repo, primary_run, original_primary_basis
+        )
+        self.assertEqual(
+            (stale["status"], stale["reason"]),
+            ("CLOSED", "stale-plan-basis"),
+        )
+        plan_path = os.path.join(self.repo, primary_run, "PLAN.md")
+        os.unlink(plan_path)
+        missing = broker.write_gate(
+            self.repo, primary_run, drifted_primary_basis
+        )
+        self.assertEqual(
+            (missing["status"], missing["reason"]),
+            ("CLOSED", "stale-plan-basis"),
+        )
+        self.assertEqual(
+            self.write_plan(self.repo, primary_run, "# Primary v2\n"),
+            drifted_primary_basis,
+        )
+
+        helper = os.path.join(
+            os.path.dirname(os.path.dirname(broker.__file__)),
+            "workspace-preflight.sh",
+        )
+
+        def restarted_gate(root, run, basis):
+            proc = subprocess.run(
+                [
+                    helper,
+                    "write-gate",
+                    "--root",
+                    root,
+                    "--run",
+                    run,
+                    "--basis",
+                    basis,
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True,
+            )
+            return json.loads(proc.stdout)
+
+        direct = restarted_gate(
+            self.repo, primary_run, drifted_primary_basis
+        )
+        worktree = restarted_gate(target, task_run, task_basis)
+        task = broker._task_for(
+            broker.read_broker(self.repo), task_run
+        )
+        self.assertEqual(
+            (direct["status"], direct["reason"], direct["blocked_by"]),
+            ("CLOSED", "lease-conflict", [task["identity"]]),
+        )
+        self.assertEqual(worktree["status"], "OPEN")
+        self.assertLessEqual(
+            sum(result["status"] == "OPEN" for result in (direct, worktree)),
+            1,
+        )
+
+    def test_primary_advance_closes_write_gate_until_revalidated(self):
+        run = ".kimiflow/run-a"
+        target = self.allocate(run, affected=("primary-only.txt",))
+        basis = self.write_plan(target, run)
+        broker.declare(target, run, basis, paths=["task.txt"], write=True)
+        self.clear_active()
+        self.commit_file(self.repo, "predecessor.txt", "done\n", "predecessor")
+
+        self.assertEqual(
+            broker.write_gate(target, run, basis)["reason"],
+            "revalidation-required",
+        )
+        refreshed = broker.revalidate(target, run, basis, write=True)
+        self.assertEqual(refreshed["status"], "allocated")
+        self.assertEqual(broker.write_gate(target, run, basis)["status"], "OPEN")
+        self.commit_file(target, "task.txt", "task\n", "task")
+        self.commit_file(self.repo, "task.txt", "primary\n", "colliding predecessor")
+        drift = broker.revalidate(target, run, basis, write=True)
+        self.assertEqual(drift["status"], "needs-reconcile")
+        main_now = self.git(self.repo, "rev-parse", "HEAD").stdout.strip()
+        self.assertNotEqual(
+            self.git(target, "merge", "--no-edit", main_now, check=False).returncode,
+            0,
+        )
+        with open(os.path.join(target, "task.txt"), "w", encoding="utf-8") as handle:
+            handle.write("resolved\n")
+        self.git(target, "add", "task.txt")
+        self.git(target, "commit", "-m", "resolve predecessor")
+        recovered = broker.revalidate(target, run, basis, write=True)
+        self.assertEqual(recovered["status"], "allocated")
+
+    def test_revalidate_rejects_unlocked_task_identity(self):
+        run = ".kimiflow/run-a"
+        target = self.allocate(run, affected=("primary-only.txt",))
+        basis = self.write_plan(target, run)
+        broker.declare(
+            target, run, basis, paths=["task.txt"], write=True
+        )
+        self.clear_active()
+        self.commit_file(
+            self.repo, "predecessor.txt", "done\n", "predecessor"
+        )
+        task_before = self.git(target, "rev-parse", "HEAD").stdout.strip()
+        self.git(self.repo, "worktree", "unlock", target)
+
+        with self.assertRaisesRegex(
+            wp.WorkspaceError, "revalidation ownership unproven"
+        ):
+            broker.revalidate(target, run, basis, write=True)
+
+        self.assertEqual(
+            self.git(target, "rev-parse", "HEAD").stdout.strip(),
+            task_before,
+        )
+
+    def test_revalidate_rejects_forged_lock_identity(self):
+        run = ".kimiflow/run-a"
+        target = self.allocate(run, affected=("primary-only.txt",))
+        basis = self.write_plan(target, run)
+        broker.declare(
+            target, run, basis, paths=["task.txt"], write=True
+        )
+        self.clear_active()
+        self.commit_file(
+            self.repo, "predecessor.txt", "done\n", "predecessor"
+        )
+        task_before = self.git(target, "rev-parse", "HEAD").stdout.strip()
+        self.git(self.repo, "worktree", "unlock", target)
+        self.git(
+            self.repo,
+            "worktree",
+            "lock",
+            "--reason",
+            "kimiflow:forged:.kimiflow/foreign",
+            target,
+        )
+
+        with self.assertRaisesRegex(
+            wp.WorkspaceError, "revalidation ownership unproven"
+        ):
+            broker.revalidate(target, run, basis, write=True)
+
+        self.assertEqual(
+            self.git(target, "rev-parse", "HEAD").stdout.strip(),
+            task_before,
+        )
+
+    def test_disjoint_fleet_integrates_combined_candidate_and_conflicts_resume(self):
+        self.write_active(affected=("primary-only.txt",))
+        run_a = ".kimiflow/run-a"
+        run_b = ".kimiflow/run-b"
+        target_a = broker.route(self.repo, run_a, write=True)["root"]
+        target_b = broker.route(self.repo, run_b, write=True)["root"]
+        basis_a = self.write_plan(target_a, run_a)
+        basis_b = self.write_plan(target_b, run_b)
+        broker.declare(target_a, run_a, basis_a, paths=["a.txt"], write=True)
+        broker.declare(target_b, run_b, basis_b, paths=["b.txt"], write=True)
+        self.clear_active()
+        self.commit_file(target_a, "a.txt", "a\n", "a")
+        self.commit_file(target_b, "b.txt", "b\n", "b")
+        cache = os.path.join(target_b, ".kimiflow", "cache")
+        os.makedirs(cache, exist_ok=True)
+        for index in range(25):
+            with open(
+                os.path.join(cache, "artifact-%s" % index),
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                handle.write("local\n")
+        passing_a = json.dumps(
+            [sys.executable, "-c", "from pathlib import Path; assert Path('a.txt').read_text() == 'a\\n'"]
+        )
+        self.assertEqual(
+            broker.integrate(self.repo, run_a, checks=[passing_a], write=True)["status"],
+            "integrated",
+        )
+        self.assertEqual(
+            broker.integrate(self.repo, run_b, checks=[passing_a], write=True)["status"],
+            "needs-reconcile",
+        )
+        broker.revalidate(target_b, run_b, basis_b, write=True)
+        main_before = self.git(self.repo, "rev-parse", "HEAD").stdout.strip()
+        failing = json.dumps([sys.executable, "-c", "raise SystemExit(1)"])
+        failed = broker.integrate(self.repo, run_b, checks=[failing], write=True)
+        self.assertEqual(failed["status"], "verification-failed", failed)
+        self.assertEqual(self.git(self.repo, "rev-parse", "HEAD").stdout.strip(), main_before)
+        combined = json.dumps(
+            [
+                sys.executable,
+                "-c",
+                "from pathlib import Path; assert Path('a.txt').read_text() == 'a\\n'; assert Path('b.txt').read_text() == 'b\\n'",
+            ]
+        )
+        delivered = broker.integrate(self.repo, run_b, checks=[combined], write=True)
+        self.assertEqual(delivered["status"], "integrated")
+        task_b = broker._task_for(broker.read_broker(self.repo), run_b)
+        self.assertEqual(task_b["verified_main"], main_before)
+        self.assertEqual(task_b["verified_task"], delivered["integrated_head"])
 
     def test_declare_cas_and_write_gate_resolve_collisions_conservatively(self):
         run = ".kimiflow/run-a"
@@ -323,10 +1260,12 @@ class WorktreeBrokerCase(unittest.TestCase):
         )
 
         self.write_active(run=run)
+        primary_basis = self.write_plan(self.repo, run)
         self.assertEqual(
-            broker.write_gate(self.repo, run, "a" * 64)["status"],
-            "OPEN",
+            broker.write_gate(self.repo, run, primary_basis)["reason"],
+            "foreign-worktree-ambiguous",
         )
+        self.git(self.repo, "worktree", "remove", foreign)
         target = broker.route(self.repo, ".kimiflow/run-b", write=True)["root"]
         self.clear_active()
         basis = self.write_plan(target, ".kimiflow/run-b")
@@ -350,11 +1289,192 @@ class WorktreeBrokerCase(unittest.TestCase):
             "identity-drift",
         )
 
+    def test_declare_rejects_unproven_worktree_identity(self):
+        run = ".kimiflow/run-a"
+        target = self.allocate(run)
+        basis = self.write_plan(target, run)
+        self.git(self.repo, "worktree", "unlock", target)
+
+        with self.assertRaisesRegex(
+            wp.WorkspaceError, "declaration ownership unproven"
+        ):
+            broker.declare(
+                target,
+                run,
+                basis,
+                paths=["feature.txt"],
+                write=True,
+            )
+
+        task = broker._task_for(broker.read_broker(self.repo), run)
+        self.assertEqual(
+            (task["state"], task["paths"], task["action"]),
+            ("allocated", [], "pending"),
+        )
+
+    def test_declare_rechecks_ownership_after_primary_snapshot(self):
+        run = ".kimiflow/run-a"
+        target = self.allocate(run)
+        basis = self.write_plan(target, run)
+        original_snapshot = broker._primary_envelope_snapshot
+        injected = False
+
+        def drift_after_snapshot(*args, **kwargs):
+            nonlocal injected
+            result = original_snapshot(*args, **kwargs)
+            if not injected:
+                injected = True
+                self.git(self.repo, "worktree", "unlock", target)
+                self.git(
+                    self.repo,
+                    "worktree",
+                    "lock",
+                    "--reason",
+                    "kimiflow:forged:.kimiflow/foreign",
+                    target,
+                )
+            return result
+
+        with mock.patch.object(
+            broker,
+            "_primary_envelope_snapshot",
+            side_effect=drift_after_snapshot,
+        ):
+            with self.assertRaisesRegex(
+                wp.WorkspaceError,
+                "declaration ownership changed during operation",
+            ):
+                broker.declare(
+                    target,
+                    run,
+                    basis,
+                    paths=["feature.txt"],
+                    write=True,
+                )
+
+        task = broker._task_for(broker.read_broker(self.repo), run)
+        self.assertEqual(
+            (task["state"], task["paths"], task["basis"], task["action"]),
+            ("allocated", [], "", "pending"),
+        )
+
+    def test_declare_publication_guard_rejects_late_lock_drift(self):
+        run = ".kimiflow/run-a"
+        target = self.allocate(run)
+        basis = self.write_plan(target, run)
+        original_write = broker.wp.atomic_directory_write
+        injected = False
+
+        def drift_inside_publication(*args, **kwargs):
+            nonlocal injected
+            if not injected:
+                injected = True
+                self.git(self.repo, "worktree", "unlock", target)
+                self.git(
+                    self.repo,
+                    "worktree",
+                    "lock",
+                    "--reason",
+                    "kimiflow:forged:.kimiflow/foreign",
+                    target,
+                )
+            return original_write(*args, **kwargs)
+
+        with mock.patch.object(
+            broker.wp,
+            "atomic_directory_write",
+            side_effect=drift_inside_publication,
+        ):
+            with self.assertRaisesRegex(
+                wp.WorkspaceError,
+                "cannot write worktree broker state",
+            ):
+                broker.declare(
+                    target,
+                    run,
+                    basis,
+                    paths=["feature.txt"],
+                    write=True,
+                )
+
+        task = broker._task_for(broker.read_broker(self.repo), run)
+        self.assertEqual(
+            (task["state"], task["paths"], task["basis"], task["action"]),
+            ("allocated", [], "", "pending"),
+        )
+
+    def test_revalidate_rechecks_ownership_after_primary_snapshot(self):
+        run = ".kimiflow/run-a"
+        target = self.allocate(run)
+        basis = self.write_plan(target, run)
+        broker.declare(
+            target,
+            run,
+            basis,
+            paths=["feature.txt"],
+            write=True,
+        )
+        declared_main = broker._task_for(
+            broker.read_broker(self.repo),
+            run,
+        )["declared_main"]
+        self.clear_active()
+        self.commit_file(
+            self.repo,
+            "predecessor.txt",
+            "primary\n",
+            "primary advance",
+        )
+        original_snapshot = broker._primary_envelope_snapshot
+        injected = False
+
+        def drift_after_snapshot(*args, **kwargs):
+            nonlocal injected
+            result = original_snapshot(*args, **kwargs)
+            if not injected:
+                injected = True
+                self.git(self.repo, "worktree", "unlock", target)
+                self.git(
+                    self.repo,
+                    "worktree",
+                    "lock",
+                    "--reason",
+                    "kimiflow:forged:.kimiflow/foreign",
+                    target,
+                )
+            return result
+
+        with mock.patch.object(
+            broker,
+            "_primary_envelope_snapshot",
+            side_effect=drift_after_snapshot,
+        ):
+            with self.assertRaisesRegex(
+                wp.WorkspaceError,
+                "revalidation ownership changed during operation",
+            ):
+                broker.revalidate(
+                    target,
+                    run,
+                    basis,
+                    write=True,
+                )
+
+        task = broker._task_for(broker.read_broker(self.repo), run)
+        self.assertEqual(task["declared_main"], declared_main)
+        self.assertEqual(
+            broker.write_gate(target, run, basis)["reason"],
+            "identity-drift",
+        )
+
     def test_integration_rechecks_late_peer_collision(self):
         run = ".kimiflow/run-a"
-        foreign = os.path.join(self.temp, "foreign")
-        self.git(self.repo, "worktree", "add", "-b", "foreign", foreign)
         target = self.allocate(run)
+        foreign = broker.route(
+            self.repo,
+            ".kimiflow/run-peer",
+            write=True,
+        )["root"]
         self.clear_active()
         basis = self.write_plan(target, run)
         declaration = broker.declare(
@@ -378,9 +1498,12 @@ class WorktreeBrokerCase(unittest.TestCase):
 
     def test_integration_serializes_truncated_peer_envelope(self):
         run = ".kimiflow/run-a"
-        foreign = os.path.join(self.temp, "foreign")
-        self.git(self.repo, "worktree", "add", "-b", "foreign", foreign)
         target = self.allocate(run)
+        foreign = broker.route(
+            self.repo,
+            ".kimiflow/run-peer",
+            write=True,
+        )["root"]
         self.clear_active()
         basis = self.write_plan(target, run)
         broker.declare(
@@ -411,9 +1534,12 @@ class WorktreeBrokerCase(unittest.TestCase):
 
     def test_integration_bounds_combined_peer_envelope(self):
         run = ".kimiflow/run-a"
-        foreign = os.path.join(self.temp, "foreign")
-        self.git(self.repo, "worktree", "add", "-b", "foreign", foreign)
         target = self.allocate(run)
+        foreign = broker.route(
+            self.repo,
+            ".kimiflow/run-peer",
+            write=True,
+        )["root"]
         self.clear_active()
         basis = self.write_plan(target, run)
         broker.declare(target, run, basis, paths=["task.txt"], write=True)
@@ -450,13 +1576,11 @@ class WorktreeBrokerCase(unittest.TestCase):
         self.assertEqual(declaration["action"], "disjoint")
         self.commit_file(self.repo, "api/schema.proto", "main\n", "main schema")
         self.commit_file(target, "src/schema.proto", "task\n", "task schema")
-        check = json.dumps([sys.executable, "-c", "raise SystemExit(0)"])
-
-        result = broker.integrate(self.repo, run, checks=[check], write=True)
+        result = broker.revalidate(target, run, basis, write=True)
 
         self.assertEqual(
-            (result["status"], result["reason"], result["collision"]),
-            ("ready-to-integrate", "peer-collision", "serialize"),
+            (result["status"], result["reason"]),
+            ("needs-reconcile", "primary-advance-collision"),
         )
 
     def test_integrate_reconciles_diverged_main_then_fast_forwards_and_records_receipt(self):
@@ -546,6 +1670,64 @@ class WorktreeBrokerCase(unittest.TestCase):
         ):
             broker.integrate(self.repo, run, checks=[check], write=True)
 
+    def test_integration_rejects_a_clean_foreign_worktree(self):
+        run = ".kimiflow/run-a"
+        target = self.allocate(run)
+        self.clear_active()
+        basis = self.write_plan(target, run)
+        broker.declare(
+            target,
+            run,
+            basis,
+            paths=["feature.txt"],
+            write=True,
+        )
+        self.commit_file(
+            target,
+            "feature.txt",
+            "task\n",
+            "task change",
+        )
+        foreign = os.path.join(self.temp, "late-clean-foreign")
+        self.git(
+            self.repo,
+            "worktree",
+            "add",
+            "-b",
+            "late-clean-foreign",
+            foreign,
+        )
+        main_before = self.git(
+            self.repo,
+            "rev-parse",
+            "HEAD",
+        ).stdout.strip()
+        gate = broker.write_gate(target, run, basis)
+        check = json.dumps(
+            [sys.executable, "-c", "raise SystemExit(0)"]
+        )
+
+        result = broker.integrate(
+            self.repo,
+            run,
+            checks=[check],
+            write=True,
+        )
+
+        self.assertEqual(
+            (gate["status"], gate["reason"]),
+            ("CLOSED", "foreign-worktree-ambiguous"),
+        )
+        self.assertEqual(
+            (result["status"], result["reason"]),
+            ("ready-to-integrate", "foreign-worktree-ambiguous"),
+        )
+        self.assertEqual(
+            self.git(self.repo, "rev-parse", "HEAD").stdout.strip(),
+            main_before,
+        )
+        self.assertTrue(os.path.isdir(foreign))
+
     def test_integration_blocks_colliding_ignored_primary_path(self):
         run = ".kimiflow/run-a"
         target = self.allocate(run)
@@ -613,6 +1795,35 @@ class WorktreeBrokerCase(unittest.TestCase):
                 check=False,
             ).returncode,
             0,
+        )
+
+    def test_integrate_returns_terminal_receipt_idempotently(self):
+        run = ".kimiflow/run-a"
+        target, _, delivered = self.integrated_task(run)
+        self.write_active(
+            run=".kimiflow/run-later",
+            affected=("later.txt",),
+        )
+
+        repeated = broker.integrate(self.repo, run, write=True)
+
+        self.assertEqual(
+            (
+                repeated["status"],
+                repeated["integrated_head"],
+                repeated["idempotent"],
+            ),
+            ("integrated", delivered["integrated_head"], True),
+        )
+        self.assertEqual(
+            broker._task_for(broker.read_broker(self.repo), run)["state"],
+            "integrated",
+        )
+        self.clear_active()
+        self.write_terminal(target, run)
+        self.assertEqual(
+            broker.retire(self.repo, run, write=True)["status"],
+            "retired",
         )
 
     def test_failed_integration_check_preserves_main_and_refuses_retirement(self):
@@ -707,9 +1918,12 @@ class WorktreeBrokerCase(unittest.TestCase):
 
     def test_integration_rechecks_peer_collision_after_passing_check(self):
         run = ".kimiflow/run-a"
-        foreign = os.path.join(self.temp, "foreign")
-        self.git(self.repo, "worktree", "add", "-b", "foreign", foreign)
         target = self.allocate(run)
+        foreign = broker.route(
+            self.repo,
+            ".kimiflow/run-peer",
+            write=True,
+        )["root"]
         self.clear_active()
         basis = self.write_plan(target, run)
         broker.declare(target, run, basis, paths=["feature.txt"], write=True)
@@ -731,9 +1945,12 @@ class WorktreeBrokerCase(unittest.TestCase):
 
     def test_integration_rechecks_peer_at_delivery_boundary(self):
         run = ".kimiflow/run-a"
-        foreign = os.path.join(self.temp, "foreign")
-        self.git(self.repo, "worktree", "add", "-b", "foreign", foreign)
         target = self.allocate(run)
+        foreign = broker.route(
+            self.repo,
+            ".kimiflow/run-peer",
+            write=True,
+        )["root"]
         self.clear_active()
         basis = self.write_plan(target, run)
         broker.declare(target, run, basis, paths=["feature.txt"], write=True)
@@ -767,6 +1984,77 @@ class WorktreeBrokerCase(unittest.TestCase):
             (result["status"], result["reason"], result["collision"]),
             ("ready-to-integrate", "peer-collision-at-delivery-boundary", "serialize"),
         )
+
+    def test_integration_rejects_clean_foreign_at_delivery_boundary(self):
+        run = ".kimiflow/run-a"
+        target = self.allocate(run)
+        self.clear_active()
+        basis = self.write_plan(target, run)
+        broker.declare(
+            target,
+            run,
+            basis,
+            paths=["feature.txt"],
+            write=True,
+        )
+        self.commit_file(
+            target,
+            "feature.txt",
+            "task\n",
+            "task feature",
+        )
+        main_before = self.git(
+            self.repo,
+            "rev-parse",
+            "HEAD",
+        ).stdout.strip()
+        check = json.dumps(
+            [sys.executable, "-c", "raise SystemExit(0)"]
+        )
+        foreign = os.path.join(self.temp, "late-boundary-foreign")
+        original_write = broker._write_broker
+        injected = False
+
+        def inject_foreign_after_journal(descriptor, state):
+            nonlocal injected
+            result = original_write(descriptor, state)
+            task = state["tasks"][0]
+            if not injected and task["state"] == "integrating":
+                injected = True
+                self.git(
+                    self.repo,
+                    "worktree",
+                    "add",
+                    "-b",
+                    "late-boundary-foreign",
+                    foreign,
+                )
+            return result
+
+        with mock.patch.object(
+            broker,
+            "_write_broker",
+            side_effect=inject_foreign_after_journal,
+        ):
+            result = broker.integrate(
+                self.repo,
+                run,
+                checks=[check],
+                write=True,
+            )
+
+        self.assertEqual(
+            (result["status"], result["reason"]),
+            (
+                "ready-to-integrate",
+                "foreign-worktree-at-delivery-boundary",
+            ),
+        )
+        self.assertEqual(
+            self.git(self.repo, "rev-parse", "HEAD").stdout.strip(),
+            main_before,
+        )
+        self.assertTrue(os.path.isdir(foreign))
 
     def test_integration_rechecks_primary_and_task_refs_at_delivery_boundary(self):
         run = ".kimiflow/run-a"
@@ -861,9 +2149,12 @@ class WorktreeBrokerCase(unittest.TestCase):
 
     def test_atomic_delivery_refuses_a_peer_commit_at_the_ref_boundary(self):
         run = ".kimiflow/run-a"
-        foreign = os.path.join(self.temp, "foreign")
-        self.git(self.repo, "worktree", "add", "-b", "foreign", foreign)
         target = self.allocate(run)
+        foreign = broker.route(
+            self.repo,
+            ".kimiflow/run-peer",
+            write=True,
+        )["root"]
         self.clear_active()
         basis = self.write_plan(target, run)
         broker.declare(target, run, basis, paths=["feature.txt"], write=True)
@@ -896,9 +2187,12 @@ class WorktreeBrokerCase(unittest.TestCase):
 
     def test_atomic_delivery_rolls_back_a_dirty_peer_at_the_ref_boundary(self):
         run = ".kimiflow/run-a"
-        foreign = os.path.join(self.temp, "foreign")
-        self.git(self.repo, "worktree", "add", "-b", "foreign", foreign)
         target = self.allocate(run)
+        foreign = broker.route(
+            self.repo,
+            ".kimiflow/run-peer",
+            write=True,
+        )["root"]
         self.clear_active()
         basis = self.write_plan(target, run)
         broker.declare(target, run, basis, paths=["feature.txt"], write=True)
@@ -1221,9 +2515,12 @@ class WorktreeBrokerCase(unittest.TestCase):
 
     def test_integration_recovery_rolls_back_a_late_peer_collision(self):
         run = ".kimiflow/run-a"
-        foreign = os.path.join(self.temp, "foreign")
-        self.git(self.repo, "worktree", "add", "-b", "foreign", foreign)
         target = self.allocate(run)
+        foreign = broker.route(
+            self.repo,
+            ".kimiflow/run-peer",
+            write=True,
+        )["root"]
         self.clear_active()
         basis = self.write_plan(target, run)
         broker.declare(target, run, basis, paths=["feature.txt"], write=True)
@@ -1673,22 +2970,33 @@ class WorktreeBrokerCase(unittest.TestCase):
         self.write_active()
 
         with mock.patch.dict(os.environ, {"CODEX_HOME": codex_home}):
-            result = broker.route(self.repo, ".kimiflow/run-a", write=True)
-            basis = self.write_plan(result["root"], ".kimiflow/run-a")
-            collision = broker.declare(
-                result["root"],
-                ".kimiflow/run-a",
-                basis,
-                paths=["foreign-only.txt"],
-                write=True,
-            )
-        self.assertEqual(result["status"], "allocated")
-        self.assertEqual((collision["status"], collision["action"]), ("serialize", "serialize"))
-        self.assertNotEqual(os.path.realpath(result["root"]), os.path.realpath(foreign))
+            with self.assertRaises(wp.WorkspaceError):
+                broker.route(self.repo, ".kimiflow/run-a", write=True)
         self.assertTrue(os.path.isdir(foreign))
         self.assertEqual(self.git(foreign, "rev-parse", "HEAD").stdout.strip(), foreign_head)
         registry = wp.read_registry(self.repo)
         self.assertNotIn(os.path.realpath(foreign), [entry["path"] for entry in registry["entries"]])
+
+    def test_fleet_ownership_negatives_preserve_foreign_and_peer_trees(self):
+        foreign = os.path.join(self.temp, "manual")
+        self.git(self.repo, "worktree", "add", "-b", "manual", foreign)
+        foreign_head = self.commit_file(foreign, "manual.txt", "manual\n", "manual")
+        self.write_active()
+
+        with self.assertRaises(wp.WorkspaceError):
+            broker.route(self.repo, ".kimiflow/run-a", write=True)
+        duplicate = {
+            "schema_version": 1,
+            "entries": [
+                {"path": os.path.realpath(foreign), "run": ".kimiflow/run-a", "identity": "a" * 64},
+                {"path": os.path.realpath(self.repo), "run": ".kimiflow/run-b", "identity": "a" * 64},
+            ],
+        }
+        with self.assertRaises(wp.WorkspaceError):
+            wp.validate_registry(duplicate)
+        self.assertEqual(self.git(foreign, "rev-parse", "HEAD").stdout.strip(), foreign_head)
+        self.assertTrue(os.path.isfile(os.path.join(foreign, "manual.txt")))
+        self.assertFalse(wp.read_registry(self.repo)["entries"])
 
     def test_backward_compatible_status_and_candidate_packaging(self):
         self.ignore("dist/")

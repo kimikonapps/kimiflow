@@ -792,16 +792,34 @@ class WorkspacePreflightCase(unittest.TestCase):
         with self.assertRaises(wp.WorkspaceError):
             wp.register(self.repo, linked, run, write=True)
 
-    def test_policy_caps_temporary_worktrees_at_one(self):
-        first = self.add_tree("policy-one")
-        run = self.write_run()
-        wp.register(self.repo, first, run, write=True)
+    def test_policy_caps_temporary_worktrees_at_three(self):
+        for index in range(3):
+            linked = self.add_tree("policy-%s" % index)
+            run = self.write_run(slug="run-policy-%s" % index)
+            wp.register(self.repo, linked, run, write=True)
         status = wp.build_status(self.repo)
         self.assertEqual(
             status["policy"],
-            {"mode": "solo", "new_worktrees": "auto-when-main-busy", "max_temporary": 1},
+            {"mode": "fleet", "new_worktrees": "auto-when-main-busy", "max_temporary": 3},
         )
         self.assertFalse(status["can_register_temporary"])
+
+    def test_multi_registry_remove_preserves_peer_entries(self):
+        registrations = []
+        for index in range(3):
+            linked = self.add_tree("fleet-remove-%s" % index)
+            run = self.write_run(slug="run-remove-%s" % index)
+            result = wp.register(self.repo, linked, run, write=True)
+            registrations.append(result["entry"])
+        self.write_run(slug="run-remove-1", status="done")
+
+        result = wp.remove(self.repo, registrations[1]["path"], write=True)
+
+        self.assertEqual(result["status"], "archived")
+        self.assertEqual(
+            wp.read_registry(self.repo)["entries"],
+            [registrations[0], registrations[2]],
+        )
 
     def test_state_value_reads_canonical_affected_file_list(self):
         source = "Status: active\nAffected files:\n- src/a.py\n- src/b.py\nPhase 0: done\n"

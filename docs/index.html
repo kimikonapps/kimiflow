@@ -963,9 +963,9 @@ html&gt;body{padding:0}&lt;/style&gt;
 
       &lt;g class=&quot;kfg-node kfg-satellite kfg-workspace&quot; data-node=&quot;workspace&quot; transform=&quot;translate(38 107)&quot;&gt;
         &lt;rect width=&quot;179&quot; height=&quot;72&quot; rx=&quot;14&quot;&gt;&lt;/rect&gt;
-        &lt;text x=&quot;89.5&quot; y=&quot;25&quot; text-anchor=&quot;middle&quot;&gt;Worktree-Broker&lt;/text&gt;
+        &lt;text x=&quot;89.5&quot; y=&quot;25&quot; text-anchor=&quot;middle&quot;&gt;Worktree-Fleet&lt;/text&gt;
         &lt;text class=&quot;kfg-secondary&quot; x=&quot;89.5&quot; y=&quot;46&quot; text-anchor=&quot;middle&quot;&gt;main frei → direkt&lt;/text&gt;
-        &lt;text class=&quot;kfg-secondary&quot; x=&quot;89.5&quot; y=&quot;64&quot; text-anchor=&quot;middle&quot;&gt;sonst 1 Tree + FIFO&lt;/text&gt;
+        &lt;text class=&quot;kfg-secondary&quot; x=&quot;89.5&quot; y=&quot;64&quot; text-anchor=&quot;middle&quot;&gt;sonst bis 3 Trees + FIFO&lt;/text&gt;
       &lt;/g&gt;
       &lt;g class=&quot;kfg-node kfg-satellite kfg-user&quot; data-node=&quot;product&quot; transform=&quot;translate(934 126)&quot;&gt;
         &lt;rect width=&quot;143&quot; height=&quot;74&quot; rx=&quot;14&quot;&gt;&lt;/rect&gt;
@@ -1057,7 +1057,7 @@ html&gt;body{padding:0}&lt;/style&gt;
 
   &lt;ol class=&quot;kfg-mobile&quot; aria-label=&quot;Ausgewählter Kimiflow-Teilgraph&quot;&gt;
     &lt;li data-mobile-node=&quot;goal&quot;&gt;&lt;strong&gt;Ziel&lt;/strong&gt; → fachliche Anforderungen&lt;/li&gt;
-    &lt;li data-mobile-node=&quot;workspace&quot;&gt;&lt;strong&gt;Workspace-Broker&lt;/strong&gt; → main oder genau ein verwalteter Worktree&lt;/li&gt;
+    &lt;li data-mobile-node=&quot;workspace&quot;&gt;&lt;strong&gt;Workspace-Fleet&lt;/strong&gt; → Primary direkt oder bis zu drei verwaltete Worktrees mit exklusiven Leases&lt;/li&gt;
     &lt;li data-mobile-node=&quot;product&quot;&gt;&lt;strong&gt;Produktfragen&lt;/strong&gt; → nur unbekannte fachliche Entscheidungen&lt;/li&gt;
     &lt;li data-mobile-node=&quot;memory&quot;&gt;&lt;strong&gt;Memory&lt;/strong&gt; → selektive Learnings, Project-Deltas und Vault-Kontext&lt;/li&gt;
     &lt;li data-mobile-node=&quot;code&quot;&gt;&lt;strong&gt;Code-Intelligence&lt;/strong&gt; → nur bei großen, eval-bewiesenen Fällen&lt;/li&gt;
@@ -1319,8 +1319,8 @@ html&gt;body{padding:0}&lt;/style&gt;
         nodes: [&#x27;goal&#x27;, &#x27;workspace&#x27;, &#x27;memory&#x27;, &#x27;tests&#x27;, &#x27;evidence&#x27;, &#x27;commit&#x27;, ...phaseNodes],
         edges: [...sequenceEdges, ...feedbackEdges, &#x27;goal&#x27;, &#x27;workspace&#x27;, &#x27;memory&#x27;, &#x27;tests&#x27;, &#x27;evidence-controller&#x27;, &#x27;evidence-review&#x27;, &#x27;commit&#x27;],
         focus: [&#x27;workspace&#x27;, &#x27;p0&#x27;, &#x27;p7&#x27;, &#x27;commit&#x27;],
-        text: &#x27;Bei paralleler Arbeit entscheidet der Workspace-Broker vor Phase 0: freies main läuft direkt, ein dirty oder belegtes main erhält höchstens einen gesperrten Kimiflow-Worktree; weitere Runs warten FIFO.&#x27;,
-        desc: &#x27;Der Parallel-Teilgraph hebt den Ein-Slot-Worktree-Broker, die Phasenroute und die sichere Commit-Integration hervor.&#x27;
+        text: &#x27;Bei paralleler Arbeit entscheidet die Workspace-Fleet vor Phase 0: freies Primary läuft direkt, ein dirty oder belegtes Primary erhält bis zu drei gesperrte Kimiflow-Worktrees mit exklusiven Leases; weitere Runs warten FIFO, Fortschritte erzwingen Revalidierung.&#x27;,
+        desc: &#x27;Der Parallel-Teilgraph hebt die Drei-Slot-Fleet, blocked_by, needs-reconcile und die serialisierte Candidate-first-Integration hervor.&#x27;
       },
       release: {
         label: &#x27;Release&#x27;,

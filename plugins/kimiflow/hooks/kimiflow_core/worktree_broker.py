@@ -1,4 +1,4 @@
-"""Deterministic one-slot worktree routing, queueing and integration."""
+"""Deterministic three-slot Fleet routing, leasing and integration."""
 
 import hashlib
 import json
@@ -10,8 +10,12 @@ import subprocess
 from . import workspace_preflight as wp
 
 
-BROKER_NAME = "WORKTREE_BROKER.json"
-BROKER_SCHEMA = 1
+BROKER_NAME = "FLEET.json"
+LEGACY_BROKER_NAME = "WORKTREE_BROKER.json"
+LEGACY_ARCHIVE_NAME = "WORKTREE_BROKER.schema1.migrated.json"
+BROKER_SCHEMA = 2
+LEGACY_BROKER_SCHEMA = 1
+MAX_WORKTREES = 3
 MAX_TASKS = 32
 MAX_PATHS = 100
 MAX_CONTRACTS = 32
@@ -34,6 +38,7 @@ TASK_STATES = {
     "integrating",
     "integrated",
     "verification-failed",
+    "needs-reconcile",
     "retired",
 }
 JOURNAL_KINDS = {"allocation", "reconcile", "fast-forward", "retirement"}
@@ -67,6 +72,22 @@ TASK_KEYS = {
     "check_results",
     "journal",
     "archive",
+    "blocked_by",
+    "primary_owner",
+    "primary_paths",
+    "primary_contracts",
+    "primary_basis",
+    "verified_main",
+    "verified_task",
+}
+LEGACY_TASK_KEYS = TASK_KEYS - {
+    "blocked_by",
+    "primary_owner",
+    "primary_paths",
+    "primary_contracts",
+    "primary_basis",
+    "verified_main",
+    "verified_task",
 }
 
 
@@ -278,9 +299,21 @@ def parse_check_arguments(values):
     return checks
 
 
-def _validate_task(task):
-    if not isinstance(task, dict) or set(task) != TASK_KEYS:
+def _validate_task(task, legacy=False):
+    expected_keys = LEGACY_TASK_KEYS if legacy else TASK_KEYS
+    if not isinstance(task, dict) or set(task) != expected_keys:
         raise wp.WorkspaceError("malformed worktree broker task")
+    if legacy:
+        task = {
+            **task,
+            "blocked_by": [],
+            "primary_owner": "",
+            "primary_paths": [],
+            "primary_contracts": [],
+            "primary_basis": "",
+            "verified_main": "",
+            "verified_task": "",
+        }
     run = task["run"]
     _slug(run)
     if not isinstance(task["identity"], str) or not wp.IDENTITY_RE.fullmatch(task["identity"]):
@@ -305,9 +338,31 @@ def _validate_task(task):
         raise wp.WorkspaceError("malformed worktree broker task")
     if task["basis"] and not re.fullmatch(r"[0-9a-f]{64}", task["basis"]):
         raise wp.WorkspaceError("malformed worktree broker task")
-    for key in ("declared_main", "task_head", "integrated_head"):
+    for key in (
+        "declared_main",
+        "task_head",
+        "integrated_head",
+        "verified_main",
+        "verified_task",
+    ):
         if task[key] and not SHA_RE.fullmatch(task[key]):
             raise wp.WorkspaceError("malformed worktree broker task")
+    if (
+        not isinstance(task["blocked_by"], list)
+        or len(task["blocked_by"]) > MAX_TASKS
+        or task["blocked_by"] != sorted(set(task["blocked_by"]))
+        or any(
+            not isinstance(value, str) or not wp.IDENTITY_RE.fullmatch(value)
+            for value in task["blocked_by"]
+        )
+    ):
+        raise wp.WorkspaceError("malformed worktree broker task")
+    if task["primary_owner"] and not re.fullmatch(r"[0-9a-f]{64}", task["primary_owner"]):
+        raise wp.WorkspaceError("malformed worktree broker task")
+    primary_paths = normalize_paths(task["primary_paths"])
+    primary_contracts = infer_contracts(primary_paths, task["primary_contracts"])
+    if task["primary_basis"] and not re.fullmatch(r"[0-9a-f]{64}", task["primary_basis"]):
+        raise wp.WorkspaceError("malformed worktree broker task")
     commands = [_validate_argv(value) for value in task["check_commands"]]
     if len(commands) > MAX_CHECKS:
         raise wp.WorkspaceError("malformed worktree broker task")
@@ -367,6 +422,13 @@ def _validate_task(task):
         "check_results": results,
         "journal": journal,
         "archive": archive,
+        "blocked_by": list(task["blocked_by"]),
+        "primary_owner": task["primary_owner"],
+        "primary_paths": primary_paths,
+        "primary_contracts": primary_contracts,
+        "primary_basis": task["primary_basis"],
+        "verified_main": task["verified_main"],
+        "verified_task": task["verified_task"],
     }
 
 
@@ -380,51 +442,45 @@ def validate_broker(data):
     tasks = [_validate_task(task) for task in data["tasks"]]
     runs = [task["run"] for task in tasks]
     identities = [task["identity"] for task in tasks]
-    if len(runs) != len(set(runs)) or len(identities) != len(set(identities)):
+    paths = [task["path"] for task in tasks if task["path"]]
+    branches = [task["branch"] for task in tasks if task["branch"]]
+    if (
+        len(runs) != len(set(runs))
+        or len(identities) != len(set(identities))
+        or len(paths) != len(set(paths))
+        or len(branches) != len(set(branches))
+    ):
         raise wp.WorkspaceError("malformed worktree broker state")
     return {"schema_version": BROKER_SCHEMA, "tasks": tasks}
 
 
-def _read_broker_descriptor(directory_descriptor):
-    descriptor = wp.registry_descriptor(directory_descriptor)
-    if descriptor is None:
-        return {"schema_version": BROKER_SCHEMA, "tasks": []}
+def validate_legacy_broker(data):
+    if (
+        not isinstance(data, dict)
+        or set(data) != {"schema_version", "tasks"}
+        or data["schema_version"] != LEGACY_BROKER_SCHEMA
+        or not isinstance(data["tasks"], list)
+        or len(data["tasks"]) > MAX_TASKS
+    ):
+        raise wp.WorkspaceError("malformed legacy worktree broker state")
+    tasks = [_validate_task(task, legacy=True) for task in data["tasks"]]
+    return validate_broker({"schema_version": BROKER_SCHEMA, "tasks": tasks})
+
+
+def _read_state_file(descriptor, name, validator):
     flags = os.O_RDONLY | (os.O_NOFOLLOW if hasattr(os, "O_NOFOLLOW") else 0)
     handle = None
     try:
-        handle = os.open(BROKER_NAME, flags, dir_fd=descriptor)
+        handle = os.open(name, flags, dir_fd=descriptor)
         info = os.fstat(handle)
         if not stat.S_ISREG(info.st_mode):
             raise wp.WorkspaceError("unsafe worktree broker state")
         payload = os.read(handle, MAX_BROKER_BYTES + 1)
         if len(payload) > MAX_BROKER_BYTES:
             raise wp.WorkspaceError("malformed worktree broker state")
-        return validate_broker(json.loads(payload.decode("utf-8")))
+        return validator(json.loads(payload.decode("utf-8")))
     except FileNotFoundError:
-        backups = sorted(
-            name
-            for name in os.listdir(descriptor)
-            if name.startswith(".kimiflow-backup-%s-" % BROKER_NAME)
-        )
-        if len(backups) > 1:
-            raise wp.WorkspaceError("ambiguous worktree broker recovery state")
-        if backups:
-            backup_handle = None
-            try:
-                backup_handle = os.open(backups[0], flags, dir_fd=descriptor)
-                backup_info = os.fstat(backup_handle)
-                if not stat.S_ISREG(backup_info.st_mode):
-                    raise wp.WorkspaceError("unsafe worktree broker recovery state")
-                backup_payload = os.read(backup_handle, MAX_BROKER_BYTES + 1)
-                if len(backup_payload) > MAX_BROKER_BYTES:
-                    raise wp.WorkspaceError("malformed worktree broker recovery state")
-                return validate_broker(
-                    json.loads(backup_payload.decode("utf-8"))
-                )
-            finally:
-                if backup_handle is not None:
-                    os.close(backup_handle)
-        return {"schema_version": BROKER_SCHEMA, "tasks": []}
+        return None
     except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
         if isinstance(exc, wp.WorkspaceError):
             raise
@@ -432,6 +488,80 @@ def _read_broker_descriptor(directory_descriptor):
     finally:
         if handle is not None:
             os.close(handle)
+
+
+def _exists_regular(descriptor, name):
+    try:
+        info = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise wp.WorkspaceError("cannot inspect worktree broker state") from exc
+    if not stat.S_ISREG(info.st_mode):
+        raise wp.WorkspaceError("unsafe worktree broker state")
+    return True
+
+
+def _single_backup_name(descriptor, name):
+    backups = sorted(
+        candidate
+        for candidate in os.listdir(descriptor)
+        if candidate.startswith(".kimiflow-backup-%s-" % name)
+    )
+    if len(backups) > 1:
+        raise wp.WorkspaceError("ambiguous worktree broker recovery state")
+    if backups:
+        _exists_regular(descriptor, backups[0])
+    return backups[0] if backups else ""
+
+
+def _validate_registry_alignment(descriptor, state):
+    registry = wp.read_registry_descriptor(descriptor)
+    for entry in registry["entries"]:
+        if not any(
+            task["run"] == entry["run"]
+            and task["identity"] == entry["identity"]
+            and task["path"] == entry["path"]
+            and task["state"] != "retired"
+            for task in state["tasks"]
+        ):
+            raise wp.WorkspaceError(
+                "canonical Fleet state does not own live Registry entry"
+            )
+    return state
+
+
+def _read_broker_descriptor(directory_descriptor):
+    descriptor = wp.registry_descriptor(directory_descriptor)
+    if descriptor is None:
+        return {"schema_version": BROKER_SCHEMA, "tasks": []}
+    fleet = _read_state_file(descriptor, BROKER_NAME, validate_broker)
+    if fleet is not None:
+        return _validate_registry_alignment(descriptor, fleet)
+    fleet_backup = _single_backup_name(descriptor, BROKER_NAME)
+    if fleet_backup:
+        recovered = _read_state_file(descriptor, fleet_backup, validate_broker)
+        if recovered is None:
+            raise wp.WorkspaceError("worktree broker recovery state disappeared")
+        return _validate_registry_alignment(descriptor, recovered)
+    if _exists_regular(descriptor, LEGACY_ARCHIVE_NAME):
+        raise wp.WorkspaceError("canonical Fleet state missing after legacy migration")
+    legacy = _read_state_file(descriptor, LEGACY_BROKER_NAME, validate_legacy_broker)
+    if legacy is not None:
+        return _validate_registry_alignment(descriptor, legacy)
+    legacy_backup = _single_backup_name(descriptor, LEGACY_BROKER_NAME)
+    if legacy_backup:
+        recovered = _read_state_file(
+            descriptor,
+            legacy_backup,
+            validate_legacy_broker,
+        )
+        if recovered is None:
+            raise wp.WorkspaceError("legacy broker recovery state disappeared")
+        return _validate_registry_alignment(descriptor, recovered)
+    if wp.read_registry_descriptor(descriptor)["entries"]:
+        raise wp.WorkspaceError("canonical Fleet state missing for live Registry")
+    return {"schema_version": BROKER_SCHEMA, "tasks": []}
 
 
 def read_broker(primary, directory_descriptor=None):
@@ -450,26 +580,31 @@ def _receipt_repository(task):
     return ""
 
 
+def _validate_terminal_ref_receipt(task):
+    repository = _receipt_repository(task)
+    if (
+        not repository
+        or not os.path.isdir(repository)
+        or not task["integrated_head"]
+        or not task["primary_ref"]
+        or _task_branch_head(repository, task) != task["integrated_head"]
+        or not _ancestor(
+            repository,
+            task["integrated_head"],
+            _ref_head(repository, task["primary_ref"]),
+        )
+    ):
+        raise wp.WorkspaceError(
+            "worktree broker terminal receipt no longer matches Git refs"
+        )
+    return repository
+
+
 def _validate_terminal_receipts(data):
     for task in data["tasks"]:
         if task["state"] not in {"integrated", "retired"}:
             continue
-        repository = _receipt_repository(task)
-        if (
-            not repository
-            or not os.path.isdir(repository)
-            or not task["integrated_head"]
-            or not task["primary_ref"]
-            or _task_branch_head(repository, task) != task["integrated_head"]
-            or not _ancestor(
-                repository,
-                task["integrated_head"],
-                _ref_head(repository, task["primary_ref"]),
-            )
-        ):
-            raise wp.WorkspaceError(
-                "worktree broker terminal receipt no longer matches Git refs"
-            )
+        repository = _validate_terminal_ref_receipt(task)
         if task["state"] == "integrated":
             primary = wp.worktree_records(repository)[0]["path"]
             tree = wp.worktree_status(task["path"])
@@ -493,19 +628,31 @@ def _validate_terminal_receipts(data):
                 )
 
 
-def _write_broker(directory_descriptor, data):
+def _write_broker(
+    directory_descriptor,
+    data,
+    publication_guard=None,
+    publication_error="worktree broker publication authority changed",
+):
     descriptor = wp.registry_descriptor(directory_descriptor)
     wp.recover_atomic_directory_name(descriptor, BROKER_NAME)
     previous = _read_broker_descriptor(descriptor)
+    legacy_exists = _exists_regular(descriptor, LEGACY_BROKER_NAME)
+    legacy_backup = _single_backup_name(descriptor, LEGACY_BROKER_NAME)
+    archive_exists = _exists_regular(descriptor, LEGACY_ARCHIVE_NAME)
+    if archive_exists and (legacy_exists or legacy_backup):
+        raise wp.WorkspaceError("ambiguous legacy Fleet migration markers")
     validated = validate_broker(data)
     _validate_terminal_receipts(validated)
+    if publication_guard is not None and not publication_guard():
+        raise wp.WorkspaceError(publication_error)
 
     def receipt_guard():
         try:
             _validate_terminal_receipts(validated)
         except wp.WorkspaceError:
             return False
-        return True
+        return publication_guard is None or publication_guard()
 
     payload = (
         json.dumps(validated, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
@@ -520,8 +667,23 @@ def _write_broker(directory_descriptor, data):
             payload,
             _commit_guard=receipt_guard,
         )
+        if legacy_exists or legacy_backup:
+            wp.recover_atomic_directory_name(descriptor, LEGACY_BROKER_NAME)
+            if not _exists_regular(descriptor, LEGACY_BROKER_NAME):
+                raise wp.WorkspaceError(
+                    "legacy broker recovery state disappeared before migration"
+                )
+            os.rename(
+                LEGACY_BROKER_NAME,
+                LEGACY_ARCHIVE_NAME,
+                src_dir_fd=descriptor,
+                dst_dir_fd=descriptor,
+            )
+            os.fsync(descriptor)
         try:
             _validate_terminal_receipts(validated)
+            if publication_guard is not None and not publication_guard():
+                raise wp.WorkspaceError(publication_error)
         except wp.WorkspaceError:
             previous_payload = (
                 json.dumps(
@@ -563,6 +725,13 @@ def _new_task(run):
         "check_results": [],
         "journal": None,
         "archive": None,
+        "blocked_by": [],
+        "primary_owner": "",
+        "primary_paths": [],
+        "primary_contracts": [],
+        "primary_basis": "",
+        "verified_main": "",
+        "verified_task": "",
     }
 
 
@@ -627,6 +796,48 @@ def _active_paths(primary, active):
         return []
 
 
+def _digest_json(value):
+    payload = json.dumps(
+        value,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _active_owner_digest(active):
+    return _digest_json(
+        {
+            "run": active.get("run", "") if active else "",
+            "owner": active.get("owner") if active else None,
+        }
+    )
+
+
+def _primary_envelope_snapshot(primary, active, base=""):
+    status = wp.worktree_status(primary)
+    if status["dirty_paths_truncated"]:
+        raise wp.WorkspaceError("primary path envelope is truncated")
+    paths = list(_active_paths(primary, active))
+    paths.extend(status["dirty_paths"])
+    head = _head(primary)
+    if base and base != head:
+        paths.extend(_changed_paths(primary, base, head))
+    paths = normalize_paths(paths)
+    contracts = infer_contracts(paths)
+    owner = _active_owner_digest(active)
+    basis = _digest_json(
+        {
+            "owner": owner,
+            "paths": paths,
+            "contracts": contracts,
+            "head": head,
+        }
+    )
+    return owner, paths, contracts, basis
+
+
 def _branch_name(primary, slug):
     candidate = "codex/%s" % slug
     for index in range(1, 100):
@@ -681,6 +892,67 @@ def _registered_task_entry(primary, descriptor, task):
     )
 
 
+def _task_ownership_proven(primary, descriptor, task, expected_head):
+    try:
+        entry = _registered_task_entry(primary, descriptor, task)
+        return bool(
+            entry
+            and wp.owner_receipt_matches(entry["path"], entry)
+            and _matching_owned_tree(
+                primary,
+                task,
+                expected_head,
+            )
+        )
+    except (OSError, wp.WorkspaceError):
+        return False
+
+
+def _foreign_worktree_present(status):
+    return any(
+        not tree["primary"] and not tree["kimiflow_owned"]
+        for tree in status["worktrees"]
+    )
+
+
+def _allocation_ownership_proven(primary, task, entry):
+    journal = task["journal"]
+    if not (
+        entry
+        and entry["run"] == task["run"]
+        and entry["identity"] == task["identity"]
+        and entry["path"] == task["path"]
+        and journal
+        and journal["kind"] == "allocation"
+        and journal["main"] == task["base"]
+        and journal["task"] == task["base"]
+    ):
+        return False
+    try:
+        admin_dir = os.path.dirname(wp.owner_receipt_path(task["path"]))
+        with wp.pinned_worktree(
+            task["path"], entry, admin_dir
+        ) as pinned_values:
+            pinned, pinned_admin, _ = pinned_values
+            if not _matching_tree(primary, task):
+                return False
+            current = os.lstat(task["path"])
+            current_admin = os.lstat(admin_dir)
+            return (
+                current.st_dev,
+                current.st_ino,
+                current_admin.st_dev,
+                current_admin.st_ino,
+            ) == (
+                pinned.st_dev,
+                pinned.st_ino,
+                pinned_admin.st_dev,
+                pinned_admin.st_ino,
+            )
+    except (OSError, wp.WorkspaceError):
+        return False
+
+
 def _paths_within_declaration(actual, declared):
     return all(
         any(path == allowed or path.startswith(allowed + "/") for allowed in declared)
@@ -689,6 +961,16 @@ def _paths_within_declaration(actual, declared):
 
 
 def _recover_allocation(primary, state, task, descriptor, write):
+    journal = task["journal"]
+    if (
+        not journal
+        or journal["kind"] != "allocation"
+        or journal["main"] != task["base"]
+        or journal["task"] != task["base"]
+    ):
+        raise wp.WorkspaceError(
+            "allocation recovery refused: journal identity mismatch"
+        )
     registry = wp.read_registry(primary, descriptor)
     owned = next(
         (
@@ -701,6 +983,10 @@ def _recover_allocation(primary, state, task, descriptor, write):
         None,
     )
     if owned:
+        if not _allocation_ownership_proven(primary, task, owned):
+            raise wp.WorkspaceError(
+                "allocation recovery refused: ownership proof mismatch"
+            )
         task["state"] = "allocated"
         task["journal"] = None
         task["task_head"] = _head(task["path"])
@@ -716,11 +1002,14 @@ def _recover_allocation(primary, state, task, descriptor, write):
         "run": task["run"],
         "identity": task["identity"],
     }
-    if wp.owner_receipt_matches(task["path"], recovery_entry):
+    if _allocation_ownership_proven(primary, task, recovery_entry):
         if write:
+            entries = list(registry["entries"])
+            if len(entries) >= MAX_WORKTREES:
+                raise wp.WorkspaceError("allocation recovery refused: Fleet capacity reached")
             wp.write_registry(
                 primary,
-                {"schema_version": 1, "entries": [recovery_entry]},
+                {"schema_version": 1, "entries": entries + [recovery_entry]},
                 descriptor,
             )
         task["state"] = "allocated"
@@ -750,7 +1039,13 @@ def _recover_allocation(primary, state, task, descriptor, write):
 def _allocate(primary, state, task, descriptor, write):
     if task["state"] == "allocating" and _recover_allocation(primary, state, task, descriptor, write):
         return
-    if wp.read_registry(primary, descriptor)["entries"]:
+    if _foreign_worktree_present(
+        wp.build_status(primary, descriptor)
+    ):
+        raise wp.WorkspaceError(
+            "Fleet allocation refused: foreign worktree present"
+        )
+    if len(wp.read_registry(primary, descriptor)["entries"]) >= MAX_WORKTREES:
         task["state"] = "queued"
         if write:
             _write_broker(descriptor, state)
@@ -801,7 +1096,10 @@ def route(root, run, write=False):
         task = _task_for(state, run)
         for pending in state["tasks"]:
             if pending["state"] == "allocating":
-                _recover_allocation(primary, state, pending, descriptor, write)
+                if not _recover_allocation(
+                    primary, state, pending, descriptor, write
+                ):
+                    _allocate(primary, state, pending, descriptor, write)
             elif pending["journal"] and pending["journal"]["kind"] == "retirement":
                 _recover_retirement(primary, state, pending, descriptor, write)
         active = _active_run(primary)
@@ -830,9 +1128,11 @@ def route(root, run, write=False):
                 "run": run,
             }
         if task and task["state"] in {
+            "allocating",
             "allocated",
             "waiting",
             "ready-to-integrate",
+            "needs-reconcile",
             "integrated",
             "verification-failed",
         }:
@@ -900,18 +1200,24 @@ def route(root, run, write=False):
                 "root": primary,
                 "run": run,
             }
-        live = [
-            item
-            for item in state["tasks"]
-            if item is not task and item["state"] not in {"queued", "retired"}
-        ]
         first_queued = queued[0] if queued else None
-        if live or (first_queued is not None and first_queued is not task):
+        capacity = MAX_WORKTREES - len(wp.read_registry(primary, descriptor)["entries"])
+        queued_index = queued.index(task) if task in queued else 0
+        if capacity <= 0 or queued_index >= capacity:
             task["state"] = "queued"
             route_status = "queued"
             if write:
                 _write_broker(descriptor, state)
         else:
+            foreign = [
+                tree
+                for tree in status["worktrees"]
+                if not tree["primary"] and not tree["kimiflow_owned"]
+            ]
+            if foreign:
+                raise wp.WorkspaceError(
+                    "Fleet allocation refused: foreign worktree present"
+                )
             _allocate(primary, state, task, descriptor, write)
             route_status = task["state"] if write else "would-allocate"
         return {
@@ -1050,6 +1356,13 @@ def _plan_matches(root, run, basis):
 def _peer_envelope(primary, state, task, descriptor, include_primary=True):
     status = wp.build_status(primary, descriptor)
     active = _active_run(primary)
+    known_tree_paths = {
+        other["path"]
+        for other in state["tasks"]
+        if other is not task
+        and other["state"] != "retired"
+        and other["path"]
+    }
     peer_paths = list(status["dirty_paths"]) if include_primary else []
     if include_primary:
         peer_paths.extend(_changed_paths(primary, task["base"], _head(primary)))
@@ -1062,7 +1375,7 @@ def _peer_envelope(primary, state, task, descriptor, include_primary=True):
         if tree["head"] and SHA_RE.fullmatch(tree["head"]):
             common = _git(
                 primary,
-                ["merge-base", task["base"], tree["head"]],
+                ["merge-base", _head(primary), tree["head"]],
                 check=False,
             )
             if common.returncode == 0:
@@ -1072,17 +1385,31 @@ def _peer_envelope(primary, state, task, descriptor, include_primary=True):
         peer_contracts.extend(infer_contracts(tree_paths))
         if (
             tree["dirty_paths_truncated"]
-            or tree["ignored_paths_truncated"]
-            or (tree["active"] and not tree_paths)
+            or (
+                tree["ignored_paths_truncated"]
+                and (
+                    tree["path"] not in known_tree_paths
+                    or not _kimiflow_only_ignored(tree["path"], tree)
+                )
+            )
+            or (
+                tree["active"]
+                and not tree_paths
+                and tree["path"] not in known_tree_paths
+            )
         ):
             unknown_peer = True
-    if active and active.get("run") != task["run"]:
+    if include_primary and active and active.get("run") != task["run"]:
         active_paths = _active_paths(primary, active)
         peer_paths.extend(active_paths)
         if not active_paths:
             unknown_peer = True
     for other in state["tasks"]:
-        if other is task or other["state"] == "retired":
+        if (
+            other is task
+            or other["state"] in {"integrated", "retired"}
+            or other["action"] != "disjoint"
+        ):
             continue
         peer_paths.extend(other["paths"])
         peer_contracts.extend(other["contracts"])
@@ -1121,6 +1448,98 @@ def _current_peer_collision(
             set(receipt["reasons"]) | {"active-run-path-envelope-unknown"}
         )
     return receipt
+
+
+def _lease_tasks(state):
+    return [
+        task
+        for task in state["tasks"]
+        if task["state"] not in {"integrated", "retired"}
+    ]
+
+
+def _lease_collision(paths, contracts, peer_paths, peer_contracts):
+    if not peer_paths and not peer_contracts:
+        return None
+    return classify_collision(paths, contracts, peer_paths, peer_contracts)
+
+
+def _recompute_leases(primary, state, descriptor):
+    """Recompute worktree lease winners in stable Fleet order."""
+    tasks = _lease_tasks(state)
+    for index, task in enumerate(tasks):
+        if not task["paths"] or not task["basis"]:
+            task["blocked_by"] = []
+            task["collision"] = "unknown"
+            task["action"] = "pending"
+            if task["state"] not in {"queued", "allocating", "needs-reconcile"}:
+                task["state"] = "waiting"
+            continue
+        blockers = []
+        reasons = []
+        verdict = "disjoint"
+        primary_receipt = _lease_collision(
+            task["paths"],
+            task["contracts"],
+            task["primary_paths"],
+            task["primary_contracts"],
+        )
+        if (
+            not task["primary_paths"]
+            and task["primary_owner"] != _active_owner_digest(None)
+        ):
+            blockers.append(task["primary_owner"])
+            reasons.append("primary-lease-envelope-unknown")
+            verdict = "semantic-review"
+        if primary_receipt and primary_receipt["action"] != "disjoint":
+            blockers.append(task["primary_owner"])
+            reasons.extend(primary_receipt["reasons"])
+            verdict = primary_receipt["status"]
+        for earlier in tasks[:index]:
+            if not earlier["paths"] or not earlier["basis"]:
+                blockers.append(earlier["identity"])
+                reasons.append("earlier-lease-envelope-unknown")
+                verdict = "semantic-review" if verdict == "disjoint" else verdict
+                continue
+            receipt = _lease_collision(
+                task["paths"],
+                task["contracts"],
+                earlier["paths"],
+                earlier["contracts"],
+            )
+            if receipt and receipt["action"] != "disjoint":
+                blockers.append(earlier["identity"])
+                reasons.extend(receipt["reasons"])
+                if receipt["status"] == "serialize" or verdict == "disjoint":
+                    verdict = receipt["status"]
+        task["blocked_by"] = sorted(set(value for value in blockers if value))
+        if task["blocked_by"]:
+            task["collision"] = verdict
+            task["action"] = "serialize"
+            if task["state"] not in {"queued", "allocating", "needs-reconcile"}:
+                task["state"] = "waiting"
+        else:
+            task["collision"] = "disjoint"
+            task["action"] = "disjoint"
+            if task["state"] == "waiting":
+                task["state"] = "allocated"
+    return state
+
+
+def _primary_snapshot_valid(task):
+    return bool(
+        task["primary_owner"]
+        and task["primary_basis"]
+        and task["primary_basis"]
+        == _digest_json(
+            {
+                "owner": task["primary_owner"],
+                "paths": task["primary_paths"],
+                "contracts": task["primary_contracts"],
+                "head": task["declared_main"],
+            }
+        )
+    )
 
 
 def _refresh_delivery_collision(
@@ -1205,6 +1624,10 @@ def _post_cas_delivery_reason(
         return "primary-mutated-at-ref-boundary"
     if _ignored_delivery_conflicts(primary, delivered_paths):
         return "ignored-path-collision-at-ref-boundary"
+    if _foreign_worktree_present(
+        wp.build_status(primary, descriptor)
+    ):
+        return "foreign-worktree-at-ref-boundary"
     entry = _registered_task_entry(primary, descriptor, task)
     tree = wp.worktree_status(task["path"])
     if (
@@ -1330,34 +1753,92 @@ def declare(root, run, basis, paths=(), contracts=(), write=False):
             raise wp.WorkspaceError("run has no allocated broker worktree")
         if current != task["path"]:
             raise wp.WorkspaceError("broker declaration must run from its owned task worktree")
+        declaration_head = _head(current)
+        if not _task_ownership_proven(
+            primary,
+            descriptor,
+            task,
+            declaration_head,
+        ):
+            raise wp.WorkspaceError("broker declaration ownership unproven")
         if _plan_digest(current, run) != basis:
             raise wp.WorkspaceError("declare plan basis does not match PLAN.md")
         normalized = normalize_paths(paths)
         normalized_contracts = infer_contracts(normalized, contracts)
-        receipt = _current_peer_collision(
-            primary,
-            state,
-            task,
-            descriptor,
-            normalized,
-            normalized_contracts,
+        established = (
+            task["action"] == "disjoint"
+            and task["primary_owner"]
+            and task["primary_basis"]
         )
+        persisted = bool(task["basis"])
+        redeclared = persisted and (
+            normalized != task["paths"]
+            or normalized_contracts != task["contracts"]
+            or basis != task["basis"]
+        )
+        if established and task["declared_main"] != _head(primary):
+            raise wp.WorkspaceError(
+                "Primary advanced; use revalidate before redeclaration"
+            )
+        if not established or redeclared:
+            active = _active_run(primary)
+            owner, primary_paths, primary_contracts, primary_basis = (
+                _primary_envelope_snapshot(primary, active, task["base"])
+            )
+            if not _task_ownership_proven(
+                primary,
+                descriptor,
+                task,
+                declaration_head,
+            ):
+                raise wp.WorkspaceError(
+                    "broker declaration ownership changed during operation"
+                )
+            task["primary_owner"] = owner
+            task["primary_paths"] = primary_paths
+            task["primary_contracts"] = primary_contracts
+            task["primary_basis"] = primary_basis
+        if redeclared:
+            state["tasks"].remove(task)
+            state["tasks"].append(task)
         task["paths"] = normalized
         task["contracts"] = normalized_contracts
         task["basis"] = basis
         task["declared_main"] = _head(primary)
         task["primary_ref"] = _primary_ref(primary)
-        task["collision"] = receipt["status"]
-        task["action"] = receipt["action"]
-        task["state"] = "allocated" if receipt["action"] == "disjoint" else "waiting"
+        task["verified_main"] = ""
+        task["verified_task"] = ""
+        _recompute_leases(primary, state, descriptor)
+        receipt = {
+            "status": task["collision"],
+            "action": task["action"],
+            "reasons": (
+                ["blocked-by:%s" % value for value in task["blocked_by"]]
+                if task["blocked_by"]
+                else []
+            ),
+        }
         if write:
-            _write_broker(descriptor, state)
+            _write_broker(
+                descriptor,
+                state,
+                publication_guard=lambda: _task_ownership_proven(
+                    primary,
+                    descriptor,
+                    task,
+                    declaration_head,
+                ),
+                publication_error=(
+                    "broker declaration ownership changed during publication"
+                ),
+            )
         return {
             "schema_version": BROKER_SCHEMA,
             "status": receipt["status"],
             "action": receipt["action"],
             "basis": basis,
             "reasons": receipt["reasons"],
+            "blocked_by": task["blocked_by"],
             "written": bool(write),
         }
 
@@ -1367,33 +1848,330 @@ def write_gate(root, run, basis):
         raise wp.WorkspaceError("write-gate requires a sha256 plan basis")
     current = wp.repo_root(root)
     primary = wp.worktree_records(current)[0]["path"]
-    state = read_broker(primary)
-    task = _task_for(state, run)
-    if not task:
-        active = _active_run(primary)
-        if current == primary and active and active.get("run") == run:
+    with wp.registry_lock(primary) as descriptor:
+        state = read_broker(primary, descriptor)
+        task = _task_for(state, run)
+        if not task:
+            active = _active_run(primary)
+            if current != primary or not active or active.get("run") != run:
+                return {
+                    "schema_version": BROKER_SCHEMA,
+                    "status": "CLOSED",
+                    "reason": "direct-authority-unproven",
+                }
+            if not _plan_matches(primary, run, basis):
+                return {
+                    "schema_version": BROKER_SCHEMA,
+                    "status": "CLOSED",
+                    "reason": "stale-plan-basis",
+                }
+            try:
+                _, active_paths, active_contracts, _ = (
+                    _primary_envelope_snapshot(primary, active)
+                )
+            except wp.WorkspaceError:
+                return {
+                    "schema_version": BROKER_SCHEMA,
+                    "status": "CLOSED",
+                    "reason": "primary-envelope-unknown",
+                }
+            status = wp.build_status(primary, descriptor)
+            blockers = []
+            for other in _lease_tasks(state):
+                if other["state"] == "queued":
+                    continue
+                if (
+                    not other["paths"]
+                    or not other["basis"]
+                    or not _primary_snapshot_valid(other)
+                ):
+                    blockers.append(other["identity"])
+                    continue
+                receipt = _lease_collision(
+                    active_paths,
+                    active_contracts,
+                    other["paths"],
+                    other["contracts"],
+                )
+                if not active_paths or (receipt and receipt["action"] != "disjoint"):
+                    blockers.append(other["identity"])
+            foreign = [
+                tree
+                for tree in status["worktrees"]
+                if not tree["primary"] and not tree["kimiflow_owned"]
+            ]
+            if foreign:
+                return {
+                    "schema_version": BROKER_SCHEMA,
+                    "status": "CLOSED",
+                    "reason": "foreign-worktree-ambiguous",
+                    "blocked_by": sorted(set(blockers)),
+                }
+            if blockers:
+                return {
+                    "schema_version": BROKER_SCHEMA,
+                    "status": "CLOSED",
+                    "reason": "lease-conflict",
+                    "blocked_by": sorted(set(blockers)),
+                }
             return {
                 "schema_version": BROKER_SCHEMA,
                 "status": "OPEN",
                 "reason": "direct-main",
+                "blocked_by": [],
+            }
+        if current != task["path"]:
+            return {"schema_version": BROKER_SCHEMA, "status": "CLOSED", "reason": "wrong-worktree"}
+        if task["basis"] != basis or not _plan_matches(task["path"], run, basis):
+            return {"schema_version": BROKER_SCHEMA, "status": "CLOSED", "reason": "stale-plan-basis"}
+        entry = _registered_task_entry(primary, descriptor, task)
+        if not entry or not wp.owner_receipt_matches(entry["path"], entry):
+            return {"schema_version": BROKER_SCHEMA, "status": "CLOSED", "reason": "ownership-unproven"}
+        if not _matching_owned_tree(primary, task, _head(current)):
+            return {"schema_version": BROKER_SCHEMA, "status": "CLOSED", "reason": "identity-drift"}
+        if not _primary_snapshot_valid(task):
+            return {"schema_version": BROKER_SCHEMA, "status": "CLOSED", "reason": "primary-snapshot-invalid"}
+        active = _active_run(primary)
+        if active and _active_owner_digest(active) != task["primary_owner"]:
+            return {"schema_version": BROKER_SCHEMA, "status": "CLOSED", "reason": "primary-owner-drift"}
+        if _head(primary) != task["declared_main"]:
+            return {"schema_version": BROKER_SCHEMA, "status": "CLOSED", "reason": "revalidation-required"}
+        snapshot = json.loads(json.dumps(state))
+        latest = _task_for(snapshot, run)
+        _recompute_leases(primary, snapshot, descriptor)
+        if (
+            latest["state"] != "allocated"
+            or latest["action"] != "disjoint"
+            or latest["blocked_by"]
+        ):
+            return {
+                "schema_version": BROKER_SCHEMA,
+                "status": "CLOSED",
+                "reason": "serialize",
+                "blocked_by": latest["blocked_by"],
+            }
+        status = wp.build_status(primary, descriptor)
+        foreign = [
+            tree
+            for tree in status["worktrees"]
+            if not tree["primary"]
+            and tree["path"] != task["path"]
+            and not tree["kimiflow_owned"]
+        ]
+        if foreign:
+            return {
+                "schema_version": BROKER_SCHEMA,
+                "status": "CLOSED",
+                "reason": "foreign-worktree-ambiguous",
+            }
+        primary_tree = next(
+            tree for tree in status["worktrees"] if tree["primary"]
+        )
+        if primary_tree["dirty_paths_truncated"]:
+            return {
+                "schema_version": BROKER_SCHEMA,
+                "status": "CLOSED",
+                "reason": "primary-envelope-unknown",
+            }
+        primary_dirty = classify_collision(
+            task["paths"],
+            task["contracts"],
+            primary_tree["dirty_paths"],
+            infer_contracts(primary_tree["dirty_paths"]),
+        )
+        if primary_tree["dirty_paths"] and primary_dirty["action"] != "disjoint":
+            return {
+                "schema_version": BROKER_SCHEMA,
+                "status": "CLOSED",
+                "reason": "primary-dirty-collision",
+            }
+        runtime_collision = _current_peer_collision(
+            primary,
+            snapshot,
+            latest,
+            descriptor,
+            latest["paths"],
+            latest["contracts"],
+            include_primary=False,
+        )
+        if runtime_collision["action"] != "disjoint":
+            return {
+                "schema_version": BROKER_SCHEMA,
+                "status": "CLOSED",
+                "reason": "peer-collision",
             }
         return {
             "schema_version": BROKER_SCHEMA,
-            "status": "CLOSED",
-            "reason": "direct-authority-unproven",
+            "status": "OPEN",
+            "reason": "declared-disjoint",
+            "blocked_by": [],
         }
-    if current != task["path"]:
-        return {"schema_version": BROKER_SCHEMA, "status": "CLOSED", "reason": "wrong-worktree"}
-    if task["basis"] != basis or not _plan_matches(task["path"], run, basis):
-        return {"schema_version": BROKER_SCHEMA, "status": "CLOSED", "reason": "stale-plan-basis"}
-    entry = _registered_task_entry(primary, None, task)
-    if not entry or not wp.owner_receipt_matches(entry["path"], entry):
-        return {"schema_version": BROKER_SCHEMA, "status": "CLOSED", "reason": "ownership-unproven"}
-    if not _matching_owned_tree(primary, task, _head(current)):
-        return {"schema_version": BROKER_SCHEMA, "status": "CLOSED", "reason": "identity-drift"}
-    if task["state"] != "allocated" or task["action"] != "disjoint":
-        return {"schema_version": BROKER_SCHEMA, "status": "CLOSED", "reason": "serialize"}
-    return {"schema_version": BROKER_SCHEMA, "status": "OPEN", "reason": "declared-disjoint"}
+
+
+def revalidate(root, run, basis, write=False):
+    if not re.fullmatch(r"[0-9a-f]{64}", basis or ""):
+        raise wp.WorkspaceError("revalidate requires a sha256 plan basis")
+    current = wp.repo_root(root)
+    with wp.registry_operation(current, write) as descriptor:
+        primary = wp.worktree_records(current)[0]["path"]
+        state = read_broker(primary, descriptor)
+        task = _task_for(state, run)
+        if not task or current != task["path"]:
+            raise wp.WorkspaceError("revalidation requires its owned task worktree")
+        if task["basis"] != basis or not _plan_matches(current, run, basis):
+            raise wp.WorkspaceError("revalidation plan basis does not match declaration")
+        entry = _registered_task_entry(primary, descriptor, task)
+        main_now = _head(primary)
+        task_now = _head(current)
+        if (
+            not entry
+            or not wp.owner_receipt_matches(entry["path"], entry)
+            or not _matching_owned_tree(primary, task, task_now)
+        ):
+            raise wp.WorkspaceError("revalidation ownership unproven")
+        if (
+            task["state"] == "needs-reconcile"
+            and task["declared_main"] == main_now
+            and not _ancestor(primary, main_now, task_now)
+        ):
+            return {
+                "schema_version": BROKER_SCHEMA,
+                "status": "needs-reconcile",
+                "reason": "manual-reconciliation-required",
+            }
+        if task["declared_main"] and task["declared_main"] != main_now:
+            changed = _changed_paths(primary, task["declared_main"], main_now)
+            task_delta = _changed_paths(primary, task["base"], task_now)
+            collision = classify_collision(
+                task["paths"],
+                infer_contracts(task_delta, task["contracts"]),
+                changed,
+                infer_contracts(changed),
+            )
+            clean = wp.worktree_status(current)
+            untouched = task_now == task["base"] and not clean["dirty"]
+            already_reconciled = (
+                _ancestor(primary, main_now, task_now)
+                and not clean["dirty"]
+                and _paths_within_declaration(
+                    _changed_paths(primary, main_now, task_now),
+                    task["paths"],
+                )
+            )
+            if (
+                collision["action"] != "disjoint"
+                and not untouched
+                and not already_reconciled
+            ):
+                task["collision"] = collision["status"]
+                task["action"] = "serialize"
+                task["state"] = "needs-reconcile"
+                task["blocked_by"] = []
+                if write:
+                    _write_broker(
+                        descriptor,
+                        state,
+                        publication_guard=lambda: _task_ownership_proven(
+                            primary,
+                            descriptor,
+                            task,
+                            task_now,
+                        ),
+                        publication_error=(
+                            "revalidation ownership changed during publication"
+                        ),
+                    )
+                return {
+                    "schema_version": BROKER_SCHEMA,
+                    "status": "needs-reconcile",
+                    "reason": "primary-advance-collision",
+                }
+            if untouched:
+                if not write:
+                    return {
+                        "schema_version": BROKER_SCHEMA,
+                        "status": "preview",
+                        "action": "fast-forward-and-revalidate",
+                    }
+                advanced = _git(current, ["merge", "--ff-only", main_now], check=False)
+                if advanced.returncode != 0:
+                    task["state"] = "needs-reconcile"
+                    failed_head = _head(current)
+                    _write_broker(
+                        descriptor,
+                        state,
+                        publication_guard=lambda: _task_ownership_proven(
+                            primary,
+                            descriptor,
+                            task,
+                            failed_head,
+                        ),
+                        publication_error=(
+                            "revalidation ownership changed during publication"
+                        ),
+                    )
+                    return {
+                        "schema_version": BROKER_SCHEMA,
+                        "status": "needs-reconcile",
+                        "reason": "fast-forward-failed",
+                    }
+                task["base"] = main_now
+                task["task_head"] = main_now
+            elif already_reconciled:
+                task["task_head"] = task_now
+        publication_head = _head(current)
+        if not _task_ownership_proven(
+            primary,
+            descriptor,
+            task,
+            publication_head,
+        ):
+            raise wp.WorkspaceError(
+                "revalidation ownership changed during operation"
+            )
+        owner, primary_paths, primary_contracts, primary_basis = (
+            _primary_envelope_snapshot(primary, _active_run(primary), main_now)
+        )
+        if not _task_ownership_proven(
+            primary,
+            descriptor,
+            task,
+            publication_head,
+        ):
+            raise wp.WorkspaceError(
+                "revalidation ownership changed during operation"
+            )
+        task["primary_owner"] = owner
+        task["primary_paths"] = primary_paths
+        task["primary_contracts"] = primary_contracts
+        task["primary_basis"] = primary_basis
+        task["declared_main"] = main_now
+        task["verified_main"] = ""
+        task["verified_task"] = ""
+        if task["state"] in {"needs-reconcile", "verification-failed"}:
+            task["state"] = "waiting"
+        _recompute_leases(primary, state, descriptor)
+        if write:
+            _write_broker(
+                descriptor,
+                state,
+                publication_guard=lambda: _task_ownership_proven(
+                    primary,
+                    descriptor,
+                    task,
+                    publication_head,
+                ),
+                publication_error=(
+                    "revalidation ownership changed during publication"
+                ),
+            )
+        return {
+            "schema_version": BROKER_SCHEMA,
+            "status": task["state"],
+            "action": task["action"],
+            "blocked_by": task["blocked_by"],
+            "written": bool(write),
+        }
 
 
 def _run_checks(root, commands, stage):
@@ -1463,6 +2241,15 @@ def _recover_integration(primary, state, task, descriptor, write):
         if write:
             _write_broker(descriptor, state)
         return None
+    if (
+        task["verified_main"] != journal["main"]
+        or task["verified_task"] != journal["task"]
+        or not task["check_results"]
+        or any(row["exit_code"] != 0 for row in task["check_results"])
+    ):
+        raise wp.WorkspaceError(
+            "integration recovery refused: verification receipt mismatch"
+        )
     if task_now != journal["task"] or not _matching_owned_tree(
         primary, task, journal["task"]
     ):
@@ -1580,6 +2367,25 @@ def integrate(root, run, checks=(), write=False):
         task = _task_for(state, run)
         if not task or task["state"] in {"queued", "allocating", "retired"}:
             raise wp.WorkspaceError("run is not ready for integration")
+        if task["state"] == "integrated":
+            _validate_terminal_ref_receipt(task)
+            return {
+                "schema_version": BROKER_SCHEMA,
+                "status": "integrated",
+                "integrated_head": task["integrated_head"],
+                "checks": [
+                    row
+                    for row in task["check_results"]
+                    if row["stage"] == "post"
+                ],
+                "idempotent": True,
+            }
+        if task["state"] == "needs-reconcile":
+            return {
+                "schema_version": BROKER_SCHEMA,
+                "status": "needs-reconcile",
+                "reason": "revalidation-required",
+            }
         recovered = _recover_integration(primary, state, task, descriptor, write)
         if recovered is not None:
             return recovered
@@ -1616,6 +2422,24 @@ def integrate(root, run, checks=(), write=False):
                 "status": "ready-to-integrate",
                 "reason": "primary-ref-changed",
             }
+        if not _primary_snapshot_valid(task):
+            task["state"] = "needs-reconcile"
+            if write:
+                _write_broker(descriptor, state)
+            return {
+                "schema_version": BROKER_SCHEMA,
+                "status": "needs-reconcile",
+                "reason": "primary-snapshot-invalid",
+            }
+        if _foreign_worktree_present(status):
+            task["state"] = "ready-to-integrate"
+            if write:
+                _write_broker(descriptor, state)
+            return {
+                "schema_version": BROKER_SCHEMA,
+                "status": "ready-to-integrate",
+                "reason": "foreign-worktree-ambiguous",
+            }
         primary_tree = next(tree for tree in status["worktrees"] if tree["primary"])
         if primary_tree["dirty"]:
             return {"schema_version": BROKER_SCHEMA, "status": "ready-to-integrate", "reason": "primary-dirty"}
@@ -1637,42 +2461,26 @@ def integrate(root, run, checks=(), write=False):
         main_before = _head(primary)
         task_before = _head(entry["path"])
         if task["declared_main"] != main_before:
-            changed = _changed_paths(
-                primary, task["declared_main"] or task["base"], main_before
-            )
-            receipt = classify_collision(
-                task["paths"],
-                task["contracts"],
-                changed,
-                infer_contracts(changed),
-            )
-            task["collision"] = receipt["status"]
-            task["action"] = receipt["action"]
-            task["declared_main"] = main_before
-            if receipt["action"] != "disjoint":
-                task["state"] = "ready-to-integrate"
-                if write:
-                    _write_broker(descriptor, state)
-                return {
-                    "schema_version": BROKER_SCHEMA,
-                    "status": "ready-to-integrate",
-                    "reason": "main-advance-collision",
-                    "collision": receipt["status"],
-                }
+            task["state"] = "needs-reconcile"
             if write:
                 _write_broker(descriptor, state)
+            return {
+                "schema_version": BROKER_SCHEMA,
+                "status": "needs-reconcile",
+                "reason": "revalidation-required",
+            }
         preflight = _git(
             primary,
             ["merge-tree", "--write-tree", "--quiet", main_before, task_before],
             check=False,
         )
         if preflight.returncode != 0:
-            task["state"] = "ready-to-integrate"
+            task["state"] = "needs-reconcile"
             if write:
                 _write_broker(descriptor, state)
             return {
                 "schema_version": BROKER_SCHEMA,
-                "status": "ready-to-integrate",
+                "status": "needs-reconcile",
                 "reason": "merge-conflict" if preflight.returncode == 1 else "merge-preflight-error",
             }
         if not _ancestor(primary, main_before, task_before):
@@ -1688,12 +2496,12 @@ def integrate(root, run, checks=(), write=False):
             merged = _git(entry["path"], ["merge", "--no-edit", main_before], check=False)
             if merged.returncode != 0:
                 _git(entry["path"], ["merge", "--abort"], check=False)
-                task["state"] = "ready-to-integrate"
+                task["state"] = "needs-reconcile"
                 task["journal"] = None
                 _write_broker(descriptor, state)
                 return {
                     "schema_version": BROKER_SCHEMA,
-                    "status": "ready-to-integrate",
+                    "status": "needs-reconcile",
                     "reason": "reconciliation-failed",
                 }
             task_before = _head(entry["path"])
@@ -1744,6 +2552,8 @@ def integrate(root, run, checks=(), write=False):
             }
         ok, pre_results = _run_checks(entry["path"], task["check_commands"], "pre")
         task["check_results"] = pre_results
+        task["verified_main"] = ""
+        task["verified_task"] = ""
         if not ok:
             task["state"] = "verification-failed"
             if write:
@@ -1811,6 +2621,8 @@ def integrate(root, run, checks=(), write=False):
                 "reason": "post-check-peer-collision",
                 "collision": current_collision["status"],
             }
+        task["verified_main"] = main_before
+        task["verified_task"] = task_before
         task["state"] = "integrating"
         task["journal"] = {"kind": "fast-forward", "main": main_before, "task": task_before}
         if not write:
@@ -1826,6 +2638,7 @@ def integrate(root, run, checks=(), write=False):
         peer_snapshot = _peer_head_snapshot(primary, task)
         boundary_entry = _registered_task_entry(primary, descriptor, task)
         boundary_tree = wp.worktree_status(entry["path"])
+        boundary_workspace = wp.build_status(primary, descriptor)
         boundary_reason = ""
         boundary_status = "ready-to-integrate"
         if (
@@ -1846,6 +2659,8 @@ def integrate(root, run, checks=(), write=False):
             boundary_status = "verification-failed"
         elif _active_run(primary):
             boundary_reason = "primary-busy-at-delivery-boundary"
+        elif _foreign_worktree_present(boundary_workspace):
+            boundary_reason = "foreign-worktree-at-delivery-boundary"
         elif boundary_collision["action"] != "disjoint":
             boundary_reason = "peer-collision-at-delivery-boundary"
         else:
@@ -2120,7 +2935,14 @@ def _recover_retirement(primary, state, task, descriptor, write):
                 return False
             wp.write_registry(
                 primary,
-                {"schema_version": 1, "entries": []},
+                {
+                    "schema_version": 1,
+                    "entries": [
+                        item
+                        for item in registry["entries"]
+                        if not _retirement_entry_matches(item, task)
+                    ],
+                },
                 descriptor,
             )
     else:
@@ -2140,7 +2962,14 @@ def _recover_retirement(primary, state, task, descriptor, write):
             )
         wp.write_registry(
             primary,
-            {"schema_version": 1, "entries": []},
+            {
+                "schema_version": 1,
+                "entries": [
+                    item
+                    for item in registry["entries"]
+                    if not _retirement_entry_matches(item, task)
+                ],
+            },
             descriptor,
         )
     task["state"] = "retired"
@@ -2360,6 +3189,13 @@ def add_parsers(sub):
     declare_parser.add_argument("--write", action="store_true")
     declare_parser.add_argument("--pretty", action="store_true")
 
+    revalidate_parser = sub.add_parser("revalidate")
+    revalidate_parser.add_argument("--root")
+    revalidate_parser.add_argument("--run", required=True)
+    revalidate_parser.add_argument("--basis", required=True)
+    revalidate_parser.add_argument("--write", action="store_true")
+    revalidate_parser.add_argument("--pretty", action="store_true")
+
     gate_parser = sub.add_parser("write-gate")
     gate_parser.add_argument("--root")
     gate_parser.add_argument("--run", required=True)
@@ -2389,6 +3225,8 @@ def dispatch(command, args):
         return route(args.root, args.run, args.write)
     if command == "declare":
         return declare(args.root, args.run, args.basis, args.path, args.contract, args.write)
+    if command == "revalidate":
+        return revalidate(args.root, args.run, args.basis, args.write)
     if command == "write-gate":
         return write_gate(args.root, args.run, args.basis)
     if command == "integrate":

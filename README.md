@@ -333,7 +333,7 @@ trivial work and fixes keep their direct routes.
 
 | Phase | What happens |
 |---|---|
-| 0 Setup | Inventory every worktree; route clean primary directly or one busy-primary run into the owned FIFO broker tree. |
+| 0 Setup | Inventory every worktree; route clean primary directly or up to three busy-primary runs into the owned Fleet before FIFO queueing. |
 | 1 Clarify | Run the mandatory Product Intake for non-trivial features, forbid HOW questions, lock the confirmed contract, then continue. |
 | 2 Understand | Inspect project knowledge and code; choose Discovery `none`, `pulse`, or `focused`, and prove architecture feasibility before planning. Fixes reproduce and prove the cause. |
 | 3 Plan | Write a flat minimum-complete plan, testable acceptance criteria, and up to five evidence-bound implementation decisions. |
@@ -348,7 +348,7 @@ trivial work and fixes keep their direct routes.
 
 | Gate | Enforced boundary |
 |---|---|
-| Workspace preflight | Every linked tree and dirty path is classified; one owned broker tree is collision-gated, ff-only integrated, and ancestry-gated for archive. |
+| Workspace preflight | Every linked tree and dirty path is classified; up to three owned Fleet trees receive exclusive leases, revalidation, serialized candidate-first integration, and ancestry-gated archive. |
 | Product Intake, Clarify and Discovery gates | Supported planning/writes stay blocked until an explicit product response; the locked intent, zero technical questions, feasibility, and source/scope/decision evidence must hold before planning. |
 | Plan-blocker and review gates | Acceptance mappings and evidenced `BLOCKER/HIGH` findings are resolved within a bounded repair budget. |
 | Implementation-conformance gate | Researched decisions, invariants, affected paths, exact checks, and every locked product requirement converge in Phase 6; finish additionally proves the committed delivery matches. |
@@ -471,13 +471,15 @@ setup details.
 
 An active run records its owning Codex or Claude session. Other sessions may read, discuss, and plan.
 Before writing, Kimiflow inventories every checkout. A clean/free primary stays direct with no broker
-state. If primary is dirty or another run owns it, Kimiflow automatically creates exactly one locked,
-owned `codex/<slug>*` worktree; further runs queue FIFO without asking for another confirmation.
+state. If primary is dirty or another run owns it, Kimiflow automatically creates up to three locked,
+owned `codex/<slug>*` worktrees; further runs queue FIFO without asking for another confirmation.
 Unrelated ignored files do not make an otherwise safe checkout busy. Kimiflow-owned ignored run
 artifacts are preserved during retirement without weakening ancestry, ownership, or integration checks.
-Phase-3 path/contract declarations and the exact PLAN bytes gate writes. Delivery uses merge-tree
-preflight, no-shell project checks before mutation, an owned-branch reconciliation commit when needed,
-and an ff-only primary update followed only by mechanical Git integrity receipts. Retirement requires
+Phase-3 path/contract declarations and the exact PLAN bytes establish exclusive Primary/Fleet leases;
+`blocked_by` names the winning owner and every Primary advance requires revalidation. Delivery uses
+merge-tree preflight, no-shell project checks on the combined candidate before mutation, an owned-branch
+reconciliation commit when needed, and an ff-only primary update followed only by mechanical Git
+integrity receipts. Conflicts remain recoverable as `needs-reconcile`. Retirement requires
 terminal state, green receipts and ancestry, then crash-recoverably archives the complete checkout and
 matched Git metadata. Manual and Codex-managed trees are never mutated.
 

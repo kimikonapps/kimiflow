@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" role="img" aria-labelledby="title desc">
   <title id="title">Kimiflow 0.2.20 graph-loop architecture</title>
-  <desc id="desc">An eight-phase engineering graph with evidence-bound feedback edges, selective context systems, adaptive model routing, a one-slot worktree broker, atomic commits, and explicit immutable releases.</desc>
+  <desc id="desc">An eight-phase engineering graph with evidence-bound feedback edges, selective context systems, adaptive model routing, a bounded three-slot worktree Fleet, atomic commits, and explicit immutable releases.</desc>
   <style>
     text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #1f2328; }
     .title { font-size: 24px; font-weight: 600; letter-spacing: .8px; }
@@ -112,9 +112,9 @@
     <text class="node-sub" x="1042" y="127" text-anchor="middle">next dependency-ready run</text>
 
     <rect class="node workspace" x="42" y="153" width="194" height="82" rx="14"/>
-    <text class="node-title" x="139" y="179" text-anchor="middle">One-slot worktree broker</text>
+    <text class="node-title" x="139" y="179" text-anchor="middle">Three-slot worktree Fleet</text>
     <text class="node-sub" x="139" y="201" text-anchor="middle">free main → direct</text>
-    <text class="node-sub" x="139" y="221" text-anchor="middle">busy / dirty → 1 tree + FIFO</text>
+    <text class="node-sub" x="139" y="221" text-anchor="middle">busy / dirty → ≤3 trees + FIFO</text>
 
     <rect class="node user" x="1028" y="192" width="148" height="82" rx="14"/>
     <text class="node-title" x="1102" y="218" text-anchor="middle">Product questions</text>

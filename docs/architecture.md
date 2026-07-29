@@ -13,7 +13,7 @@ und persistente Artefakte geerdet.
 | Host Packaging | `plugins/kimiflow/`, `SKILL.md`, `.claude-plugin/`, `.codex-plugin/`, `.agents/plugins/`, `skills/kimiflow/` | Baut einen allowlist-basierten Runtime-Kandidaten mit Inhalts-Fingerprint und macht dieselbe Engine fuer Claude Code und Codex installierbar. |
 | Optional Controller | `hooks/kimiflow-runner.sh`, `hooks/kimiflow_core/runner.py`, `hooks/kimiflow_core/model_adapter.py`, `hooks/install-kimiflow-cli.sh` | Fuehrt dieselbe Active-Run-Engine ueber den eingebauten Codex- oder einen versionierten JSON-stdio-Adapter aus; besitzt nur Transport-Metadaten und keine zweite Workflow- oder Memory-Logik. |
 | Adaptive Control | `hooks/adaptive-control.sh`, `hooks/kimiflow_core/adaptive_control.py` | Klassifiziert Scope/Intent/Domaene/Betrieb, entscheidet Context-Rollover und evidence-basierte Modellrouten; fehlende Capabilities fallen ohne User-Gate auf den bestehenden Flow zurueck. |
-| Mechanical Layer | `hooks/*.sh`, `hooks/kimiflow_core/worktree_broker.py`, `hooks.json`, `hooks/hooks.json` | Implementiert Gate-Resolver, Host-Hooks, Installer, den optionalen Ein-Slot-Worktree-Broker und strukturelle Checks. |
+| Mechanical Layer | `hooks/*.sh`, `hooks/kimiflow_core/worktree_broker.py`, `hooks.json`, `hooks/hooks.json` | Implementiert Gate-Resolver, Host-Hooks, Installer, die optionale Drei-Slot-Fleet und strukturelle Checks. |
 | Project Intelligence | `.kimiflow/project/`, `hooks/project-map-status.sh`, `hooks/memory-router.sh` | Baut lokale Projektkarten, erkennt Staleness, routet bounded Memory/Recall, Vault-Namespaces und Run-Retention. |
 | Validation & Docs | `.github/workflows/ci.yml`, `docs/`, `examples/`, `evals/` | Verifiziert Packaging, Hooks und Verhalten; erklaert die Nutzung publish-safe. |
 
@@ -92,10 +92,12 @@ implementieren danach optional den Adapter-Vertrag; sie besitzen keine zweite Ki
 - Gate-Entscheidungen duerfen nicht nur behauptet werden; Resolver-Skripte liefern die mechanische Wahrheit,
   wo das moeglich ist.
 - Normale Laeufe persistieren State unter `.kimiflow/<slug>/`.
-- Sauberes/freies Primary bleibt der Null-Overhead-Pfad. Der Broker darf hoechstens einen eigenen
-  gesperrten Worktree verwalten; fremde/manuelle/Codex-Trees sind nur Inventar- und Kollisionsinput.
-- Broker-Integration braucht aktuelle Pfad-/Contract-/PLAN-Evidence, konfliktfreien Merge-Tree,
-  gruene argv-basierte Vor-/Nachchecks und veraendert Primary nur per Fast-forward.
+- Sauberes/freies Primary bleibt der Null-Overhead-Pfad. Die Fleet darf hoechstens drei eigene
+  gesperrte Worktrees verwalten; weitere Runs warten FIFO, fremde/manuelle/Codex-Trees bleiben unangetastet.
+- Fleet-Leases schliessen ueberlappende Primary-/Worktree-Writes aus, benennen `blocked_by` und verlangen
+  nach Primary-Fortschritt Revalidierung; Konflikte bleiben als `needs-reconcile` wiederaufnehmbar.
+- Integration braucht aktuelle Pfad-/Contract-/PLAN-Evidence, konfliktfreien Merge-Tree, gruene
+  argv-basierte Checks auf dem kombinierten Kandidaten und veraendert Primary nur serialisiert per Fast-forward.
 - Eingebettete Hosts bleiben der Standard; der optionale Terminal-Runner und seine Adapter duerfen Workflow-State, Memory,
   Gates, Provider oder Worktree-Management weder duplizieren noch ersetzen.
 - App-Host-Funktionen sind opt-in; ihr Fehlen darf weder Installation noch normale Codex-, Claude- oder Legacy-CLI-Nutzung veraendern.

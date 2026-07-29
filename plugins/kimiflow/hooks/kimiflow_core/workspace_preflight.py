@@ -583,7 +583,7 @@ def validate_registry(data):
     if not isinstance(data, dict) or data.get("schema_version") != 1:
         raise WorkspaceError("malformed worktree registry")
     entries = data.get("entries")
-    if not isinstance(entries, list) or len(entries) > 1:
+    if not isinstance(entries, list) or len(entries) > 3:
         raise WorkspaceError("malformed worktree registry")
     clean = []
     for entry in entries:
@@ -599,6 +599,10 @@ def validate_registry(data):
         if not isinstance(identity, str) or not IDENTITY_RE.match(identity):
             raise WorkspaceError("malformed worktree registry")
         clean.append({"path": path, "run": run, "identity": identity})
+    for key in ("path", "run", "identity"):
+        values = [entry[key] for entry in clean]
+        if len(values) != len(set(values)):
+            raise WorkspaceError("malformed worktree registry")
     return {"schema_version": 1, "entries": clean}
 
 
@@ -1083,14 +1087,14 @@ def build_status(root=None, registry_descriptor=None):
         "ignored_paths_truncated": current_tree["ignored_paths_truncated"],
         "worktree_count": len(trees),
         "temporary_count": len(registry["entries"]),
-        "can_register_temporary": len(registry["entries"]) == 0,
+        "can_register_temporary": len(registry["entries"]) < 3,
         "safe_prune_available": safe_prune,
         "registry_reconcile_available": bool(reconcilable_registry_paths),
         "registry_reconcile_paths": reconcilable_registry_paths,
         "auto_cleanup_paths": [tree["path"] for tree in trees if tree["removable"]],
         "decision_required": bool(unresolved),
         "unresolved": unresolved,
-        "policy": {"mode": "solo", "new_worktrees": "auto-when-main-busy", "max_temporary": 1},
+        "policy": {"mode": "fleet", "new_worktrees": "auto-when-main-busy", "max_temporary": 3},
         "worktrees": trees,
     }
 
@@ -1149,12 +1153,20 @@ def register(
                     "registration requires a primary versioned schema-4+ run"
                 )
         registry = read_registry(primary, registry_descriptor)
-        if registry["entries"]:
+        if len(registry["entries"]) >= 3:
             raise WorkspaceError("temporary worktree cap reached")
         identity = _identity or secrets.token_hex(32)
         if not IDENTITY_RE.match(identity):
             raise WorkspaceError("invalid worktree ownership identity")
         entry = {"path": tree["path"], "run": run, "identity": identity}
+        if any(
+            existing["path"] == entry["path"]
+            or existing["run"] == entry["run"]
+            or existing["identity"] == entry["identity"]
+            for existing in registry["entries"]
+        ):
+            raise WorkspaceError("duplicate worktree ownership identity")
+        previous_entries = list(registry["entries"])
         if write:
             receipt = owner_receipt_path(tree["path"])
             admin_dir = os.path.dirname(receipt)
@@ -1203,7 +1215,7 @@ def register(
                 try:
                     write_registry(
                         primary,
-                        {"schema_version": 1, "entries": [entry]},
+                        {"schema_version": 1, "entries": previous_entries + [entry]},
                         registry_descriptor,
                     )
                     registry_written = True
@@ -1230,7 +1242,7 @@ def register(
                     def rollback_invalid_registration():
                         write_registry(
                             primary,
-                            {"schema_version": 1, "entries": []},
+                            {"schema_version": 1, "entries": previous_entries},
                             registry_descriptor,
                         )
                         rollback_admin = os.fstat(rollback_admin_descriptor)
@@ -1249,7 +1261,7 @@ def register(
                     if registry_written:
                         write_registry(
                             primary,
-                            {"schema_version": 1, "entries": []},
+                            {"schema_version": 1, "entries": previous_entries},
                             registry_descriptor,
                         )
                     unlink_admin_file(admin_descriptor, OWNER_RECEIPT_NAME)
@@ -1842,7 +1854,14 @@ def remove(
             result["archive_path"] = archive_path
             write_registry(
                 status["primary_root"],
-                {"schema_version": 1, "entries": []},
+                {
+                    "schema_version": 1,
+                    "entries": [
+                        item
+                        for item in registry["entries"]
+                        if item["path"] != tree["path"]
+                    ],
+                },
                 registry_descriptor,
             )
             ensure_registry_descriptor_current(status["primary_root"], registry_descriptor)

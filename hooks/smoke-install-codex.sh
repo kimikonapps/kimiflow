@@ -156,8 +156,10 @@ if [ -x "$ROOT/hooks/working-tree-gate.sh" ] && bash -n "$ROOT/hooks/working-tre
 if [ -x "$ROOT/hooks/test-working-tree-gate.sh" ] && bash -n "$ROOT/hooks/test-working-tree-gate.sh" 2>/dev/null; then ok "working-tree gate test ok"; else bad "working-tree gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/workspace-preflight.sh" ] && bash -n "$ROOT/hooks/workspace-preflight.sh" 2>/dev/null; then ok "workspace preflight helper ok"; else bad "workspace preflight helper missing/not-exec/bad"; fi
 if [ -f "$ROOT/hooks/kimiflow_core/worktree_broker.py" ] \
-  && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import worktree_broker; assert worktree_broker.BROKER_SCHEMA == 1' 2>/dev/null \
+  && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import worktree_broker; assert worktree_broker.BROKER_SCHEMA == 2; assert worktree_broker.MAX_WORKTREES == 3; assert worktree_broker.BROKER_NAME == "FLEET.json"; assert "needs-reconcile" in worktree_broker.TASK_STATES' 2>/dev/null \
   && grep -q 'route --run .kimiflow/<slug>' "$ROOT/phases/phase-0-setup.md" \
+  && grep -q 'at most three identity-locked' "$ROOT/phases/phase-0-setup.md" \
+  && grep -q 'blocked_by.*revalidate.*needs-reconcile' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'write-gate --run .kimiflow/<slug>' "$ROOT/phases/phase-5-build.md"; then
   ok "Codex autonomous worktree broker wiring"
 else
