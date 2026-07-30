@@ -6,6 +6,16 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.30
+
+The CI portability patch: Kimiflow's Pi cleanup contract is now tested deterministically across Linux and
+macOS without changing runtime behavior.
+
+### Fixed
+
+- The missing-process-discovery test now explicitly exercises the portable `ps` fallback, avoiding a false
+  failure on Linux systems where `/proc` remains available even when `ps` is mocked as missing.
+
 ## 0.2.29
 
 The Pi Captain release: an already-running Pi session can start and supervise Kimiflow while remaining the

@@ -946,6 +946,10 @@ class PiHostTests(unittest.TestCase):
             child_pid = int(handle.read())
         try:
             with mock.patch.object(
+                pi_host.sys,
+                "platform",
+                "darwin",
+            ), mock.patch.object(
                 pi_host.shutil,
                 "which",
                 return_value=None,
