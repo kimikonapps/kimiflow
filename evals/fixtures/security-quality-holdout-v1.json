@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "contract_fingerprint": "sha256:4516f6d319f63dd685d0d215e9683aafdfffdfa5d4d34d11bef09c7e704083bc",
+  "contract_fingerprint": "sha256:b9934e89ebc1445def27621ed6a88cf3c3e22ac87fbb2e65a613f9646a829cb6",
   "expected_metrics": {
     "threat_model_coverage": 0.875,
     "finding_precision": 1.0,

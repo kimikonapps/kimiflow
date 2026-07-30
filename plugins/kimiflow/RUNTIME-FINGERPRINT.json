@@ -5,19 +5,19 @@
       "bytes": 511,
       "mode": "0644",
       "path": ".claude-plugin/plugin.json",
-      "sha256": "sha256:a685a3ca1e0ef5246b2fc0db482af8440d66c68fe7f3267d134d1fb4007b80d0"
+      "sha256": "sha256:deba903c0692ed2e1f2c9bd6b0e86a759578370d3eb4af37b203aa23848d7d48"
     },
     {
       "bytes": 3614,
       "mode": "0644",
       "path": ".codex-plugin/plugin.json",
-      "sha256": "sha256:3ba828a63ae487609777a6c1cd526a570145ed2f603c4c43982ba0dd3dcc7a6f"
+      "sha256": "sha256:8795859cd3830517d5fddec298c5f37efe06b75df5bb3777d65b398587f523c4"
     },
     {
       "bytes": 20700,
       "mode": "0644",
       "path": "COMPATIBILITY.md",
-      "sha256": "sha256:de2f6b5e4ca8faf64884fdc1a63655fc050719e50635e23cebe023db0155c692"
+      "sha256": "sha256:ce6ad548d780b6de1458680f215407be770fd8638f87c9916ebf17433ac0ac53"
     },
     {
       "bytes": 1064,
@@ -38,10 +38,10 @@
       "sha256": "sha256:ad4223607da7fb6fbbae7e4adf283473f2757af77622418f8a0af79b92a3c6f2"
     },
     {
-      "bytes": 16999,
+      "bytes": 16990,
       "mode": "0644",
       "path": "SKILL.md",
-      "sha256": "sha256:be1f32270dc9cbdef440fa96add655e42a702c0b62049551481715ac68c59232"
+      "sha256": "sha256:c94b2c5c543bc4cf75401dea881e4c053f56f7f4bd9766dea4f1bc37eccfdeca"
     },
     {
       "bytes": 5051,
@@ -344,10 +344,10 @@
       "sha256": "sha256:703db6666cfe45006135c7c3900424617dc7165a32e3275588200ed9d8a36abc"
     },
     {
-      "bytes": 46597,
+      "bytes": 48152,
       "mode": "0644",
       "path": "hooks/kimiflow_core/review_convergence.py",
-      "sha256": "sha256:b01b13acea80904dca8dbed9dc6e0ea7110985ef3e5d159078fddde64be73a45"
+      "sha256": "sha256:0954324b92c78a22370b5d3c29e16ddcf234d2b48207183240c73075a740483f"
     },
     {
       "bytes": 15467,
@@ -716,10 +716,10 @@
       "sha256": "sha256:fd9599494be0fddfc592907f7b4fc2b13ba89bce77baf8a96bb0946044a52955"
     },
     {
-      "bytes": 27470,
+      "bytes": 27866,
       "mode": "0755",
       "path": "hooks/resolve-review-gate.sh",
-      "sha256": "sha256:202a57784f95e9d6f2c6a954f11006a7afe243f371a9d2e954567ce8b190150c"
+      "sha256": "sha256:0529fedd9a86b6d542e2b0d443cd488b1030861684df733ffb9b2901aec6864e"
     },
     {
       "bytes": 4036,
@@ -827,7 +827,7 @@
       "bytes": 368,
       "mode": "0644",
       "path": "package.json",
-      "sha256": "sha256:590fbb98c8eafe5b3eccf23f0565e369e4ff56d16a4dbb04df4f0ed845ca8cbf"
+      "sha256": "sha256:be14345c2572f6d8abd97c00121f240ea64010d45cd7153705073b0b8a8ce4e2"
     },
     {
       "bytes": 8943,
@@ -878,16 +878,16 @@
       "sha256": "sha256:8c44f974192f6610bd72294a0fa5718d195f36144398180c37ee97a7075cbeaf"
     },
     {
-      "bytes": 19515,
+      "bytes": 19978,
       "mode": "0644",
       "path": "phases/phase-7-review-commit.md",
-      "sha256": "sha256:28932a69bc8614f6f5ca7dfd3a11d886a45e8f651cdfa475c880769d30f90d7d"
+      "sha256": "sha256:ffa3018fc1766b2c7e38c1afc59efcf7f14ce5ef9d0240f7b4aa00a6fe973ffe"
     },
     {
-      "bytes": 230223,
+      "bytes": 230972,
       "mode": "0644",
       "path": "reference.md",
-      "sha256": "sha256:0f7e935568059bf6207f1ace88acb20a9d121cb9d2873b4371f5d92a70a7b2b9"
+      "sha256": "sha256:4e741db99f4891118045a2c4eaf5d226ad6786118658dbb126c474c51f0eb241"
     },
     {
       "bytes": 2024,
@@ -1016,10 +1016,10 @@
       "sha256": "sha256:a305522d819c8e13676b4028360b21c541e2b2c8991413bb157cb484db06e437"
     },
     {
-      "bytes": 14989,
+      "bytes": 14943,
       "mode": "0644",
       "path": "skills/kimiflow/SKILL.md",
-      "sha256": "sha256:879286781bee7cd88f59e49c6564ac3a2d8bda52a937c62889e5b255f93beff2"
+      "sha256": "sha256:a8208bb810ea2127689358589805d505248160d55207c8317dfa2933531bbecf"
     },
     {
       "bytes": 244,
@@ -1028,6 +1028,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:f6803edfae1a0d40eaafde5de50c169c895f19bdea98178234678967d78658b0",
+  "runtime_fingerprint": "sha256:9c051c75ba119eb9c2a8095e1790f24151e020113256577540c6911e907b12df",
   "schema_version": 1
 }

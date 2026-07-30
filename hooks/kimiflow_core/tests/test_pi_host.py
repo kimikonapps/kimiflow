@@ -371,6 +371,9 @@ class PiHostTests(unittest.TestCase):
             )
         environment = {
             **self.env,
+            "PYTHONPATH": os.path.dirname(
+                os.path.dirname(os.path.abspath(pi_host.__file__)),
+            ),
             "KIMIFLOW_PI_COMMAND": crashing_pi,
             "KIMIFLOW_PI_BRIDGE_BINDING": json.dumps({
                 "schema_version": 1,

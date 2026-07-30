@@ -10,7 +10,7 @@
 #
 # Usage: resolve-review-gate.sh <findings-dir> --round <N> --expect <lensA,lensB> [--gate plan|code] [--epoch-start 1] [--cap 3] [--finding-contract 1] [--review-axes <axisCSV>]
 # Output (one TAB line, exit 0): <VERDICT>\t<open_count|->\t<reason_code>\t<detail>
-#   VERDICT ∈ {OPEN,CLOSED}; reason_code ∈ {clean,open-findings,incomplete,malformed,unproven-resolution,root-class-repeated,oscillation,reappeared,cap-reached}
+#   VERDICT ∈ {OPEN,CLOSED}; reason_code ∈ {clean,open-findings,incomplete,malformed,unproven-resolution,root-class-repeated,oscillation,reappeared,cap-reached,review-limit-reached}
 # R2 invariant targets: hooks/resolve-review-gate.sh; --round <N> --expect <lensCSV>; --expect code-verified
 set -u
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -18,6 +18,7 @@ emit() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "${4:-}"; exit 0; }
 LEGACY_FINDING_RE='^FINDING (BLOCKER|HIGH|MEDIUM|LOW) .+ :: .+$'
 CONTRACT_FINDING_RE='^FINDING (BLOCKER|HIGH|MEDIUM|LOW) .+ :: .+ :: class=[a-z0-9][a-z0-9-]{0,63} :: verify=(command|verifier):[^[:cntrl:]]+ :: evidence=review-evidence/[A-Za-z0-9._/-]+@[a-f0-9]{64}$'
 CONTRACT_RESOLVED_RE='^RESOLVED class=[a-z0-9][a-z0-9-]{0,63} :: verify=(command|verifier):[^[:cntrl:]]+ :: evidence=review-evidence/[A-Za-z0-9._/-]+@[a-f0-9]{64}$'
+CODE_REVIEW_CLOSEOUT_ROUND=4
 
 sha256_file() {
   if command -v shasum >/dev/null 2>&1; then
@@ -125,6 +126,8 @@ if [ "$contracted" = true ] && [ "$gate" = code ]; then
     || emit CLOSED - malformed "contracted code gate requires explicit --cap"
   [ -n "$review_axes" ] \
     || emit CLOSED - incomplete "contracted code gate requires --review-axes"
+  [ "$round" -le "$CODE_REVIEW_CLOSEOUT_ROUND" ] \
+    || emit CLOSED - review-limit-reached "code review ended after round ${CODE_REVIEW_CLOSEOUT_ROUND}"
   [ -x "$SCRIPT_DIR/review-convergence-gate.sh" ] \
     || emit CLOSED - malformed "review convergence gate unavailable"
   preflight_out="$("$SCRIPT_DIR/review-convergence-gate.sh" preflight \
@@ -562,6 +565,8 @@ fi
 [ "$open_count" -eq 0 ] && emit OPEN 0 clean
 
 # ---- open_count > 0: anti-oscillation (cap → oscillation → reappeared → open-findings) ----
+[ "$contracted" = true ] && [ "$gate" = code ] && [ "$round" -ge "$CODE_REVIEW_CLOSEOUT_ROUND" ] \
+  && emit CLOSED "$open_count" review-limit-reached "unresolved after code review closeout"
 [ "$round" -ge "$cap" ] && emit CLOSED "$open_count" cap-reached "round ${round} >= cap ${cap}"
 
 if [ "$prev" -ge "$epoch_start" ] && [ "$prev_exists" = true ]; then

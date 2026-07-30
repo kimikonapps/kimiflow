@@ -217,6 +217,12 @@ else
   fail "review_lease_path_axes_are_precise"
 fi
 
+reset_run
+assert_gate "$("$SCRIPT" preflight --run "$RUN" --round 5)" CLOSED review-limit-reached "preflight_fifth_round_closes_before_review"
+assert_gate "$("$SCRIPT" delta --run "$RUN" --round 5 --scheduled-axes spec-correctness --rerun-axes spec-correctness)" CLOSED review-limit-reached "delta_fifth_round_closes_before_artifacts"
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 5 --axes spec-correctness)" CLOSED review-limit-reached "saturation_fifth_round_closes_before_artifacts"
+assert_gate "$("$SCRIPT" repair --run "$RUN" --round 4)" CLOSED review-limit-reached "closeout_cannot_start_another_repair"
+
 # Saturation: every scheduled axis and material disposition is evidence-bound.
 reset_run
 write_candidate 1 spec-correctness NONE
@@ -282,6 +288,18 @@ dispositions="$(jq -nc \
   '[{candidate_id:$id,outcome:"refuted",stable_class:"unreachable",verify:"verifier:inspect call path",evidence:$evidence}]')"
 write_saturation_receipt 1 '["spec-correctness"]' "$rows" "$dispositions" '[]'
 assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness)" OPEN saturated "saturation_refuted_candidate_opens"
+
+reset_run
+line='CANDIDATE HIGH src/a:1 :: reproduced edge case has no supported-path impact :: verify=verifier:inspect supported call path'
+write_candidate 1 spec-correctness "$line"
+evidence="$(write_evidence non-blocking.txt unsupported-edge verifier:'inspect supported call path' reproduced 'reproduced only outside the supported contract')"
+rows="$(candidate_file_rows 1 spec-correctness)"
+dispositions="$(jq -nc \
+  --arg id "$(candidate_id spec-correctness "$line")" \
+  --arg evidence "$evidence" \
+  '[{candidate_id:$id,outcome:"non_blocking",stable_class:"unsupported-edge",verify:"verifier:inspect supported call path",evidence:$evidence}]')"
+write_saturation_receipt 1 '["spec-correctness"]' "$rows" "$dispositions" '[]'
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness)" OPEN saturated "saturation_reproduced_non_blocking_candidate_opens"
 
 reset_run
 line_a='CANDIDATE HIGH src/a:1 :: first independent issue :: verify=command:bash hooks/test-a.sh'
@@ -428,7 +446,7 @@ write_repair '[{
 }]'
 assert_gate "$("$SCRIPT" repair --run "$RUN" --round 1)" CLOSED dependency-cycle "repair_cycle_closes"
 
-# Review lease: a repair delta may narrow axes only after exact A/B calibration.
+# Review delta: one full review per stable plan, then exact repair deltas.
 reset_run
 line='CANDIDATE HIGH src/reviewed.py:1 :: stale behavior survives the repair :: verify=command:bash hooks/test-review-convergence-gate.sh'
 write_candidate 1 spec-correctness "$line"
@@ -472,7 +490,6 @@ jq -n \
   --arg source_saturation_sha256 "$(hash_file "$RUN/review-saturation/r1.json")" \
   --arg repair_sha256 "$(hash_file "$RUN/review-repairs/r1.json")" \
   --argjson review_files "$(printf '%s' "$basis_json" | jq -c .review_files)" \
-  --arg route_receipt_sha256 "$(printf '0%.0s' {1..64})" \
   --argjson scheduled_axes "$scheduled" \
   '{
     schema_version:1,
@@ -486,9 +503,9 @@ jq -n \
     carried_axes:["failure-security","standards-integration"],
     review_files:$review_files,
     changed_paths:["src/reviewed.py"],
-    route_receipt_sha256:$route_receipt_sha256
+    route_receipt_sha256:null
   }' > "$RUN/review-deltas/r2.json"
-assert_gate "$("$SCRIPT" delta --run "$RUN" --round 2 --scheduled-axes spec-correctness,failure-security,standards-integration --rerun-axes spec-correctness)" CLOSED review-cascade-route-invalid "review_lease_without_calibration_closes"
+assert_gate "$("$SCRIPT" delta --run "$RUN" --round 2 --scheduled-axes spec-correctness,failure-security,standards-integration --rerun-axes spec-correctness)" OPEN selective-review-ready "review_delta_opens_without_calibration"
 
 if seed_selective_review_route; then
   route_sha="$(hash_file "$RUN/REVIEW-CASCADE-ROUTE.json")"
@@ -496,7 +513,7 @@ if seed_selective_review_route; then
     '.route_receipt_sha256=$route_receipt_sha256' \
     "$RUN/review-deltas/r2.json" > "$RUN/review-deltas/r2.next"
   mv "$RUN/review-deltas/r2.next" "$RUN/review-deltas/r2.json"
-  assert_gate "$("$SCRIPT" delta --run "$RUN" --round 2 --scheduled-axes spec-correctness,failure-security,standards-integration --rerun-axes spec-correctness)" OPEN selective-review-ready "review_lease_calibrated_delta_opens"
+  assert_gate "$("$SCRIPT" delta --run "$RUN" --round 2 --scheduled-axes spec-correctness,failure-security,standards-integration --rerun-axes spec-correctness)" OPEN selective-review-ready "review_delta_legacy_calibrated_receipt_opens"
 
   resolved="$(write_evidence lease-r2.txt stale-behavior 'command:bash hooks/test-review-convergence-gate.sh' not_reproduced repaired)"
   printf 'RESOLVED class=stale-behavior :: verify=command:bash hooks/test-review-convergence-gate.sh :: evidence=%s\n' \
@@ -515,10 +532,36 @@ if seed_selective_review_route; then
     "$RUN/review-deltas/r2.json" > "$RUN/review-deltas/r2.next"
   mv "$RUN/review-deltas/r2.next" "$RUN/review-deltas/r2.json"
   sed -i.bak 's/Architecture deliberation: off/Architecture deliberation: active/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
-  assert_gate "$("$SCRIPT" delta --run "$RUN" --round 2 --scheduled-axes spec-correctness,failure-security,standards-integration --rerun-axes spec-correctness)" CLOSED critical-review-requires-full "review_lease_critical_run_stays_full"
+  assert_gate "$("$SCRIPT" delta --run "$RUN" --round 2 --scheduled-axes spec-correctness,failure-security,standards-integration --rerun-axes spec-correctness)" OPEN selective-review-ready "review_delta_critical_run_stays_incremental"
 else
   fail "review_lease_calibration_setup"
 fi
+
+reset_run
+write_candidate 1 spec-correctness NONE
+rows="$(candidate_file_rows 1 spec-correctness)"
+write_saturation_v2_receipt 1 '["spec-correctness"]' '["spec-correctness"]' "$rows" '[]' '[]' 'null'
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness)" OPEN saturated "full_once_source_round_opens"
+printf 'NONE\n' > "$RUN/findings/r2-code-verified.md"
+write_candidate 2 spec-correctness NONE
+rows="$(candidate_file_rows 2 spec-correctness)"
+write_saturation_v2_receipt 2 '["spec-correctness"]' '["spec-correctness"]' "$rows" '[]' '[]' 'null'
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 2 --axes spec-correctness)" CLOSED incremental-review-required "full_once_same_plan_second_full_closes"
+
+printf 'materially changed architecture plan\n' > "$RUN/PLAN.md"
+write_saturation_v2_receipt 2 '["spec-correctness"]' '["spec-correctness"]' "$rows" '[]' '[]' 'null'
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 2 --axes spec-correctness)" OPEN saturated "full_once_changed_plan_allows_new_full_basis"
+
+reset_run
+printf 'NONE\n' > "$RUN/findings/r4-code-verified.md"
+write_candidate 4 spec-correctness NONE
+rows="$(candidate_file_rows 4 spec-correctness)"
+write_saturation_v2_receipt 4 '["spec-correctness"]' '["spec-correctness"]' "$rows" '[]' '[]' 'null'
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 4 --axes spec-correctness)" CLOSED closeout-delta-required "closeout_round_rejects_full_review"
+
+line='CANDIDATE HIGH src/reviewed.py:1 :: late semantic discovery :: verify=verifier:inspect supported call path'
+write_candidate 4 spec-correctness "$line"
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 4 --axes spec-correctness)" CLOSED closeout-candidates-forbidden "closeout_round_rejects_new_candidates"
 
 # Trajectory: after two failed code strategy epochs a new plan-bound hypothesis is mandatory.
 reset_run

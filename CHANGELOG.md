@@ -4,6 +4,14 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.29
+
+The Pi Captain release: an already-running Pi session can start and supervise Kimiflow while remaining the
+responsive conversation, with exact runner identity, bounded recovery, and unchanged standalone Codex and
+Claude paths.
+
 ### Added
 
 - An additive Pi 0.82.x package lets an already-running Pi session naturally activate Kimiflow and act as the
@@ -18,6 +26,12 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
   request and reproduced exactly in the intent lock—while existing Contract-3 runs remain resumable.
 - Pi model selection supports slash-qualified, `@`-qualified, and colon-qualified model IDs plus
   `thinking=max`; the deterministic Pi E2E exercises the real runner, phase, conformance, and completion path.
+
+### Changed
+
+- Code review now runs one full pass per stable plan, then evidence-bound repair deltas, with three semantic
+  discovery rounds and one resolution-only closeout that strategy epochs cannot reset. Reproduced edge cases
+  without supported-path, contract, security, compatibility, or release impact remain evidenced but non-blocking.
 
 ### Fixed
 

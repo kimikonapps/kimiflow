@@ -256,8 +256,8 @@ fi
 if [ -x "$ROOT/hooks/test-current-state-gate.sh" ] && bash -n "$ROOT/hooks/test-current-state-gate.sh" 2>/dev/null; then ok "current-state gate test ok"; else bad "current-state gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/review-convergence-gate.sh" ] \
   && bash -n "$ROOT/hooks/review-convergence-gate.sh" 2>/dev/null \
-  && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import adaptive_control, review_convergence; assert callable(review_convergence.delta); assert callable(adaptive_control.resolve_review_cascade)' 2>/dev/null \
-  && grep -q 'review-cascade-resolve' "$ROOT/phases/phase-7-review-commit.md" \
+  && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import review_convergence; assert callable(review_convergence.delta); assert review_convergence.REVIEW_CLOSEOUT_ROUND == 4' 2>/dev/null \
+  && grep -q 'Every later round on the same PLAN is an exact repair-delta review' "$ROOT/phases/phase-7-review-commit.md" \
   && grep -q 'review-deltas/r<N>.json' "$ROOT/phases/phase-7-review-commit.md"; then
   ok "review convergence gate helper ok"
 else

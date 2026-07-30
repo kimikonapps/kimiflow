@@ -93,6 +93,8 @@ DELTA_SPEC_RE = re.compile(
     r"^(review-deltas/r[1-9][0-9]*\.json)@([a-f0-9]{64})$"
 )
 MAX_SELECTIVE_CHANGED_PATHS = 8
+MAX_SEMANTIC_REVIEW_ROUNDS = 3
+REVIEW_CLOSEOUT_ROUND = MAX_SEMANTIC_REVIEW_ROUNDS + 1
 DISPOSITION_KEYS = {
     "candidate_id",
     "outcome",
@@ -351,31 +353,6 @@ def _review_files(value):
     return value
 
 
-def _state_risk(run):
-    state = _text(_artifact_path(run, "STATE.md"))
-
-    def value(key):
-        match = re.search(
-            r"^%s:\s*(.+?)\s*$" % re.escape(key),
-            state,
-            re.IGNORECASE | re.MULTILINE,
-        )
-        return match.group(1).strip().casefold().split(" ", 1)[0] if match else ""
-
-    architecture = value("Architecture deliberation")
-    build_risk = value("Build risk")
-    if architecture not in ("active", "off") or build_risk not in (
-        "required",
-        "none",
-    ):
-        return "critical"
-    return (
-        "critical"
-        if architecture == "active" or build_risk == "required"
-        else "routine"
-    )
-
-
 def _required_delta_axes(changed_paths, scheduled_axes):
     required = {"spec-correctness"}
     security_pattern = re.compile(
@@ -597,6 +574,8 @@ def _candidate_rows(path, axis):
 def saturation(run, round_number, axes):
     run = _run_dir(run)
     round_number = _round(round_number)
+    if round_number > REVIEW_CLOSEOUT_ROUND:
+        raise GateError("review-limit-reached")
     axes = _axes(axes)
     _, plan_sha = _plan(run)
     candidates = {}
@@ -615,6 +594,8 @@ def saturation(run, round_number, axes):
             raise
         file_rows.append({"axis": axis, "sha256": _sha(payload)})
         candidates.update(rows)
+    if round_number == REVIEW_CLOSEOUT_ROUND and candidates:
+        raise GateError("closeout-candidates-forbidden")
     receipt_path = _artifact_path(
         run, "review-saturation", "r%s.json" % round_number
     )
@@ -670,6 +651,40 @@ def saturation(run, round_number, axes):
         if delta_receipt is None:
             if scheduled_axes != axes:
                 raise GateError("selective-review-unproven")
+            if round_number == REVIEW_CLOSEOUT_ROUND:
+                raise GateError("closeout-delta-required")
+            if round_number > 1:
+                previous_path = _artifact_path(
+                    run,
+                    "review-saturation",
+                    "r%s.json" % (round_number - 1),
+                )
+                try:
+                    previous = _json(previous_path)
+                except GateError as exc:
+                    if exc.reason == "missing-artifact":
+                        raise GateError("missing-source-saturation") from exc
+                    raise
+                previous_schema = (
+                    previous.get("schema_version")
+                    if isinstance(previous, dict)
+                    else None
+                )
+                previous_keys = (
+                    SATURATION_KEYS
+                    if previous_schema == 1
+                    else SATURATION_V2_KEYS
+                    if previous_schema == 2
+                    else set()
+                )
+                if (
+                    not isinstance(previous, dict)
+                    or set(previous) != previous_keys
+                    or previous.get("round") != round_number - 1
+                ):
+                    raise GateError("source-saturation-malformed")
+                if previous.get("plan_sha256") == plan_sha:
+                    raise GateError("incremental-review-required")
         else:
             _validate_delta(
                 run,
@@ -721,14 +736,14 @@ def saturation(run, round_number, axes):
         outcome = row.get("outcome")
         stable_class = row.get("stable_class")
         verify = row.get("verify")
-        if outcome not in ("promoted", "refuted"):
+        if outcome not in ("promoted", "refuted", "non_blocking"):
             raise GateError("disposition-outcome-invalid", candidate_id)
         if not isinstance(stable_class, str) or SLUG_RE.fullmatch(stable_class) is None:
             raise GateError("disposition-class-invalid", candidate_id)
         if verify != candidate["verify"]:
             raise GateError("disposition-verify-mismatch", candidate_id)
         expected_evidence_outcome = (
-            "reproduced" if outcome == "promoted" else "not_reproduced"
+            "not_reproduced" if outcome == "refuted" else "reproduced"
         )
         _evidence(
             run,
@@ -914,6 +929,8 @@ def _repair_details(run, round_number):
 
 
 def repair(run, round_number):
+    if _round(round_number) >= REVIEW_CLOSEOUT_ROUND:
+        raise GateError("review-limit-reached")
     details = _repair_details(run, round_number)
     if not details["required"]:
         return _emit("OPEN", "not-required", "no material findings")
@@ -927,6 +944,8 @@ def repair(run, round_number):
 def _validate_delta(run, round_number, scheduled_axes, rerun_axes, spec=None):
     run = _run_dir(run)
     round_number = _round(round_number)
+    if round_number > REVIEW_CLOSEOUT_ROUND:
+        raise GateError("review-limit-reached")
     if round_number == 1:
         raise GateError("selective-review-first-round")
     scheduled_axes = _axis_list(scheduled_axes, "scheduled-axes-invalid")
@@ -1037,31 +1056,33 @@ def _validate_delta(run, round_number, scheduled_axes, rerun_axes, spec=None):
         or sorted(rerun_axes + carried_axes) != sorted(scheduled_axes)
     ):
         raise GateError("axis-partition-invalid")
-    if _state_risk(run) != "routine":
-        raise GateError("critical-review-requires-full")
     required_axes = _required_delta_axes(changed_paths, scheduled_axes)
     missing_required = sorted(required_axes - set(rerun_axes))
     if missing_required:
         raise GateError("required-axis-missing", missing_required[0])
 
-    try:
-        root, _ = build_replan._root_for(run)
-        route, route_path = adaptive_control.verify_review_cascade_route(
-            root, run, "routine"
-        )
-    except (
-        adaptive_control.AdaptiveControlError,
-        build_replan.BuildReplanError,
-    ) as exc:
-        raise GateError("review-cascade-route-invalid", str(exc)) from exc
-    route_payload = _regular_bytes(route_path, MAX_JSON_BYTES)
-    if (
-        route.get("route") != "selective"
-        or route.get("stage") != "active"
-        or route.get("audit_sample")
-        or receipt.get("route_receipt_sha256") != _sha(route_payload)
-    ):
-        raise GateError("review-cascade-route-inactive")
+    route_digest = receipt.get("route_receipt_sha256")
+    if route_digest is not None:
+        if not isinstance(route_digest, str) or SHA_RE.fullmatch(route_digest) is None:
+            raise GateError("review-cascade-route-invalid")
+        try:
+            root, _ = build_replan._root_for(run)
+            route, route_path = adaptive_control.verify_review_cascade_route(
+                root, run, "routine"
+            )
+        except (
+            adaptive_control.AdaptiveControlError,
+            build_replan.BuildReplanError,
+        ) as exc:
+            raise GateError("review-cascade-route-invalid", str(exc)) from exc
+        route_payload = _regular_bytes(route_path, MAX_JSON_BYTES)
+        if (
+            route.get("route") != "selective"
+            or route.get("stage") != "active"
+            or route.get("audit_sample")
+            or route_digest != _sha(route_payload)
+        ):
+            raise GateError("review-cascade-route-inactive")
     return {
         "changed_paths": changed_paths,
         "rerun_axes": rerun_axes,
@@ -1167,6 +1188,8 @@ def _trajectory_semantics(receipt):
 def preflight(run, round_number):
     run = _run_dir(run)
     round_number = _round(round_number)
+    if round_number > REVIEW_CLOSEOUT_ROUND:
+        raise GateError("review-limit-reached")
     markers = _recovery(run)
     if len(markers) < 2:
         return _emit("OPEN", "below-threshold", "failed_strategies=%s" % len(markers))

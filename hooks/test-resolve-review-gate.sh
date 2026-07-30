@@ -420,6 +420,7 @@ af "$(code_run --round 1 --expect code-verified --epoch-start 1 --cap 3 --findin
 af "$(code_run --round 1 --expect code-verified --gate code --cap 3 --finding-contract 1 --review-axes spec-correctness)" 3 malformed "contracted_code_requires_epoch"
 af "$(code_run --round 1 --expect code-verified --gate code --epoch-start 1 --finding-contract 1 --review-axes spec-correctness)" 3 malformed "contracted_code_requires_cap"
 af "$(code_run --round 1 --expect code-verified --gate code --epoch-start 1 --cap 3 --finding-contract 1 --review-axes spec-correctness)" 1 OPEN "contracted_code_rechecks_saturation"
+af "$(code_run --round 5 --expect code-verified --gate code --epoch-start 5 --cap 7 --finding-contract 1 --review-axes spec-correctness)" 3 review-limit-reached "contracted_code_cannot_start_fifth_review_round"
 
 reset
 printf 'Convergence contract:\nConvergence contract: 1\n' > "$WORK/STATE.md"
