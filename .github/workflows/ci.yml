@@ -39,7 +39,7 @@ jobs:
 
       - name: Install tested Pi runtime — hard gate
         if: matrix.lane == 'full'
-        run: npm install --global --ignore-scripts --no-audit --no-fund @earendil-works/pi-coding-agent@0.82.1
+        run: npm install --global --ignore-scripts --no-audit --no-fund @earendil-works/pi-coding-agent@0.83.0
 
       - name: Shell syntax (bash -n) — hard gate
         run: |

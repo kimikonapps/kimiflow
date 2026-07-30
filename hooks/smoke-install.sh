@@ -537,7 +537,7 @@ if jq -e --arg version "$(jq -r '.version' "$ROOT/.claude-plugin/plugin.json")" 
   && [ -f "$ROOT/hosts/pi/extensions/worker.js" ] \
   && [ -f "$ROOT/hosts/pi/skills/kimiflow/SKILL.md" ] \
   && [ -x "$ROOT/hooks/pi-host.sh" ] \
-  && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import pi_host; assert pi_host.PI_VERSION_RE.fullmatch("0.82.1")' 2>/dev/null; then
+  && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import pi_host; assert pi_host.PI_VERSION_RE.fullmatch("0.82.1"); assert pi_host.PI_VERSION_RE.fullmatch("0.83.0"); assert not pi_host.PI_VERSION_RE.fullmatch("0.84.0")' 2>/dev/null; then
   ok "optional Pi package is version-aligned and additive"
 else
   bad "optional Pi package inventory or version is incomplete"

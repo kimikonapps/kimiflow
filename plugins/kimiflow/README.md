@@ -135,8 +135,8 @@ kimiflow status --pretty
 
 ### Optional Pi Captain
 
-The repository also ships an installable Pi package for Pi 0.82.x. Once the Kimiflow package is loaded in an
-already-running Pi session, you can naturally ask Pi to build a feature with Kimiflow:
+The repository also ships an installable Pi package for Pi 0.82.x and 0.83.x. Once the Kimiflow package is
+loaded in an already-running Pi session, you can naturally ask Pi to build a feature with Kimiflow:
 
 ```bash
 pi install /absolute/path/to/kimiflow

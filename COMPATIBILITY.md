@@ -5,7 +5,8 @@ subagent contracts. If a host moves one of these primitives, parts of kimiflow c
 (a hook that stops firing looks identical to a hook that passed). This file lists every primitive
 kimiflow concretely uses, what breaks if it changes, and a smoke checklist to run at each version bump.
 
-**Last verified against:** Claude Code **2.1.202** · Codex CLI **0.142.5** · kimiflow **0.2.30** · 2026-07-30.
+**Last verified against:** Claude Code **2.1.202** · Codex CLI **0.142.5** · Pi **0.83.0** · kimiflow
+**0.2.31** · 2026-07-30.
 
 > **0.x expectation.** These primitives are NOT a stable public contract. Treat breakage as *expected*
 > across Claude Code or Codex minor versions until a version is explicitly pinned — keep the README's
@@ -13,7 +14,7 @@ kimiflow concretely uses, what breaks if it changes, and a smoke checklist to ru
 
 ## Optional Pi host
 
-The additive Pi package targets the tested Pi 0.82.x JSON/session protocol. It loads
+The additive Pi package targets the tested Pi 0.82.x and 0.83.x JSON/session protocol. It loads
 `hosts/pi/extensions/captain.js`, `hosts/pi/extensions/worker.js`, and `hosts/pi/skills/kimiflow/`; it does not
 install or launch Pi, Herdr, or a provider. A natural user request to build with Kimiflow calls
 `kimiflow_activate`; `/kimiflow <request>` is an equivalent convenience path. Both bind the already-running Pi
@@ -38,7 +39,7 @@ Install a trusted checkout or verified extracted runtime package with
 and the declared `package.json` resources; ad-hoc `-e` loading is not the supported installation contract.
 
 The Pi package executes local model and shell processes with the same operating-system identity as the user.
-Accordingly, the Pi 0.82.x runtime profile advertises `workflow_context` and `structured_events`, but
+Accordingly, the Pi 0.82.x and 0.83.x runtime profile advertises `workflow_context` and `structured_events`, but
 deliberately does not advertise `root_confinement`; Pi has no host-enforced project sandbox for its shell/file
 tools. Install only package artifacts you trust, review their extensions before activation, and apply any
 provider sandboxing separately. Kimiflow's custom Pi bridge entries persist only opaque bridge identity, a

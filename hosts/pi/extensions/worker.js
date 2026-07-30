@@ -663,7 +663,7 @@ function assistantMessage(event) {
     .join("");
   return {
     text: text || null,
-    failed: ["error", "aborted"].includes(message.stopReason),
+    failed: ["error", "aborted", "pending"].includes(message.stopReason),
   };
 }
 

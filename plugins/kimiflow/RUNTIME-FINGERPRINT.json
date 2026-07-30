@@ -5,19 +5,19 @@
       "bytes": 511,
       "mode": "0644",
       "path": ".claude-plugin/plugin.json",
-      "sha256": "sha256:95b7daed4ae154ac2cd28d9bf7dca6d19ac96004d8a5676373de45ffa7600575"
+      "sha256": "sha256:52a0d10991937105690bbd2bad926cd6dbfd791eabd385bca045532161472f28"
     },
     {
       "bytes": 3614,
       "mode": "0644",
       "path": ".codex-plugin/plugin.json",
-      "sha256": "sha256:06517f072f4e0aa06b23d546a9547fdce5db572556e68a73030b08b3150c20cb"
+      "sha256": "sha256:9ba8cde1f8d6c505b6582ae1cb637c7dab484af2e4a5134fe127cb5f8c305ed9"
     },
     {
-      "bytes": 20700,
+      "bytes": 20739,
       "mode": "0644",
       "path": "COMPATIBILITY.md",
-      "sha256": "sha256:5645ca8aa9952a1b313f6aee9961d1f3e9544af776e4b151020e757ed67e1233"
+      "sha256": "sha256:ab90387880a1f1db756eabfd74f9ab3953b20eff289bb0415b4f11d09ed88a5a"
     },
     {
       "bytes": 1064,
@@ -26,16 +26,16 @@
       "sha256": "sha256:b796986e145d409f27c8ec0edaaf223ee51bdbbc2fa4477fe2d6c0984d5adf5b"
     },
     {
-      "bytes": 31561,
+      "bytes": 31572,
       "mode": "0644",
       "path": "README.de.md",
-      "sha256": "sha256:148dee607a54ad6c2dc4d1a9e936ef690d8358a3e009f3681caccab4b17f85e2"
+      "sha256": "sha256:0c9c95d472643da98669e53cdb805e64653a2bdfdcd221217d16054dd5888a64"
     },
     {
-      "bytes": 37994,
+      "bytes": 38005,
       "mode": "0644",
       "path": "README.md",
-      "sha256": "sha256:ad4223607da7fb6fbbae7e4adf283473f2757af77622418f8a0af79b92a3c6f2"
+      "sha256": "sha256:50588486517f0a5dcb660746c90706664bda45bd17aabd5820c5c9c08d3fb527"
     },
     {
       "bytes": 16990,
@@ -308,10 +308,10 @@
       "sha256": "sha256:0fa9bf8578ac75f3233609182f38ca2c0e8d8dd89e7dabbe49ba9a1e05b431f5"
     },
     {
-      "bytes": 40556,
+      "bytes": 40616,
       "mode": "0644",
       "path": "hooks/kimiflow_core/pi_host.py",
-      "sha256": "sha256:eb910281b9d383bb552313ed8abe035c7486268940738df7ce1d75dff349ded8"
+      "sha256": "sha256:b8cf9a659ed1b3134fd6ae7cbeec9c2bdfdfe5c341e39df3e03b3dd71babe05e"
     },
     {
       "bytes": 55587,
@@ -812,10 +812,10 @@
       "sha256": "sha256:b7fa06144429b082efca7fe4e43c96e5064a83f3ec07d6cf22dd34bbe49a6c1e"
     },
     {
-      "bytes": 31184,
+      "bytes": 31195,
       "mode": "0644",
       "path": "hosts/pi/extensions/worker.js",
-      "sha256": "sha256:a2e4f235dbe48c56e3be2875e69e25a1dc10b94870bbf373dd1a0ffa3209c6bd"
+      "sha256": "sha256:ec2d81e9d6ff030167a58a24bdcf579142f63d766fa5af49cd941402390afb00"
     },
     {
       "bytes": 1076,
@@ -827,7 +827,7 @@
       "bytes": 368,
       "mode": "0644",
       "path": "package.json",
-      "sha256": "sha256:4343453fb0332f06ef463810467cfb3c20e1338274ffcdad564505197c3d308a"
+      "sha256": "sha256:030fcb1e608bdd2796cb8e41d4fd011857673010d20593a6587f1cd85e22e029"
     },
     {
       "bytes": 8943,
@@ -956,10 +956,10 @@
       "sha256": "sha256:93fdb709e9f834c4f761ec90b66b6406ca3e5d0b98b1167ea4f84c4aeebf6f82"
     },
     {
-      "bytes": 3351,
+      "bytes": 3360,
       "mode": "0644",
       "path": "references/runtime-distribution.md",
-      "sha256": "sha256:5c638023a2e2d1774c1d45fb291d46d7fd989a0a16d5261d12c412e85967cd51"
+      "sha256": "sha256:ea93d4a8f534602b077d4dc970712d2a1b0ec48cee664434000c06c1641cf675"
     },
     {
       "bytes": 4068,
@@ -1028,6 +1028,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:e53d4c2adf23a87f1fcc190dbb168371f08fb56737385e9250646859c2582cd0",
+  "runtime_fingerprint": "sha256:79c0d40c11a32013be49a8dbf53d40dd8917630275be1567b4e91ff030b6b040",
   "schema_version": 1
 }

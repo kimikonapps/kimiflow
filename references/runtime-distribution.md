@@ -31,7 +31,7 @@ Host profiles are named policy:
 - `embedded`: no optional adapter feature is required;
 - `app_host`: adapter protocol v1 plus `workflow_context`, `model_roles`, `structured_events`, and
   `root_confinement`.
-- `pi`: adapter protocol v1 plus `workflow_context` and `structured_events`. Pi 0.82.1 does not provide a
+- `pi`: adapter protocol v1 plus `workflow_context` and `structured_events`. Pi 0.82.1 and 0.83.0 do not provide a
   host-enforced project sandbox, so this profile deliberately does not advertise `root_confinement`; callers
   must treat Pi's file and shell permissions as host policy.
 

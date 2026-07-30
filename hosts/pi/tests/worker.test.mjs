@@ -318,6 +318,34 @@ test("subagent completion uses the last successful Pi retry lifecycle", async ()
   assert.equal(result.result, "recovered result");
 });
 
+test("subagent completion rejects Pi 0.83 pending output", async () => {
+  const calls = [];
+  const spawn = completingSpawn(calls, (sessionId, cwd) => [
+    { type: "session", version: 3, id: sessionId, cwd },
+    { type: "agent_start" },
+    {
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "partial result" }],
+        stopReason: "pending",
+      },
+    },
+    { type: "agent_end" },
+    { type: "agent_settled" },
+  ]);
+  const supervisor = new GenerationSupervisor({
+    authority: authority(),
+    spawn,
+    idFactory: () => "11111111-2222-4333-8444-555555555555",
+  });
+  supervisor.workerSessionId = "pi-worker-00000001";
+  await assert.rejects(
+    supervisor.launchSubagent("reject partial output"),
+    /subagent_lifecycle_incomplete/,
+  );
+});
+
 test("subagent output rejects invalid UTF-8", async () => {
   const supervisor = new GenerationSupervisor({
     authority: authority(),

@@ -6,6 +6,23 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.31
+
+The Pi 0.83 compatibility patch: Kimiflow now accepts the verified Pi 0.83 JSON/session contract while
+remaining compatible with Pi 0.82.
+
+### Changed
+
+- The optional Pi host accepts tested Pi 0.82.x and 0.83.x runtimes; newer unverified protocol versions still
+  fail closed.
+- The full Ubuntu CI lane now installs Pi 0.83.0 and executes the real extension-loading/session-header
+  contract against that runtime.
+
+### Fixed
+
+- Pi 0.83's new `pending` assistant stop reason is treated as incomplete provider output in both the primary
+  transport and bounded subagents, preventing partial streaming content from being accepted as completion.
+
 ## 0.2.30
 
 The CI portability patch: Kimiflow's Pi cleanup contract is now tested deterministically across Linux and

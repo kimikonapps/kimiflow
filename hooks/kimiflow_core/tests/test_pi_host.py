@@ -37,7 +37,7 @@ class PiHostTests(unittest.TestCase):
                 "print(json.dumps({'type':'session','version':3,'id':session,'timestamp':'2026-07-29T00:00:00Z','cwd':os.environ.get('PI_TEST_CWD',os.getcwd())}))\n"
                 "print(json.dumps({'type':'agent_start'}))\n"
                 "print(json.dumps({'type':'turn_start','turnIndex':0,'timestamp':1}))\n"
-                "message={'role':'assistant','content':[{'type':'text','text':'fixture'}],'stopReason':('error' if os.environ.get('PI_TEST_RETRY_ERROR') == '1' else 'stop'),'timestamp':1}\n"
+                "message={'role':'assistant','content':[{'type':'text','text':'fixture'}],'stopReason':(os.environ.get('PI_TEST_STOP_REASON') or ('error' if os.environ.get('PI_TEST_RETRY_ERROR') == '1' else 'stop')),'timestamp':1}\n"
                 "print(json.dumps({'type':'message_end','message':message}))\n"
                 "print(json.dumps({'type':'turn_end','turnIndex':0,'message':message,'toolResults':[]}))\n"
                 "if os.environ.get('PI_TEST_RETRY') == '1':\n"
@@ -563,7 +563,7 @@ class PiHostTests(unittest.TestCase):
         time.sleep(0.8)
         self.assertFalse(os.path.exists(marker))
 
-    def test_selection_and_terminal_lifecycle_match_pi_082(self):
+    def test_selection_and_terminal_lifecycle_match_supported_pi(self):
         features = pi_host.capabilities(self.env)["features"]
         self.assertFalse(features["root_confinement"])
         self.assertEqual(
@@ -610,7 +610,28 @@ class PiHostTests(unittest.TestCase):
         self.assertNotEqual(turn.returncode, 0)
         self.assertEqual(turn.error_code, "provider_crash")
 
-    def test_actual_installed_pi_0821_help_header_and_extension_loading_contract(self):
+    def test_version_contract_accepts_082_and_083_but_rejects_084(self):
+        for version in ("0.82", "0.82.1", "0.83", "pi 0.83", "0.83.0"):
+            self.assertIsNotNone(pi_host.PI_VERSION_RE.fullmatch(version))
+        for version in ("0.81.9", "0.84.0", "Pi 0.83.0"):
+            self.assertIsNone(pi_host.PI_VERSION_RE.fullmatch(version))
+
+    def test_pending_assistant_stop_reason_fails_closed(self):
+        environment = {**self.env, "PI_TEST_STOP_REASON": "pending"}
+        adapter = model_adapter.CommandAgentAdapter(
+            self.host_script,
+            model="openai/gpt-5.6:high",
+            required_features=("structured_events",),
+            environ=environment,
+            stderr=io.StringIO(),
+        )
+        turn = adapter.start(
+            self.temp, "pending is not terminal", lambda _value: None,
+        )
+        self.assertNotEqual(turn.returncode, 0)
+        self.assertEqual(turn.error_code, "provider_crash")
+
+    def test_actual_installed_pi_0830_help_header_and_extension_loading_contract(self):
         executable = shutil.which("pi")
         if executable is None:
             self.skipTest("Pi is not installed")
@@ -618,8 +639,8 @@ class PiHostTests(unittest.TestCase):
             [executable, "--version"], check=False, text=True,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5,
         )
-        if version.returncode != 0 or version.stdout.strip() != "0.82.1":
-            self.skipTest("installed Pi is not the tested 0.82.1 runtime")
+        if version.returncode != 0 or version.stdout.strip() != "0.83.0":
+            self.skipTest("installed Pi is not the tested 0.83.0 runtime")
         help_result = subprocess.run(
             [executable, "--help"], check=False, text=True,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5,

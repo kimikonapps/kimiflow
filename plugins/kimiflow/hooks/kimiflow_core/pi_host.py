@@ -20,7 +20,9 @@ import time
 from . import model_adapter
 
 
-PI_VERSION_RE = re.compile(r"^(?:pi\s+)?0\.82(?:\.[0-9]+)?(?:[-+][A-Za-z0-9.-]+)?$")
+PI_VERSION_RE = re.compile(
+    r"^(?:pi\s+)?0\.(?:82|83)(?:\.[0-9]+)?(?:[-+][A-Za-z0-9.-]+)?$"
+)
 SELECTION_RE = re.compile(
     r"^(?P<provider>[a-z0-9][a-z0-9._-]{0,63})/"
     r"(?P<model>[A-Za-z0-9@][A-Za-z0-9._/@:-]{0,191})"
@@ -76,7 +78,7 @@ def _version(command, environ=None):
     if result.returncode != 0 or PI_VERSION_RE.fullmatch(version) is None:
         raise PiHostError(
             "pi_incompatible",
-            "Kimiflow requires the tested optional Pi 0.82.x protocol",
+            "Kimiflow requires the tested optional Pi 0.82.x or 0.83.x protocol",
             1,
         )
     return version
@@ -949,7 +951,7 @@ def _assistant_text(event):
     message = event.get("message")
     if not isinstance(message, dict) or message.get("role") != "assistant":
         return None, False
-    stopped = message.get("stopReason") in {"error", "aborted"}
+    stopped = message.get("stopReason") in {"error", "aborted", "pending"}
     content = message.get("content")
     if not isinstance(content, list):
         return None, stopped
@@ -1023,7 +1025,8 @@ def run_turn(payload, environ=None, stdout=None):
     ]
     if payload["action"] == "resume":
         argv += ["--session", session_id]
-    # Pi 0.82.1 accepts the single-shot prompt positionally in JSON mode.
+    # Supported Pi 0.82.x and 0.83.x accept the single-shot prompt
+    # positionally in JSON mode.
     argv.append(prompt)
     env["KIMIFLOW_PI_EXECUTABLE"] = command
     env["KIMIFLOW_PI_ACTIVE_RUN"] = material["active_run_hook"]

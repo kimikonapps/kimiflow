@@ -98,8 +98,9 @@ kimiflow status --pretty
 
 ### Optionaler Pi-Captain
 
-Das Repository liefert zusaetzlich ein installierbares Pi-Paket fuer Pi 0.82.x. Sobald das Kimiflow-Paket in
-einer laufenden Pi-Sitzung geladen ist, kannst du Pi natuerlich mit einem Feature „mit Kimiflow“ beauftragen:
+Das Repository liefert zusaetzlich ein installierbares Pi-Paket fuer Pi 0.82.x und 0.83.x. Sobald das
+Kimiflow-Paket in einer laufenden Pi-Sitzung geladen ist, kannst du Pi natuerlich mit einem Feature
+„mit Kimiflow“ beauftragen:
 
 ```bash
 pi install /absoluter/pfad/zu/kimiflow
