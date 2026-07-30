@@ -65,9 +65,19 @@
               },
               "required": ["required_features"],
               "additionalProperties": false
+            },
+            "pi": {
+              "type": "object",
+              "properties": {
+                "required_features": {
+                  "const": ["structured_events", "workflow_context"]
+                }
+              },
+              "required": ["required_features"],
+              "additionalProperties": false
             }
           },
-          "required": ["embedded", "app_host"],
+          "required": ["embedded", "app_host", "pi"],
           "additionalProperties": false
         }
       },

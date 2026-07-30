@@ -11,6 +11,44 @@ kimiflow concretely uses, what breaks if it changes, and a smoke checklist to ru
 > across Claude Code or Codex minor versions until a version is explicitly pinned — keep the README's
 > pre-1.0 warning and re-run the smoke checklist below on every host upgrade.
 
+## Optional Pi host
+
+The additive Pi package targets the tested Pi 0.82.x JSON/session protocol. It loads
+`hosts/pi/extensions/captain.js`, `hosts/pi/extensions/worker.js`, and `hosts/pi/skills/kimiflow/`; it does not
+install or launch Pi, Herdr, or a provider. A natural user request to build with Kimiflow calls
+`kimiflow_activate`; `/kimiflow <request>` is an equivalent convenience path. Both bind the already-running Pi
+session as Captain and forward its `provider/model:thinking` selection through `hooks/pi-host.sh`. The transport requires
+Pi's exact version-3 `type: "session"` header, balanced `agent_start`/`agent_end` lifecycles, and a clean process
+exit after Pi has handled any automatic retry, compaction, or queued continuation. The last completed lifecycle
+controls provider-turn success. Pi lifecycle is never Kimiflow completion evidence; only the matching terminal
+Kimiflow runner receipt is authoritative. The primary Pi extension starts that existing runner in the
+background and derives status, questions, replies, and completion from its runner/Active-Run state. It does not
+add a Captain CLI, a second worker registry, a delivery spool, or Herdr lifecycle ownership. Missing Pi,
+incompatible version, capability drift, or an invalid session/lifecycle event fails closed. An uninstalled or
+unused Pi package is absent from execution, so embedded Claude Code and Codex remain independent. A detached,
+single-purpose cleanup sentinel owns only the transient Pi process-tree tag and a local cleanup lease. It keeps
+successor activation closed after a hard runner-group kill until tagged Pi descendants are gone; it has no Run,
+feature, delivery, or Herdr state. The portable cleanup boundary is the inherited process group plus processes
+that retain the unforgeable per-turn tag. A process that deliberately removes that tag and leaves the inherited
+process group is outside Kimiflow's cleanup authority; stronger containment requires a provider sandbox or
+container.
+
+Install a trusted checkout or verified extracted runtime package with
+`pi install /absolute/path/to/kimiflow` (or add `-l` for project-local scope). This uses Pi's package registry
+and the declared `package.json` resources; ad-hoc `-e` loading is not the supported installation contract.
+
+The Pi package executes local model and shell processes with the same operating-system identity as the user.
+Accordingly, the Pi 0.82.x runtime profile advertises `workflow_context` and `structured_events`, but
+deliberately does not advertise `root_confinement`; Pi has no host-enforced project sandbox for its shell/file
+tools. Install only package artifacts you trust, review their extensions before activation, and apply any
+provider sandboxing separately. Kimiflow's custom Pi bridge entries persist only opaque bridge identity, a
+request digest, and the exact non-secret `provider/model:thinking` selector required for resume—not prompts,
+answers, transcripts, credentials, or hidden reasoning. Pi controls persistence of the ordinary Captain
+conversation separately and may store its user and assistant messages in the Pi session transcript.
+
+Herdr may host the already-running Pi UI, but it is not a Kimiflow dependency or control plane. Kimiflow never
+installs, starts, configures, or projects workers into Herdr.
+
 ## Claude Code primitives used
 
 Load-bearing = a change breaks core behavior. Graceful = absence degrades a feature but the default

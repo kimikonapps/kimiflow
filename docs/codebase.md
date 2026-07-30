@@ -26,6 +26,10 @@ Verbesserungs-Backlogs liegen lokal unter `.kimiflow/project/` und werden nicht 
   `skills/kimiflow/agents/openai.yaml`, `hooks/install-codex-hooks.sh`.
 - Shared runtime: `hooks/commit-secret-gate.sh`, `hooks/state-gate.sh`, `hooks/test-gate.sh`,
   `hooks/resolve-review-gate.sh`, `hooks/project-map-status.sh`, `hooks/memory-router.sh`.
+- Optional Pi host: root `package.json`, `hosts/pi/extensions/{captain,worker}.js`,
+  `hosts/pi/skills/kimiflow/SKILL.md`, and the fail-closed JSON transport
+  `hooks/pi-host.sh` / `hooks/kimiflow_core/pi_host.py`. The release mirror lives under
+  `plugins/kimiflow/` and is generated, not edited independently.
 
 ## Wo Aenderungen typischerweise landen
 
@@ -37,6 +41,7 @@ Verbesserungs-Backlogs liegen lokal unter `.kimiflow/project/` und werden nicht 
 | Codex-Plugin-Darstellung verbessern | `.codex-plugin/plugin.json`, `skills/kimiflow/agents/openai.yaml`, README-Codex-Abschnitt |
 | Claude-Plugin-Darstellung verbessern | `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, README-Claude-Abschnitt |
 | Hook-Verhalten aendern | Passendes `hooks/*.sh`, passendes `hooks/test-*.sh`, Smoke-Tests |
+| Pi-Primary, Worker oder Transport aendern | `hosts/pi/`, `hooks/kimiflow_core/pi_host.py`, `hooks/test-pi-host.sh`, Node-Tests und Pi-E2E |
 | Release-Doku aktualisieren | `CHANGELOG.md`, `COMPATIBILITY.md`, `README.md` |
 
 ## Lokale Artefakte

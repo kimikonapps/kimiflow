@@ -79,8 +79,8 @@ for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'k
   grep -q "$term" "$ROOT/README.md" && ok "README documents mode alias: $term" || bad "README missing mode alias: $term"
 done
 grep -q 'full.*does not create an approval stop' "$ROOT/SKILL.md" && ok "full mode follows material-risk decisions" || bad "full mode still forces approval"
-grep -q 'Contract-3 mandatory Product Intake' "$ROOT/SKILL.md" && ok "canonical skill bounds intent interaction" || bad "canonical skill missing bounded intent interaction"
-grep -q 'Intent Coverage Scan (Contract 3)' "$ROOT/reference.md" && ok "reference documents provenance-aware intent coverage" || bad "reference missing provenance-aware intent coverage"
+grep -q 'Contract-4 concrete Product Intake with Contract-3 resume compatibility' "$ROOT/SKILL.md" && ok "canonical skill bounds intent interaction" || bad "canonical skill missing bounded intent interaction"
+grep -q 'Intent Coverage Scan (Contract 4)' "$ROOT/reference.md" && ok "reference documents provenance-aware intent coverage" || bad "reference missing provenance-aware intent coverage"
 grep -q 'one compact Product Intake' "$ROOT/README.md" && ok "README documents batched clarification" || bad "README missing batched clarification"
 grep -q 'git commit --only' "$ROOT/phases/phase-7-review-commit.md" && grep -q 'foreign staged' "$ROOT/phases/phase-7-review-commit.md" \
   && ok "atomic commit isolates foreign staged paths" || bad "atomic commit foreign-staging isolation missing"
@@ -308,11 +308,11 @@ if grep -Ei 'code-review-audit|full.*one mode-specific Preview approval|explicit
 grep -q 'automatisch geroutete' "$ROOT/docs/architecture.md" && grep -q 'automatically routed' "$ROOT/docs/kimiflow-vs-claude-md-vs-superpowers.md" && ok "maintainer docs preserve automatic routing" || bad "maintainer docs lost automatic routing"
 if [ -x "$ROOT/hooks/clarify-gate.sh" ] && bash -n "$ROOT/hooks/clarify-gate.sh" 2>/dev/null; then ok "clarify gate helper ok"; else bad "clarify gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-clarify-gate.sh" ] && bash -n "$ROOT/hooks/test-clarify-gate.sh" 2>/dev/null; then ok "clarify gate test ok"; else bad "clarify gate test missing/not-exec/bad"; fi
-if grep -q 'Intent contract: 3' "$ROOT/phases/phase-0-setup.md" \
+if grep -q 'Intent contract: 4' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'Impact x Uncertainty' "$ROOT/phases/phase-1-clarify.md" \
   && grep -q 'technical_questions=0' "$ROOT/reference.md" \
   && grep -q 'intent_coverage_missing' "$ROOT/hooks/clarify-gate.sh" \
-  && grep -q 'contract3_valid_intake_records_lock' "$ROOT/hooks/test-clarify-gate.sh" \
+  && grep -q 'test_contract4_requires_confirmed_concrete_product_flow' "$ROOT/hooks/test-clarify-gate.sh" \
   && grep -q 'product-intent ownership' "$ROOT/evals/README.md"; then
   ok "product intent ownership and mandatory-intake autonomy"
 else
@@ -528,6 +528,20 @@ for rel in hooks/kimiflow-runner.sh hooks/install-kimiflow-cli.sh hooks/test-kim
 done
 PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import runner; assert runner.RECEIPT_RELATIVE == ".kimiflow/session/HEADLESS_RUN.json"' 2>/dev/null \
   && ok "shared-core runner module imports" || bad "shared-core runner module unavailable"
+if jq -e --arg version "$(jq -r '.version' "$ROOT/.claude-plugin/plugin.json")" '
+    .name == "@kimiflow/pi" and .version == $version and .type == "module"
+    and .pi.extensions == ["./hosts/pi/extensions/captain.js","./hosts/pi/extensions/worker.js"]
+    and .pi.skills == ["./hosts/pi/skills/kimiflow"]
+  ' "$ROOT/package.json" >/dev/null 2>&1 \
+  && [ -f "$ROOT/hosts/pi/extensions/captain.js" ] \
+  && [ -f "$ROOT/hosts/pi/extensions/worker.js" ] \
+  && [ -f "$ROOT/hosts/pi/skills/kimiflow/SKILL.md" ] \
+  && [ -x "$ROOT/hooks/pi-host.sh" ] \
+  && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import pi_host; assert pi_host.PI_VERSION_RE.fullmatch("0.82.1")' 2>/dev/null; then
+  ok "optional Pi package is version-aligned and additive"
+else
+  bad "optional Pi package inventory or version is incomplete"
+fi
 if [ -x "$ROOT/hooks/secret-content-scan.sh" ] \
   && bash -n "$ROOT/hooks/secret-content-scan.sh" \
   && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import security, security_deep, runner; assert callable(security.run_scan) and callable(security_deep.run_deep) and callable(security_deep.advisory_diff_artifact); p=runner._parser()._subparsers._group_actions[0].choices["security"]._subparsers._group_actions[0].choices; assert {"deep","ci-artifact","eval","promote"}.issubset(p)' 2>/dev/null; then

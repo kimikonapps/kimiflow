@@ -16,6 +16,9 @@ from .paths import RootResolutionError, resolve_root
 
 RECEIPT_RELATIVE = ".kimiflow/session/HEADLESS_RUN.json"
 MAX_RECEIPT_BYTES = 64 * 1024
+PI_BRIDGE_ENV = "KIMIFLOW_PI_BRIDGE_BINDING"
+PI_START_CLAIM_ENV = "KIMIFLOW_PI_START_CLAIM"
+PI_START_CLAIM_NAME = "PI-BRIDGE-START-CLAIM"
 TRANSPORT_RETRIES = 2
 DEFAULT_AUTONOMOUS_TURN_LIMIT = 48
 MAX_USAGE_V2_TURNS = 256
@@ -84,6 +87,12 @@ def _validate_receipt(root, value):
         raise RunnerError("invalid_receipt", "runner receipt has an invalid status", 2)
     if not isinstance(value.get("turns"), int) or value.get("turns") < 0:
         raise RunnerError("invalid_receipt", "runner receipt has an invalid turn count", 2)
+    if "controller_pid" in value and (
+        isinstance(value.get("controller_pid"), bool)
+        or not isinstance(value.get("controller_pid"), int)
+        or value.get("controller_pid") < 2
+    ):
+        raise RunnerError("invalid_receipt", "runner receipt has an invalid controller PID", 2)
     if "turn_limit" in value and (
         isinstance(value.get("turn_limit"), bool) or not isinstance(value.get("turn_limit"), int)
         or value.get("turn_limit") < 1
@@ -94,6 +103,29 @@ def _validate_receipt(root, value):
     adapter_contract = value.get("adapter_contract")
     if adapter_contract is not None and not re.fullmatch(r"sha256:[0-9a-f]{64}", adapter_contract):
         raise RunnerError("invalid_receipt", "runner receipt has an invalid adapter contract", 2)
+    bridge = value.get("bridge")
+    if bridge is not None and (
+        not isinstance(bridge, dict)
+        or set(bridge) != {
+            "schema_version", "captain_session_id", "worker_id",
+        }
+        or bridge.get("schema_version") != 1
+        or not isinstance(bridge.get("captain_session_id"), str)
+        or re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._:-]{7,127}",
+            bridge["captain_session_id"],
+        ) is None
+        or not isinstance(bridge.get("worker_id"), str)
+        or re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._:-]{7,127}",
+            bridge["worker_id"],
+        ) is None
+    ):
+        raise RunnerError(
+            "invalid_receipt",
+            "runner receipt has an invalid Pi bridge identity",
+            2,
+        )
     usage = value.get("usage")
     if usage is not None:
         if not isinstance(usage, dict) or usage.get("status") not in ("available", "unavailable"):
@@ -475,6 +507,228 @@ def _merge_usage_v2(current, delta, initialize=False):
     }
 
 
+def _pi_bridge_identity(root, environ=None):
+    environment = os.environ if environ is None else environ
+    raw = environment.get(PI_BRIDGE_ENV)
+    if raw is None:
+        return None
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        raise RunnerError("bridge_identity_invalid", "Pi bridge identity is invalid", 2)
+    if (
+        not isinstance(value, dict)
+        or set(value) != {
+            "schema_version", "root", "captain_session_id", "worker_id",
+        }
+        or value.get("schema_version") != 1
+        or not isinstance(value.get("root"), str)
+        or os.path.realpath(value["root"]) != os.path.realpath(root)
+        or not isinstance(value.get("captain_session_id"), str)
+        or re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._:-]{7,127}",
+            value["captain_session_id"],
+        ) is None
+        or not isinstance(value.get("worker_id"), str)
+        or re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._:-]{7,127}",
+            value["worker_id"],
+        ) is None
+    ):
+        raise RunnerError("bridge_identity_invalid", "Pi bridge identity is invalid", 2)
+    return {
+        "schema_version": 1,
+        "captain_session_id": value["captain_session_id"],
+        "worker_id": value["worker_id"],
+    }
+
+
+def _read_pi_start_claim(root, environment=None):
+    environ = os.environ if environment is None else environment
+    token = environ.get(PI_START_CLAIM_ENV)
+    if token is None:
+        return None
+    if not isinstance(token, str) or re.fullmatch(r"claim-[0-9a-f]{32}", token) is None:
+        raise RunnerError("start_claim_invalid", "Pi start claim is invalid", 2)
+    bridge = _pi_bridge_identity(root, environ)
+    if bridge is None:
+        raise RunnerError("start_claim_invalid", "Pi start claim requires a bridge identity", 2)
+    claim_descriptor = None
+    owner_descriptor = None
+    handoff_descriptor = None
+    handoff_name = None
+    try:
+        with workspace_preflight.registry_directory(root, create=False) as session:
+            if session is None:
+                raise RunnerError("start_claim_invalid", "Pi start claim is missing", 2)
+            flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+            claim_descriptor = os.open(
+                PI_START_CLAIM_NAME,
+                flags | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=session,
+            )
+            claim_info = os.fstat(claim_descriptor)
+            if not stat.S_ISDIR(claim_info.st_mode):
+                raise RunnerError("start_claim_invalid", "Pi start claim is unsafe", 2)
+            if sorted(os.listdir(claim_descriptor)) != ["owner.json"]:
+                raise RunnerError("start_claim_invalid", "Pi start claim is unsafe", 2)
+            owner_descriptor = os.open(
+                "owner.json",
+                os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=claim_descriptor,
+            )
+            owner_info = os.fstat(owner_descriptor)
+            named_owner = os.stat(
+                "owner.json",
+                dir_fd=claim_descriptor,
+                follow_symlinks=False,
+            )
+            if (
+                not stat.S_ISREG(owner_info.st_mode)
+                or owner_info.st_nlink != 1
+                or owner_info.st_size > 4096
+                or (owner_info.st_dev, owner_info.st_ino)
+                != (named_owner.st_dev, named_owner.st_ino)
+            ):
+                raise RunnerError("start_claim_invalid", "Pi start claim owner is unsafe", 2)
+            payload = os.read(owner_descriptor, 4097)
+            if len(payload) > 4096:
+                raise RunnerError("start_claim_invalid", "Pi start claim owner is too large", 2)
+            try:
+                owner = json.loads(
+                    payload.decode("utf-8"),
+                    object_pairs_hook=_reject_duplicate_pairs,
+                )
+            except (UnicodeError, ValueError):
+                raise RunnerError("start_claim_invalid", "Pi start claim owner is invalid", 2)
+            if (
+                not isinstance(owner, dict)
+                or set(owner) != {
+                    "schemaVersion", "token", "pid", "root", "captainSessionId",
+                    "workerId",
+                }
+                or owner.get("schemaVersion") != 1
+                or owner.get("token") != token
+                or owner.get("root") != root
+                or isinstance(owner.get("pid"), bool)
+                or not isinstance(owner.get("pid"), int)
+                or owner["pid"] < 1
+                or owner.get("captainSessionId") != bridge["captain_session_id"]
+                or owner.get("workerId") != bridge["worker_id"]
+            ):
+                raise RunnerError("start_claim_invalid", "Pi start claim owner is invalid", 2)
+            owner["pid"] = os.getpid()
+            handed_off = (
+                json.dumps(owner, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                + "\n"
+            ).encode("utf-8")
+            handoff_name = ".owner-handoff-%s-%s.json" % (os.getpid(), token)
+            handoff_descriptor = os.open(
+                handoff_name,
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+                dir_fd=claim_descriptor,
+            )
+            written = 0
+            while written < len(handed_off):
+                written += os.write(handoff_descriptor, handed_off[written:])
+            os.fsync(handoff_descriptor)
+            os.close(handoff_descriptor)
+            handoff_descriptor = None
+            os.rename(
+                handoff_name,
+                "owner.json",
+                src_dir_fd=claim_descriptor,
+                dst_dir_fd=claim_descriptor,
+            )
+            handoff_name = None
+            os.fsync(claim_descriptor)
+            return {
+                "token": token,
+                "device": claim_info.st_dev,
+                "inode": claim_info.st_ino,
+            }
+    except RunnerError:
+        raise
+    except (OSError, workspace_preflight.WorkspaceError) as exc:
+        raise RunnerError("start_claim_invalid", "Pi start claim is unsafe: %s" % exc, 2)
+    finally:
+        if handoff_descriptor is not None:
+            os.close(handoff_descriptor)
+        if handoff_name is not None and claim_descriptor is not None:
+            try:
+                os.unlink(handoff_name, dir_fd=claim_descriptor)
+            except OSError:
+                pass
+        if owner_descriptor is not None:
+            os.close(owner_descriptor)
+        if claim_descriptor is not None:
+            os.close(claim_descriptor)
+
+
+def _release_pi_start_claim(root, claim):
+    if claim is None:
+        return
+    claim_descriptor = None
+    try:
+        with workspace_preflight.registry_directory(root, create=False) as session:
+            if session is None:
+                raise RunnerError("start_claim_release_failed", "Pi start claim registry is missing", 2)
+            named = os.stat(PI_START_CLAIM_NAME, dir_fd=session, follow_symlinks=False)
+            if (
+                not stat.S_ISDIR(named.st_mode)
+                or (named.st_dev, named.st_ino) != (claim["device"], claim["inode"])
+            ):
+                raise RunnerError("start_claim_release_failed", "Pi start claim identity changed", 2)
+            flags = (
+                os.O_RDONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+            )
+            claim_descriptor = os.open(PI_START_CLAIM_NAME, flags, dir_fd=session)
+            pinned = os.fstat(claim_descriptor)
+            if (pinned.st_dev, pinned.st_ino) != (claim["device"], claim["inode"]):
+                raise RunnerError("start_claim_release_failed", "Pi start claim identity changed", 2)
+            if sorted(os.listdir(claim_descriptor)) != ["owner.json"]:
+                raise RunnerError("start_claim_release_failed", "Pi start claim contains unexpected files", 2)
+            owner_descriptor = os.open(
+                "owner.json",
+                os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=claim_descriptor,
+            )
+            try:
+                payload = os.read(owner_descriptor, 4097)
+            finally:
+                os.close(owner_descriptor)
+            try:
+                owner = json.loads(
+                    payload.decode("utf-8"),
+                    object_pairs_hook=_reject_duplicate_pairs,
+                )
+            except (UnicodeError, ValueError):
+                raise RunnerError("start_claim_release_failed", "Pi start claim owner changed", 2)
+            if owner.get("token") != claim["token"]:
+                raise RunnerError("start_claim_release_failed", "Pi start claim owner changed", 2)
+            os.unlink("owner.json", dir_fd=claim_descriptor)
+            os.rmdir(PI_START_CLAIM_NAME, dir_fd=session)
+    except RunnerError:
+        raise
+    except (OSError, workspace_preflight.WorkspaceError) as exc:
+        raise RunnerError(
+            "start_claim_release_failed",
+            "cannot release Pi start claim: %s" % exc,
+            2,
+        )
+    finally:
+        if claim_descriptor is not None:
+            os.close(claim_descriptor)
+
+
 def _new_receipt(root, thread_id, adapter_info, adapter_contract=None):
     now = iso_now()
     result = {
@@ -485,6 +739,7 @@ def _new_receipt(root, thread_id, adapter_info, adapter_contract=None):
         "session_id": thread_id,
         "thread_id": thread_id,
         "status": "running",
+        "controller_pid": os.getpid(),
         "turns": 0,
         "active_run": None,
         "turn_limit": _turn_limit(),
@@ -496,6 +751,9 @@ def _new_receipt(root, thread_id, adapter_info, adapter_contract=None):
     }
     if adapter_contract is not None:
         result["adapter_contract"] = adapter_contract
+    bridge = _pi_bridge_identity(root)
+    if bridge is not None:
+        result["bridge"] = bridge
     return result
 
 
@@ -824,33 +1082,56 @@ def run_task(root, task, adapter=None):
     except model_adapter.AdapterError as exc:
         raise RunnerError("adapter_incompatible", str(exc), 2)
     workflow_aware = _workflow_aware(adapter_info)
-    current = _active_status(root)
-    if current.get("present") is True:
-        raise RunnerError("active_run_exists", "an active Kimiflow run already exists; use its owning session or terminal resume", 1)
-    baseline = _outcome_fingerprints(root)
-    holder = {"receipt": None}
-
-    def capture(thread_id):
-        if holder["receipt"] is not None:
-            _ensure_same_thread(thread_id, holder["receipt"]["thread_id"])
-            return
-        holder["receipt"] = _new_receipt(root, thread_id, adapter_info, adapter_contract)
-        write_receipt(root, holder["receipt"])
-
+    start_claim = _read_pi_start_claim(root)
     try:
-        turn = adapter.start(root, _initial_prompt(task, workflow_aware=workflow_aware), capture)
-    except KeyboardInterrupt:
-        return _record_interruption(root, holder["receipt"])
-    if holder["receipt"] is None and turn.thread_id:
-        capture(turn.thread_id)
-    if holder["receipt"] is None:
-        raise RunnerError("thread_missing", "coding-agent adapter did not emit a resumable session ID", 1)
-    return _drive(root, adapter, holder["receipt"], turn, baseline, workflow_aware=workflow_aware)
+        current = _active_status(root)
+        if current.get("present") is True:
+            raise RunnerError("active_run_exists", "an active Kimiflow run already exists; use its owning session or terminal resume", 1)
+        baseline = _outcome_fingerprints(root)
+        holder = {"receipt": None}
+
+        def capture(thread_id):
+            nonlocal start_claim
+            if holder["receipt"] is not None:
+                _ensure_same_thread(thread_id, holder["receipt"]["thread_id"])
+                return
+            holder["receipt"] = _new_receipt(root, thread_id, adapter_info, adapter_contract)
+            write_receipt(root, holder["receipt"])
+            _release_pi_start_claim(root, start_claim)
+            start_claim = None
+
+        try:
+            turn = adapter.start(root, _initial_prompt(task, workflow_aware=workflow_aware), capture)
+        except KeyboardInterrupt:
+            return _record_interruption(root, holder["receipt"])
+        if holder["receipt"] is None and turn.thread_id:
+            capture(turn.thread_id)
+        if holder["receipt"] is None:
+            raise RunnerError("thread_missing", "coding-agent adapter did not emit a resumable session ID", 1)
+        return _drive(root, adapter, holder["receipt"], turn, baseline, workflow_aware=workflow_aware)
+    finally:
+        if start_claim is not None:
+            _release_pi_start_claim(root, start_claim)
 
 
 def resume_task(root, message=None, adapter=None):
     root = _resolve_project_root(root)
+    start_claim = _read_pi_start_claim(root)
+    try:
+        return _resume_task(root, message=message, adapter=adapter)
+    finally:
+        if start_claim is not None:
+            _release_pi_start_claim(root, start_claim)
+
+
+def _resume_task(root, message=None, adapter=None):
     receipt = load_receipt(root)
+    if _pi_bridge_identity(root) != receipt.get("bridge"):
+        raise RunnerError(
+            "bridge_identity_mismatch",
+            "resume requires the same Pi bridge identity",
+            2,
+        )
     if receipt.get("status") not in RESUMABLE_STATES:
         raise RunnerError("not_resumable", "terminal run is not resumable", 1)
     adapter = adapter or CodexExecAdapter()
@@ -869,6 +1150,7 @@ def resume_task(root, message=None, adapter=None):
     workflow_aware = _workflow_aware(adapter_info)
     current = _active_status(root)
     waiting = current.get("awaiting_user") is True or receipt.get("status") == "parked"
+    user_message = message.strip() if isinstance(message, str) and message.strip() else None
     if waiting and (not isinstance(message, str) or not message.strip()):
         raise RunnerError("message_required", "this material wait requires --message", 2)
     if current.get("present") is True and current.get("terminal") is False:
@@ -876,7 +1158,7 @@ def resume_task(root, message=None, adapter=None):
             raise RunnerError("ownership_conflict", "active Kimiflow run belongs to another session", 1)
         if receipt.get("active_run") and current.get("run") != receipt.get("active_run"):
             raise RunnerError("receipt_mismatch", "receipt and active run do not match", 1)
-        prompt = message.strip() if waiting else _continuation_prompt(current)
+        prompt = user_message if user_message is not None else _continuation_prompt(current)
     elif receipt.get("status") == "parked":
         prompt = _parked_resume_prompt(
             receipt.get("active_run") or "", message, workflow_aware=workflow_aware,
@@ -895,7 +1177,13 @@ def resume_task(root, message=None, adapter=None):
             "final_recovery_used": False,
             "exhaustion_reason": "",
         }
-    receipt = _update_receipt(root, receipt, "running", **updates)
+    receipt = _update_receipt(
+        root,
+        receipt,
+        "running",
+        controller_pid=os.getpid(),
+        **updates,
+    )
     try:
         turn = _resume_adapter(
             root, current, adapter,

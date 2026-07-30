@@ -1,4 +1,5 @@
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -31,6 +32,321 @@ def run_main(args, stdin_text=None):
                 rc = active_run.main(args)
     return rc, out.getvalue()
 
+
+class ActiveRunContractTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.temp, ignore_errors=True)
+        self.root = os.path.realpath(os.path.join(self.temp, "repo"))
+        os.mkdir(self.root)
+        subprocess.run(["git", "init", "-q", self.root], check=True)
+        subprocess.run(["git", "-C", self.root, "config", "user.name", "Test"], check=True)
+        subprocess.run(["git", "-C", self.root, "config", "user.email", "test@example.test"], check=True)
+        with open(os.path.join(self.root, "tracked.txt"), "w", encoding="utf-8") as handle:
+            handle.write("base\n")
+        subprocess.run(["git", "-C", self.root, "add", "tracked.txt"], check=True)
+        subprocess.run(["git", "-C", self.root, "commit", "-qm", "base"], check=True)
+
+    def test_intake_receipt_retry_clears_wait_after_crash(self):
+        run_rel = ".kimiflow/intake-retry"
+        run_dir = os.path.join(self.root, run_rel)
+        os.makedirs(run_dir)
+        request = (
+            "<!-- kimiflow:intake contract=4 round=1 questions=1 "
+            "selection=impact_uncertainty technical_questions=0 "
+            "confirmation=concrete_product_flow -->\n"
+            "Confirm the concrete product flow.\n"
+            "Product flow entry: Open the existing Pi session.\n"
+            "User interaction: Ask Pi to use Kimiflow.\n"
+            "Visible delegation outcome: Crew status remains visible.\n"
+            "Unchanged path: Codex and Claude continue unchanged.\n"
+            "Done scenario: Captain reports the verified run.\n"
+        )
+        request_path = os.path.join(run_dir, "INTAKE.md")
+        with open(request_path, "w", encoding="utf-8") as handle:
+            handle.write(request)
+        digest = "sha256:" + hashlib.sha256(
+            request.encode("utf-8"),
+        ).hexdigest()
+        active = {
+            "schema_version": 1,
+            "status": "active",
+            "run": run_rel,
+            "mode": "feature",
+            "scope": "small",
+            "host": "pi",
+            "intent_contract": "4",
+            "awaiting_user": True,
+            "awaiting_kind": "intake",
+            "intake_round": 1,
+            "intake_request": run_rel + "/INTAKE.md",
+            "intake_request_digest": digest,
+        }
+        active_run.write_active(self.root, active)
+        status = active_run.status_json(self.root)
+        self.assertEqual(status["awaiting_request"], request)
+        self.assertEqual(status["awaiting_reason"], None)
+        self.assertFalse(
+            active_run.record_intake_response(
+                self.root,
+                active,
+                "chat",
+                confirmed=False,
+            ),
+        )
+        self.assertTrue(active_run.load_active(self.root)["awaiting_user"])
+        with mock.patch.object(
+            active_run,
+            "write_active",
+            side_effect=active_run.ActiveError(
+                "injected active write failure",
+                2,
+            ),
+        ), self.assertRaises(active_run.ActiveError):
+            active_run.record_intake_response(
+                self.root,
+                active,
+                "chat",
+                confirmed=True,
+            )
+        receipt = os.path.join(run_dir, "INTAKE-RECEIPT-1.json")
+        self.assertTrue(os.path.isfile(receipt))
+
+        self.assertTrue(
+            active_run.record_intake_response(
+                self.root,
+                active,
+                "chat",
+                confirmed=True,
+            ),
+        )
+
+    def test_contract4_intake_rejects_tbd_product_flow(self):
+        run_rel = ".kimiflow/intake-tbd"
+        run_dir = os.path.join(self.root, run_rel)
+        os.makedirs(run_dir)
+        request = (
+            "<!-- kimiflow:intake contract=4 round=1 questions=1 "
+            "selection=impact_uncertainty technical_questions=0 "
+            "confirmation=concrete_product_flow -->\n"
+            "Product flow entry: TBD\n"
+            "User interaction: TBD\n"
+            "Visible delegation outcome: TBD\n"
+            "Unchanged path: TBD\n"
+            "Done scenario: TBD\n"
+        )
+        with open(os.path.join(run_dir, "INTAKE.md"), "w", encoding="utf-8") as handle:
+            handle.write(request)
+
+        with self.assertRaisesRegex(
+            active_run.ActiveError,
+            "one concrete product flow entry value",
+        ):
+            active_run.strict_intake_request(
+                self.root,
+                run_dir,
+                run_rel + "/INTAKE.md",
+                1,
+                4,
+            )
+
+    def test_contract4_intake_rejects_generic_or_duplicate_product_flow(self):
+        run_rel = ".kimiflow/intake-abstract"
+        run_dir = os.path.join(self.root, run_rel)
+        os.makedirs(run_dir)
+        marker = (
+            "<!-- kimiflow:intake contract=4 round=1 questions=1 "
+            "selection=impact_uncertainty technical_questions=0 "
+            "confirmation=concrete_product_flow -->\n"
+        )
+        path = os.path.join(run_dir, "INTAKE.md")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(marker + "\n".join(
+                "%s: Do whatever" % label
+                for label in (
+                    "Product flow entry",
+                    "User interaction",
+                    "Visible delegation outcome",
+                    "Unchanged path",
+                    "Done scenario",
+                )
+            ) + "\n")
+        with self.assertRaisesRegex(active_run.ActiveError, "one concrete"):
+            active_run.strict_intake_request(
+                self.root, run_dir, run_rel + "/INTAKE.md", 1, 4,
+            )
+
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(
+                marker
+                + "Product flow entry: Open Pi.\n"
+                + "User interaction: Open Pi.\n"
+                + "Visible delegation outcome: Show the worker state.\n"
+                + "Unchanged path: Keep direct Codex unchanged.\n"
+                + "Done scenario: Report verified completion.\n"
+            )
+        with self.assertRaisesRegex(active_run.ActiveError, "must be distinct"):
+            active_run.strict_intake_request(
+                self.root, run_dir, run_rel + "/INTAKE.md", 1, 4,
+            )
+
+    def test_contract4_confirmation_is_explicit_and_rejects_corrections(self):
+        for value in ("Ja", "genau so", "Okay, weiter", "confirmed"):
+            with self.subTest(value=value):
+                self.assertTrue(active_run.explicit_confirmation(value))
+        for value in (
+            "No",
+            "Ja, aber anders",
+            "Das ist falsch",
+            "Here are changes",
+            "I don't confirm this flow",
+            "I cannot approve this flow",
+            "I can't approve this flow",
+            "I won't approve this flow",
+            "Okay, change the unchanged path",
+            "Ja, bitte ändere den unveränderten Pfad",
+            "Keinesfalls bestätigt",
+        ):
+            with self.subTest(value=value):
+                self.assertFalse(active_run.explicit_confirmation(value))
+        resumed = active_run.load_active(self.root)
+        self.assertNotIn("awaiting_user", resumed)
+        self.assertNotIn("awaiting_kind", resumed)
+
+    def test_intake_request_rejects_a_hard_linked_file(self):
+        run_rel = ".kimiflow/intake-hardlink"
+        run_dir = os.path.join(self.root, run_rel)
+        os.makedirs(run_dir)
+        product = os.path.join(self.root, "product.txt")
+        with open(product, "w", encoding="utf-8") as handle:
+            handle.write(
+                "<!-- kimiflow:intake contract=4 round=1 questions=1 "
+                "selection=impact_uncertainty technical_questions=0 "
+                "confirmation=concrete_product_flow -->\n"
+                "Product flow entry: Start Pi.\n"
+                "User interaction: Ask Pi to use Kimiflow.\n"
+                "Visible delegation outcome: Show the run status.\n"
+                "Unchanged path: Keep direct Codex unchanged.\n"
+                "Done scenario: Report verified completion.\n"
+            )
+        os.link(product, os.path.join(run_dir, "INTAKE.md"))
+
+        with self.assertRaisesRegex(active_run.ActiveError, "unsafe"):
+            active_run.strict_intake_request(
+                self.root,
+                run_dir,
+                run_rel + "/INTAKE.md",
+                1,
+                4,
+            )
+
+    def test_visible_intake_uses_the_same_digest_bound_file_object(self):
+        run_rel = ".kimiflow/intake-visible-object"
+        run_dir = os.path.join(self.root, run_rel)
+        os.makedirs(run_dir)
+        request = (
+            "<!-- kimiflow:intake contract=4 round=1 questions=1 "
+            "selection=impact_uncertainty technical_questions=0 "
+            "confirmation=concrete_product_flow -->\n"
+            "Product flow entry: Open the existing Pi session.\n"
+            "User interaction: Ask Pi to use Kimiflow.\n"
+            "Visible delegation outcome: Show the verified run.\n"
+            "Unchanged path: Keep direct Codex unchanged.\n"
+            "Done scenario: Report receipt-backed completion.\n"
+        )
+        intake = os.path.join(run_dir, "INTAKE.md")
+        replacement = os.path.join(run_dir, "replacement")
+        with open(intake, "w", encoding="utf-8") as handle:
+            handle.write(request)
+        with open(replacement, "w", encoding="utf-8") as handle:
+            handle.write("FORGED WORKSPACE QUESTION\n")
+        run_info = os.lstat(run_dir)
+        active = {
+            "awaiting_user": True,
+            "awaiting_kind": "intake",
+            "intake_round": 1,
+            "intent_contract": "4",
+            "intake_request": run_rel + "/INTAKE.md",
+            "intake_request_digest": "sha256:" + hashlib.sha256(
+                request.encode("utf-8"),
+            ).hexdigest(),
+            "run": run_rel,
+            "run_device": run_info.st_dev,
+            "run_inode": run_info.st_ino,
+        }
+        original_read = active_run.os.read
+        swapped = False
+
+        def swap_after_pinned_read(descriptor, count):
+            nonlocal swapped
+            value = original_read(descriptor, count)
+            if not swapped:
+                swapped = True
+                os.replace(replacement, intake)
+            return value
+
+        with mock.patch.object(
+            active_run.os,
+            "read",
+            side_effect=swap_after_pinned_read,
+        ):
+            visible = active_run.visible_intake_request(self.root, active)
+
+        self.assertEqual(visible, request)
+        self.assertNotIn("FORGED", visible)
+
+    def test_intake_response_rejects_a_replaced_run_directory(self):
+        run_rel = ".kimiflow/intake-run-identity"
+        run_dir = os.path.join(self.root, run_rel)
+        os.makedirs(run_dir)
+        request = (
+            "<!-- kimiflow:intake contract=4 round=1 questions=1 "
+            "selection=impact_uncertainty technical_questions=0 "
+            "confirmation=concrete_product_flow -->\n"
+            "Product flow entry: Open the existing Pi session.\n"
+            "User interaction: Ask Pi to use Kimiflow.\n"
+            "Visible delegation outcome: Show the verified run.\n"
+            "Unchanged path: Keep direct Codex unchanged.\n"
+            "Done scenario: Report receipt-backed completion.\n"
+        )
+        with open(os.path.join(run_dir, "INTAKE.md"), "w", encoding="utf-8") as handle:
+            handle.write(request)
+        original = os.lstat(run_dir)
+        active = {
+            "schema_version": 1,
+            "status": "active",
+            "run": run_rel,
+            "mode": "feature",
+            "scope": "small",
+            "host": "pi",
+            "intent_contract": "4",
+            "awaiting_user": True,
+            "awaiting_kind": "intake",
+            "intake_round": 1,
+            "intake_request": run_rel + "/INTAKE.md",
+            "intake_request_digest": "sha256:" + hashlib.sha256(
+                request.encode("utf-8"),
+            ).hexdigest(),
+            "run_device": original.st_dev,
+            "run_inode": original.st_ino,
+        }
+        displaced = run_dir + "-displaced"
+        os.rename(run_dir, displaced)
+        os.mkdir(run_dir)
+        with open(os.path.join(run_dir, "INTAKE.md"), "w", encoding="utf-8") as handle:
+            handle.write(request)
+
+        self.assertFalse(
+            active_run.record_intake_response(
+                self.root,
+                active,
+                "chat",
+                confirmed=True,
+            ),
+        )
+        self.assertFalse(
+            os.path.exists(os.path.join(run_dir, "INTAKE-RECEIPT-1.json")),
+        )
 
 class TestAffectedPathsHeaders(unittest.TestCase):
     def setUp(self):
@@ -225,7 +541,11 @@ class TestExecutionControlIntegration(unittest.TestCase):
     def test_schema5_requires_and_pins_convergence_contract(self):
         state_path = os.path.join(self.run_dir, "STATE.md")
         with open(state_path, "r", encoding="utf-8") as handle:
-            value = handle.read().replace("Flow schema: 4", "Flow schema: 5")
+            value = (
+                handle.read()
+                .replace("Flow schema: 4", "Flow schema: 5")
+                .replace("Intent contract: 3", "Intent contract: 4")
+            )
         with open(state_path, "w", encoding="utf-8") as handle:
             handle.write(value)
 
@@ -258,6 +578,47 @@ class TestExecutionControlIntegration(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertEqual(self.active().get("convergence_contract"), "1")
 
+    def test_fresh_nontrivial_feature_selects_contract4_while_existing_contract3_run_resumes(self):
+        state_path = os.path.join(self.run_dir, "STATE.md")
+        with open(state_path, "r", encoding="utf-8") as handle:
+            value = (
+                handle.read()
+                .replace("Flow schema: 4", "Flow schema: 5")
+                .replace("Intent contract: 3", "Intent contract: 4")
+            )
+        value += "Convergence contract: 1\nConformance contract: 1\n"
+        with open(state_path, "w", encoding="utf-8") as handle:
+            handle.write(value)
+
+        rc, _ = self.start()
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.active().get("intent_contract"), "4")
+
+        rc, _ = run_main([
+            "park", "--root", self.root, "--reason", "resume fixture", "--write",
+        ])
+        self.assertEqual(rc, 0)
+        outcome_path = os.path.join(self.run_dir, "SESSION-OUTCOME.json")
+        with open(outcome_path, "r", encoding="utf-8") as handle:
+            parked = json.load(handle)
+        parked["session_pins"]["intent_contract"] = "3"
+        parked["session_pins"]["flow_schema"] = "4"
+        with open(outcome_path, "w", encoding="utf-8") as handle:
+            json.dump(parked, handle)
+            handle.write("\n")
+        with open(state_path, "r", encoding="utf-8") as handle:
+            value = (
+                handle.read()
+                .replace("Flow schema: 5", "Flow schema: 4")
+                .replace("Intent contract: 4", "Intent contract: 3")
+            )
+        with open(state_path, "w", encoding="utf-8") as handle:
+            handle.write(value)
+
+        rc, _ = self.start()
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.active().get("intent_contract"), "3")
+
     def test_duplicate_flow_schema_cannot_downgrade_schema5_start(self):
         state_path = os.path.join(self.run_dir, "STATE.md")
         with open(state_path, "a", encoding="utf-8") as handle:
@@ -271,7 +632,11 @@ class TestExecutionControlIntegration(unittest.TestCase):
     def test_schema5_refuses_removed_pinned_conformance_contract(self):
         state_path = os.path.join(self.run_dir, "STATE.md")
         with open(state_path, "r", encoding="utf-8") as handle:
-            value = handle.read().replace("Flow schema: 4", "Flow schema: 5")
+            value = (
+                handle.read()
+                .replace("Flow schema: 4", "Flow schema: 5")
+                .replace("Intent contract: 3", "Intent contract: 4")
+            )
         with open(state_path, "w", encoding="utf-8") as handle:
             handle.write(
                 value

@@ -41,6 +41,10 @@ HOST_PROFILES = {
         "structured_events",
         "workflow_context",
     ],
+    "pi": [
+        "structured_events",
+        "workflow_context",
+    ],
 }
 ADVERTISED_FEATURES = sorted(
     {feature for features in HOST_PROFILES.values() for feature in features}
@@ -49,10 +53,25 @@ RUNTIME_REQUIRED_FILES = {
     ".claude-plugin/plugin.json",
     ".codex-plugin/plugin.json",
     "SKILL.md",
+    "package.json",
+    "hosts/pi/extensions/captain.js",
+    "hosts/pi/extensions/worker.js",
+    "hosts/pi/skills/kimiflow/SKILL.md",
     "hooks/active-run.sh",
     "hooks/hooks.json",
+    "hooks/pi-host.sh",
+    "hooks/kimiflow_core/pi_host.py",
     "phases/PHASES.json",
     "reference.md",
+}
+PI_PACKAGE = {
+    "name": "@kimiflow/pi",
+    "type": "module",
+    "extensions": [
+        "./hosts/pi/extensions/captain.js",
+        "./hosts/pi/extensions/worker.js",
+    ],
+    "skills": ["./hosts/pi/skills/kimiflow"],
 }
 
 
@@ -104,6 +123,20 @@ def _safe_relative(path):
 
 def _file_mode(path):
     return "0755" if os.lstat(path).st_mode & 0o111 else "0644"
+
+
+def _validate_pi_package(value, version, label):
+    pi = value.get("pi") if isinstance(value, dict) else None
+    if (
+        not isinstance(value, dict)
+        or value.get("name") != PI_PACKAGE["name"]
+        or value.get("version") != version
+        or value.get("type") != PI_PACKAGE["type"]
+        or not isinstance(pi, dict)
+        or pi.get("extensions") != PI_PACKAGE["extensions"]
+        or pi.get("skills") != PI_PACKAGE["skills"]
+    ):
+        raise ReleaseError("%s is invalid or version-misaligned" % label)
 
 
 def _candidate_inventory(candidate):
@@ -228,6 +261,8 @@ def _validate_candidate(candidate):
         raise ReleaseError("runtime version is invalid")
     if codex.get("version") != version:
         raise ReleaseError("runtime host manifest versions disagree")
+    package, _ = _read_json(os.path.join(candidate, "package.json"), "Pi package")
+    _validate_pi_package(package, version, "Pi package")
     return {
         "candidate": candidate,
         "fingerprint": fingerprint,
@@ -652,6 +687,8 @@ def _validate_zip(archive_path, manifest):
     )
     if claude.get("version") != manifest["version"] or codex.get("version") != manifest["version"]:
         raise ReleaseError("archived runtime host manifest version drift")
+    package = _decode_json_object(rows["package.json"][1], "archived Pi package")
+    _validate_pi_package(package, manifest["version"], "archived Pi package")
     return artifact
 
 

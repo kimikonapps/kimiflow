@@ -187,7 +187,11 @@ legacy_approval_present="$(grep -Eio '<!--[[:space:]]*kimiflow:fix-approval[^>]*
 if [ "$record_fix_approval" -eq 1 ] && [ "$mode_value" != "fix" ]; then
   emit CLOSED 1 malformed "fix_approval_mode_invalid"
 fi
-if [ "$record_intent_lock" -eq 1 ] && { [ "$mode_value" != "feature" ] || [ "$intent_contract" != "3" ]; }; then
+if [ "$record_intent_lock" -eq 1 ] && {
+  [ "$mode_value" != "feature" ] || {
+    [ "$intent_contract" != "3" ] && [ "$intent_contract" != "4" ]
+  }
+}; then
   emit CLOSED 1 malformed "intent_lock_mode_invalid"
 fi
 if [ "$post_diagnosis" -eq 1 ] && [ -n "$state_approval$state_approval_basis$legacy_approval_present" ] && [ "$mode_value" != "fix" ]; then
@@ -374,7 +378,7 @@ if [ "$mode_value" = "feature" ] && [ "$scope" != "trivial" ]; then
       fi
       emit CLOSED "$blockers" clarify-blockers "$details"
       ;;
-    3)
+    3|4)
       coverage_marker="$(grep -Eio '<!--[[:space:]]*kimiflow:intent-coverage[^>]*-->|kimiflow:intent-coverage[^[:cntrl:]]*' "$artifact" | head -1 || true)"
       coverage_marker="$(printf '%s\n' "$coverage_marker" | sed 's/<!--[[:space:]]*//; s/[[:space:]]*-->//')"
       [ -n "$coverage_marker" ] || { add_blocker "intent_coverage_missing"; emit CLOSED "$blockers" clarify-blockers "$details"; }
@@ -392,9 +396,17 @@ if [ "$mode_value" = "feature" ] && [ "$scope" != "trivial" ]; then
       coverage_authority="$(marker_attr "$coverage_marker" authority)"
       coverage_summary="$(marker_attr "$coverage_marker" summary)"
       coverage_source="$(marker_attr "$coverage_marker" source)"
+      coverage_entry="$(marker_attr "$coverage_marker" entry)"
+      coverage_interaction="$(marker_attr "$coverage_marker" interaction)"
+      coverage_delegation="$(marker_attr "$coverage_marker" delegation)"
+      coverage_unchanged="$(marker_attr "$coverage_marker" unchanged)"
+      coverage_done="$(marker_attr "$coverage_marker" done)"
 
-      [ "$coverage_contract" = "3" ] || add_blocker "intent_coverage_contract_invalid"
+      [ "$coverage_contract" = "$intent_contract" ] || add_blocker "intent_coverage_contract_invalid"
       case "$flow_schema" in ''|*[!0-9]*) add_blocker "intent_contract_schema_invalid" ;; *) [ "$flow_schema" -ge 4 ] || add_blocker "intent_contract_schema_invalid" ;; esac
+      if [ "$intent_contract" = "4" ]; then
+        case "$flow_schema" in ''|*[!0-9]*) ;; *) [ "$flow_schema" -ge 5 ] || add_blocker "intent_contract_schema_invalid" ;; esac
+      fi
       case "$scope" in small|large) ;; *) add_blocker "intent_scope_tier_invalid" ;; esac
       strong_product_source "$coverage_goal" || add_blocker "intent_goal_provenance_invalid"
       bounded_product_source "$coverage_actor" || add_blocker "intent_actor_provenance_invalid"
@@ -415,19 +427,65 @@ if [ "$mode_value" = "feature" ] && [ "$scope" != "trivial" ]; then
       case "$coverage_source" in current-run|current_run) ;; *) add_blocker "intent_coverage_not_current_run" ;; esac
       if [ "$requires_implementation_authority" -eq 1 ]; then case "$coverage_authority" in explicit|confirmed) ;; *) add_blocker "implementation_authority_missing" ;; esac; fi
       [ "$coverage_summary" = "present" ] || add_blocker "plain_summary_missing"
+      if [ "$intent_contract" = "4" ]; then
+        [ "$coverage_entry" = "user_confirmed" ] || add_blocker "product_flow_entry_unconfirmed"
+        [ "$coverage_interaction" = "user_confirmed" ] || add_blocker "product_flow_interaction_unconfirmed"
+        [ "$coverage_delegation" = "user_confirmed" ] || add_blocker "product_flow_delegation_unconfirmed"
+        [ "$coverage_unchanged" = "user_confirmed" ] || add_blocker "product_flow_unchanged_unconfirmed"
+        [ "$coverage_done" = "user_confirmed" ] || add_blocker "product_flow_done_unconfirmed"
+      fi
 
-      contract3_detail="$(python3 - "$run_dir" "$coverage_rounds" "$record_intent_lock" "$SCRIPT_DIR/active-run.sh" <<'PY'
+      intake_detail="$(python3 - "$run_dir" "$coverage_rounds" "$record_intent_lock" "$SCRIPT_DIR/active-run.sh" "$intent_contract" <<'PY'
 import hashlib, json, os, re, subprocess, sys, tempfile
-run_dir, rounds_raw, record_raw, active_script = sys.argv[1:]
+run_dir, rounds_raw, record_raw, active_script, contract_raw = sys.argv[1:]
 errors=[]
 try: rounds=int(rounds_raw)
 except ValueError: rounds=0
+try: contract=int(contract_raw)
+except ValueError: contract=0
+
+FLOW_FIELDS=(
+    ("entry","Product flow entry"),
+    ("interaction","User interaction"),
+    ("delegation","Visible delegation outcome"),
+    ("unchanged","Unchanged path"),
+    ("done","Done scenario"),
+)
+request_flow_digests={}
+ABSTRACT_FLOW_VALUES={
+    "anything","as needed","confirmed","default flow","do whatever","n/a",
+    "na","no","pending","placeholder","same","standard flow","tbd","todo",
+    "unchanged","unknown","use best judgment","whatever","whatever is best",
+    "yes",
+}
 
 def sha(path):
     h=hashlib.sha256()
     with open(path,"rb") as f:
         for chunk in iter(lambda:f.read(65536),b""): h.update(chunk)
     return "sha256:"+h.hexdigest()
+
+def concrete_product_flow(text,error_prefix):
+    product_flow={}
+    normalized_values=[]
+    for key,label in FLOW_FIELDS:
+        values=re.findall(r"^%s:\s*(\S.+)$"%re.escape(label),text,re.M)
+        normalized=(
+            re.sub(r"\s+"," ",values[0].strip().casefold()).strip(" .!?")
+            if len(values)==1 else ""
+        )
+        if not normalized or normalized in ABSTRACT_FLOW_VALUES:
+            errors.append("%s_%s_missing_or_abstract"%(error_prefix,key))
+        else:
+            product_flow[key]=values[0].strip()
+            normalized_values.append(normalized)
+    if len(product_flow)!=len(FLOW_FIELDS):
+        return product_flow,""
+    if len(set(normalized_values))!=len(normalized_values):
+        errors.append("%s_values_duplicate"%error_prefix)
+        return product_flow,""
+    payload=json.dumps(product_flow,ensure_ascii=False,sort_keys=True,separators=(",",":")).encode("utf-8")
+    return product_flow,"sha256:"+hashlib.sha256(payload).hexdigest()
 
 def request(round_no):
     name="INTAKE.md" if round_no==1 else "INTAKE-2.md"
@@ -442,13 +500,17 @@ def request(round_no):
     if len(markers)!=1:
         errors.append("intake_marker_%d_invalid"%round_no); return path,None
     attrs=dict(re.findall(r"([a-z_]+)=([A-Za-z0-9_-]+)",markers[0]))
-    if attrs.get("contract")!="3" or attrs.get("round")!=str(round_no): errors.append("intake_marker_%d_invalid"%round_no)
+    if attrs.get("contract")!=str(contract) or attrs.get("round")!=str(round_no): errors.append("intake_marker_%d_invalid"%round_no)
     try: questions=int(attrs.get("questions","0"))
     except ValueError: questions=0
     if not 1 <= questions <= 5: errors.append("intake_questions_%d_out_of_bounds"%round_no)
     if attrs.get("selection")!="impact_uncertainty": errors.append("intake_selection_%d_invalid"%round_no)
     if attrs.get("technical_questions")!="0": errors.append("intake_technical_questions_%d_forbidden"%round_no)
     if round_no==2 and attrs.get("cause")!="first_response_conflict": errors.append("intake_round_2_cause_invalid")
+    if contract==4 and attrs.get("confirmation")!="concrete_product_flow": errors.append("intake_confirmation_%d_invalid"%round_no)
+    if contract==4:
+        _,flow_digest=concrete_product_flow(text,"intake_product_flow_%d"%round_no)
+        if flow_digest: request_flow_digests[round_no]=flow_digest
     return path,sha(path)
 
 def receipt(round_no,digest):
@@ -460,7 +522,7 @@ def receipt(round_no,digest):
         errors.append("intake_receipt_%d_missing"%round_no); return
     expected={"schema_version","contract","round","request","request_digest","channel","responded_at"}
     request_name="INTAKE.md" if round_no==1 else "INTAKE-2.md"
-    if set(value)!=expected or value.get("schema_version")!=1 or value.get("contract")!=3 or value.get("round")!=round_no or value.get("request")!=request_name or value.get("request_digest")!=digest or value.get("channel") not in ("chat","native_tool") or not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z",str(value.get("responded_at",""))):
+    if set(value)!=expected or value.get("schema_version")!=1 or value.get("contract")!=contract or value.get("round")!=round_no or value.get("request")!=request_name or value.get("request_digest")!=digest or value.get("channel") not in ("chat","native_tool") or not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z",str(value.get("responded_at",""))):
         errors.append("intake_receipt_%d_invalid"%round_no)
 
 for n in range(1,rounds+1):
@@ -473,6 +535,11 @@ try: intent_text=open(intent,encoding="utf-8").read(); intent_digest=sha(intent)
 except (OSError,UnicodeError): errors.append("intent_missing"); intent_text=""; intent_digest=""
 requirements=re.findall(r"^Requirement (R[1-9][0-9]*):\s*\S.+$",intent_text,re.M)
 if not requirements or len(requirements)>20 or requirements != ["R%d"%n for n in range(1,len(requirements)+1)]: errors.append("intent_requirements_invalid")
+product_flow_digest=""
+if contract==4:
+    _,product_flow_digest=concrete_product_flow(intent_text,"product_flow")
+    if product_flow_digest and request_flow_digests.get(rounds)!=product_flow_digest:
+        errors.append("intake_product_flow_not_bound_to_intent")
 lock_path=os.path.join(run_dir,"INTENT-LOCK.json")
 lock=None
 if os.path.lexists(lock_path):
@@ -481,14 +548,17 @@ if os.path.lexists(lock_path):
         lock=json.load(open(lock_path,encoding="utf-8"))
     except (OSError,ValueError,UnicodeError): errors.append("intent_lock_invalid")
 if lock is None and record_raw=="1" and not errors:
-    lock={"schema_version":1,"contract":3,"intent_digest":intent_digest,"requirements":requirements,"locked_at":__import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    lock={"schema_version":1,"contract":contract,"intent_digest":intent_digest,"requirements":requirements,"locked_at":__import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    if contract==4: lock["product_flow_digest"]=product_flow_digest
     try:
         fd=os.open(lock_path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
         with os.fdopen(fd,"w",encoding="utf-8") as f: json.dump(lock,f,ensure_ascii=False,indent=2); f.write("\n"); f.flush(); os.fsync(f.fileno())
     except OSError: errors.append("intent_lock_write_failed")
 if lock is None and "intent_lock_invalid" not in errors: errors.append("intent_lock_missing")
 if isinstance(lock,dict):
-    if set(lock)!={"schema_version","contract","intent_digest","requirements","locked_at"} or lock.get("schema_version")!=1 or lock.get("contract")!=3 or lock.get("intent_digest")!=intent_digest or lock.get("requirements")!=requirements: errors.append("intent_lock_stale")
+    expected_keys={"schema_version","contract","intent_digest","requirements","locked_at"}
+    if contract==4: expected_keys.add("product_flow_digest")
+    if set(lock)!=expected_keys or lock.get("schema_version")!=1 or lock.get("contract")!=contract or lock.get("intent_digest")!=intent_digest or lock.get("requirements")!=requirements or (contract==4 and lock.get("product_flow_digest")!=product_flow_digest): errors.append("intent_lock_stale")
     else:
         lock_digest=sha(lock_path)
         try:
@@ -505,8 +575,8 @@ if isinstance(lock,dict):
 print(",".join(dict.fromkeys(errors)))
 PY
 )"
-      if [ -n "$contract3_detail" ]; then
-        old_ifs="$IFS"; IFS=','; set -- $contract3_detail; IFS="$old_ifs"
+      if [ -n "$intake_detail" ]; then
+        old_ifs="$IFS"; IFS=','; set -- $intake_detail; IFS="$old_ifs"
         for detail in "$@"; do add_blocker "$detail"; done
       fi
       if [ "$blockers" -eq 0 ]; then emit_open; fi

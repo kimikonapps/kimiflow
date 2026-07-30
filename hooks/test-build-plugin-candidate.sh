@@ -10,6 +10,59 @@ CANDIDATE="$WORK/kimiflow"
 "$ROOT/hooks/build-plugin-candidate.sh" --write --output "$CANDIDATE" >/dev/null
 [ -f "$CANDIDATE/RUNTIME-FINGERPRINT.json" ]
 jq -e '.schema_version == 1 and (.runtime_fingerprint | test("^sha256:[0-9a-f]{64}$")) and .file_count == (.files | length)' "$CANDIDATE/RUNTIME-FINGERPRINT.json" >/dev/null
+
+test_optional_pi_package_release_and_embedded_host_parity() {
+  version="$(jq -r '.version' "$ROOT/.claude-plugin/plugin.json")"
+  jq -e --arg version "$version" '
+    .name == "@kimiflow/pi" and .version == $version and .type == "module"
+    and .pi.extensions == ["./hosts/pi/extensions/captain.js","./hosts/pi/extensions/worker.js"]
+    and .pi.skills == ["./hosts/pi/skills/kimiflow"]
+  ' "$CANDIDATE/package.json" >/dev/null
+  for rel in \
+    hosts/pi/extensions/captain.js \
+    hosts/pi/extensions/worker.js \
+    hosts/pi/skills/kimiflow/SKILL.md \
+    hooks/pi-host.sh \
+    hooks/kimiflow_core/pi_host.py; do
+    [ -f "$CANDIDATE/$rel" ]
+    jq -e --arg rel "$rel" '.files[] | select(.path == $rel)' \
+      "$CANDIDATE/RUNTIME-FINGERPRINT.json" >/dev/null
+  done
+}
+test_optional_pi_package_release_and_embedded_host_parity
+
+test_required_pi_runtime_paths_must_be_git_indexed() {
+  fixture="$WORK/index-fixture"
+  mkdir -p "$fixture/hooks/kimiflow_core" \
+    "$fixture/hosts/pi/extensions" \
+    "$fixture/hosts/pi/skills/kimiflow"
+  cp "$ROOT/hooks/build-plugin-candidate.sh" "$fixture/hooks/"
+  cp "$ROOT/package.json" "$fixture/"
+  cp "$ROOT/hooks/pi-host.sh" "$fixture/hooks/"
+  cp "$ROOT/hooks/kimiflow_core/pi_host.py" \
+    "$fixture/hooks/kimiflow_core/"
+  cp "$ROOT/hosts/pi/extensions/captain.js" \
+    "$ROOT/hosts/pi/extensions/worker.js" \
+    "$fixture/hosts/pi/extensions/"
+  cp "$ROOT/hosts/pi/skills/kimiflow/SKILL.md" \
+    "$fixture/hosts/pi/skills/kimiflow/"
+  git -C "$fixture" init -q
+  git -C "$fixture" add \
+    hooks/build-plugin-candidate.sh package.json hooks/pi-host.sh \
+    hooks/kimiflow_core/pi_host.py \
+    hosts/pi/extensions/captain.js \
+    hosts/pi/skills/kimiflow/SKILL.md
+  if "$fixture/hooks/build-plugin-candidate.sh" \
+    --write --output "$WORK/untracked-required/kimiflow" \
+    >"$WORK/untracked-required.log" 2>&1; then
+    echo "candidate builder accepted an untracked required Pi runtime" >&2
+    exit 1
+  fi
+  grep -q 'required Pi runtime file is not tracked: hosts/pi/extensions/worker.js' \
+    "$WORK/untracked-required.log"
+}
+test_required_pi_runtime_paths_must_be_git_indexed
+
 [ ! -e "$CANDIDATE/hooks/build-runtime-release.sh" ]
 [ ! -e "$CANDIDATE/hooks/publish-runtime-release.sh" ]
 [ ! -e "$CANDIDATE/hooks/kimiflow_core/runtime_release.py" ]
@@ -146,3 +199,5 @@ printf 'ok   candidate_install_smokes_fire\n'
 printf 'ok   candidate_missing_runtime_is_detected\n'
 printf 'ok   candidate_fingerprint_is_reproducible\n'
 printf 'ok   candidate_output_is_non_destructive\n'
+printf 'ok   test_optional_pi_package_release_and_embedded_host_parity\n'
+printf 'ok   test_required_pi_runtime_paths_must_be_git_indexed\n'

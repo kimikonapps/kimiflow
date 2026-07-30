@@ -15,6 +15,7 @@ make_fixture() {
   mkdir -p "$d/.claude-plugin" "$d/.codex-plugin" "$d/.agents/plugins"
   printf '{"name":"kimiflow","version":"%s"}\n' "$v" > "$d/.claude-plugin/plugin.json"
   printf '{"name":"kimiflow","version":"%s"}\n' "$v" > "$d/.codex-plugin/plugin.json"
+  printf '{"name":"@kimiflow/pi","version":"%s"}\n' "$v" > "$d/package.json"
   printf '{"name":"kimiflow","plugins":[{"name":"kimiflow","version":"%s"}]}\n' "$v" > "$d/.claude-plugin/marketplace.json"
   printf '{"name":"kimiflow","plugins":[{"name":"kimiflow"}]}\n' > "$d/.agents/plugins/marketplace.json"
   printf 'Last verified against kimiflow **%s** today.\n' "$v" > "$d/COMPATIBILITY.md"
@@ -67,6 +68,13 @@ printf '{"name":"kimiflow","version":"9.9.9"}\n' > "$F/.codex-plugin/plugin.json
 run "$F"
 { [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF '.codex-plugin/plugin.json' && printf '%s' "$OUT" | grep -qF '9.9.9'; } \
   && pass "drift_detected (file + value)" || fail "drift_detected: rc=$RC :: $OUT"
+
+# AC-1.2b the independently installable Pi package follows the same release version.
+F="$TMP/c2b"; make_fixture "$F" "0.1.0"
+printf '{"name":"@kimiflow/pi","version":"9.9.9"}\n' > "$F/package.json"
+run "$F"
+{ [ "$RC" -ne 0 ] && printf '%s' "$OUT" | grep -qF 'package.json' && printf '%s' "$OUT" | grep -qF '9.9.9'; } \
+  && pass "pi_package_drift_detected" || fail "pi_package_drift_detected: rc=$RC :: $OUT"
 
 # AC-1.3a missing CHANGELOG heading -> fail naming CHANGELOG.md
 F="$TMP/c3"; make_fixture "$F" "0.1.0"

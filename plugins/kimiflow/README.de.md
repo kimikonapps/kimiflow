@@ -96,6 +96,46 @@ kimiflow run "setze das gewünschte Feature um"
 kimiflow status --pretty
 ```
 
+### Optionaler Pi-Captain
+
+Das Repository liefert zusaetzlich ein installierbares Pi-Paket fuer Pi 0.82.x. Sobald das Kimiflow-Paket in
+einer laufenden Pi-Sitzung geladen ist, kannst du Pi natuerlich mit einem Feature „mit Kimiflow“ beauftragen:
+
+```bash
+pi install /absoluter/pfad/zu/kimiflow
+```
+
+Der Pfad kann dieser vertrauenswuerdige Checkout oder das aus einem verifizierten Runtime-ZIP entpackte
+`kimiflow/`-Verzeichnis sein. Mit `pi install -l /absoluter/pfad/zu/kimiflow` wird es nur fuer das aktuelle
+Projekt installiert. Pi registriert damit das Paket und laedt seine deklarierten Extensions und den Skill;
+ein temporaeres `pi -e` ist kein unterstuetzter Paket-Installationsweg.
+
+```text
+Baue das gewuenschte Feature mit Kimiflow.
+/kimiflow setze das gewuenschte Feature um
+/kimiflow-status
+```
+
+Der natuerliche Auftrag und der optionale Slash-Befehl verwenden dieselbe dauerhafte Aktivierung. Genau diese
+Pi-Sitzung bleibt der ansprechbare Captain und startet den vorhandenen Kimiflow-Runner im Hintergrund. Runner
+und Active Run bleiben die einzigen Workflow-Autoritaeten; die Pi-Bruecke fuegt keine zweite Registry, keinen
+Worker-Orchestrator, keine Delivery-Queue, keinen Daemon und keine Herdr-Control-Plane hinzu.
+
+Der Pi-Adapter uebernimmt die providerneutrale Auswahl `provider/model:thinking` der Sitzung. Kimiflow bleibt
+fuer Intake, Planung, seine normalen begrenzten Subagents, Gates, Worktrees, Recovery und Abschluss zustaendig.
+Reply und Steering setzen nur die exakte Runner-Sitzung an einer sicheren materiellen Grenze fort.
+Pi-Lifecycle-Text beweist nie den Abschluss; nur das passende terminale Kimiflow-Runner-Receipt tut das. Die
+Aktivierung kehrt nach dem Start des Hintergrundprozesses zurueck, damit die Pi-Unterhaltung nutzbar bleibt.
+Ein dauerhafter opaker Claim laesst dieselbe Pi-Sitzung nach einer unterbrochenen Aktivierung wieder andocken,
+ohne einen zweiten Runner zu starten.
+
+Herdr kann die bereits laufende Pi-Anwendung beherbergen, wird von Kimiflow aber weder vorausgesetzt noch
+gesteuert. Kimiflow installiert oder startet weder Pi noch Herdr oder einen Modell-Provider.
+
+Dieses Paket ist additiv. Ohne Installation oder Aktivierung in Pi bleiben die
+eingebetteten `$kimiflow`-Codex- und `/kimiflow`-Claude-Code-Wege, ihre Hooks und der optionale Terminal-Runner
+unveraendert.
+
 Codex ist der eingebaute Adapter. Ein vorhandenes lokales oder entferntes Coding-Agent-Harness kann denselben
 Lebenszyklus über den versionierten JSON-stdio-Vertrag ausführen:
 

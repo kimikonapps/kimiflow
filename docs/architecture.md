@@ -51,6 +51,30 @@ Routinebestaetigung weiter. Zaehler bleiben `null`, wenn der Provider keine Usag
 `codex app-server` bleibt eine moegliche spaetere Transport-Alternative fuer einen echten Rich Client, ist aber
 keine Abhaengigkeit des schlanken CLI-Wegs.
 
+Der optionale Pi-Host ist eine duenne additive Oberflaeche auf diesem Runner. Ein natuerlicher Auftrag „mit
+Kimiflow“ und der Slash-Befehl verwenden dieselbe Aktivierung. Die bereits laufende Pi-Sitzung bleibt als
+ansprechbarer Captain offen, waehrend die Primary-Extension genau einen vorhandenen `kimiflow run`-Prozess im
+Hintergrund startet. Sie persistiert nur eine opake Session-/Root-/Worker-Bindung, den Digest des Auftrags und
+die exakte, nicht geheime `provider/model:thinking`-Auswahl für Resume.
+
+Runner-Status und Active Run liefern Run, materielle Frage, Provider-Session und Abschluss. Reply oder Steering
+startet nur an einer sicheren fortsetzbaren Grenze einen exakten `kimiflow resume --message`-Prozess. Es gibt
+keine zweite Captain-Registry, keine eigene Completion-State-Machine, keine Delivery-Spools und keine
+Herdr-Control-Plane. Herdr darf Pi beherbergen, liegt aber ausserhalb von Kimiflows Prozess- und State-Modell.
+Ein abgeloester Cleanup-Sentinel besitzt ausschliesslich das zufaellige Pi-Prozessbaum-Tag und eine lokale
+Cleanup-Lease. Nach einem harten Kill der Runner-Gruppe blockiert diese Lease einen Nachfolger, bis der
+markierte Pi-Prozessbaum beendet ist; eine verwaiste Lease wird vor der naechsten Aktivierung mit demselben
+Besitz-Token bereinigt. Die portable Cleanup-Grenze umfasst die geerbte Prozessgruppe und Prozesse, die das
+zufaellige Turn-Tag behalten. Ein Prozess, der das Tag absichtlich entfernt und zugleich die Prozessgruppe
+verlaesst, benoetigt fuer staerkere Isolation eine Provider-Sandbox oder einen Container. Der Sentinel kennt
+weder Feature noch Run, Delivery oder Herdr.
+
+Der Pi-Worker laedt eine verifizierte schreibgeschuetzte Extension, blockiert Produktmutationen bis zum
+bestaetigten Intent-Lock und kann danach bis zu drei frische begrenzte Pi-Subagents mit derselben
+`provider/model:thinking`-Auswahl starten. Subagents erhalten keine Captain-Bindung. Ein Pi-`agent_end`
+veraendert keinen Kimiflow-Status; nur das exakte terminale Receipt des vorhandenen Runners darf den Run
+abschliessen.
+
 Adaptive Entscheidungen bleiben Teil dieser einen Engine. Der Scope-/Intent-Classifier darf Scope nur erhoehen
 und offene Produktentscheidungen nur zurueck an Intake routen. Kontext-Rollover braucht eine ausgehandelte
 Adapter-Capability sowie eine ID-/Digest-genaue Bestaetigung; sonst laeuft der bestehende aktuelle Kontext
@@ -64,7 +88,8 @@ transient die kanonischen Skill-/Phasen-/Bridge-Pfade; `model_roles` transportie
 der Host die konkreten Modell-IDs besitzt. `structured_events` werden vor JSON-Parsing groessenbegrenzt, auf
 oeffentliche Felder normalisiert und nicht im Receipt gespeichert. Ein SHA-256-Fingerprint bindet Features,
 Anforderungen und Rollen an Resume, ohne Modell-IDs zu persistieren. `root_confinement` bleibt eine vom Host
-durchzusetzende und von Kimiflow vorab pruefbare Vertrauensgrenze. Der Vertrag liegt unter
+durchzusetzende und von Kimiflow vorab pruefbare Vertrauensgrenze. Pi 0.82.x setzt diese Grenze fuer Shell- und
+Dateitools nicht hostseitig durch und bewirbt das Feature deshalb nicht. Der Vertrag liegt unter
 `references/adapter-protocol.md`; KimiTalk, Providerclients oder ein Netzwerkdienst sind keine Abhaengigkeiten.
 
 `hooks/build-plugin-candidate.sh` erzeugt den Marketplace-Inhalt aus einer engen Source-Allowlist und schreibt

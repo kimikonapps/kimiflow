@@ -45,6 +45,7 @@ Edit exactly these targets. Skip a JSON target **only** if it has no `.version`/
 - `.claude-plugin/plugin.json` → `.version`  (source of truth)
 - `.claude-plugin/marketplace.json` → `.plugins[0].version`
 - `.codex-plugin/plugin.json` → `.version`
+- `package.json` → `.version` (the optional Pi package)
 - `.agents/plugins/marketplace.json` → `.version` **only if it already has a `version` field** (it currently does **not** → skip; the consistency check skips it too)
 - `COMPATIBILITY.md` → replace the token `kimiflow **<OLD>**` with `kimiflow **<NEW>**`, and update the trailing `· <date>.` to today (`date +%F`). Do a **targeted** replace of the kimiflow token only — the line also holds Claude Code / Codex CLI versions in other `**…**` tokens; do not touch those.
 

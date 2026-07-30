@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# kimiflow — Contract-3 Product Intake PreToolUse guard.
+# kimiflow — Contract-3/4 Product Intake PreToolUse guard.
 # Supported local host tools are guarded mechanically; hosts/tools that do not
 # emit these hook events remain outside this enforcement boundary.
 set -u
@@ -8,7 +8,7 @@ command -v python3 >/dev/null 2>&1 || exit 0
 KIMIFLOW_INTAKE_HOOKS_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)" || exit 0
 export KIMIFLOW_INTAKE_HOOKS_DIR
 exec python3 -c '
-import hashlib, json, os, re, shlex, subprocess, sys
+import hashlib, json, os, re, shlex, stat, subprocess, sys
 
 def deny(reason):
     print(json.dumps({"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"kimiflow intake-gate: " + reason}}, separators=(",",":")))
@@ -35,8 +35,9 @@ try:
     with open(active_path,encoding="utf-8") as f: active=json.load(f)
 except (OSError,ValueError):
     raise SystemExit(0)
-if not isinstance(active,dict) or active.get("status") != "active" or active.get("intent_contract") != "3" or active.get("mode") != "feature" or active.get("scope") == "trivial":
+if not isinstance(active,dict) or active.get("status") != "active" or active.get("intent_contract") not in ("3","4") or active.get("mode") != "feature" or active.get("scope") == "trivial":
     raise SystemExit(0)
+intent_contract=int(active["intent_contract"])
 owner=active.get("owner") if isinstance(active.get("owner"),dict) else None
 session=data.get("session_id")
 host=os.environ.get("KIMIFLOW_HOST","") or ("codex" if os.environ.get("CODEX_THREAD_ID") or os.environ.get("PLUGIN_ROOT") else "claude")
@@ -46,6 +47,8 @@ run_rel=active.get("run","")
 if not isinstance(run_rel,str) or not run_rel.startswith(".kimiflow/"): deny("pinned run path is invalid")
 run_dir=os.path.normpath(os.path.join(root,run_rel))
 if not run_dir.startswith(os.path.join(root,".kimiflow")+os.sep): deny("pinned run path escapes .kimiflow")
+expected_real_run=os.path.join(os.path.realpath(root),os.path.relpath(run_dir,root))
+if os.path.realpath(run_dir)!=expected_real_run: deny("pinned run path is aliased")
 
 def digest(path):
     h=hashlib.sha256()
@@ -59,15 +62,19 @@ def valid_receipt(round_no):
     qp=os.path.join(run_dir,request_name)
     try:
         if os.path.islink(rp) or os.path.islink(qp): return False
+        receipt_info=os.lstat(rp); request_info=os.lstat(qp)
+        if not stat.S_ISREG(receipt_info.st_mode) or receipt_info.st_nlink!=1: return False
+        if not stat.S_ISREG(request_info.st_mode) or request_info.st_nlink!=1: return False
         with open(rp,encoding="utf-8") as f: value=json.load(f)
         expected={"schema_version","contract","round","request","request_digest","channel","responded_at"}
-        return isinstance(value,dict) and set(value)==expected and value.get("schema_version")==1 and value.get("contract")==3 and value.get("round")==round_no and value.get("request")==request_name and value.get("request_digest")==digest(qp) and value.get("channel") in ("chat","native_tool")
+        return isinstance(value,dict) and set(value)==expected and value.get("schema_version")==1 and value.get("contract")==intent_contract and value.get("round")==round_no and value.get("request")==request_name and value.get("request_digest")==digest(qp) and value.get("channel") in ("chat","native_tool")
     except (OSError,ValueError): return False
 
 pending_round=active.get("intake_round") if active.get("awaiting_user") is True and active.get("awaiting_kind") == "intake" else None
 round_one_ok=valid_receipt(1)
-required_ok=valid_receipt(pending_round) if pending_round in (1,2) else round_one_ok
-expected_request="INTAKE-2.md" if pending_round == 2 else "INTAKE.md"
+intake_conflict=active.get("intake_conflict") is True
+required_ok=(valid_receipt(pending_round) if pending_round in (1,2) else round_one_ok) and not intake_conflict
+expected_request="INTAKE-2.md" if pending_round == 2 or pending_round == 1 and intake_conflict else "INTAKE.md"
 tool=data.get("tool_name") or data.get("name") or ""
 if not tool and isinstance(data.get("tool"),dict): tool=data["tool"].get("name","")
 command=ti.get("command") or (ti.get("args") or {}).get("command") if isinstance(ti.get("args"),dict) else ti.get("command")
@@ -124,6 +131,20 @@ def patch_paths(value):
     if not isinstance(value,str): return []
     return re.findall(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$",value,flags=re.M)
 
+def exact_request_path(value):
+    if not isinstance(value,str) or not value.strip() or "\0" in value: return False
+    candidate=value.strip()
+    if not os.path.isabs(candidate): candidate=os.path.join(root,candidate)
+    candidate=os.path.normpath(candidate)
+    expected=os.path.join(run_dir,expected_request)
+    expected_real_candidate=os.path.join(os.path.realpath(root),os.path.relpath(candidate,root))
+    if candidate!=expected or os.path.realpath(os.path.dirname(candidate))!=expected_real_run:
+        return False
+    if os.path.lexists(candidate):
+        info=os.lstat(candidate)
+        return stat.S_ISREG(info.st_mode) and info.st_nlink==1 and os.path.realpath(candidate)==expected_real_candidate
+    return True
+
 if tool == "Bash" or command:
     if mutation_mentions_protected(command) and not read_only_shell(command): deny("authority files may be changed only by Kimiflow gate commands")
     if not required_ok:
@@ -142,8 +163,7 @@ if tool in ("apply_patch","Edit","Write"):
     if mutation_mentions_protected(combined): deny("authority files may be changed only by Kimiflow gate commands")
     if not required_ok:
         paths=patch_paths(payload) if tool == "apply_patch" else ([path] if path else [])
-        normalized=[os.path.basename(p.strip()) for p in paths]
-        if len(normalized)!=1 or normalized[0] != expected_request:
+        if len(paths)!=1 or not exact_request_path(paths[0]):
             deny("only the exact pending intake request artifact may be written before the response")
     raise SystemExit(0)
 

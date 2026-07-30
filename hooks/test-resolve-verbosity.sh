@@ -22,7 +22,15 @@ reset() { rm -rf "$PROJ" "$FAKE_HOME" "$FAKE_CODEX_HOME"; mkdir -p "$PROJ" "$FAK
 set_project() { mkdir -p "$PROJ/.kimiflow"; printf '%s\n' "$1" > "$PROJ/.kimiflow/verbosity"; }
 set_global()  { mkdir -p "$FAKE_HOME/.claude/kimiflow"; printf '%s\n' "$1" > "$FAKE_HOME/.claude/kimiflow/verbosity"; }
 set_codex_global() { mkdir -p "$FAKE_CODEX_HOME/kimiflow"; printf '%s\n' "$1" > "$FAKE_CODEX_HOME/kimiflow/verbosity"; }
-run() { ( cd "$PROJ" && HOME="$FAKE_HOME" "$SCRIPT" "$@" ); }
+run() {
+  (
+    cd "$PROJ" \
+      && HOME="$FAKE_HOME" \
+        CLAUDE_HOME="$FAKE_HOME/.claude" \
+        KIMIFLOW_HOST=claude \
+        "$SCRIPT" "$@"
+  )
+}
 run_codex() { ( cd "$PROJ" && HOME="$FAKE_HOME" CODEX_HOME="$FAKE_CODEX_HOME" KIMIFLOW_HOST=codex "$SCRIPT" "$@" ); }
 assert_eq() { if [ "$1" = "$2" ]; then pass "$3"; else fail "$3 (got '$1' want '$2')"; fi; }
 

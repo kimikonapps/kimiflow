@@ -23,8 +23,25 @@ def make_candidate(root):
         ".claude-plugin/plugin.json": (0o644, json_bytes({"name": "kimiflow", "version": "1.2.3"})),
         ".codex-plugin/plugin.json": (0o644, json_bytes({"name": "kimiflow", "version": "1.2.3"})),
         "SKILL.md": (0o644, b"# Kimiflow\n"),
+        "package.json": (0o644, json_bytes({
+            "name": "@kimiflow/pi",
+            "version": "1.2.3",
+            "type": "module",
+            "pi": {
+                "extensions": [
+                    "./hosts/pi/extensions/captain.js",
+                    "./hosts/pi/extensions/worker.js",
+                ],
+                "skills": ["./hosts/pi/skills/kimiflow"],
+            },
+        })),
+        "hosts/pi/extensions/captain.js": (0o644, b"export default function captain() {}\n"),
+        "hosts/pi/extensions/worker.js": (0o644, b"export class Worker {}\n"),
+        "hosts/pi/skills/kimiflow/SKILL.md": (0o644, b"# Kimiflow for Pi\n"),
         "hooks/active-run.sh": (0o755, b"#!/usr/bin/env bash\nexit 0\n"),
         "hooks/hooks.json": (0o644, b"{}\n"),
+        "hooks/pi-host.sh": (0o755, b"#!/usr/bin/env bash\nexit 0\n"),
+        "hooks/kimiflow_core/pi_host.py": (0o644, b'"""Pi host."""\n'),
         "hooks/run.sh": (0o755, b"#!/usr/bin/env bash\nexit 0\n"),
         "phases/PHASES.json": (0o644, b"{}\n"),
         "reference.md": (0o644, b"# Reference\n"),
@@ -206,7 +223,11 @@ class RuntimeReleaseTests(unittest.TestCase):
                 mode = (info.external_attr >> 16) & 0o777
                 if info.filename.endswith("/"):
                     self.assertEqual(mode, 0o755)
-                elif info.filename.endswith(("hooks/run.sh", "hooks/active-run.sh")):
+                elif info.filename.endswith((
+                    "hooks/run.sh",
+                    "hooks/active-run.sh",
+                    "hooks/pi-host.sh",
+                )):
                     self.assertEqual(mode, 0o755)
                 else:
                     self.assertEqual(mode, 0o644)
@@ -231,6 +252,11 @@ class RuntimeReleaseTests(unittest.TestCase):
             manifest["contracts"]["host_profiles"]["app_host"]["required_features"],
             runtime_release.HOST_PROFILES["app_host"],
         )
+        self.assertEqual(
+            manifest["contracts"]["host_profiles"]["pi"]["required_features"],
+            runtime_release.HOST_PROFILES["pi"],
+        )
+        self.assertNotIn("root_confinement", runtime_release.HOST_PROFILES["pi"])
         with open(archive, "rb") as handle:
             archive_payload = handle.read()
         self.assertEqual(manifest["artifact"]["bytes"], len(archive_payload))
@@ -242,6 +268,7 @@ class RuntimeReleaseTests(unittest.TestCase):
         for profile, features in (
             ("embedded", []),
             ("app_host", runtime_release.HOST_PROFILES["app_host"]),
+            ("pi", runtime_release.HOST_PROFILES["pi"]),
         ):
             status, verified, compatibility = runtime_release.verify_artifact(
                 manifest_path,
@@ -328,6 +355,38 @@ class RuntimeReleaseTests(unittest.TestCase):
             adapter_info["schema_version"],
             manifest["contracts"]["adapter_protocol"]["max"],
         )
+
+    def test_optional_pi_package_release_and_embedded_host_parity(self):
+        manifest, manifest_path, archive = self.build()
+        with zipfile.ZipFile(archive) as bundle:
+            package = json.loads(bundle.read("kimiflow/package.json"))
+            names = set(bundle.namelist())
+        self.assertEqual(package["version"], manifest["version"])
+        self.assertEqual(package["name"], "@kimiflow/pi")
+        self.assertTrue({
+            "kimiflow/hosts/pi/extensions/captain.js",
+            "kimiflow/hosts/pi/extensions/worker.js",
+            "kimiflow/hosts/pi/skills/kimiflow/SKILL.md",
+            "kimiflow/hooks/pi-host.sh",
+        }.issubset(names))
+        status, _, compatibility = runtime_release.verify_artifact(
+            manifest_path,
+            archive,
+            host_profile="pi",
+            supported_protocol=model_adapter.PROTOCOL_VERSION,
+            host_features=runtime_release.HOST_PROFILES["pi"],
+        )
+        self.assertEqual(status, "artifact_verified")
+        self.assertTrue(compatibility["compatible"])
+        embedded_status, _, embedded = runtime_release.verify_artifact(
+            manifest_path,
+            archive,
+            host_profile="embedded",
+            supported_protocol=model_adapter.PROTOCOL_VERSION,
+            host_features=[],
+        )
+        self.assertEqual(embedded_status, "artifact_verified")
+        self.assertTrue(embedded["compatible"])
 
     def test_build_budget_includes_archived_fingerprint(self):
         fingerprint, _ = runtime_release._read_json(

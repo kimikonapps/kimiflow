@@ -66,12 +66,12 @@ You are the **orchestrator**. Run the phases as a state machine, keep only essen
 
 On phase entry, post-R2 runs (`phase_reads_required`) read `phases/PHASES.json`, its phase file, and only that row's `reference_sections` via `hooks/reference-section.sh "<section>"`. Record with `active-run.sh phase-read --run .kimiflow/<slug> --phase <N> --file phases/<file>.md --write`; the receipt binds both hash sets. Never preload all `reference.md`. Clarify checks through Phase 1, plan-blocker through Phase 4, and finish through Phase 7. Resume via `active-run.sh next-action`.
 
-Stable contracts/helpers: Contract-3 mandatory Product Intake; Current-State Pulse / Gate; Memory Router & Learning Loop; `clarify-gate.sh`, `discovery-gate.sh`, `lsp-diagnostics.sh`, `suggest-affected-sections.sh`, and Phase-7 `refresh --changed`.
+Stable contracts/helpers: Contract-4 concrete Product Intake with Contract-3 resume compatibility; Current-State Pulse / Gate; Memory Router & Learning Loop; `clarify-gate.sh`, `discovery-gate.sh`, `lsp-diagnostics.sh`, `suggest-affected-sections.sh`, and P7 `refresh --changed`.
 
 | Phase | File | Always-loaded boundary cues |
 |---|---|---|
 | 0 Setup, Routing & Scope-Gate | `phases/phase-0-setup.md` | model/session; `workspace-preflight.sh` then clean gate; frontend Contract-1 start receipt; scope/verbosity. |
-| 1 Clarify | `phases/phase-1-clarify.md` | Contract-3 Product Intake; mechanical intent/scope classification; no HOW; intent lock. |
+| 1 Clarify | `phases/phase-1-clarify.md` | Contract-4 concrete Product Intake; mechanical intent/scope classification; no HOW; intent lock. |
 | 2 Understand / diagnose | `phases/phase-2-understand.md` | Current-State/Discovery gates; selective Vault context; scoped standards; conditional architecture/domain/operations. |
 | 3 Plan | `phases/phase-3-plan.md` | acceptance criteria; conditional architecture/domain/operations checks; Red/cause proof for fixes. |
 | 4 Plan-gate / approval | `phases/phase-4-review-approval.md` | plan/review resolvers; plain-language build summary; material-risk CONTINUE/STOP/PARK. |
@@ -83,12 +83,12 @@ Stable contracts/helpers: Contract-3 mandatory Product Intake; Current-State Pul
 
 These operative rules stay in the driver until a later approved packet proves an earlier mechanical gate for the target phase. Phase files may elaborate, but this section is always loaded.
 
-- **Phase 1 protected rules:** a new non-trivial Contract-3 feature requires one explicit 1–5-question Product Intake before plan/write; complete intent gets confirmation. HOW stays agent-owned; round 2 is only for a product conflict created by round 1. Mechanical classification may elevate scope but never answer an open product choice. Clarify pins INTENT, then continues.
+- **Phase 1 protected rules:** Contract-4 non-trivial feature intake asks 1–5 questions before plan/write and confirms entry, interaction, visible delegation outcome, unchanged path, and done. HOW is agent-owned; round 2 only resolves a round-1 conflict. Contract-3 resumes. Classification may raise scope, not answer product choices.
 - **Phase 2 protected rules:** top owns Discovery/synthesis/triage/fit; memory is bounded. Current coding/architecture research is at least medium; medium/high research needs one schema-2 subject-bound horizon/applicability receipt. Schema 1 resumes. Conditional architecture evidence maps to plan/verify. Technical gaps recover; only product/policy choices ask.
 - **Phase 3 protected rules:** one flat minimum-complete, subtracted, AC-mapped plan. Contract 1 adds 1–8 checkable slices; critical classes bind invariant, AC, typed falsifier, reset. Conditional contracts map to existing/one new AC. Dual-plan adoption takes isolated elements only; blockers never reach review. Managed trees bind paths/contracts to the final PLAN digest.
 - **Phase 4 held rule:** only evidenced BLOCKER/HIGH revises; architecture changes need an executable failure/named-invariant violation. Contracted findings are candidate-first, typed, digest-pinned, class-stable, and need negative resolution evidence. Never reset valid rounds. Budgets: 2 small, 3 large/audit. Repeat class/oscillation/cap recovers autonomously. Schema 4+ pauses only for material risk.
 - **Phase 5 protected rules:** managed trees require the PLAN-digest write gate; serialization retries autonomously. Run slices/checks in order. Red commits tests only. Checkpoints inspect named staging, isolate foreign staging by path, and scan weakening/secrets/paths; production checkpoints need a clean-tree-only verifier. Review keeps `started_head`. Deletions need proof; failure changes approach; churn never resets recovery.
-- **Phase 6 protected rules:** fixes require `red-green-gate.sh`. Run declared slices/falsifiers and active conditional checks, then 1–5 decisions plus one whole-intent sweep; Contract-3 proves every Requirement. Code/scope gaps → Phase 5; strategy/architecture/research drift → Phase 2.
+- **Phase 6 protected rules:** fixes require `red-green-gate.sh`. Run declared slices/falsifiers and active conditional checks, then 1–5 decisions plus one whole-intent sweep; Contract 3/4 proves every Requirement. Code/scope gaps → Phase 5; strategy/architecture/research drift → Phase 2.
 - **Phase 7 protected rules:** Full first review. Only an exact-fingerprint lease narrows repaired axes; risky/broad deltas stay full. Saturation binds path bytes/results. Two failures need a PLAN trajectory. Resolver fails closed. Commit named paths; push/release explicit.
 
 ## Scaling Knobs

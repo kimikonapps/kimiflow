@@ -633,7 +633,7 @@ Goal: establish source-backed product intent BEFORE research/plan. Kimiflow perf
 - **Agent-owned HOW:** architecture, framework/library, dependency choice, data model/schema, internal API, code/file structure, design patterns, test strategy, migration mechanism, performance/concurrency algorithm, operational tooling, and implementation order. A user may state a hard technical constraint, but Kimiflow never asks them to design the solution.
 - Translate technical-looking uncertainty into a product consequence only when that consequence is material: ask "must it work offline and sync across devices?", never "SQLite or PostgreSQL?". Technical uncertainty goes to Phase 2 research and autonomous recovery.
 
-**Intent Coverage Scan (Contract 3):** before asking, inspect the current request/conversation, code, project docs/tests, scoped standards, memory, and current sources. Cover exactly six dimensions: `goal`, `actor`, `behavior`, `boundaries`, `success`, `constraints`. Record one provenance per dimension:
+**Intent Coverage Scan (Contract 4):** before asking, inspect the current request/conversation, code, project docs/tests, scoped standards, memory, and current sources. Cover exactly six dimensions: `goal`, `actor`, `behavior`, `boundaries`, `success`, `constraints`, then bind the concrete flow fields `entry`, `interaction`, `delegation`, `unchanged`, and `done`. Record one provenance per dimension:
 - `user_explicit` — directly stated in the current request/conversation.
 - `user_confirmed` — supplied/selected in this run's single question batch.
 - `project_evidence` — established by current project evidence; cite the path/reference in the relevant INTENT section.
@@ -641,30 +641,30 @@ Goal: establish source-backed product intent BEFORE research/plan. Kimiflow perf
 - `not_applicable` — genuinely irrelevant; allowed only for actor/boundaries/constraints.
 - `unknown_material` — could change visible product behavior or acceptance and must be resolved before the gate.
 
-Goal, visible behavior, and success require `user_explicit|user_confirmed|project_evidence`; the agent may not invent them. `inferred` and generic `confirmed` are not Contract-3 provenance. Project evidence can settle a dimension only when it is current and cited, not because the existing implementation happens to do something.
+Goal, visible behavior, and success require `user_explicit|user_confirmed|project_evidence`; the agent may not invent them. `inferred` and generic `confirmed` are not Contract-4 provenance. Every concrete flow field requires `user_confirmed`; a generic “yes” counts only when the receipt-bound intake request visibly proposed all five concrete values and `INTENT.md` reproduces them exactly. Project evidence can settle a dimension only when it is current and cited, not because the existing implementation happens to do something.
 
 **Selective elicitation:** rank product candidates by **Impact x Uncertainty**. Ask only the highest-value product facts in **one compact batch**: `quick` ≤2, `small` ≤3, `large`/critical ≤5. When coverage is already complete, use the batch to confirm the compact Goal/Included/Excluded/Done contract instead of asking filler. Order dependencies first, use everyday language, one thought per item, and offer a recommended product default/choices. "I don't know" selects the smallest safe reversible default; paid/privacy/irreversible behavior defaults to excluded rather than silently accepted. A second compact batch is legal only when the first response itself creates a new material product conflict; mark it `cause=first_response_conflict`. Never ask sequential technical questions.
 
 **Bounded Intent Critic:** `large`/critical runs use one fresh-context critic inside the existing agent budget. Packet: request + compact coverage draft, ≤900 words. Output: only `COVERAGE_OK` or ≤5 missing **user-owned** product facts; no research, code, or HOW. A clean result records `critic=passed`. `small|quick` folds the same adversarial scan into the top orchestrator and records `critic=folded`. If fresh-agent routing is unavailable on a large run, record the routing fallback and let the top orchestrator process the identical isolated packet before recording the pass; availability never becomes a user wait.
 
-**One interaction, then autonomy:** before the question, write `INTAKE.md` with `<!-- kimiflow:intake contract=3 round=1 questions=<1-5> selection=impact_uncertainty technical_questions=0 -->`, then register `active-run.sh await-user --kind intake --round 1 --request .kimiflow/<slug>/INTAKE.md --write`. The explicit answer establishes the contract; chat/native adapters write only request digest, channel, and time—never prompt or answer text. `request_user_input` with `autoResolutionMs`, timeout/default/cancel/error outcomes, and non-owner responses do not count. A causal round 2 uses `INTAKE-2.md` with `cause=first_response_conflict`. Afterward, explicit build authority continues immediately. `grill` stops by mode, not for another confirmation.
+**One interaction, then autonomy:** before the question, write `INTAKE.md` with `<!-- kimiflow:intake contract=4 round=1 questions=<1-5> selection=impact_uncertainty technical_questions=0 confirmation=concrete_product_flow -->` and exactly one concrete proposed `Product flow entry:`, `User interaction:`, `Visible delegation outcome:`, `Unchanged path:`, and `Done scenario:` row. Then register `active-run.sh await-user --kind intake --round 1 --request .kimiflow/<slug>/INTAKE.md --write`. The explicit answer confirms those request-bound values; chat/native adapters write only request digest, channel, and time—never prompt or answer text. `request_user_input` with `autoResolutionMs`, timeout/default/cancel/error outcomes, and non-owner responses do not count. A causal round 2 uses `INTAKE-2.md` with the same confirmation selector, all five corrected rows, and `cause=first_response_conflict`. The latest receipt-bound five-row flow must exactly match `INTENT.md`. Afterward, explicit build authority continues immediately. `grill` stops by mode, not for another confirmation.
 
-**Mechanical clarify gate:** new nontrivial feature runs declare `Intent contract: 3` and `INTENT.md` includes:
+**Mechanical clarify gate:** fresh schema-5 nontrivial feature runs declare `Intent contract: 4` and `INTENT.md` includes:
 
 ```md
-<!-- kimiflow:intent-coverage contract=3 goal=user_explicit actor=user_confirmed behavior=user_explicit boundaries=user_confirmed success=user_explicit constraints=not_applicable unknown_material=0 question_rounds=1 technical_questions=0 critic=folded authority=explicit summary=present source=current-run -->
+<!-- kimiflow:intent-coverage contract=4 goal=user_explicit actor=user_confirmed behavior=user_explicit boundaries=user_confirmed success=user_explicit constraints=not_applicable unknown_material=0 question_rounds=1 technical_questions=0 critic=folded authority=explicit summary=present source=current-run entry=user_confirmed interaction=user_confirmed delegation=user_confirmed unchanged=user_confirmed done=user_confirmed -->
 ```
 
-Allowed `question_rounds` are `1|2`; round 2 requires its round-1 receipt and the causal conflict marker. `technical_questions` and `unknown_material` must both be zero. `large` requires `critic=passed`; smaller runs accept `passed|folded`. Actual builds require `authority=explicit|confirmed`; `plan|grill` do not claim future build authority. Add bounded sequential `Requirement R1:`…`R20:` rows for material confirmed product requirements. Run `clarify-gate.sh <run> --record-intent-lock` once: it validates request/receipt freshness, writes `INTENT-LOCK.json`, pins its digest in Active Run, and thereafter rejects INTENT or lock replacement. Supported PreToolUse hooks block implementation planning/project writes before the receipt and directly protect Active Run/receipt/lock authority files throughout the run. This is a strong local guardrail, not a claim that a host which omits these hook events cannot bypass it.
+Allowed `question_rounds` are `1|2`; round 2 requires its round-1 receipt and the causal conflict marker. `technical_questions` and `unknown_material` must both be zero. `large` requires `critic=passed`; smaller runs accept `passed|folded`. Actual builds require `authority=explicit|confirmed`; `plan|grill` do not claim future build authority. Add exactly one concrete body row for each `Product flow entry:`, `User interaction:`, `Visible delegation outcome:`, `Unchanged path:`, and `Done scenario:` to both the latest intake request and `INTENT.md`; the two five-row projections must match exactly. Add bounded sequential `Requirement R1:`…`R20:` rows for material confirmed product requirements. Run `clarify-gate.sh <run> --record-intent-lock` once: it validates request/receipt freshness and request-to-intent flow equality, writes the opaque product-flow digest into `INTENT-LOCK.json`, pins the lock digest in Active Run, and thereafter rejects INTENT or lock replacement. Supported PreToolUse hooks block implementation planning/project writes before the receipt and directly protect Active Run/receipt/lock authority files throughout the run. This is a strong local guardrail, not a claim that a host which omits these hook events cannot bypass it.
 
 Every dimension marked `project_evidence` also needs one exact body line `Intent evidence: <dimension> :: <repo-path>:<line>` (or a current `https://...` source). Missing citations close the gate; a provenance word alone never substitutes for evidence.
 
-Runs with Intent Contract 1/2, audits, fixes, trivial work, and schema-3/count artifacts keep their prior compatible contracts. A normal fix passes Phase 1 with a usable `PROBLEM.md` and asks only for diagnosis-blocking input.
+Existing Contract-3 runs, Intent Contract 1/2, audits, fixes, trivial work, and schema-3/count artifacts keep their prior compatible contracts. A normal fix passes Phase 1 with a usable `PROBLEM.md` and asks only for diagnosis-blocking input.
 
 **INTENT.md template** (plain product language):
 ```
 # Intent: <feature>
-<!-- kimiflow:intent-coverage contract=3 goal=<provenance> actor=<provenance> behavior=<provenance> boundaries=<provenance> success=<provenance> constraints=<provenance> unknown_material=0 question_rounds=1|2 technical_questions=0 critic=folded|passed authority=explicit|confirmed summary=present source=current-run -->
+<!-- kimiflow:intent-coverage contract=4 goal=<provenance> actor=<provenance> behavior=<provenance> boundaries=<provenance> success=<provenance> constraints=<provenance> unknown_material=0 question_rounds=1|2 technical_questions=0 critic=folded|passed authority=explicit|confirmed summary=present source=current-run entry=user_confirmed interaction=user_confirmed delegation=user_confirmed unchanged=user_confirmed done=user_confirmed -->
 ## Goal / value
 ## Primary actor
 ## Visible behavior
@@ -672,6 +672,11 @@ Runs with Intent Contract 1/2, audits, fixes, trivial work, and schema-3/count a
 ## Out of scope
 ## What done looks like (concrete product examples)
 ## Material product constraints / consequences
+Product flow entry: <how the user enters this feature flow>
+User interaction: <what the user does and sees>
+Visible delegation outcome: <what delegated work looks like>
+Unchanged path: <which existing flow stays unchanged>
+Done scenario: <one concrete observable completed example>
 ## Evidence and reversible defaults
 Requirement R1: <material confirmed product requirement>
 ## Open questions (none when the gate is called)
@@ -2160,6 +2165,27 @@ closes only after it reads the exact child-owned parent receipt, terminal STATE/
 VERIFICATION, negative original reproduction, regression, legitimate-behavior, bypass and current clean
 re-scan evidence. Caller assertions cannot replace that evidence. None of these commands pushes, releases or
 publishes security data.
+
+## Optional Pi conversational Captain
+
+The installable Pi package adds a thin bridge over the existing terminal runner. A natural request calls
+`kimiflow_activate`; `/kimiflow <request>` uses the same transaction. The already-running Pi conversation stays
+available while the extension spawns one `kimiflow run` process in the background with the session's exact
+`provider/model:thinking` selection.
+
+The extension persists only an opaque session/root/worker binding, a request digest, and the exact non-secret
+`provider/model:thinking` selector required for resume. Runner status plus Active Run supply the run, material
+question, provider session, and terminal state. Replies and
+steering require those exact identities and start `kimiflow resume --message` only at a resumable boundary.
+There is no Captain CLI, second worker registry, task spool, completion state, or Herdr authority. Herdr may
+host Pi but is outside Kimiflow's process and state model.
+
+The Pi worker extension protects product mutation until the intent lock confirms intake, then exposes at most
+three fresh bounded Pi subagents using the exact inherited model selection. Subagents receive no bridge binding
+and cannot recursively act as Captain. A Pi lifecycle event never completes Kimiflow; only the runner's
+terminal receipt does.
+
+---
 
 ## Code mandate (Phase 3 directive · Phase 5 build · Phase 7 review)
 

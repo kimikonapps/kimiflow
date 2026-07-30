@@ -12,6 +12,7 @@
 #   .codex-plugin/plugin.json .version
 #   .claude-plugin/marketplace.json .plugins[0].version
 #   .agents/plugins/marketplace.json .version
+#   package.json .version
 # Required text targets (version MUST be present, else FAIL — never skip):
 #   COMPATIBILITY.md must contain "**<ver>**"
 #   CHANGELOG.md must contain a line equal to "## <ver>" (anchored — no semver substring collision)
@@ -106,6 +107,7 @@ check_json() {
 check_json ".codex-plugin/plugin.json"        "$ROOT/.codex-plugin/plugin.json"        '.version'
 check_json ".claude-plugin/marketplace.json"  "$ROOT/.claude-plugin/marketplace.json"  '.plugins[0].version'
 check_json ".agents/plugins/marketplace.json" "$ROOT/.agents/plugins/marketplace.json" '.version'
+check_json "package.json"                      "$ROOT/package.json"                      '.version'
 
 # Required text target: COMPATIBILITY.md
 compat="$ROOT/COMPATIBILITY.md"

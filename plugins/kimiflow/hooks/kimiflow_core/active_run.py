@@ -538,9 +538,13 @@ def status_json(root, event=""):
         "stale": stale,
         "awaiting_user": active.get("awaiting_user") is True,
         "awaiting_kind": active.get("awaiting_kind") if active.get("awaiting_user") is True else None,
+        "awaiting_reason": active.get("awaiting_reason") if active.get("awaiting_user") is True else None,
         "terminal": status in ("done", "parked", "failed", "aborted"),
         "next_action": legacy_next_action,
     }
+    awaiting_request = visible_intake_request(root, active)
+    if awaiting_request is not None:
+        result["awaiting_request"] = awaiting_request
     if transition.get("graph_status") != "legacy":
         result["transition"] = transition
     if execution is not None:
@@ -590,46 +594,292 @@ def intake_request_name(round_number):
     return "INTAKE.md" if round_number == 1 else "INTAKE-2.md"
 
 
-def strict_intake_request(root, run_dir, request, round_number):
+ABSTRACT_PRODUCT_FLOW_VALUES = {
+    "anything",
+    "as needed",
+    "confirmed",
+    "default flow",
+    "do whatever",
+    "n/a",
+    "na",
+    "no",
+    "pending",
+    "placeholder",
+    "same",
+    "standard flow",
+    "tbd",
+    "todo",
+    "unchanged",
+    "unknown",
+    "use best judgment",
+    "whatever",
+    "whatever is best",
+    "yes",
+}
+
+
+def normalized_product_flow_value(value):
+    return re.sub(r"\s+", " ", value.strip().casefold()).strip(" .!?")
+
+
+@contextlib.contextmanager
+def pinned_intake_run(root, run_dir, active=None):
+    parent = os.path.dirname(run_dir)
+    run_name = os.path.basename(run_dir)
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    parent_descriptor = None
+    run_descriptor = None
+    try:
+        parent_descriptor = os.open(parent, flags)
+        run_descriptor = os.open(run_name, flags, dir_fd=parent_descriptor)
+        pinned = os.fstat(run_descriptor)
+        named = os.stat(run_name, dir_fd=parent_descriptor, follow_symlinks=False)
+        identity = (pinned.st_dev, pinned.st_ino)
+        if (
+            not stat.S_ISDIR(pinned.st_mode)
+            or identity != (named.st_dev, named.st_ino)
+        ):
+            die("await-user: intake run path is unsafe", 2)
+        if active is not None:
+            expected = (active.get("run_device"), active.get("run_inode"))
+            if None not in expected and identity != expected:
+                die("await-user: intake run directory identity changed", 2)
+        yield {
+            "parent_descriptor": parent_descriptor,
+            "run_descriptor": run_descriptor,
+            "run_name": run_name,
+            "run_identity": identity,
+        }
+    except OSError as exc:
+        die("await-user: cannot pin intake run: %s" % exc, 2)
+    finally:
+        if run_descriptor is not None:
+            os.close(run_descriptor)
+        if parent_descriptor is not None:
+            os.close(parent_descriptor)
+
+
+def intake_run_name_matches(pinned):
+    try:
+        current = os.stat(
+            pinned["run_name"],
+            dir_fd=pinned["parent_descriptor"],
+            follow_symlinks=False,
+        )
+    except OSError:
+        return False
+    return (current.st_dev, current.st_ino) == pinned["run_identity"]
+
+
+def _strict_intake_document(
+    root,
+    run_dir,
+    request,
+    round_number,
+    contract=3,
+    run_descriptor=None,
+):
     expected = os.path.join(run_dir, intake_request_name(round_number))
     requested = os.path.join(root, request) if not os.path.isabs(request) else request
     if os.path.normpath(requested) != os.path.normpath(expected):
         die("await-user: intake request must be %s" % rel_path(root, expected), 2)
+    expected_real_run = os.path.join(
+        os.path.realpath(root),
+        os.path.relpath(os.path.normpath(run_dir), os.path.normpath(root)),
+    )
+    if os.path.realpath(run_dir) != expected_real_run:
+        die("await-user: intake run path is aliased", 2)
+    if run_descriptor is None:
+        with pinned_intake_run(root, run_dir) as pinned:
+            return _strict_intake_document(
+                root,
+                run_dir,
+                request,
+                round_number,
+                contract,
+                run_descriptor=pinned["run_descriptor"],
+            )
+    descriptor = None
     try:
-        info = os.lstat(expected)
-    except OSError:
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        name = intake_request_name(round_number)
+        descriptor = os.open(name, flags, dir_fd=run_descriptor)
+        info = os.fstat(descriptor)
+        named = os.stat(name, dir_fd=run_descriptor, follow_symlinks=False)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_nlink != 1
+            or info.st_size <= 0
+            or info.st_size > INTAKE_REQUEST_LIMIT
+            or (info.st_dev, info.st_ino) != (named.st_dev, named.st_ino)
+        ):
+            die("await-user: intake request is unsafe or out of bounds", 2)
+        chunks = []
+        remaining = INTAKE_REQUEST_LIMIT + 1
+        while remaining > 0:
+            chunk = os.read(descriptor, remaining)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        payload = b"".join(chunks)
+        if len(payload) > INTAKE_REQUEST_LIMIT:
+            die("await-user: intake request is unsafe or out of bounds", 2)
+        text_value = payload.decode("utf-8")
+    except FileNotFoundError:
         die("await-user: intake request is missing", 2)
-    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode) or info.st_size <= 0 or info.st_size > INTAKE_REQUEST_LIMIT:
-        die("await-user: intake request is unsafe or out of bounds", 2)
-    try:
-        with open(expected, "r", encoding="utf-8") as handle:
-            text_value = handle.read(INTAKE_REQUEST_LIMIT + 1)
     except (OSError, UnicodeError):
         die("await-user: intake request is not valid UTF-8", 2)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
     marker = re.findall(r"^<!-- kimiflow:intake ([^\n]+) -->$", text_value, flags=re.MULTILINE)
     if len(marker) != 1:
         die("await-user: intake marker missing or duplicate", 2)
     attrs = dict(re.findall(r"([a-z_]+)=([A-Za-z0-9_-]+)", marker[0]))
-    if attrs.get("contract") != "3" or attrs.get("round") != str(round_number):
+    if attrs.get("contract") != str(contract) or attrs.get("round") != str(round_number):
         die("await-user: intake marker contract or round mismatch", 2)
+    if contract == 4 and attrs.get("confirmation") != "concrete_product_flow":
+        die("await-user: Contract-4 intake must confirm the concrete product flow", 2)
+    if contract == 4:
+        product_flow = []
+        for label in (
+            "Product flow entry",
+            "User interaction",
+            "Visible delegation outcome",
+            "Unchanged path",
+            "Done scenario",
+        ):
+            values = re.findall(
+                r"^%s:\s*(\S.+)$" % re.escape(label),
+                text_value,
+                flags=re.MULTILINE,
+            )
+            normalized = (
+                normalized_product_flow_value(values[0])
+                if len(values) == 1 else ""
+            )
+            if not normalized or normalized in ABSTRACT_PRODUCT_FLOW_VALUES:
+                die(
+                    "await-user: Contract-4 intake must show one concrete %s value"
+                    % label.lower(),
+                    2,
+                )
+            product_flow.append(normalized)
+        if len(set(product_flow)) != len(product_flow):
+            die(
+                "await-user: Contract-4 intake product-flow values must be distinct",
+                2,
+            )
     if round_number == 2 and attrs.get("cause") != "first_response_conflict":
         die("await-user: round 2 requires cause=first_response_conflict", 2)
-    return rel_path(root, expected), file_sha256(expected)
+    return (
+        rel_path(root, expected),
+        "sha256:" + hashlib.sha256(payload).hexdigest(),
+        text_value,
+    )
 
 
-def valid_intake_receipt(run_dir, round_number, request_digest=None):
-    path = intake_receipt_path(run_dir, round_number)
+def strict_intake_request(root, run_dir, request, round_number, contract=3):
+    request_path, digest, _ = _strict_intake_document(
+        root,
+        run_dir,
+        request,
+        round_number,
+        contract,
+    )
+    return request_path, digest
+
+
+def visible_intake_request(root, active):
+    if (
+        active.get("awaiting_user") is not True
+        or active.get("awaiting_kind") != "intake"
+        or active.get("intake_round") not in (1, 2)
+        or active.get("intent_contract") not in ("3", "4")
+        or not isinstance(active.get("intake_request"), str)
+        or not isinstance(active.get("intake_request_digest"), str)
+    ):
+        return None
     try:
-        if os.path.islink(path) or not os.path.isfile(path):
-            return False
-        with open(path, "r", encoding="utf-8") as handle:
-            value = json.load(handle)
+        run_dir = resolve_run_dir(root, active.get("run", ""))
+        with pinned_intake_run(root, run_dir, active) as pinned:
+            request, current_digest, value = _strict_intake_document(
+                root,
+                run_dir,
+                active["intake_request"],
+                active["intake_round"],
+                int(active["intent_contract"]),
+                run_descriptor=pinned["run_descriptor"],
+            )
+            if (
+                request != active["intake_request"]
+                or current_digest != active["intake_request_digest"]
+                or not intake_run_name_matches(pinned)
+            ):
+                return None
+    except (ActiveError, OSError, UnicodeError):
+        return None
+    return value if 0 < len(value.encode("utf-8")) <= INTAKE_REQUEST_LIMIT else None
+
+
+def valid_intake_receipt(
+    run_dir,
+    round_number,
+    request_digest=None,
+    contract=3,
+    run_descriptor=None,
+):
+    descriptor = None
+    try:
+        if run_descriptor is None:
+            path = intake_receipt_path(run_dir, round_number)
+            if os.path.islink(path) or not os.path.isfile(path):
+                return False
+            with open(path, "r", encoding="utf-8") as handle:
+                value = json.load(handle)
+        else:
+            name = os.path.basename(intake_receipt_path(run_dir, round_number))
+            flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            descriptor = os.open(name, flags, dir_fd=run_descriptor)
+            info = os.fstat(descriptor)
+            named = os.stat(name, dir_fd=run_descriptor, follow_symlinks=False)
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_nlink != 1
+                or info.st_size > 4096
+                or (info.st_dev, info.st_ino) != (named.st_dev, named.st_ino)
+            ):
+                return False
+            chunks = []
+            remaining = 4097
+            while remaining > 0:
+                chunk = os.read(descriptor, remaining)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            payload = b"".join(chunks)
+            if len(payload) > 4096:
+                return False
+            value = json.loads(payload.decode("utf-8"))
     except (OSError, json.JSONDecodeError, UnicodeError):
         return False
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
     expected_keys = {"schema_version", "contract", "round", "request", "request_digest", "channel", "responded_at"}
     if not isinstance(value, dict) or set(value) != expected_keys:
         return False
-    if value.get("schema_version") != 1 or value.get("contract") != 3 or value.get("round") != round_number:
+    if value.get("schema_version") != 1 or value.get("contract") != contract or value.get("round") != round_number:
         return False
     if value.get("request") != intake_request_name(round_number) or value.get("channel") not in ("chat", "native_tool"):
         return False
@@ -639,7 +889,46 @@ def valid_intake_receipt(run_dir, round_number, request_digest=None):
     return request_digest is None or digest == request_digest
 
 
-def record_intake_response(root, active, channel):
+def write_intake_receipt(run_descriptor, name, value):
+    temporary = ".%s.%s.tmp" % (name, secrets.token_hex(16))
+    descriptor = None
+    try:
+        flags = (
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        descriptor = os.open(temporary, flags, 0o600, dir_fd=run_descriptor)
+        payload = value.encode("utf-8")
+        written = 0
+        while written < len(payload):
+            written += os.write(descriptor, payload[written:])
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = None
+        os.link(
+            temporary,
+            name,
+            src_dir_fd=run_descriptor,
+            dst_dir_fd=run_descriptor,
+            follow_symlinks=False,
+        )
+        os.unlink(temporary, dir_fd=run_descriptor)
+        temporary = None
+        os.fsync(run_descriptor)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        if temporary is not None:
+            try:
+                os.unlink(temporary, dir_fd=run_descriptor)
+            except OSError:
+                pass
+
+
+def record_intake_response(root, active, channel, confirmed=False):
     if active.get("awaiting_user") is not True or active.get("awaiting_kind") != "intake":
         return False
     round_number = active.get("intake_round")
@@ -647,35 +936,127 @@ def record_intake_response(root, active, channel):
     request_path = active.get("intake_request")
     if round_number not in (1, 2) or not isinstance(request_path, str) or not isinstance(request_digest, str):
         return False
+    contract = active.get("intent_contract")
+    if contract not in ("3", "4"):
+        return False
+    contract_number = int(contract)
     run_dir = resolve_run_dir(root, active.get("run", ""))
-    expected_rel, current_digest = strict_intake_request(root, run_dir, request_path, round_number)
-    if current_digest != request_digest or expected_rel != request_path:
+    try:
+        with pinned_intake_run(root, run_dir, active) as pinned:
+            expected_rel, current_digest, _ = _strict_intake_document(
+                root,
+                run_dir,
+                request_path,
+                round_number,
+                contract_number,
+                run_descriptor=pinned["run_descriptor"],
+            )
+            if current_digest != request_digest or expected_rel != request_path:
+                return False
+            if round_number == 2 and not valid_intake_receipt(
+                run_dir,
+                1,
+                contract=contract_number,
+                run_descriptor=pinned["run_descriptor"],
+            ):
+                return False
+            receipt = {
+                "schema_version": 1,
+                "contract": contract_number,
+                "round": round_number,
+                "request": intake_request_name(round_number),
+                "request_digest": request_digest,
+                "channel": channel,
+                "responded_at": iso_now(),
+            }
+            receipt_name = os.path.basename(
+                intake_receipt_path(run_dir, round_number),
+            )
+            try:
+                os.stat(
+                    receipt_name,
+                    dir_fd=pinned["run_descriptor"],
+                    follow_symlinks=False,
+                )
+            except FileNotFoundError:
+                write_intake_receipt(
+                    pinned["run_descriptor"],
+                    receipt_name,
+                    json_pretty(receipt) + "\n",
+                )
+            else:
+                if not valid_intake_receipt(
+                    run_dir,
+                    round_number,
+                    request_digest,
+                    contract_number,
+                    run_descriptor=pinned["run_descriptor"],
+                ):
+                    return False
+            if not intake_run_name_matches(pinned):
+                return False
+    except (ActiveError, OSError, UnicodeError):
         return False
-    if round_number == 2 and not valid_intake_receipt(run_dir, 1):
+    if contract_number == 4 and confirmed is not True:
+        conflicted = dict(active)
+        conflicted.pop("present", None)
+        conflicted["intake_conflict"] = True
+        conflicted["updated_at"] = iso_now()
+        write_active(root, conflicted)
         return False
-    receipt = {
-        "schema_version": 1,
-        "contract": 3,
-        "round": round_number,
-        "request": intake_request_name(round_number),
-        "request_digest": request_digest,
-        "channel": channel,
-        "responded_at": iso_now(),
-    }
-    receipt_path = intake_receipt_path(run_dir, round_number)
-    if os.path.lexists(receipt_path):
-        return valid_intake_receipt(run_dir, round_number, request_digest)
-    atomic_write(receipt_path, json_pretty(receipt) + "\n", mode=0o600, refuse_symlink=True)
     resumed = dict(active)
     resumed.pop("present", None)
     for key in (
         "awaiting_user", "awaiting_kind", "awaiting_reason", "awaiting_since",
         "intake_round", "intake_request", "intake_request_digest",
+        "intake_conflict",
     ):
         resumed.pop(key, None)
     resumed["updated_at"] = iso_now()
     write_active(root, resumed)
     return True
+
+
+CONFIRMATION_POSITIVE = {
+    "approve",
+    "approved",
+    "bestaetigt",
+    "bestätigt",
+    "confirm",
+    "confirmed",
+    "correct",
+    "exactly",
+    "genau",
+    "go",
+    "j",
+    "ja",
+    "ok",
+    "okay",
+    "passt",
+    "richtig",
+    "so",
+    "weiter",
+    "y",
+    "yes",
+}
+
+
+def explicit_confirmation(value):
+    if not isinstance(value, str) or not value.strip():
+        return False
+    words = set(re.findall(r"[^\W_]+", value.casefold(), flags=re.UNICODE))
+    return bool(words) and words <= CONFIRMATION_POSITIVE
+
+
+def hook_prompt(data):
+    if not isinstance(data, dict):
+        return ""
+    if isinstance(data.get("prompt"), str):
+        return data["prompt"]
+    nested = data.get("hook_input")
+    if isinstance(nested, dict) and isinstance(nested.get("prompt"), str):
+        return nested["prompt"]
+    return ""
 
 
 def bind_owner_for_write(root, write):
@@ -1842,6 +2223,8 @@ def cmd_start(args, _workspace_locked=False):
         flow_schema = str(prior_active["flow_schema"])
     elif str(resume_pins.get("flow_schema", "")).isdigit():
         flow_schema = str(resume_pins["flow_schema"])
+    if resume_pins and flow_schema != persisted_flow_schema:
+        die("flow schema selector changed while the run was parked", 1)
     persisted_intent = selector("Intent contract").strip()
     if same_active and "intent_contract" in prior_active:
         selected_intent = str(prior_active.get("intent_contract") or "").strip()
@@ -1849,18 +2232,27 @@ def cmd_start(args, _workspace_locked=False):
         selected_intent = str(resume_pins.get("intent_contract") or "").strip()
     else:
         selected_intent = persisted_intent
+    if resume_pins and selected_intent != persisted_intent:
+        die("intent contract selector changed while the run was parked", 1)
     if selected_intent:
-        if selected_intent not in ("1", "2", "3"):
+        if selected_intent not in ("1", "2", "3", "4"):
             die("unsupported intent contract: %s" % selected_intent, 1)
         status["intent_contract"] = selected_intent
-    fresh_schema4_feature = (
+    fresh_nontrivial_feature = (
         not same_active
+        and not resume_pins
         and str(active_mode or "").strip().lower() == "feature"
         and str(active_scope or "").strip().lower() != "trivial"
         and schema4_state
     )
-    if fresh_schema4_feature and selected_intent != "3":
-        die("fresh non-trivial schema-4 feature runs require intent contract 3", 1)
+    if fresh_nontrivial_feature:
+        required_intent = "4" if int(persisted_flow_schema) >= 5 else "3"
+        if selected_intent != required_intent:
+            die(
+                "fresh non-trivial schema-%s feature runs require intent contract %s"
+                % (persisted_flow_schema, required_intent),
+                1,
+            )
     persisted_convergence = selector("Convergence contract").strip()
     convergence_was_pinned = same_active or bool(resume_pins)
     if same_active and "convergence_contract" in prior_active:
@@ -2179,15 +2571,30 @@ def cmd_await_user(args):
     intake_request = ""
     intake_digest = ""
     if kind == "intake":
-        if active.get("intent_contract") != "3" or active.get("mode") != "feature" or active.get("scope") == "trivial":
-            die("await-user: intake requires a pinned Contract-3 non-trivial feature", 2)
+        intake_contract = active.get("intent_contract")
+        if intake_contract not in ("3", "4") or active.get("mode") != "feature" or active.get("scope") == "trivial":
+            die("await-user: intake requires a pinned Contract-3/4 non-trivial feature", 2)
         if opts["--round"] not in ("1", "2") or not opts["--request"]:
             die("await-user: intake requires --round 1|2 and --request", 2)
         intake_round = int(opts["--round"])
-        intake_request, intake_digest = strict_intake_request(root, run_dir, opts["--request"], intake_round)
-        if intake_round == 2 and not valid_intake_receipt(run_dir, 1):
+        intake_contract_number = int(intake_contract)
+        intake_request, intake_digest = strict_intake_request(
+            root, run_dir, opts["--request"], intake_round,
+            intake_contract_number,
+        )
+        if intake_round == 2 and (
+            not valid_intake_receipt(
+                run_dir, 1, contract=intake_contract_number,
+            )
+            or (
+                intake_contract_number == 4
+                and active.get("intake_conflict") is not True
+            )
+        ):
             die("await-user: round 2 requires a valid round-1 receipt", 2)
-        if valid_intake_receipt(run_dir, intake_round, intake_digest):
+        if valid_intake_receipt(
+            run_dir, intake_round, intake_digest, intake_contract_number,
+        ):
             die("await-user: intake round already has a valid receipt", 1)
     elif opts["--round"] or opts["--request"]:
         die("await-user: --round/--request require --kind intake", 2)
@@ -2211,6 +2618,8 @@ def cmd_await_user(args):
         updated["intake_round"] = intake_round
         updated["intake_request"] = intake_request
         updated["intake_request_digest"] = intake_digest
+        if intake_round == 2:
+            updated.pop("intake_conflict", None)
     if schema_number >= 4 and kind == "workspace":
         updated["workspace_wait_used_at"] = now
     if opts["--write"]:
@@ -2241,8 +2650,8 @@ def cmd_pin_intent_lock(args):
     run_dir = resolve_run_dir(root, opts["--run"])
     if active.get("present") is not True or active.get("run") != rel_path(root, run_dir):
         die("pin-intent-lock: run does not match active session", 1)
-    if active.get("intent_contract") != "3" or active.get("mode") != "feature" or active.get("scope") == "trivial":
-        die("pin-intent-lock: Contract-3 feature required", 1)
+    if active.get("intent_contract") not in ("3", "4") or active.get("mode") != "feature" or active.get("scope") == "trivial":
+        die("pin-intent-lock: Contract-3/4 feature required", 1)
     lock_path = os.path.join(run_dir, "INTENT-LOCK.json")
     if file_sha256(lock_path) != opts["--digest"]:
         die("pin-intent-lock: digest does not match lock file", 1)
@@ -3589,7 +3998,12 @@ def cmd_prompt_context():
     active = load_active(root)
     if active.get("awaiting_user") is True:
         if active.get("awaiting_kind") == "intake":
-            record_intake_response(root, active, "chat")
+            record_intake_response(
+                root,
+                active,
+                "chat",
+                confirmed=explicit_confirmation(hook_prompt(data)),
+            )
         else:
             # The user answered the material gate question the orchestrator was awaiting.
             resumed = dict(active)
@@ -3635,6 +4049,25 @@ def _native_response_rejected(value):
     return False
 
 
+def _native_response_confirmed(value):
+    if isinstance(value, dict):
+        keys = (
+            "answers", "answer", "responses", "response", "result", "value",
+            "selected", "selection", "text",
+        )
+        selected = [value[key] for key in keys if key in value]
+        if selected:
+            return any(_native_response_confirmed(item) for item in selected)
+        return any(
+            _native_response_confirmed(item)
+            for item in value.values()
+            if isinstance(item, (dict, list))
+        )
+    if isinstance(value, list):
+        return any(_native_response_confirmed(item) for item in value)
+    return explicit_confirmation(value)
+
+
 def _native_response_present(value):
     if isinstance(value, dict):
         for key in ("answers", "answer", "responses", "response", "result", "value"):
@@ -3667,9 +4100,17 @@ def cmd_intake_response():
     if tool_name == "request_user_input" and "autoResolutionMs" in tool_input:
         return 0
     response = data.get("tool_response", data.get("tool_output", data.get("result")))
-    if response is None or _native_response_rejected(data) or not _native_response_present(response):
+    if response is None or _native_response_rejected(data):
         return 0
-    record_intake_response(root, active, "native_tool")
+    contract4 = active.get("intent_contract") == "4"
+    if not _native_response_present(response):
+        return 0
+    record_intake_response(
+        root,
+        active,
+        "native_tool",
+        confirmed=_native_response_confirmed(response) if contract4 else False,
+    )
     return 0
 
 

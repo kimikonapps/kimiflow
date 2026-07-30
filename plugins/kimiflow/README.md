@@ -133,6 +133,43 @@ kimiflow run --adapter claude --model claude-opus-5 "implement the requested fea
 kimiflow status --pretty
 ```
 
+### Optional Pi Captain
+
+The repository also ships an installable Pi package for Pi 0.82.x. Once the Kimiflow package is loaded in an
+already-running Pi session, you can naturally ask Pi to build a feature with Kimiflow:
+
+```bash
+pi install /absolute/path/to/kimiflow
+```
+
+The path may be this trusted checkout or the `kimiflow/` directory extracted from a verified runtime ZIP.
+Use `pi install -l /absolute/path/to/kimiflow` for a project-local installation. Pi records the package and
+loads its declared extensions and skill; a temporary `pi -e` flag is not the supported package installation.
+
+```text
+Build the requested feature with Kimiflow.
+/kimiflow implement the requested feature
+/kimiflow-status
+```
+
+The natural request and optional slash command use the same durable activation transaction. That exact Pi
+session remains the responsive Captain while it starts the existing Kimiflow runner in the background. The
+runner and Active Run remain the only workflow authorities; the Pi bridge adds no second registry, worker
+orchestrator, delivery queue, daemon, or Herdr control plane.
+
+The Pi adapter inherits the session's provider-neutral `provider/model:thinking` selection. Kimiflow continues
+to own intake, planning, its normal bounded subagents, gates, worktrees, recovery, and completion. Replies and
+steering resume the exact runner session only at a safe material boundary. Pi lifecycle text never proves
+completion; only the matching terminal Kimiflow runner receipt does. Activation returns after the background
+runner process has spawned, so the Pi conversation stays usable. A durable opaque claim lets the same Pi
+session reattach after an interrupted activation without starting another runner.
+
+Herdr may host the already-running Pi application, but Kimiflow neither requires nor controls Herdr. It never
+installs or starts Pi, Herdr, or a model provider.
+
+This package is additive. If it is not installed or activated in Pi, the embedded `$kimiflow`
+Codex and `/kimiflow` Claude Code paths, their hooks, and the optional terminal runner behave exactly as before.
+
 An existing local or remote coding-agent harness can use the same lifecycle through the versioned JSON-stdio
 adapter contract. This path is additive: normal Kimiflow users do not need KimiTalk or another app host.
 

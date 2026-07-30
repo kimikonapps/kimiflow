@@ -66,14 +66,42 @@ def included(path):
         return False
     exact = {
         "SKILL.md", "reference.md", "hooks.json", "LICENSE", "README.md", "README.de.md",
-        "COMPATIBILITY.md", ".codex-plugin/plugin.json", ".claude-plugin/plugin.json",
+        "COMPATIBILITY.md", "package.json", ".codex-plugin/plugin.json", ".claude-plugin/plugin.json",
         "docs/commit-secret-gate.md", "docs/kimiflow-scaling-knobs.md",
     }
-    return path in exact or path.startswith(("hooks/", "phases/", "references/", "skills/"))
+    return path in exact or path.startswith(("hooks/", "hosts/pi/", "phases/", "references/", "skills/"))
 
 raw = subprocess.check_output(
     ["git", "-C", root, "ls-files", "-z", "--cached"]
 )
+tracked_paths = {
+    path.decode("utf-8", "surrogateescape")
+    for path in raw.split(b"\0")
+    if path
+}
+required_additive = {
+    "package.json",
+    "hosts/pi/extensions/captain.js",
+    "hosts/pi/extensions/worker.js",
+    "hosts/pi/skills/kimiflow/SKILL.md",
+    "hooks/pi-host.sh",
+    "hooks/kimiflow_core/pi_host.py",
+}
+missing_additive = sorted(
+    rel for rel in required_additive
+    if not os.path.isfile(os.path.join(root, rel))
+)
+if missing_additive:
+    raise SystemExit(
+        "build-plugin-candidate: required Pi runtime file missing: %s"
+        % missing_additive[0]
+    )
+untracked_additive = sorted(required_additive - tracked_paths)
+if untracked_additive:
+    raise SystemExit(
+        "build-plugin-candidate: required Pi runtime file is not tracked: %s"
+        % untracked_additive[0]
+    )
 paths = sorted({
     path.decode("utf-8", "surrogateescape")
     for path in raw.split(b"\0")

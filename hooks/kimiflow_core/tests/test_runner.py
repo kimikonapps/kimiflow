@@ -16,9 +16,10 @@ THREAD = "019f5fa0-567a-70e0-9b07-604ffbdafbf4"
 class FakeAdapter:
     def __init__(
         self, start_action=None, resume_actions=None, returncode=0, usage=None,
-        error_code="",
+        error_code="", pre_thread_action=None,
     ):
         self.start_action = start_action
+        self.pre_thread_action = pre_thread_action
         self.resume_actions = list(resume_actions or [])
         self.returncode = returncode
         self.usage = usage
@@ -28,6 +29,8 @@ class FakeAdapter:
 
     def start(self, root, prompt, on_thread):
         self.starts.append((root, prompt))
+        if self.pre_thread_action:
+            self.pre_thread_action()
         on_thread(THREAD)
         if self.start_action:
             self.start_action()
@@ -115,6 +118,25 @@ class RunnerTests(unittest.TestCase):
         with open(runner.receipt_path(self.root), encoding="utf-8") as handle:
             return json.load(handle)
 
+    def write_pi_start_claim(self, binding, token):
+        claim_path = os.path.join(
+            self.root,
+            ".kimiflow",
+            "session",
+            runner.PI_START_CLAIM_NAME,
+        )
+        os.makedirs(claim_path, mode=0o700, exist_ok=False)
+        with open(os.path.join(claim_path, "owner.json"), "w", encoding="utf-8") as handle:
+            json.dump({
+                "schemaVersion": 1,
+                "token": token,
+                "pid": os.getpid(),
+                "root": binding["root"],
+                "captainSessionId": binding["captain_session_id"],
+                "workerId": binding["worker_id"],
+            }, handle)
+        return claim_path
+
     def test_run_starts_codex_safely_and_writes_minimal_receipt(self):
         nested = os.path.join(self.root, "nested")
         os.mkdir(nested)
@@ -144,6 +166,7 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(result["status"], "awaiting_user")
         self.assertEqual(receipt["thread_id"], THREAD)
         self.assertEqual(receipt["status"], "awaiting_user")
+        self.assertEqual(receipt["controller_pid"], os.getpid())
         self.assertNotIn("secret task text", json.dumps(receipt))
         self.assertEqual(stat.S_IMODE(os.stat(runner.receipt_path(self.root)).st_mode), 0o600)
 
@@ -156,6 +179,168 @@ class RunnerTests(unittest.TestCase):
         self.assertIsInstance(runner._adapter_from_args(args), runner.CodexExecAdapter)
         self.assertIn("$kimiflow", runner._initial_prompt("build it"))
         self.assertNotIn("$kimiflow", runner._initial_prompt("build it", workflow_aware=True))
+
+    def test_pi_bridge_identity_is_persisted_and_required_for_resume(self):
+        binding = {
+            "schema_version": 1,
+            "root": os.path.realpath(self.root),
+            "captain_session_id": "pi-primary-0001",
+            "worker_id": "worker-00000001",
+        }
+        adapter = FakeAdapter(start_action=lambda: self.write_active(awaiting=True))
+        with mock.patch.dict(
+            os.environ,
+            {runner.PI_BRIDGE_ENV: json.dumps(binding)},
+        ):
+            result = runner.run_task(self.root, "bridge fixture", adapter=adapter)
+        self.assertEqual(result["status"], "awaiting_user")
+        self.assertEqual(self.read_receipt()["bridge"], {
+            "schema_version": 1,
+            "captain_session_id": "pi-primary-0001",
+            "worker_id": "worker-00000001",
+        })
+
+        unrelated = {
+            **binding,
+            "worker_id": "worker-unrelated01",
+        }
+        with mock.patch.dict(
+            os.environ,
+            {runner.PI_BRIDGE_ENV: json.dumps(unrelated)},
+        ), self.assertRaisesRegex(
+            runner.RunnerError,
+            "same Pi bridge identity",
+        ):
+            runner.resume_task(self.root, "do not deliver", adapter=adapter)
+
+    def test_pi_start_claim_is_released_after_exact_initial_receipt(self):
+        binding = {
+            "schema_version": 1,
+            "root": os.path.realpath(self.root),
+            "captain_session_id": "pi-primary-0001",
+            "worker_id": "worker-00000001",
+        }
+        token = "claim-" + "a" * 32
+        claim_path = self.write_pi_start_claim(binding, token)
+        handed_off = []
+
+        def inspect_handoff():
+            with open(os.path.join(claim_path, "owner.json"), encoding="utf-8") as handle:
+                handed_off.append(json.load(handle)["pid"])
+
+        def start_action():
+            self.write_active(awaiting=True)
+
+        adapter = FakeAdapter(
+            start_action=start_action,
+            pre_thread_action=inspect_handoff,
+        )
+        with mock.patch.dict(os.environ, {
+            runner.PI_BRIDGE_ENV: json.dumps(binding),
+            runner.PI_START_CLAIM_ENV: token,
+        }):
+            result = runner.run_task(self.root, "bridge fixture", adapter=adapter)
+
+        self.assertEqual(result["status"], "awaiting_user")
+        self.assertEqual(handed_off, [os.getpid()])
+        self.assertFalse(os.path.exists(claim_path))
+        self.assertEqual(self.read_receipt()["bridge"]["worker_id"], binding["worker_id"])
+
+    def test_pi_start_claim_is_released_when_existing_run_blocks_start(self):
+        binding = {
+            "schema_version": 1,
+            "root": os.path.realpath(self.root),
+            "captain_session_id": "pi-primary-0001",
+            "worker_id": "worker-00000001",
+        }
+        token = "claim-" + "b" * 32
+        claim_path = self.write_pi_start_claim(binding, token)
+        self.write_active()
+        with mock.patch.dict(os.environ, {
+            runner.PI_BRIDGE_ENV: json.dumps(binding),
+            runner.PI_START_CLAIM_ENV: token,
+        }), self.assertRaisesRegex(runner.RunnerError, "active Kimiflow run"):
+            runner.run_task(self.root, "bridge fixture", adapter=FakeAdapter())
+
+        self.assertFalse(os.path.exists(claim_path))
+
+    def test_pi_start_claim_serializes_resume_until_runner_settles(self):
+        binding = {
+            "schema_version": 1,
+            "root": os.path.realpath(self.root),
+            "captain_session_id": "pi-primary-0001",
+            "worker_id": "worker-00000001",
+        }
+        adapter = FakeAdapter(
+            start_action=lambda: self.write_active(awaiting=True),
+            resume_actions=[lambda: self.write_active(awaiting=True)],
+        )
+        with mock.patch.dict(
+            os.environ,
+            {runner.PI_BRIDGE_ENV: json.dumps(binding)},
+        ):
+            runner.run_task(self.root, "bridge fixture", adapter=adapter)
+
+        token = "claim-" + "e" * 32
+        claim_path = self.write_pi_start_claim(binding, token)
+        handed_off = []
+
+        def inspect_resume_handoff():
+            with open(os.path.join(claim_path, "owner.json"), encoding="utf-8") as handle:
+                handed_off.append(json.load(handle)["pid"])
+            self.write_active(awaiting=True)
+
+        adapter.resume_actions = [inspect_resume_handoff]
+        with mock.patch.dict(os.environ, {
+            runner.PI_BRIDGE_ENV: json.dumps(binding),
+            runner.PI_START_CLAIM_ENV: token,
+        }):
+            result = runner.resume_task(self.root, "accepted", adapter=adapter)
+
+        self.assertEqual(result["status"], "awaiting_user")
+        self.assertEqual(handed_off, [os.getpid()])
+        self.assertFalse(os.path.exists(claim_path))
+
+    def test_pi_start_claim_rejects_mismatched_owner_without_deleting_it(self):
+        binding = {
+            "schema_version": 1,
+            "root": os.path.realpath(self.root),
+            "captain_session_id": "pi-primary-0001",
+            "worker_id": "worker-00000001",
+        }
+        claim_path = self.write_pi_start_claim(binding, "claim-" + "c" * 32)
+        with mock.patch.dict(os.environ, {
+            runner.PI_BRIDGE_ENV: json.dumps(binding),
+            runner.PI_START_CLAIM_ENV: "claim-" + "d" * 32,
+        }), self.assertRaisesRegex(runner.RunnerError, "start claim owner is invalid"):
+            runner.run_task(self.root, "bridge fixture", adapter=FakeAdapter())
+
+        self.assertTrue(os.path.isdir(claim_path))
+
+    def test_pi_start_claim_handoff_never_truncates_the_published_owner(self):
+        binding = {
+            "schema_version": 1,
+            "root": os.path.realpath(self.root),
+            "captain_session_id": "pi-primary-0001",
+            "worker_id": "worker-00000001",
+        }
+        token = "claim-" + "b" * 32
+        claim_path = self.write_pi_start_claim(binding, token)
+        with mock.patch.dict(os.environ, {
+            runner.PI_BRIDGE_ENV: json.dumps(binding),
+            runner.PI_START_CLAIM_ENV: token,
+        }), mock.patch.object(
+            runner.os,
+            "rename",
+            side_effect=OSError("injected handoff interruption"),
+        ), self.assertRaises(runner.RunnerError):
+            runner._read_pi_start_claim(self.root)
+
+        with open(os.path.join(claim_path, "owner.json"), encoding="utf-8") as handle:
+            owner = json.load(handle)
+        self.assertEqual(owner["token"], token)
+        self.assertEqual(owner["pid"], os.getpid())
+        self.assertEqual(os.listdir(claim_path), ["owner.json"])
 
     def test_runner_selects_claude_and_pins_resume_identity(self):
         args = runner._parser().parse_args([
@@ -450,6 +635,7 @@ class RunnerTests(unittest.TestCase):
         resumed = FakeAdapter(resume_actions=[lambda: self.write_outcome("done")])
         result = runner.resume_task(self.root, message="choose the safe path", adapter=resumed)
         self.assertEqual(result["status"], "done")
+        self.assertEqual(self.read_receipt()["controller_pid"], os.getpid())
         self.assertEqual(resumed.resumes[0][1], THREAD)
 
         os.unlink(runner.receipt_path(self.root))
@@ -472,6 +658,29 @@ class RunnerTests(unittest.TestCase):
         result = runner.resume_task(self.root, message="approved", adapter=parked_resume)
         self.assertEqual(result["status"], "done")
         self.assertIn("--resume demo", parked_resume.resumes[0][2])
+
+    def test_interrupted_resume_preserves_explicit_captain_message(self):
+        first = FakeAdapter(start_action=lambda: self.write_active(awaiting=True))
+        runner.run_task(self.root, "needs a choice", adapter=first)
+        self.write_active(awaiting=False)
+        receipt = self.read_receipt()
+        runner.write_receipt(
+            self.root,
+            {**receipt, "status": "interrupted"},
+        )
+        resumed = FakeAdapter(
+            resume_actions=[lambda: self.write_outcome("done")],
+        )
+        result = runner.resume_task(
+            self.root,
+            message="USER STEER MUST SURVIVE",
+            adapter=resumed,
+        )
+        self.assertEqual(result["status"], "done")
+        self.assertEqual(
+            resumed.resumes[0][2],
+            "USER STEER MUST SURVIVE",
+        )
 
     def test_runner_fail_closed_cases_preserve_workflow_state(self):
         self.write_active(owner="other-thread")

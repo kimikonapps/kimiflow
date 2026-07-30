@@ -31,9 +31,17 @@ Host profiles are named policy:
 - `embedded`: no optional adapter feature is required;
 - `app_host`: adapter protocol v1 plus `workflow_context`, `model_roles`, `structured_events`, and
   `root_confinement`.
+- `pi`: adapter protocol v1 plus `workflow_context` and `structured_events`. Pi 0.82.1 does not provide a
+  host-enforced project sandbox, so this profile deliberately does not advertise `root_confinement`; callers
+  must treat Pi's file and shell permissions as host policy.
 
 Hosts install only after `compatible`; missing protocol/features return the explicit non-error-domain verdict
 `incompatible` (exit 3). Invalid origin, metadata, archive, digest, tag, or source identity fails verification.
+
+For the optional Pi host, extract the verified runtime ZIP and install its rooted package directory with
+`pi install /absolute/path/to/kimiflow` (or `pi install -l ...` for project-local scope). The same command may
+target a trusted source checkout. Pi then loads the extensions and skill declared by that package's
+`package.json`; Kimiflow does not install or start Pi itself.
 
 ## Maintainer flow
 

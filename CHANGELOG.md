@@ -4,7 +4,35 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Added
+
+- An additive Pi 0.82.x package lets an already-running Pi session naturally activate Kimiflow and act as the
+  responsive Captain; `/kimiflow` remains an equivalent convenience path. The thin primary extension starts
+  the existing Kimiflow runner in the background, derives attention from runner/Active-Run state, and resumes
+  the exact provider session only at safe material boundaries.
+- The optional Pi transport binds the current `provider/model:thinking` selection, validates Pi's version-3
+  JSON lifecycle, loads a verified read-only Worker extension, and exposes at most three bounded fresh Pi
+  subagents without changing standalone Codex or Claude behavior.
+- Fresh non-trivial feature runs use Intent Contract 4 and require a confirmed concrete product flow—entry,
+  interaction, visible delegation result, unchanged path, and done scenario—sealed in the receipt-bound intake
+  request and reproduced exactly in the intent lock—while existing Contract-3 runs remain resumable.
+- Pi model selection supports slash-qualified, `@`-qualified, and colon-qualified model IDs plus
+  `thinking=max`; the deterministic Pi E2E exercises the real runner, phase, conformance, and completion path.
+
+### Fixed
+
+- Pi activation persists an opaque replay claim before spawning, blocks a second active run, and lets the same
+  Pi session reattach after interruption without adding a second workflow authority.
+- Pi workers block product mutation until Contract-4 intake is confirmed, load the verified worker extension
+  from a read-only private descriptor, use the last completed retry lifecycle, and strip bridge authority from
+  every subagent process.
+- Pi attention is deduplicated by exact runner turn and delivery rejects mismatched run, worker, or
+  provider-session identities.
+- Pi cleanup survives a hard kill of the complete runner process group through a single-purpose detached
+  sentinel and successor-blocking cleanup lease; a dead sentinel's lease is safely reclaimed before successor
+  activation. Early pre-Run transport failures persist a terminal tombstone, stale running receipts expose an
+  exact resumable interruption, the shipped host cannot be shadowed by target-project modules, process
+  discovery checks its exit status, and subagent JSONL waits for closed stdout with strict UTF-8 decoding.
 
 ## 0.2.28
 

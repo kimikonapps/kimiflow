@@ -36,6 +36,16 @@ Entwicklung zusaetzlich laufen, ersetzen den vollstaendigen Plan aber nicht.
   autonomes Same-Thread-Resume, materieller Wait und fehlende Kimiflow-Aktivierung.
 - `hooks/test-install-kimiflow-cli.sh` prueft verwaltete Installation/`--check` und verhindert das
   Ueberschreiben eines fremden Executables.
+- `hooks/test-pi-host.sh` prueft den Pi-0.82.x-JSON-/Session-Vertrag, providerneutrale
+  `provider/model:thinking`-Auswahl, eine unveraenderliche verifizierte Worker-Extension, Workflow-Kontext,
+  Preflight sowie generationgebundene Subagents.
+- `node --test hosts/pi/tests/captain.test.mjs` prueft natuerliche modellaufrufbare Aktivierung und den
+  aequivalenten Slash-Weg ueber den vorhandenen Runner, fortgesetzte Konversation sowie deduplizierte Attention.
+- `hooks/test-pi-kimiflow-e2e.sh` prueft einen vollstaendigen deterministischen Primary-Pi-Request bis zum
+  echten `active-run finish` mit Phase-Reads, Conformance, Baseline und terminalem Kimiflow-Receipt; ein
+  Pi-`agent_end` darf den Run nicht abschliessen.
+- Der Acceptance-Selector-Audit verlangt, dass alle in `ACCEPTANCE.md` benannten Tests als echte Harnesses
+  existieren und ausfuehrbar sind.
 
 ## Project-Map-Status
 
