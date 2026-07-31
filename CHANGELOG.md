@@ -4,6 +4,12 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.36
+
+The isolated Pi Fleet and durable Herdr recovery release.
+
 ### Added
 
 - The Pi Captain now has a private metadata-only project registry and routes every new writing top-level task

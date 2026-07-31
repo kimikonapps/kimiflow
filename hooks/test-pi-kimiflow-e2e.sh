@@ -2,6 +2,10 @@
 # kimiflow — deterministic existing-Pi -> thin runner bridge -> Kimiflow E2E.
 set -eu
 
+# This fixture proves the process fallback. Do not inherit a maintainer shell's
+# Herdr transport identity and accidentally route the fake Pi command through Herdr.
+unset HERDR_ENV HERDR_PANE_ID HERDR_SOCKET_PATH HERDR_TAB_ID HERDR_WORKSPACE_ID
+
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)"
 WORK="$(mktemp -d)"
 REPO="$WORK/repo"

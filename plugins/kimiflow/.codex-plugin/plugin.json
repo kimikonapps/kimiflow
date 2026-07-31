@@ -1,6 +1,6 @@
 {
   "name": "kimiflow",
-  "version": "0.2.35",
+  "version": "0.2.36",
   "description": "Calm context-aware Kimiflow launcher and active-session feature/fix/release loop for Codex with natural mode aliases, safe workspace preflight, red/green, autonomous recovery, audited project release profiles, code-review, memory, Obsidian, and Vault gates.",
   "author": {
     "name": "kimikon",
