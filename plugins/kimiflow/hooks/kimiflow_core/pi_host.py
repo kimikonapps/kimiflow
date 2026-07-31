@@ -1374,6 +1374,7 @@ def main(argv=None):
             "schema_version": 1,
             "type": "turn.failed",
             "error_code": "provider_crash",
+            "diagnostic_code": exc.status,
         })
         return exc.code
 

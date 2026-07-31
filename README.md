@@ -15,14 +15,14 @@
 
 [![Latest release](https://img.shields.io/github/v/release/kimikonapps/kimiflow?display_name=tag&sort=semver)](https://github.com/kimikonapps/kimiflow/releases/latest)
 
-Kimiflow is an explicitly invoked skill/plugin that coordinates an eight-phase engineering loop:
-clarify, understand or diagnose, plan, review, implement, verify, code-review, and commit. It keeps
-simple work small, but makes important gates enforceable by scripts and hooks instead of relying on
-the model to declare itself done.
+Kimiflow is a workflow plugin that can be invoked explicitly or auto-routed for substantial feature
+work. Its eight phases clarify, understand or diagnose, plan, review, implement, verify, code-review,
+and commit. Before a feature is fixed in code, Kimiflow discusses the product flow with the user,
+checks the current codebase, and binds important claims to executable evidence.
 
 <p align="center">
   <a href="https://kimikonapps.github.io/kimiflow/">
-    <img src="docs/kimiflow-graph.svg" alt="Kimiflow graph-loop architecture: eight engineering phases, evidence-bound feedback, selective context systems, adaptive model routing, worktree isolation, atomic commits, and explicit immutable releases.">
+    <img src="docs/kimiflow-graph.svg" alt="Kimiflow workflow: discuss and confirm the product intent, inspect current code, compare focused research, plan with evidence classes, implement the smallest change, verify it, classify review findings by relevance, and commit locally.">
   </a>
   <br>
   <sub><a href="https://kimikonapps.github.io/kimiflow/">Explore the interactive graph</a></sub>
@@ -51,7 +51,7 @@ abilities:
 
 - state and evidence live under `.kimiflow/<slug>/`, so a run can resume safely;
 - plan and code-review findings use tested fail-closed resolvers;
-- repeated work without new durable evidence changes strategy automatically instead of asking for another run;
+- repeated runtime claims require executable evidence; irrelevant findings stop before repair and repeated failed strategies cannot create an endless loop;
 - fixes require reproduction, a proven cause, and red/green evidence;
 - material product/authority decisions stop for human approval; verified local commits are automatic, while push and release stay explicit;
 - successful learnings are curated, while failed or parked attempts are not promoted as truth;
@@ -341,9 +341,10 @@ remains compatible.
 
 ## Demo
 
-![Kimiflow launcher and gated feature/fix flow](docs/demo/kimiflow.gif)
+![Kimiflow confirmed-intent and evidence-first feature flow](docs/demo/kimiflow.gif)
 
-> Scripted illustration of the current launcher and core loop. The source and real-recording guide
+> Scripted illustration of the current feature conversation, codebase check, evidence classes,
+> relevance-aware review, and local commit. The source and real-recording guide
 > live in [`docs/demo/`](docs/demo/).
 
 ## Modes
@@ -374,26 +375,27 @@ Useful explicit forms:
 /kimiflow release
 ```
 
-Kimiflow first proves where the product goal, actor, visible behavior, boundaries, and success came
-from. Every new non-trivial feature gets one compact Product Intake before planning or project writes;
-an already-complete request gets a short contract confirmation instead of filler questions. The user
-decides WHAT/WHY, while architecture, libraries, data models, tests, and other technical HOW stay with
-the agent. After the answer, the product contract is locked and the run continues autonomously. A
-second batch is allowed only when the first answer creates a new material product conflict. Exact
-trivial work and fixes keep their direct routes.
+Every non-trivial feature—including an already prepared plan—starts with a short product discussion in
+the user's language. Kimiflow inspects current code, then shows the understood problem, observable
+success, boundary, two to five relevant options, and what is included, later, or excluded. The user can
+discuss and correct that draft before choosing `scope_ready`. Focused research then compares the current
+code, primary sources, and confirmed scope. A final two-to-seven-step product flow is accepted only through
+`confirmed` or replaced through `corrected`; generic chat or a timeout confirms nothing. The user owns
+WHAT/WHY, while architecture, libraries, data models, tests, and other technical HOW stay with the agent.
+Exact trivial work and fixes keep their direct routes.
 
 ## Eight Phases
 
 | Phase | What happens |
 |---|---|
 | 0 Setup | Inventory every worktree; route clean primary directly or up to three busy-primary runs into the owned Fleet before FIFO queueing. |
-| 1 Clarify | Run the mandatory Product Intake for non-trivial features, forbid HOW questions, lock the confirmed contract, then continue. |
-| 2 Understand | Inspect project knowledge and code; choose Discovery `none`, `pulse`, or `focused`, and prove architecture feasibility before planning. Fixes reproduce and prove the cause. |
-| 3 Plan | Write a flat minimum-complete plan, testable acceptance criteria, and up to five evidence-bound implementation decisions. |
+| 1 Clarify | Show a code-informed problem/success/options draft, let the user discuss it, then lock the corrected final product flow through explicit structured actions. |
+| 2 Understand | Snapshot current affected paths and bytes, check `reuse → evolve → new`, and compare focused research with the confirmed scope. Fixes reproduce and prove the cause. |
+| 3 Plan | Write a flat minimum-complete plan, testable acceptance criteria, and up to five decisions classified as `review_only`, `spike_required`, or `runtime_required`. |
 | 4 Review | Resolve plan blockers and pause only for a material authority, scope, risk, privacy, cost, or irreversible decision. |
 | 5 Implement | Apply the smallest accepted change, normally sequentially; fixes preserve red evidence before production code. |
-| 6 Verify | Check acceptance, regression, and whether the delivered diff still matches the researched strategy and invariants. |
-| 7 Review and commit | Revalidate conformance, verify findings, create the named-path atomic commit, then prove commit/index/worktree delivery; push/release stay explicit. |
+| 6 Verify | Execute the required acceptance, regression, spike, and runtime evidence and prove that every locked requirement is covered. |
+| 7 Review and commit | Classify findings by contract, supported path, impact, and proportionality; repair only relevant defects, then create and prove the named-path local commit. |
 
 ## Mechanical Gates
 
@@ -402,8 +404,9 @@ trivial work and fixes keep their direct routes.
 | Gate | Enforced boundary |
 |---|---|
 | Workspace preflight | Every linked tree and dirty path is classified; up to three owned Fleet trees receive exclusive leases, revalidation, serialized candidate-first integration, and ancestry-gated archive. |
-| Product Intake, Clarify and Discovery gates | Supported planning/writes stay blocked until an explicit product response; the locked intent, zero technical questions, feasibility, and source/scope/decision evidence must hold before planning. |
-| Plan-blocker and review gates | Acceptance mappings and evidenced `BLOCKER/HIGH` findings are resolved within a bounded repair budget. |
+| Product Intake, Clarify and Discovery gates | Planning and writes stay blocked until the user explicitly marks scope ready and confirms the final product flow; generic chat, defaults, and timeouts never confirm it. |
+| Current-code and plan gates | Every affected path is bound to current HEAD/type/bytes; discovery proves `reuse → evolve → new`, and material decisions declare their required evidence class. |
+| Plan-blocker and review gates | Acceptance mappings and evidenced `BLOCKER/HIGH` findings are resolved within a bounded budget; reproduced immaterial edges do not enter repair, while protected impacts cannot be waived. |
 | Implementation-conformance gate | Researched decisions, invariants, affected paths, exact checks, and every locked product requirement converge in Phase 6; finish additionally proves the committed delivery matches. |
 | Adaptive execution controller | Run-wide no-progress and budget pressure select a bounded recovery action; mandatory quality gates remain intact. |
 | Evidence evaluation | Four critical workflow behaviors run once in CI against a sealed prior-release baseline; artifacts contain bounded metadata and digests, never prompts, output, code, secrets, or absolute paths. |

@@ -68,6 +68,9 @@ def included(path):
         "SKILL.md", "reference.md", "hooks.json", "LICENSE", "README.md", "README.de.md",
         "COMPATIBILITY.md", "package.json", ".codex-plugin/plugin.json", ".claude-plugin/plugin.json",
         "docs/commit-secret-gate.md", "docs/kimiflow-scaling-knobs.md",
+        "docs/kimiflow-graph.svg", "docs/demo/README.md",
+        "docs/demo/kimiflow-demo.tape", "docs/demo/kimiflow.gif",
+        "docs/demo/play.sh", "docs/demo/play-refusals.sh",
     }
     return path in exact or path.startswith(("hooks/", "hosts/pi/", "phases/", "references/", "skills/"))
 

@@ -606,6 +606,25 @@ print(json.dumps(completion))
             "after_tokens": 5,
         })
 
+    def test_turn_failure_preserves_bounded_diagnostic_code(self):
+        event = model_adapter.normalize_event({
+            "type": "turn.failed",
+            "error_code": "provider_crash",
+            "diagnostic_code": "herdr_turn_invalid",
+        }, structured=True)
+
+        self.assertEqual(event, {
+            "type": "turn.failed",
+            "error_code": "provider_crash",
+            "diagnostic_code": "herdr_turn_invalid",
+        })
+        with self.assertRaises(model_adapter.AdapterError):
+            model_adapter.normalize_event({
+                "type": "turn.failed",
+                "error_code": "provider_crash",
+                "diagnostic_code": "contains spaces",
+            }, structured=True)
+
     def test_resume_rejects_adapter_contract_drift(self):
         features = {key: True for key in model_adapter.FEATURE_KEYS}
         payload_log = os.path.join(self.tmp.name, "drift-payloads.jsonl")

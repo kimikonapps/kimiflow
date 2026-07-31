@@ -107,6 +107,7 @@ class PiHostTests(unittest.TestCase):
         )
         self.assertNotEqual(turn.returncode, 0)
         self.assertEqual(turn.error_code, "provider_crash")
+        self.assertEqual(turn.diagnostic_code, "pi_session_mismatch")
 
         no_terminal = dict(self.env)
         no_terminal["PI_TEST_FINAL_END"] = "0"

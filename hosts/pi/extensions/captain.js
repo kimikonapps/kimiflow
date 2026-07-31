@@ -745,6 +745,13 @@ function transition(snapshot, binding) {
     kind,
     transition_version: Number.isInteger(receipt?.turns) ? receipt.turns : 0,
   };
+  if (
+    kind === "failure"
+    && typeof receipt?.diagnostic_code === "string"
+    && IDENTITY.test(receipt.diagnostic_code)
+  ) {
+    identity.diagnostic_code = receipt.diagnostic_code;
+  }
   if (kind === "question") {
     const request = typeof activeRun.awaiting_request === "string"
       && Buffer.byteLength(activeRun.awaiting_request, "utf8") <= 64 * 1024

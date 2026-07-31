@@ -100,6 +100,12 @@ def _validate_receipt(root, value):
         raise RunnerError("invalid_receipt", "runner receipt has an invalid turn limit", 2)
     if "final_recovery_used" in value and not isinstance(value.get("final_recovery_used"), bool):
         raise RunnerError("invalid_receipt", "runner receipt has an invalid recovery marker", 2)
+    diagnostic_code = value.get("diagnostic_code")
+    if diagnostic_code is not None and (
+        not isinstance(diagnostic_code, str)
+        or model_adapter.IDENTITY_RE.fullmatch(diagnostic_code) is None
+    ):
+        raise RunnerError("invalid_receipt", "runner receipt has an invalid diagnostic code", 2)
     adapter_contract = value.get("adapter_contract")
     if adapter_contract is not None and not re.fullmatch(r"sha256:[0-9a-f]{64}", adapter_contract):
         raise RunnerError("invalid_receipt", "runner receipt has an invalid adapter contract", 2)
@@ -852,6 +858,8 @@ def _public_result(receipt, status=None, outcome=None, wait=None):
         result["awaiting_kind"] = wait["awaiting_kind"]
     if receipt.get("exhaustion_reason"):
         result["exhaustion_reason"] = receipt["exhaustion_reason"]
+    if receipt.get("diagnostic_code"):
+        result["diagnostic_code"] = receipt["diagnostic_code"]
     return result
 
 
@@ -1006,6 +1014,26 @@ def _drive(root, adapter, receipt, turn, baseline, workflow_aware=False):
             ),
         )
         while turn.returncode != 0:
+            status = _active_status(root)
+            if (
+                status.get("present") is True
+                and status.get("terminal") is False
+                and status.get("awaiting_user") is True
+                and _owner_matches(status, receipt)
+            ):
+                # The durable, owned user wait is the authoritative outcome of
+                # this turn. A later bridge/lifecycle failure must not retry the
+                # model or turn a live intake into a transport failure.
+                receipt = dict(receipt)
+                receipt.pop("error_code", None)
+                receipt.pop("diagnostic_code", None)
+                receipt = _update_receipt(
+                    root,
+                    receipt,
+                    "awaiting_user",
+                    active_run=status.get("run"),
+                )
+                return _public_result(receipt, wait=status)
             if turn.error_code in NON_RETRYABLE_PROVIDER_ERRORS:
                 if turn.error_code == "turn_cancelled":
                     receipt = _update_receipt(
@@ -1027,7 +1055,16 @@ def _drive(root, adapter, receipt, turn, baseline, workflow_aware=False):
                 _update_receipt(root, receipt, "transport_error", error_code=turn.error_code)
                 raise RunnerError("transport_error", "coding-agent event consumer closed", 1)
             if retries >= TRANSPORT_RETRIES:
-                receipt = _update_receipt(root, receipt, "transport_error", error_code=turn.error_code or "adapter_exit_%s" % turn.returncode)
+                failure = {
+                    "error_code": turn.error_code
+                    or "adapter_exit_%s" % turn.returncode,
+                }
+                diagnostic = getattr(turn, "diagnostic_code", "")
+                if diagnostic:
+                    failure["diagnostic_code"] = diagnostic
+                receipt = _update_receipt(
+                    root, receipt, "transport_error", **failure,
+                )
                 raise RunnerError("transport_error", "coding-agent transport failed after automatic retries", 1)
             retries += 1
             try:
@@ -1056,6 +1093,11 @@ def _drive(root, adapter, receipt, turn, baseline, workflow_aware=False):
                     initialize=receipt["turns"] == 0,
                 ),
             )
+        if "error_code" in receipt or "diagnostic_code" in receipt:
+            receipt = dict(receipt)
+            receipt.pop("error_code", None)
+            receipt.pop("diagnostic_code", None)
+            receipt = _update_receipt(root, receipt)
         retries = 0
         status = _active_status(root)
         if status.get("present") is True and status.get("terminal") is False:

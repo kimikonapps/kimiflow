@@ -16,7 +16,7 @@ THREAD = "019f5fa0-567a-70e0-9b07-604ffbdafbf4"
 class FakeAdapter:
     def __init__(
         self, start_action=None, resume_actions=None, returncode=0, usage=None,
-        error_code="", pre_thread_action=None,
+        error_code="", pre_thread_action=None, diagnostic_code="",
     ):
         self.start_action = start_action
         self.pre_thread_action = pre_thread_action
@@ -24,6 +24,7 @@ class FakeAdapter:
         self.returncode = returncode
         self.usage = usage
         self.error_code = error_code
+        self.diagnostic_code = diagnostic_code
         self.starts = []
         self.resumes = []
 
@@ -36,7 +37,7 @@ class FakeAdapter:
             self.start_action()
         return runner.TurnResult(
             returncode=self.returncode, thread_id=THREAD, usage=self.usage,
-            error_code=self.error_code,
+            error_code=self.error_code, diagnostic_code=self.diagnostic_code,
         )
 
     def resume(self, root, thread_id, prompt, on_thread):
@@ -48,7 +49,7 @@ class FakeAdapter:
             action()
         return runner.TurnResult(
             returncode=self.returncode, thread_id=thread_id, usage=self.usage,
-            error_code=self.error_code,
+            error_code=self.error_code, diagnostic_code=self.diagnostic_code,
         )
 
 
@@ -169,6 +170,23 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(receipt["controller_pid"], os.getpid())
         self.assertNotIn("secret task text", json.dumps(receipt))
         self.assertEqual(stat.S_IMODE(os.stat(runner.receipt_path(self.root)).st_mode), 0o600)
+
+    def test_owned_user_wait_outranks_late_transport_failure(self):
+        adapter = FakeAdapter(
+            start_action=lambda: self.write_active(awaiting=True),
+            returncode=1,
+            error_code="provider_crash",
+            diagnostic_code="herdr_turn_invalid",
+        )
+        result = runner.run_task(self.root, "wait safely", adapter=adapter)
+        receipt = self.read_receipt()
+
+        self.assertEqual(result["status"], "awaiting_user")
+        self.assertEqual(receipt["status"], "awaiting_user")
+        self.assertEqual(receipt["active_run"], ".kimiflow/demo")
+        self.assertNotIn("error_code", receipt)
+        self.assertNotIn("diagnostic_code", receipt)
+        self.assertEqual(adapter.resumes, [])
 
     def test_default_codex_adapter_stays_default(self):
         args = runner._parser().parse_args(["run", "build it"])
@@ -747,11 +765,19 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(runner._outcome_fingerprints(self.root), {})
         os.unlink(outcome)
 
-        failing = FakeAdapter(start_action=self.write_active, returncode=9)
+        failing = FakeAdapter(
+            start_action=self.write_active,
+            returncode=9,
+            diagnostic_code="herdr_endpoint_invalid",
+        )
         with self.assertRaises(runner.RunnerError) as ctx:
             runner.run_task(self.root, "transport fails", adapter=failing)
         self.assertEqual(ctx.exception.status, "transport_error")
         self.assertEqual(self.read_receipt()["status"], "transport_error")
+        self.assertEqual(
+            self.read_receipt()["diagnostic_code"],
+            "herdr_endpoint_invalid",
+        )
         self.assertTrue(os.path.exists(self.active_path))
 
         os.unlink(receipt)

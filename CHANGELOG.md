@@ -6,6 +6,33 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.35
+
+The evidence-first product-flow and resilient Herdr/Pi wait-state release.
+
+### Added
+
+- New feature runs bind their plan to the current codebase, check `reuse → evolve → new`, trace every locked
+  product requirement, and classify material decisions as review, spike, or runtime evidence before building.
+- Product discovery now supports a real pre-build discussion: Kimiflow presents the understood problem,
+  observable success, boundaries, relevant options, and final user flow in the user's language before scope is
+  locked.
+
+### Changed
+
+- Review convergence now separates relevant defects from immaterial edge cases, requires executable evidence
+  for runtime claims, and bounds repair without weakening protected security, privacy, data-loss, compatibility,
+  or irreversible-impact findings.
+- The English and German GitHub entry points, workflow graph, interactive documentation, and demo now expose
+  Kimiflow's First Principles and the current evidence-first product workflow directly.
+
+### Fixed
+
+- A completed Herdr prompt now makes its visible Pi worker resumable before native-session correlation, so a
+  later bridge or lifecycle error cannot make cleanup delete a successfully waiting worker tab.
+- An exact owned `awaiting_user` state now outranks a late transport failure, preventing duplicate retries and
+  false `transport_error` receipts while preserving the underlying bounded diagnostic code for real failures.
+
 ## 0.2.34
 
 The role-bound Herdr/Pi FirstMate and Calm reliability patch.

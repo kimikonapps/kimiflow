@@ -207,6 +207,44 @@ class PiHerdrTests(unittest.TestCase):
         self.assertEqual(pane["agent_status"], "idle")
         sleep.assert_called_once_with(0.05)
 
+    def test_completed_prompt_keeps_visible_worker_on_correlation_error(self):
+        state = {
+            "root": self.root,
+            "worker_id": "worker-00000001",
+            "session_id": self.session_id,
+            "workspace_id": "w2",
+            "tab_id": "w2:t2",
+            "pane_id": "w2:p2",
+            "session_path": self.session_path,
+        }
+        sentinel = {"control": 10, "process": mock.Mock()}
+        with mock.patch.object(
+            pi_herdr,
+            "_wait_for_settled_endpoint",
+        ) as settled, mock.patch.object(
+            pi_herdr,
+            "_start_sentinel",
+            return_value=sentinel,
+        ), mock.patch.object(
+            pi_herdr,
+            "_invoke",
+            return_value={},
+        ), mock.patch.object(
+            pi_herdr,
+            "_turn_result",
+            side_effect=pi_herdr.HerdrError(
+                "herdr_turn_invalid", "fixture correlation failure",
+            ),
+        ), mock.patch.object(
+            pi_herdr,
+            "_finish_sentinel",
+        ) as finish:
+            with self.assertRaises(pi_herdr.HerdrError):
+                pi_herdr._prompt(state, "exact prompt", self.environment)
+
+        settled.assert_called_once_with(state, self.root, self.environment)
+        finish.assert_called_once_with(sentinel, True)
+
     def test_subagent_owns_a_numbered_visible_read_only_worker_tab(self):
         calm_extension = os.path.join(self.root, "calm.js")
         calm_content = b"export default function calm() {}\n"

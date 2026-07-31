@@ -84,7 +84,7 @@ grep -q 'full.*does not create an approval stop' "$ROOT/SKILL.md" && ok "full mo
 grep -q 'Contract-4 two-stage Product Intake with Contract-3/schema-1 resume compatibility' "$ROOT/SKILL.md" && ok "canonical skill requires bounded intent interaction" || bad "canonical skill missing bounded intent interaction"
 grep -q 'require two explicit actions' "$SKILL" && ok "Codex wrapper preserves two-stage intent interaction" || bad "Codex wrapper missing two-stage intent interaction"
 grep -q 'Intent Coverage Scan (Contract 4)' "$ROOT/reference.md" && ok "reference documents provenance-aware intent coverage" || bad "reference missing provenance-aware intent coverage"
-grep -q 'one compact Product Intake' "$ROOT/README.md" && ok "README documents batched clarification" || bad "README missing batched clarification"
+grep -q 'starts with a short product discussion' "$ROOT/README.md" && ok "README documents two-stage feature dialogue" || bad "README missing two-stage feature dialogue"
 grep -q 'git commit --only' "$ROOT/phases/phase-7-review-commit.md" && grep -q 'foreign staged' "$ROOT/phases/phase-7-review-commit.md" \
   && ok "atomic commit isolates foreign staged paths" || bad "atomic commit foreign-staging isolation missing"
 grep -q 'Vault Pulse' "$ROOT/SKILL.md" && ok "canonical skill requires scope=large Vault Pulse semantics" || bad "canonical skill missing Vault Pulse"

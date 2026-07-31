@@ -6,10 +6,19 @@
 
 [![Aktuelles Release](https://img.shields.io/github/v/release/kimikonapps/kimiflow?display_name=tag&sort=semver)](https://github.com/kimikonapps/kimiflow/releases/latest)
 
-Kimiflow ist ein bewusst aufgerufener Skill beziehungsweise Plugin-Flow mit acht Phasen: klären,
-verstehen oder diagnostizieren, planen, reviewen, umsetzen, verifizieren, Code prüfen und committen.
-Einfache Arbeit bleibt klein; wichtige Grenzen werden durch getestete Skripte und Hooks abgesichert,
-statt vom Modell nur behauptet zu werden.
+Kimiflow ist ein Workflow-Plugin, das explizit aufgerufen oder für substanzielle Feature-Arbeit
+automatisch geroutet werden kann. Seine acht Phasen klären, verstehen oder diagnostizieren, planen,
+reviewen, implementieren, verifizieren, prüfen den Code und committen. Bevor ein Feature im Code
+festgelegt wird, bespricht Kimiflow den Produktablauf mit dem User, prüft die aktuelle Codebasis und
+bindet wichtige Behauptungen an ausführbare Evidence.
+
+<p align="center">
+  <a href="https://kimikonapps.github.io/kimiflow/">
+    <img src="docs/kimiflow-graph.svg" alt="Kimiflow-Workflow: Produktintent besprechen und bestätigen, aktuellen Code prüfen, gezielte Recherche vergleichen, mit Evidence-Klassen planen, die kleinste Änderung implementieren, verifizieren, Review-Findings nach Relevanz einstufen und lokal committen.">
+  </a>
+  <br>
+  <sub><a href="https://kimikonapps.github.io/kimiflow/">Interaktiven Graph öffnen</a></sub>
+</p>
 
 Kimiflow kann konkrete Umsetzungsauftraege fuer substanzielle Feature-Arbeit automatisch routen.
 Diskussionen, Ideen, Empfehlungen, Erklaerungen, Statusfragen und Wunschformulierungen bleiben direkt
@@ -24,13 +33,23 @@ dauerhaften, wiederaufnehmbaren Qualitätsvertrag:
 
 - State und Evidence liegen unter `.kimiflow/<slug>/`;
 - Plan- und Code-Review-Gates lösen BLOCKER/HIGH mechanisch auf;
-- wiederholte Arbeit ohne neue dauerhafte Evidence wechselt automatisch die Strategie, statt nach einem weiteren Run zu fragen;
+- wiederholte Runtime-Behauptungen brauchen ausführbare Evidence; irrelevante Findings stoppen vor dem Repair und wiederholte Fehlstrategien erzeugen keinen Endlos-Loop;
 - Bugfixes brauchen Reproduktion, belegte Ursache und Red/Green-Evidence;
 - wesentliche Produkt-/Berechtigungsentscheidungen warten auf menschliche Freigabe; verifizierte lokale Commits laufen automatisch, Push und Release bleiben explizit;
 - nur erfolgreich verifizierte Learnings werden kuratiert;
 - das stärkste gewählte Modell orchestriert, kleinere Worker übernehmen begrenzte Aufgaben.
 
 Der Default ist nicht der größte, sondern der kleinste Flow, der die konkrete Arbeit sicher trägt.
+
+## First Principles
+
+- **Verstehen, bevor gebaut wird.** Kimiflow zeigt Problem, beobachtbaren Erfolg, Grenzen, Optionen und den vollständigen User-Ablauf in der Sprache des Users. Vor der Implementierung kann dieser Vertrag besprochen und korrigiert werden.
+- **Aktueller Code schlägt erinnerten Code.** Planung bindet aktuellen HEAD sowie Typ und Bytes aller betroffenen Pfade. Kimiflow prüft `reuse → evolve → new`, damit vorhandene Funktionen nicht doppelt gebaut werden.
+- **Recherche fordert die lokale Idee heraus, erweitert aber nicht das Produkt.** Projekt-Evidence kommt zuerst; aktuelle Primärquellen schließen benannte Lücken und werden mit Code und bestätigtem Scope verglichen.
+- **Runtime-Behauptungen brauchen Runtime-Evidence.** Wichtige Entscheidungen verlangen Review, isolierten Spike oder ausführbaren Laufzeitnachweis. Ein reines „passed“ in Prosa reicht nicht.
+- **Reviews sind verhältnismäßig und endlich.** Findings werden nach Vertrag, unterstütztem Pfad, Impact und Reparaturkosten klassifiziert. Irrelevante Randfälle gehen nicht in den Repair-Loop; Security, Privacy, Datenverlust und irreversible Auswirkungen bleiben geschützt.
+- **Die kleinste austauschbare Lösung gewinnt.** Features, Integrationen, Modelle und Review-Routen sollen leicht ergänzt, angepasst oder entfernt werden können. Bestehende Verträge werden weiterentwickelt, bevor neue Systeme entstehen.
+- **Learnings bleiben Evidence-gebunden.** Dauerhafte Erkenntnisse nennen aktuelle Quellpfade und werden automatisch stale, wenn sich deren Bytes ändern.
 
 ## Installation
 
@@ -243,9 +262,10 @@ v1-Ausführung bleibt kompatibel.
 
 ## Demo
 
-![Kimiflow-Launcher und gegateter Feature-/Fix-Flow](docs/demo/kimiflow.gif)
+![Kimiflow-Feature-Flow mit bestätigtem Intent und ausführbarer Evidence](docs/demo/kimiflow.gif)
 
-> Geskriptete Illustration des aktuellen Launchers und Kern-Flows. Quelle und Anleitung für einen
+> Geskriptete Illustration von Feature-Gespräch, Codebasis-Prüfung, Evidence-Klassen,
+> relevanzbewusstem Review und lokalem Commit. Quelle und Anleitung für einen
 > echten Mitschnitt liegen unter [`docs/demo/`](docs/demo/).
 
 ## Modi
@@ -276,26 +296,28 @@ Explizite Formen:
 /kimiflow release
 ```
 
-Kimiflow belegt zuerst, woher Produktziel, Nutzer, sichtbares Verhalten, Grenzen und Erfolgskriterien
-kommen. Jedes neue nicht-triviale Feature erhält vor Planung und Projekt-Writes einen kompakten Product
-Intake; bei einem bereits vollständigen Auftrag wird der kurze Produktvertrag bestätigt statt mit
-Füllfragen verlängert. Der User entscheidet WHAT/WHY, der Agent Architektur, Libraries, Datenmodell,
-Tests und anderes technisches HOW. Danach wird der Vertrag gesperrt und der Flow läuft autonom weiter.
-Ein zweiter Fragenblock ist nur erlaubt, wenn die erste Antwort selbst einen neuen materiellen
-Produktkonflikt erzeugt. Fixes und exakt triviale Arbeit behalten ihre direkten Routen.
+Jedes nicht-triviale Feature—auch ein bereits vorbereiteter Plan—beginnt mit einem kurzen
+Produktgespräch in der Sprache des Users. Kimiflow prüft aktuellen Code und zeigt danach das verstandene
+Problem, beobachtbaren Erfolg, Grenze, zwei bis fünf relevante Optionen sowie `enthalten`, `später` und
+`nicht enthalten`. Der User kann den Entwurf besprechen und korrigieren, bevor er `scope_ready` wählt.
+Danach vergleicht gezielte Recherche aktuelle Codebasis, Primärquellen und bestätigten Scope. Der finale
+Produktablauf mit zwei bis sieben Schritten wird nur über `confirmed` akzeptiert oder über `corrected`
+ersetzt; generischer Chat und Timeouts bestätigen nichts. Der User entscheidet WHAT/WHY, der Agent
+Architektur, Libraries, Datenmodell, Tests und anderes technisches HOW. Fixes und exakt triviale Arbeit
+behalten ihre direkten Routen.
 
 ## Acht Phasen
 
 | Phase | Ablauf |
 |---|---|
 | 0 Setup | Alle Worktrees inventarisieren, dauerhaften Run-State anlegen, sichere Aufräumentscheidung einmal bündeln. |
-| 1 Klären | Für nicht-triviale Features den verpflichtenden Product Intake durchführen, HOW-Fragen verbieten, den bestätigten Vertrag sperren und weiterlaufen. |
-| 2 Verstehen | Projektwissen und Code prüfen; Discovery `none`, `pulse` oder `focused` wählen und die Architektur-Machbarkeit vor dem Plan belegen. Fixes reproduzieren und belegen die Ursache. |
-| 3 Planen | Flachen minimum-complete Plan, testbare Akzeptanzkriterien und höchstens fünf belegte Umsetzungsentscheidungen schreiben. |
+| 1 Klären | Code-informierten Problem-/Erfolgs-/Optionsentwurf zeigen, besprechen lassen und danach den korrigierten Produktablauf über explizite strukturierte Aktionen sperren. |
+| 2 Verstehen | Aktuelle betroffene Pfade und Bytes erfassen, `reuse → evolve → new` prüfen und gezielte Recherche mit dem bestätigten Scope vergleichen. Fixes reproduzieren und belegen die Ursache. |
+| 3 Planen | Flachen minimum-complete Plan, testbare Akzeptanzkriterien und höchstens fünf Entscheidungen mit `review_only`, `spike_required` oder `runtime_required` schreiben. |
 | 4 Review | Plan-Blocker lösen; nur bei Autorität, materiellem Scope/Risiko, Privacy/Kosten oder Irreversibilität pausieren. |
 | 5 Umsetzen | Kleinste akzeptierte Änderung bauen; Fixes sichern Red-Evidence vor Production-Code. |
-| 6 Verifizieren | Akzeptanz, Regression und die Übereinstimmung des realen Diffs mit Strategie und Invarianten prüfen. |
-| 7 Review und Commit | Conformance erneut prüfen, Findings verifizieren, den Named-Path-Commit erstellen und danach Commit/Index/Worktree-Gleichheit belegen; Push/Release bleiben explizit. |
+| 6 Verifizieren | Erforderliche Akzeptanz-, Regressions-, Spike- und Runtime-Evidence ausführen und jede gesperrte Anforderung nachweisen. |
+| 7 Review und Commit | Findings nach Vertrag, unterstütztem Pfad, Impact und Verhältnismäßigkeit einstufen, nur relevante Defekte reparieren und danach den lokalen Commit beweisen. |
 
 ## Mechanische Gates
 
@@ -304,8 +326,9 @@ Produktkonflikt erzeugt. Fixes und exakt triviale Arbeit behalten ihre direkten 
 | Gate | Gesicherte Grenze |
 |---|---|
 | Workspace-Preflight | Alle Worktrees und Dirty-Pfade werden klassifiziert; bis zu drei eigene Fleet-Trees erhalten exklusive Leases, Revalidierung, serialisierte Candidate-first-Integration und Ancestry-gesichertes Archivieren. |
-| Product-Intake-/Clarify-/Discovery-Gates | Unterstützte Planung und Writes bleiben bis zu einer expliziten Produktantwort gesperrt; gesperrter Intent, null technische Fragen, Machbarkeit und Quellen-/Scope-/Entscheidungs-Evidence müssen vor dem Plan stimmen. |
-| Plan-/Review-Gates | AC-Mapping und belegte BLOCKER/HIGHs werden in begrenzten Reparaturrunden gelöst. |
+| Product-Intake-/Clarify-/Discovery-Gates | Planung und Writes bleiben gesperrt, bis der User den Scope explizit bereit markiert und den finalen Produktablauf bestätigt; generischer Chat, Defaults und Timeouts bestätigen nichts. |
+| Aktueller Code und Plan | Jeder betroffene Pfad wird an aktuellen HEAD, Typ und Bytes gebunden; Discovery belegt `reuse → evolve → new`, materielle Entscheidungen deklarieren ihre Evidence-Klasse. |
+| Plan-/Review-Gates | AC-Mapping und belegte BLOCKER/HIGHs werden begrenzt gelöst; reproduzierte immaterielle Randfälle gehen nicht in Repair, geschützte Auswirkungen können nicht weggewischt werden. |
 | Implementation-Conformance-Gate | Rechercheentscheidungen, Invarianten, Pfade, Checks und jede gesperrte Produktanforderung konvergieren in Phase 6; beim Abschluss muss zusätzlich der Commit exakt dem geprüften Stand entsprechen. |
 | Adaptiver Execution-Controller | Run-weites No-Progress und Budgetdruck wählen eine begrenzte Recovery-Aktion; verpflichtende Qualitäts-Gates bleiben erhalten. |
 | Evidence-Evaluation | Vier kritische Flow-Verhalten laufen in CI genau einmal gegen eine versiegelte Baseline des vorherigen Releases; Artefakte enthalten nur begrenzte Metadaten und Digests, nie Prompts, Output, Code, Secrets oder absolute Pfade. |

@@ -844,6 +844,10 @@ def _prompt(state, prompt, environ):
             environ,
             timeout=21610,
         )
+        # Herdr has already completed the exact prompt boundary. From here on,
+        # correlation errors must remain recoverable and must not make the
+        # cleanup sentinel delete a visible, resumable Pi worker.
+        keep = True
         if session_path is None:
             session_path = _wait_for_native_session(
                 state["pane_id"],
@@ -857,9 +861,7 @@ def _prompt(state, prompt, environ):
                     state["root"], state["worker_id"],
                 )
                 _write_state(state_path, state)
-        _wait_for_settled_endpoint(state, state["root"], environ)
         result = _turn_result(session_path, offset, prompt)
-        keep = True
         return result
     finally:
         _finish_sentinel(sentinel, keep)

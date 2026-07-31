@@ -1514,6 +1514,7 @@ test("a provisional Captain surfaces transport failure before Run creation", asy
       session_id: "pi-worker-00000001",
       active_run: null,
       turns: 0,
+      diagnostic_code: "herdr_turn_invalid",
       bridge: {
         schema_version: 1,
         captain_session_id: binding.captainSessionId,
@@ -1535,6 +1536,7 @@ test("a provisional Captain surfaces transport failure before Run creation", asy
   assert.equal(attention.kind, "failure");
   assert.equal(attention.run, null);
   assert.equal(attention.provider_session_id, "pi-worker-00000001");
+  assert.equal(attention.diagnostic_code, "herdr_turn_invalid");
 });
 
 test("a live intake wait outranks a stale transport error and keeps its worker resumable", async () => {

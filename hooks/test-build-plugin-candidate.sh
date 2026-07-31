@@ -11,6 +11,18 @@ CANDIDATE="$WORK/kimiflow"
 [ -f "$CANDIDATE/RUNTIME-FINGERPRINT.json" ]
 jq -e '.schema_version == 1 and (.runtime_fingerprint | test("^sha256:[0-9a-f]{64}$")) and .file_count == (.files | length)' "$CANDIDATE/RUNTIME-FINGERPRINT.json" >/dev/null
 
+for rel in \
+  docs/kimiflow-graph.svg \
+  docs/demo/README.md \
+  docs/demo/kimiflow-demo.tape \
+  docs/demo/kimiflow.gif \
+  docs/demo/play.sh \
+  docs/demo/play-refusals.sh; do
+  [ -f "$CANDIDATE/$rel" ]
+  jq -e --arg rel "$rel" '.files[] | select(.path == $rel)' \
+    "$CANDIDATE/RUNTIME-FINGERPRINT.json" >/dev/null
+done
+
 test_optional_pi_package_release_and_embedded_host_parity() {
   version="$(jq -r '.version' "$ROOT/.claude-plugin/plugin.json")"
   jq -e --arg version "$version" '
@@ -110,8 +122,6 @@ done <<'EOF'
 .agents/plugins/marketplace.json
 .claude-plugin/marketplace.json
 docs/architecture.md
-docs/demo/README.md
-docs/demo/play.sh
 docs/kimiflow-vs-claude-md-vs-superpowers.md
 docs/render/kimiflow/canonical/SKILL.md
 docs/render/kimiflow/overlays/codex.md

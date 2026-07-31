@@ -161,6 +161,7 @@ class TurnResult:
     def __init__(
         self, returncode, session_id="", error_code="", usage=None, thread_id="",
         context_compaction=None, model_route=None, usage_v2=None, output=None,
+        diagnostic_code="",
     ):
         self.returncode = returncode
         self.session_id = session_id or thread_id
@@ -170,6 +171,7 @@ class TurnResult:
         self.model_route = model_route
         self.usage_v2 = usage_v2
         self.output = output
+        self.diagnostic_code = diagnostic_code
 
     @property
     def thread_id(self):
@@ -418,6 +420,11 @@ def normalize_event(value, structured=False):
             if value.get("error_code") not in PROVIDER_ERROR_CODES:
                 raise AdapterError("invalid_event")
             result["error_code"] = value["error_code"]
+        if "diagnostic_code" in value:
+            diagnostic = value.get("diagnostic_code")
+            if not isinstance(diagnostic, str) or IDENTITY_RE.fullmatch(diagnostic) is None:
+                raise AdapterError("invalid_event")
+            result["diagnostic_code"] = diagnostic
         return result
     if event_type == "turn.completed":
         result = {"type": event_type}
@@ -1548,6 +1555,7 @@ class CommandAgentAdapter:
             return TurnResult(returncode=127, error_code="provider_crash")
         observed = session_id or ""
         failed = ""
+        diagnostic_code = ""
         usage = None
         completed = False
         completion_event = None
@@ -1579,6 +1587,7 @@ class CommandAgentAdapter:
                     on_session(observed)
                 elif event_type in ("turn.failed", "error"):
                     failed = public.get("error_code") or event_type
+                    diagnostic_code = public.get("diagnostic_code", "")
                 elif (
                     event_type == "message"
                     and self.event_sink is None
@@ -1680,6 +1689,7 @@ class CommandAgentAdapter:
             model_route=model_route,
             usage_v2=usage_v2,
             output={"messages": messages},
+            diagnostic_code=diagnostic_code,
         )
 
     def cancel(self):
