@@ -51,19 +51,23 @@ Routinebestaetigung weiter. Zaehler bleiben `null`, wenn der Provider keine Usag
 `codex app-server` bleibt eine moegliche spaetere Transport-Alternative fuer einen echten Rich Client, ist aber
 keine Abhaengigkeit des schlanken CLI-Wegs.
 
-Der optionale Pi-Host ist eine duenne additive Oberflaeche auf diesem Runner. Ein natuerlicher Auftrag „mit
-Kimiflow“ und der Slash-Befehl verwenden dieselbe Aktivierung. Die bereits laufende Pi-Sitzung bleibt als
-ansprechbarer Captain offen, waehrend die Primary-Extension genau einen vorhandenen `kimiflow run`-Prozess im
-Hintergrund startet. Sie persistiert nur eine opake Session-/Root-/Worker-Bindung, den Digest des Auftrags und
-die exakte, nicht geheime `provider/model:thinking`-Auswahl für Resume.
+Der optionale Pi-Host setzt die FirstMate-artige Trennung zwischen Captain, Projekt und Fleet-Worker um. Die
+laufende Pi-Sitzung bleibt ansprechbarer, nur lesender Captain. Eine private Metadaten-Registry unter Pis
+Config-Root ordnet Projekt-ID und -Name einem exakten Git-Primary zu, wird aber nie Workflow-Autoritaet und
+speichert keine Aufgaben- oder Codeinhalte.
 
-Runner-Status und Active Run liefern Run, materielle Frage, Provider-Session und Abschluss. Reply oder Steering
-startet nur an einer sicheren fortsetzbaren Grenze einen exakten `kimiflow resume --message`-Prozess. Es gibt
-keine zweite Captain-Registry, keine eigene Completion-State-Machine, keine Delivery-Spools und keine
-zweite Workflow-Control-Plane. Wenn der Captain bereits in einem verifizierten Herdr-Kontext laeuft, dient
-Herdr als sichtbarer UI-Transport: Kimiflow erzeugt genau adressierte, nicht fokussierte interaktive Pi-Tabs
-fuer Haupt-Worker und temporaere nur lesende semantische Agents. Kimiflow besitzt nur diese exakten Tab-IDs;
-Runner und Active Run bleiben die einzigen Workflow-Autoritaeten. Ohne Herdr bleibt der Prozess-Transport.
+Vor jedem neuen schreibenden Top-Level-Auftrag reserviert die Primary-Extension im bestehenden `FLEET.json`
+einen von drei Slots. Der Runner startet erst danach im zugeordneten isolierten Worktree; Run, Worktree,
+Runner-Receipt, Pi-Sitzung und Transport-Endpunkt bleiben eine exakte Identitaetskette. Mehrere Worker werden
+parallel ueber denselben ereignisgetriebenen Captain-Watcher beaufsichtigt. Reply und Steering adressieren
+Run, Worker und Provider-Sitzung, nie Fokus oder Tab-Label. Nach einem Captain-Crash darf eine Bridge nur an
+einer fortsetzbaren Grenze und nach positivem Nachweis des toten alten Controllers uebernommen werden.
+
+Wenn der Captain in Herdr laeuft, ist dessen Workspace nur Sichttransport. Jeder Fleet-Worker erhaelt einen
+nicht fokussierten Pi-Tab mit dem Worktree als CWD; temporaere Phase-Seats erhalten eigene begrenzte Tabs.
+Kimiflow laedt die benutzerverwaltete, marker- und digestgepruefte Herdr-Agent-State-Integration trotz
+`--no-extensions` explizit, damit Herdr die native Pi-Session meldet. Nur exakte IDs werden bereinigt; Runner,
+Active Run und Fleet-Leases bleiben die Workflow-Autoritaeten. Ohne Herdr bleibt der Prozess-Transport.
 Ein abgeloester Cleanup-Sentinel besitzt ausschliesslich das zufaellige Pi-Prozessbaum-Tag und eine lokale
 Cleanup-Lease. Nach einem harten Kill der Runner-Gruppe blockiert diese Lease einen Nachfolger, bis der
 markierte Pi-Prozessbaum beendet ist; eine verwaiste Lease wird vor der naechsten Aktivierung mit demselben

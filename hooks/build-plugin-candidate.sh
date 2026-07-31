@@ -92,6 +92,8 @@ required_additive = {
     "hooks/pi-subagent-gate.sh",
     "hooks/kimiflow_core/pi_herdr.py",
     "hooks/kimiflow_core/pi_host.py",
+    "hooks/kimiflow_core/pi_project.py",
+    "hooks/kimiflow_core/worktree_broker.py",
 }
 missing_additive = sorted(
     rel for rel in required_additive

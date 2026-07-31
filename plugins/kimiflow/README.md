@@ -162,23 +162,29 @@ Build the requested feature with Kimiflow.
 /kimiflow-status
 ```
 
-The natural request and optional slash command use the same durable activation transaction. That exact Pi
-session remains the responsive Captain while it starts the existing Kimiflow runner in the background. The
-runner and Active Run remain the only workflow authorities; the Pi bridge adds no second registry, worker
-orchestrator, delivery queue, or daemon.
+The natural request and optional slash command use the same durable activation transaction. That Pi session
+remains the responsive, read-only Captain. A private metadata-only project registry (`/kimiflow-project` or the
+`kimiflow_project` tool) resolves project names to exact Git roots; it never stores prompts, code, answers, or
+terminal transcripts. `/kimiflow --project <name> <request>` and the activation tool's optional `project` field
+select a registered project explicitly.
 
-The Pi adapter inherits the session's provider-neutral `provider/model:thinking` selection. Kimiflow continues
-to own intake, planning, its normal bounded subagents, gates, worktrees, recovery, and completion. Replies and
-steering resume the exact runner session only at a safe material boundary. Pi lifecycle text never proves
-completion; only the matching terminal Kimiflow runner receipt does. Activation returns after the background
-runner process has spawned, so the Pi conversation stays usable. A durable opaque claim lets the same Pi
-session reattach after an interrupted activation without starting another runner.
+Every writing top-level task is routed through the existing three-slot Fleet broker before Pi starts. Even a
+clean primary checkout receives an isolated owned Git worktree, runner receipt, Pi session, and endpoint. Up to
+three disjoint tasks can run concurrently; later tasks remain in the broker queue. While Fleet work is live the
+Captain exposes only read/search and Kimiflow control tools. A dead resumable runner can transfer its bridge to
+a replacement Captain only after its old controller is positively absent; provider-session and Run ownership
+do not change.
 
-If that Captain is already running in Herdr, Kimiflow uses the same Herdr workspace as a visible UI transport:
-one unfocused interactive Pi tab hosts the persistent main worker and temporary unfocused Pi tabs show bounded
-read-only semantic agents. The Captain keeps focus and remains conversational. Kimiflow owns only the exact
-tabs it creates; runner and Active Run remain authoritative. Outside Herdr, the existing process transport is
-unchanged. Kimiflow never installs Pi, Herdr, or a model provider.
+The Pi adapter inherits the session's provider-neutral `provider/model:thinking` selection. Runner, Active Run,
+Fleet leases, gates, and terminal receipts remain the only workflow authorities. Replies and steering target an
+exact run/worker/provider-session boundary; Pi lifecycle text never proves completion.
+
+If the Captain runs in Herdr, each Fleet worker gets its own unfocused interactive Pi tab in the Captain's
+workspace, rooted at that worker's isolated worktree. Temporary bounded semantic agents use separate tabs. The
+user-managed Herdr Pi agent-state integration is copied by digest and loaded explicitly alongside Kimiflow's
+extensions even under `--no-extensions`, so native `agent_session` identity survives resume. Kimiflow owns only
+its exact tab IDs. Outside Herdr, the process transport is unchanged; Kimiflow installs none of Pi, Herdr, or a
+model provider.
 
 A request that names an existing numbered plan (for example `Run 7`) selects only that exact project plan;
 it cannot silently fall through to `Run 7.2` or replace confirmed plan facts with generic intake.

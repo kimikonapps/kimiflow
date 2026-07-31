@@ -362,6 +362,26 @@ const activationParameters = typeBoxSchema("Object", {
       maxLength: 65536,
       description: "The user's complete feature request to run with Kimiflow.",
     }),
+    project: typeBoxSchema("String", {
+      type: "string",
+      minLength: 1,
+      maxLength: 4096,
+      description: "Optional registered project id, name, or absolute Git root.",
+    }),
+  },
+});
+
+const projectParameters = typeBoxSchema("Object", {
+  type: "object",
+  required: ["action"],
+  additionalProperties: false,
+  properties: {
+    action: typeBoxSchema("String", {
+      type: "string",
+      enum: ["list", "register", "clone", "resolve", "remove"],
+    }),
+    selector: typeBoxSchema("String", { type: "string", minLength: 1, maxLength: 4096 }),
+    name: typeBoxSchema("String", { type: "string", minLength: 1, maxLength: 64 }),
   },
 });
 
@@ -546,10 +566,12 @@ function durableClaim(value) {
   }
 }
 
-function currentBridgeEntry(context) {
+function currentBridgeEntries(context) {
   const entries = context?.sessionManager?.getBranch?.();
-  if (!Array.isArray(entries)) return null;
+  if (!Array.isArray(entries)) return [];
   const primarySession = sessionId(context);
+  const workers = new Set();
+  const result = [];
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
     if (entry?.type !== "custom") continue;
@@ -560,11 +582,19 @@ function currentBridgeEntry(context) {
         : null;
     if (validator === null) continue;
     const value = validator(entry.data);
-    if (value?.captainSessionId === primarySession) {
-      return { kind: entry.customType, value };
+    if (
+      value?.captainSessionId === primarySession
+      && !workers.has(value.workerId)
+    ) {
+      workers.add(value.workerId);
+      result.push({ kind: entry.customType, value });
     }
   }
-  return null;
+  return result;
+}
+
+function currentBridgeEntry(context) {
+  return currentBridgeEntries(context)[0] ?? null;
 }
 
 function currentClaim(context) {
@@ -830,10 +860,17 @@ export function createCaptainExtension({
   spawn = nodeSpawn,
   root = packageRoot(),
   startClaims = NOOP_START_CLAIMS,
+  prepareWorker = async ({ root: projectRoot, request }) => ({
+    root: projectRoot,
+    request,
+    run: null,
+  }),
+  adoptWorker = null,
 } = {}) {
   const runner = path.join(root, "hooks", "kimiflow-runner.sh");
   const piHost = path.join(root, "hooks", "pi-host.sh");
   const seenAttention = new Set();
+  const fleet = new Map();
   let active = null;
 
   async function runnerStatus(cwd) {
@@ -951,12 +988,12 @@ export function createCaptainExtension({
     });
   }
 
-  function activationClaim(request, context) {
+  function activationClaim(request, context, projectRoot = null) {
     if (typeof request !== "string" || request.trim().length === 0) {
       throw new Error("kimiflow_request_required");
     }
     const pending = currentClaim(context);
-    const cwd = contextRoot(context);
+    const cwd = projectRoot === null ? contextRoot(context) : exactRoot(projectRoot);
     const requestDigest = digest(request.trim());
     const modelSelection = selection(context);
     if (
@@ -1011,41 +1048,97 @@ export function createCaptainExtension({
     const validated = durableClaim(selectedClaim);
     if (
       validated === null
-      || validated.root !== contextRoot(context)
       || validated.captainSessionId !== sessionId(context)
       || validated.requestDigest !== digest(request.trim())
     ) {
       throw new Error("kimiflow_activation_claim_invalid");
     }
-    const recovering = sameClaim(pending, validated);
+    let recovering = sameClaim(pending, validated);
     if (pending !== null && !recovering) {
       throw new Error("kimiflow_pending_activation_mismatch");
     }
-    const snapshot = await runnerStatus(validated.root);
+    let snapshot = await runnerStatus(validated.root);
     if (
       active !== null
       && active.terminal !== true
+      && active.root === validated.root
       && !runnerIsTerminal(snapshot)
       && !(recovering && active.run === null && !runnerIsActive(snapshot))
     ) {
       throw new Error("kimiflow_run_active");
     }
+
+    let preparedRequest = request.trim();
+    let resumeAfterAdoption = false;
+    async function adoptSnapshot() {
+      if (typeof adoptWorker !== "function") {
+        throw new Error("kimiflow_run_active");
+      }
+      const adopted = await adoptWorker({
+        root: validated.root,
+        captainSessionId: validated.captainSessionId,
+        request: request.trim(),
+        snapshot,
+      });
+      validated.workerId = exactId(adopted?.workerId, "worker");
+      snapshot = await runnerStatus(validated.root);
+      recovering = true;
+      resumeAfterAdoption = true;
+    }
+
     if (runnerIsActive(snapshot)) {
-      if (!recovering) throw new Error("kimiflow_run_active");
+      if (!recovering) await adoptSnapshot();
     } else {
+      await preflightPi(validated.root);
+      const prepared = await prepareWorker({
+        root: validated.root,
+        request: request.trim(),
+        workerId: validated.workerId,
+      });
+      if (
+        prepared === null
+        || typeof prepared !== "object"
+        || typeof prepared.request !== "string"
+        || prepared.request.trim().length === 0
+      ) {
+        throw new Error("kimiflow_fleet_allocation_invalid");
+      }
+      if (prepared.status === "queued") {
+        throw new Error("kimiflow_fleet_queued");
+      }
+      validated.root = exactRoot(prepared.root);
+      preparedRequest = prepared.request.trim();
+      snapshot = await runnerStatus(validated.root);
+      if (runnerIsActive(snapshot)) await adoptSnapshot();
+    }
+
+    if (!runnerIsActive(snapshot) || resumeAfterAdoption) {
       await preflightPi(validated.root);
       const startClaim = startClaims.acquire(validated);
       try {
         await beforeSpawn?.(validated);
-        await spawnRunner([
-          "run",
-          request.trim(),
+        const command = resumeAfterAdoption ? "resume" : "run";
+        const runnerArgs = [command];
+        if (!resumeAfterAdoption) runnerArgs.push(preparedRequest);
+        if (
+          resumeAfterAdoption
+          && (
+            snapshot?.active_run?.awaiting_user === true
+            || snapshot?.status === "parked"
+          )
+        ) {
+          runnerArgs.push("--message", request.trim());
+        }
+        runnerArgs.push(
           "--root", validated.root,
           "--adapter", "command",
           "--adapter-command", piHost,
           "--model", validated.modelSelection,
           "--require-feature", "structured_events",
-        ], validated.root, validated, startClaim);
+        );
+        await spawnRunner(
+          runnerArgs, validated.root, validated, startClaim,
+        );
       } catch (error) {
         startClaims.release(startClaim);
         throw error;
@@ -1056,7 +1149,7 @@ export function createCaptainExtension({
       ? bindSnapshot(provisional, snapshot)
       : provisional;
     if (active === null) throw new Error("kimiflow_runner_identity_invalid");
-    seenAttention.clear();
+    fleet.set(active.workerId, { ...active });
     return {
       status: recovering && runnerIsActive(snapshot) ? "recovered" : "activated",
       ...active,
@@ -1064,8 +1157,8 @@ export function createCaptainExtension({
   }
 
   async function activate(request, context, claim, beforeSpawn) {
-    const cwd = contextRoot(context);
-    const coordinator = rootCoordinator(cwd);
+    const coordinatorRoot = claim?.root ?? contextRoot(context);
+    const coordinator = rootCoordinator(coordinatorRoot);
     if (coordinator.activation) {
       throw new Error("kimiflow_activation_in_progress");
     }
@@ -1074,11 +1167,11 @@ export function createCaptainExtension({
       return await activateOnce(request, context, claim, beforeSpawn);
     } finally {
       coordinator.activation = false;
-      releaseCoordinator(cwd, coordinator);
+      releaseCoordinator(coordinatorRoot, coordinator);
     }
   }
 
-  async function status() {
+  async function statusActive() {
     if (active === null) return { status: "inactive" };
     const snapshot = await runnerStatus(active.root);
     if (active.run === null) {
@@ -1110,13 +1203,10 @@ export function createCaptainExtension({
     return visibleSnapshot(snapshot, active);
   }
 
-  async function deliver(kind, params, context, persist) {
+  async function deliverActive(kind, params, context, persist) {
     if (active === null) throw new Error("kimiflow_bridge_inactive");
     if (active.terminal === true) throw new Error("kimiflow_bridge_terminal");
-    if (
-      contextRoot(context) !== active.root
-      || sessionId(context) !== active.captainSessionId
-    ) {
+    if (sessionId(context) !== active.captainSessionId) {
       throw new Error("captain_session_mismatch");
     }
     if (exactId(params?.workerId, "worker") !== active.workerId) {
@@ -1228,7 +1318,7 @@ export function createCaptainExtension({
     }
   }
 
-  async function pollAttention(pi) {
+  async function pollActiveAttention(pi) {
     if (active === null) return { status: "inactive", announced: 0 };
     if (active.terminal === true) {
       return { status: "terminal", announced: 0 };
@@ -1312,6 +1402,72 @@ export function createCaptainExtension({
     return { status: "attention", announced, snapshot: observed };
   }
 
+  function selectedFleetBinding(preferred = null) {
+    const preferredBinding = preferred ? fleet.get(preferred) : null;
+    if (preferredBinding?.terminal !== true) return preferredBinding;
+    return [...fleet.values()].find((binding) => binding.terminal !== true)
+      ?? preferredBinding
+      ?? fleet.values().next().value
+      ?? null;
+  }
+
+  async function status() {
+    const bindings = [...fleet.values()];
+    if (bindings.length <= 1) return statusActive();
+    const selected = active?.workerId;
+    const workers = [];
+    for (const binding of bindings) {
+      active = { ...binding };
+      try {
+        workers.push({ worker_id: binding.workerId, snapshot: await statusActive() });
+      } catch (error) {
+        workers.push({ worker_id: binding.workerId, status: "status_error", error: error?.message });
+      }
+      fleet.set(binding.workerId, { ...active });
+    }
+    active = selectedFleetBinding(selected);
+    return { schema_version: 1, status: "fleet", workers };
+  }
+
+  async function deliver(kind, params, context, persist) {
+    const workerId = exactId(params?.workerId, "worker");
+    const target = fleet.get(workerId);
+    if (target === undefined) throw new Error("worker_mismatch");
+    const selected = active?.workerId;
+    active = { ...target };
+    try {
+      return await deliverActive(kind, params, context, persist);
+    } finally {
+      fleet.set(workerId, { ...active });
+      active = selectedFleetBinding(selected) ?? fleet.get(workerId);
+    }
+  }
+
+  async function pollAttention(pi) {
+    const bindings = [...fleet.values()];
+    if (bindings.length <= 1) {
+      const result = await pollActiveAttention(pi);
+      if (active !== null) fleet.set(active.workerId, { ...active });
+      return result;
+    }
+    const selected = active?.workerId;
+    const workers = [];
+    let announced = 0;
+    for (const binding of bindings) {
+      active = { ...binding };
+      try {
+        const result = await pollActiveAttention(pi);
+        announced += result?.announced ?? 0;
+        workers.push({ worker_id: binding.workerId, status: result?.status ?? "unknown" });
+      } catch (error) {
+        workers.push({ worker_id: binding.workerId, status: "attention_error", error: error?.message });
+      }
+      fleet.set(binding.workerId, { ...active });
+    }
+    active = selectedFleetBinding(selected);
+    return { status: "fleet", announced, workers };
+  }
+
   return {
     activationClaim,
     pendingClaim: currentClaim,
@@ -1323,28 +1479,174 @@ export function createCaptainExtension({
       for (const attentionId of restoredAttentionIds(context)) {
         seenAttention.add(attentionId);
       }
-      const current = currentBridgeEntry(context);
-      const binding = current?.kind === BINDING_ENTRY
-        ? current.value
-        : current?.kind === CLAIM_ENTRY
-          ? provisionalBinding(current.value)
-          : null;
-      active = binding?.root === contextRoot(context) ? { ...binding } : null;
+      fleet.clear();
+      for (const current of currentBridgeEntries(context).reverse()) {
+        const binding = current.kind === BINDING_ENTRY
+          ? current.value
+          : current.kind === CLAIM_ENTRY
+            ? provisionalBinding(current.value)
+            : null;
+        if (binding !== null) {
+          fleet.set(binding.workerId, { ...binding });
+          active = { ...binding };
+        }
+      }
+      if (fleet.size === 0) active = null;
       return active ? { ...active } : null;
     },
     clearMemory() {
       active = null;
+      fleet.clear();
       seenAttention.clear();
     },
     binding() {
       return active ? { ...active } : null;
     },
+    bindings() {
+      return [...fleet.values()].map((binding) => ({ ...binding }));
+    },
   };
 }
 
 export default function registerCaptainExtension(pi, options) {
+  const extensionRoot = options?.root ?? packageRoot();
+  const piHost = path.join(extensionRoot, "hooks", "pi-host.sh");
+  const projectExec = options?.exec ?? (async (file, args, execOptions) => {
+    try {
+      const result = await execFileAsync(file, args, {
+        ...execOptions,
+        encoding: "utf8",
+        maxBuffer: 256 * 1024,
+      });
+      return JSON.parse(result.stdout);
+    } catch (error) {
+      if (typeof error?.stdout === "string" && error.stdout.trim()) {
+        return JSON.parse(error.stdout);
+      }
+      throw error;
+    }
+  });
+
+  async function projectOperation(action, params, context) {
+    const cwd = contextRoot(context);
+    let args;
+    if (action === "list") {
+      args = ["project", "list", "--json"];
+    } else if (action === "register") {
+      const selectedRoot = exactRoot(realpathSync(path.resolve(params?.selector ?? cwd)));
+      args = ["project", "register", "--root", selectedRoot];
+      if (typeof params?.name === "string" && params.name.trim()) {
+        args.push("--name", params.name.trim());
+      }
+      args.push("--json");
+    } else if (action === "clone") {
+      if (
+        typeof params?.selector !== "string"
+        || !params.selector.trim()
+        || typeof params?.name !== "string"
+        || !params.name.trim()
+      ) {
+        throw new Error("project_clone_arguments_invalid");
+      }
+      args = [
+        "project", "clone",
+        "--source", params.selector.trim(),
+        "--name", params.name.trim(),
+        "--json",
+      ];
+    } else if (action === "remove") {
+      if (typeof params?.selector !== "string" || !params.selector.trim()) {
+        throw new Error("project_selector_invalid");
+      }
+      args = ["project", "remove", "--selector", params.selector.trim(), "--json"];
+    } else if (action === "resolve") {
+      args = ["project", "resolve", "--cwd", cwd];
+      if (typeof params?.selector === "string" && params.selector.trim()) {
+        args.push("--selector", params.selector.trim());
+      }
+      args.push("--json");
+    }
+    if (!["list", "register", "clone", "resolve", "remove"].includes(action)) {
+      throw new Error("project_action_invalid");
+    }
+    return projectExec(piHost, args, { cwd });
+  }
+
+  const prepareWorker = options?.prepareWorker ?? (async ({ root, request, workerId }) => {
+    const allocated = await projectExec(piHost, [
+      "fleet", "allocate",
+      "--root", root,
+      "--worker-id", workerId,
+      "--request-base64", Buffer.from(request, "utf8").toString("base64"),
+      "--json",
+    ], { cwd: root });
+    if (allocated?.status === "queued") {
+      return { root, request, run: allocated.run, status: "queued" };
+    }
+    if (
+      allocated?.schema_version !== 1
+      || typeof allocated?.root !== "string"
+      || typeof allocated?.run !== "string"
+      || !RUN_IDENTITY.test(allocated.run)
+    ) {
+      throw new Error("kimiflow_fleet_allocation_invalid");
+    }
+    return {
+      root: exactRoot(allocated.root),
+      run: allocated.run,
+      request: [
+        `Kimiflow Captain allocation: use the exact run ${allocated.run}.`,
+        "The current process already runs in its isolated Fleet worktree; do not route to another root.",
+        "",
+        request,
+      ].join("\n"),
+    };
+  });
+  const adoptWorker = options?.adoptWorker ?? (async ({ root, captainSessionId, request, snapshot }) => {
+    const run = snapshot?.active_run?.run ?? snapshot?.runner?.active_run;
+    const numbered = typeof request === "string"
+      ? request.match(/\b(?:run|lauf)\s+([0-9]+(?:\.[0-9]+)?)\b/i)?.[1]
+      : null;
+    const numberedPrefix = numbered ? `.kimiflow/run-${numbered.replaceAll(".", "-")}` : null;
+    if (
+      typeof run !== "string"
+      || typeof request !== "string"
+      || !(
+        request.includes(run)
+        || (
+          numberedPrefix !== null
+          && (run === numberedPrefix || run.startsWith(`${numberedPrefix}-`))
+        )
+      )
+    ) {
+      throw new Error("kimiflow_existing_run_requires_exact_resume_request");
+    }
+    const expectedCaptain = snapshot?.runner?.bridge?.captain_session_id;
+    const expectedWorker = snapshot?.runner?.bridge?.worker_id;
+    if (typeof expectedCaptain !== "string" || typeof expectedWorker !== "string") {
+      throw new Error("kimiflow_fleet_adoption_identity_missing");
+    }
+    const adopted = await projectExec(piHost, [
+      "fleet", "adopt",
+      "--root", root,
+      "--captain-session", captainSessionId,
+      "--expected-captain", expectedCaptain,
+      "--expected-worker", expectedWorker,
+      "--json",
+    ], { cwd: root });
+    if (adopted?.status !== "adopted") {
+      throw new Error("kimiflow_fleet_adoption_failed");
+    }
+    return {
+      workerId: adopted.worker_id,
+      providerSessionId: adopted.provider_session_id,
+      run: adopted.run,
+    };
+  });
   const extension = createCaptainExtension({
     ...options,
+    adoptWorker,
+    prepareWorker,
     startClaims: options?.startClaims ?? createFileStartClaims(),
   });
   const attentionPollMs = options?.attentionPollMs ?? DEFAULT_ATTENTION_POLL_MS;
@@ -1360,10 +1662,40 @@ export default function registerCaptainExtension(pi, options) {
   let watcherTimer = null;
   let watcherEpoch = 0;
   let attentionPoll = null;
+  let captainTools = null;
+
+  function liveBindings() {
+    return extension.bindings().filter((binding) => binding.terminal !== true);
+  }
+
+  function lockCaptainTools() {
+    if (liveBindings().length === 0) return;
+    if (captainTools === null && typeof pi.getActiveTools === "function") {
+      captainTools = pi.getActiveTools();
+    }
+    if (typeof pi.setActiveTools === "function" && Array.isArray(captainTools)) {
+      const allowed = new Set([
+        "read", "grep", "find", "ls",
+        "kimiflow_activate", "kimiflow_project", "kimiflow_reply", "kimiflow_steer",
+      ]);
+      pi.setActiveTools(captainTools.filter((name) => allowed.has(name)));
+    }
+  }
+
+  function unlockCaptainTools() {
+    if (captainTools !== null && typeof pi.setActiveTools === "function") {
+      pi.setActiveTools(captainTools);
+    }
+    captainTools = null;
+  }
 
   function pollAttention() {
     if (attentionPoll !== null) return attentionPoll;
-    attentionPoll = Promise.resolve(extension.pollAttention(pi)).finally(() => {
+    attentionPoll = Promise.resolve(extension.pollAttention(pi)).then((result) => {
+      if (liveBindings().length === 0) unlockCaptainTools();
+      else lockCaptainTools();
+      return result;
+    }).finally(() => {
       attentionPoll = null;
     });
     return attentionPoll;
@@ -1379,7 +1711,7 @@ export default function registerCaptainExtension(pi, options) {
 
   function scheduleWatcher(epoch) {
     const binding = extension.binding();
-    if (binding === null || binding.terminal === true || epoch !== watcherEpoch) {
+    if (binding === null || liveBindings().length === 0 || epoch !== watcherEpoch) {
       return;
     }
     watcherTimer = scheduleTimeout(async () => {
@@ -1392,7 +1724,7 @@ export default function registerCaptainExtension(pi, options) {
         if (
           epoch === watcherEpoch
           && extension.binding() !== null
-          && extension.binding().terminal !== true
+          && liveBindings().length > 0
         ) {
           scheduleWatcher(epoch);
         }
@@ -1405,24 +1737,31 @@ export default function registerCaptainExtension(pi, options) {
     stopWatcher();
     if (
       extension.binding() !== null
-      && extension.binding().terminal !== true
+      && liveBindings().length > 0
     ) {
       scheduleWatcher(watcherEpoch);
     }
   }
 
-  async function activateAndPersist(request, context) {
+  async function activateAndPersist(request, context, projectSelector = null) {
     if (typeof pi.appendEntry !== "function") {
       throw new Error("pi_session_persistence_unavailable");
     }
+    const resolved = await (options?.resolveProject
+      ? options.resolveProject(projectSelector, context)
+      : projectOperation("resolve", { selector: projectSelector }, context));
+    const project = resolved?.project ?? resolved;
+    if (typeof project?.root !== "string") {
+      throw new Error("kimiflow_project_resolution_invalid");
+    }
     const pending = extension.pendingClaim(context);
-    const claim = extension.activationClaim(request, context);
+    const claim = extension.activationClaim(request, context, project.root);
     const result = await extension.activate(
       request,
       context,
       claim,
-      () => {
-        if (pending === null) pi.appendEntry(CLAIM_ENTRY, claim);
+      (preparedClaim) => {
+        if (pending === null) pi.appendEntry(CLAIM_ENTRY, preparedClaim);
       },
     );
     const binding = extension.binding();
@@ -1430,6 +1769,7 @@ export default function registerCaptainExtension(pi, options) {
       pi.appendEntry(BINDING_ENTRY, binding);
     }
     restartWatcher();
+    lockCaptainTools();
     context?.ui?.notify?.(
       "Kimiflow is running in the background; this Pi session remains the Captain.",
       "info",
@@ -1440,7 +1780,10 @@ export default function registerCaptainExtension(pi, options) {
   pi.registerCommand?.("kimiflow", {
     description: "Activate Kimiflow from this already-running Pi session.",
     handler: async (args, context) => {
-      await activateAndPersist(args, context);
+      const match = typeof args === "string"
+        ? args.match(/^--project(?:=|\s+)([^\s]+)\s+([\s\S]+)$/)
+        : null;
+      await activateAndPersist(match ? match[2] : args, context, match ? match[1] : null);
     },
   });
   pi.registerTool?.({
@@ -1449,7 +1792,27 @@ export default function registerCaptainExtension(pi, options) {
     description: "Run the user's feature with Kimiflow while this Pi conversation remains available.",
     parameters: activationParameters,
     async execute(_toolCallId, params, _signal, _onUpdate, context) {
-      return textResult(await activateAndPersist(params.request, context));
+      return textResult(await activateAndPersist(
+        params.request, context, params.project ?? null,
+      ));
+    },
+  });
+  pi.registerCommand?.("kimiflow-project", {
+    description: "List, register, clone, resolve, or remove private Kimiflow projects.",
+    handler: async (args, context) => {
+      const parts = typeof args === "string" ? args.trim().split(/\s+/).filter(Boolean) : [];
+      const action = parts[0] || "list";
+      const result = await projectOperation(action, { selector: parts[1], name: parts[2] }, context);
+      context?.ui?.notify?.(JSON.stringify(result), "info");
+    },
+  });
+  pi.registerTool?.({
+    name: "kimiflow_project",
+    label: "Kimiflow Project",
+    description: "Manage or resolve Kimiflow's private project registry.",
+    parameters: projectParameters,
+    async execute(_toolCallId, params, _signal, _onUpdate, context) {
+      return textResult(await projectOperation(params.action, params, context));
     },
   });
   pi.registerCommand?.("kimiflow-status", {
@@ -1477,15 +1840,29 @@ export default function registerCaptainExtension(pi, options) {
       },
     });
   }
+  pi.on?.("tool_call", (event) => {
+    if (
+      liveBindings().length > 0
+      && ["bash", "edit", "write"].includes(event?.toolName)
+    ) {
+      return {
+        block: true,
+        reason: "This Pi session is the read-only Kimiflow Captain; write work belongs to its isolated Fleet worker.",
+      };
+    }
+    return undefined;
+  });
   pi.on?.("agent_settled", () => pollAttention());
   pi.on?.("session_start", async (_event, context) => {
     stopWatcher();
     extension.restoreForSession(context);
     await pollAttention();
+    lockCaptainTools();
     restartWatcher();
   });
   pi.on?.("session_shutdown", () => {
     stopWatcher();
+    unlockCaptainTools();
     extension.clearMemory();
   });
   return extension;

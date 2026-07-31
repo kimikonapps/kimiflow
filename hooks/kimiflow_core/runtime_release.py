@@ -64,6 +64,8 @@ RUNTIME_REQUIRED_FILES = {
     "hooks/pi-subagent-gate.sh",
     "hooks/kimiflow_core/pi_herdr.py",
     "hooks/kimiflow_core/pi_host.py",
+    "hooks/kimiflow_core/pi_project.py",
+    "hooks/kimiflow_core/worktree_broker.py",
     "phases/PHASES.json",
     "reference.md",
 }

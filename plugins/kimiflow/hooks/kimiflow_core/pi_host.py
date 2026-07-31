@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -17,7 +18,7 @@ import tempfile
 import threading
 import time
 
-from . import model_adapter, pi_herdr
+from . import model_adapter, pi_herdr, pi_project
 
 
 PI_VERSION_RE = re.compile(
@@ -36,6 +37,10 @@ TREE_TOKEN_RE = re.compile(r"^[0-9a-f]{64}$")
 CLEANUP_LEASES_NAME = "PI-CLEANUP-LEASES-v1"
 CLEANUP_LEASE_RE = re.compile(
     r"^lease-(?P<pid>[1-9][0-9]*)-(?P<token>[0-9a-f]{64})$"
+)
+HERDR_EXTENSION_NAME = "herdr-agent-state.ts"
+HERDR_INTEGRATION_RE = re.compile(
+    rb"(?m)^// HERDR_INTEGRATION_VERSION=(?P<version>[1-9][0-9]*)\r?$"
 )
 
 
@@ -159,6 +164,63 @@ def _calm_extension():
     return path, "sha256:" + hashlib.sha256(content).hexdigest()
 
 
+def _herdr_extension(environ=None, required=False):
+    """Resolve Herdr's user-managed Pi integration through a narrow trust boundary."""
+    env = os.environ if environ is None else environ
+    configured = env.get("KIMIFLOW_HERDR_PI_EXTENSION")
+    config_root = env.get("PI_CODING_AGENT_DIR")
+    if not isinstance(config_root, str) or not os.path.isabs(config_root):
+        config_root = os.path.join(os.path.expanduser("~"), ".pi", "agent")
+    managed = os.path.realpath(os.path.join(
+        config_root, "extensions", HERDR_EXTENSION_NAME,
+    ))
+    candidate = configured or managed
+    if not isinstance(candidate, str) or not os.path.isabs(candidate):
+        if required:
+            raise PiHostError(
+                "herdr_integration_unavailable",
+                "Herdr's user-managed Pi agent-state integration is unavailable",
+                1,
+            )
+        return None
+    candidate = os.path.realpath(candidate)
+    if configured is None and candidate != managed:
+        if required:
+            raise PiHostError(
+                "herdr_integration_unavailable",
+                "Herdr's managed Pi integration path is invalid",
+                1,
+            )
+        return None
+    try:
+        content = _read_worker_extension(candidate)
+    except PiHostError:
+        if required:
+            raise PiHostError(
+                "herdr_integration_unavailable",
+                "Herdr's user-managed Pi agent-state integration is unavailable",
+                1,
+            )
+        return None
+    marker = HERDR_INTEGRATION_RE.search(content)
+    if (
+        os.path.basename(candidate) != HERDR_EXTENSION_NAME
+        or b"// HERDR_INTEGRATION_ID=pi" not in content
+        or marker is None
+        or int(marker.group("version")) < 1
+        or b"pane.report_agent_session" not in content
+        or b"pane.report_agent" not in content
+    ):
+        if required or configured is not None:
+            raise PiHostError(
+                "herdr_integration_invalid",
+                "Herdr's Pi integration does not provide the required agent-state contract",
+                1,
+            )
+        return None
+    return candidate, "sha256:" + hashlib.sha256(content).hexdigest()
+
+
 def _active_run_hook():
     path = os.path.realpath(os.path.join(
         os.path.dirname(__file__), "..", "active-run.sh",
@@ -248,7 +310,13 @@ def _capability_material(environ=None):
     version = _version(command, environ)
     extension, extension_digest = _worker_extension()
     calm, calm_digest = _calm_extension()
-    return {
+    env = os.environ if environ is None else environ
+    herdr = (
+        _herdr_extension(env, required=False)
+        if env.get(pi_herdr.HERDR_FLAG_ENV) in {"1", "true", "TRUE"}
+        else None
+    )
+    material = {
         "command": command,
         "version": version,
         "active_run_hook": _active_run_hook(),
@@ -257,6 +325,10 @@ def _capability_material(environ=None):
         "worker_extension": extension,
         "worker_extension_digest": extension_digest,
     }
+    if herdr is not None:
+        material["herdr_extension"] = herdr[0]
+        material["herdr_extension_digest"] = herdr[1]
+    return material
 
 
 def _material_token(material):
@@ -269,7 +341,8 @@ def _material_token(material):
 
 
 def capabilities(environ=None):
-    token = _material_token(_capability_material(environ))
+    material = _capability_material(environ)
+    token = _material_token(material)
     return {
         "schema_version": model_adapter.PROTOCOL_VERSION,
         "name": "pi-" + token.split(":", 1)[1][:16],
@@ -1102,6 +1175,10 @@ def run_turn(payload, environ=None, stdout=None):
     prompt = _workflow_prompt(payload, env, verbosity)
     output = sys.stdout if stdout is None else stdout
     if pi_herdr.requested(env):
+        if "herdr_extension" not in material:
+            herdr_extension, herdr_digest = _herdr_extension(env, required=True)
+            material["herdr_extension"] = herdr_extension
+            material["herdr_extension_digest"] = herdr_digest
         try:
             return pi_herdr.run_turn(
                 payload,
@@ -1322,6 +1399,87 @@ def main(argv=None):
         ):
             _recover_cleanup_lease(os.path.realpath(args[2]), args[4])
             return 0
+        if args == ["project", "list", "--json"]:
+            _emit(pi_project.list_projects(os.environ))
+            return 0
+        if (
+            len(args) in {5, 7}
+            and args[:2] == ["project", "register"]
+            and args[2] == "--root"
+            and args[-1] == "--json"
+        ):
+            name = args[5] if len(args) == 7 and args[4] == "--name" else None
+            if len(args) == 7 and name is None:
+                raise PiHostError("usage", "project register requires --name NAME", 2)
+            _emit(pi_project.register(args[3], name=name, environ=os.environ))
+            return 0
+        if (
+            len(args) == 7
+            and args[:2] == ["project", "clone"]
+            and args[2] == "--source"
+            and args[4] == "--name"
+            and args[6] == "--json"
+        ):
+            _emit(pi_project.clone(args[3], args[5], environ=os.environ))
+            return 0
+        if (
+            len(args) in {5, 7}
+            and args[:2] == ["project", "resolve"]
+            and args[2] == "--cwd"
+            and args[-1] == "--json"
+        ):
+            selector = args[5] if len(args) == 7 and args[4] == "--selector" else None
+            if len(args) == 7 and selector is None:
+                raise PiHostError("usage", "project resolve requires --selector ID_OR_NAME", 2)
+            _emit({
+                "schema_version": 1,
+                "status": "resolved",
+                "project": pi_project.resolve(
+                    selector=selector, cwd=args[3], environ=os.environ,
+                ),
+            })
+            return 0
+        if (
+            len(args) == 5
+            and args[:2] == ["project", "remove"]
+            and args[2] == "--selector"
+            and args[4] == "--json"
+        ):
+            _emit(pi_project.remove(args[3], environ=os.environ))
+            return 0
+        if (
+            len(args) == 11
+            and args[:2] == ["fleet", "adopt"]
+            and args[2] == "--root"
+            and args[4] == "--captain-session"
+            and args[6] == "--expected-captain"
+            and args[8] == "--expected-worker"
+            and args[10] == "--json"
+        ):
+            _emit(pi_project.adopt(
+                args[3], args[5],
+                expected_captain_id=args[7],
+                expected_worker_id=args[9],
+            ))
+            return 0
+        if (
+            len(args) == 9
+            and args[:2] == ["fleet", "allocate"]
+            and args[2] == "--root"
+            and args[4] == "--worker-id"
+            and args[6] == "--request-base64"
+            and args[8] == "--json"
+        ):
+            try:
+                request = base64.b64decode(
+                    args[7].encode("ascii"), validate=True,
+                ).decode("utf-8")
+            except (UnicodeError, ValueError) as exc:
+                raise PiHostError("project_task_invalid", "Fleet request is invalid: %s" % exc, 2)
+            _emit(pi_project.allocate(
+                args[3], request, args[5], write=True, environ=os.environ,
+            ))
+            return 0
         if args == ["capabilities", "--json"]:
             _emit(capabilities())
             return 0
@@ -1329,6 +1487,11 @@ def main(argv=None):
             raw = sys.stdin.readline(MAX_LINE + 1)
             try:
                 payload = json.loads(raw)
+                herdr_extension, herdr_digest = _herdr_extension(
+                    os.environ, required=True,
+                )
+                payload["herdr_extension"] = herdr_extension
+                payload["herdr_extension_digest"] = herdr_digest
                 return pi_herdr.run_subagent(
                     payload,
                     os.environ.copy(),
@@ -1366,10 +1529,10 @@ def main(argv=None):
             return run_turn(payload)
         raise PiHostError(
             "usage",
-            "usage: pi-host.sh capabilities|start|resume|subagent|terminate --json",
+            "usage: pi-host.sh capabilities|project|fleet|start|resume|subagent|terminate --json",
             2,
         )
-    except PiHostError as exc:
+    except (PiHostError, pi_project.ProjectError) as exc:
         _emit({
             "schema_version": 1,
             "type": "turn.failed",

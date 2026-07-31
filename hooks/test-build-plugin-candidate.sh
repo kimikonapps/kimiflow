@@ -38,7 +38,9 @@ test_optional_pi_package_release_and_embedded_host_parity() {
     hooks/pi-host.sh \
     hooks/pi-subagent-gate.sh \
     hooks/kimiflow_core/pi_herdr.py \
-    hooks/kimiflow_core/pi_host.py; do
+    hooks/kimiflow_core/pi_host.py \
+    hooks/kimiflow_core/pi_project.py \
+    hooks/kimiflow_core/worktree_broker.py; do
     [ -f "$CANDIDATE/$rel" ]
     jq -e --arg rel "$rel" '.files[] | select(.path == $rel)' \
       "$CANDIDATE/RUNTIME-FINGERPRINT.json" >/dev/null
@@ -58,6 +60,8 @@ test_required_pi_runtime_paths_must_be_git_indexed() {
   cp "$ROOT/hooks/kimiflow_core/pi_herdr.py" \
     "$fixture/hooks/kimiflow_core/"
   cp "$ROOT/hooks/kimiflow_core/pi_host.py" \
+    "$ROOT/hooks/kimiflow_core/pi_project.py" \
+    "$ROOT/hooks/kimiflow_core/worktree_broker.py" \
     "$fixture/hooks/kimiflow_core/"
   cp "$ROOT/hosts/pi/extensions/calm.js" \
     "$ROOT/hosts/pi/extensions/captain.js" \
@@ -71,6 +75,8 @@ test_required_pi_runtime_paths_must_be_git_indexed() {
     hooks/pi-subagent-gate.sh \
     hooks/kimiflow_core/pi_herdr.py \
     hooks/kimiflow_core/pi_host.py \
+    hooks/kimiflow_core/pi_project.py \
+    hooks/kimiflow_core/worktree_broker.py \
     hosts/pi/extensions/calm.js \
     hosts/pi/extensions/captain.js \
     hosts/pi/skills/kimiflow/SKILL.md

@@ -46,6 +46,8 @@ def make_candidate(root):
         "hooks/pi-subagent-gate.sh": (0o755, b"#!/usr/bin/env bash\nexit 0\n"),
         "hooks/kimiflow_core/pi_herdr.py": (0o644, b'"""Herdr transport."""\n'),
         "hooks/kimiflow_core/pi_host.py": (0o644, b'"""Pi host."""\n'),
+        "hooks/kimiflow_core/pi_project.py": (0o644, b'"""Pi projects."""\n'),
+        "hooks/kimiflow_core/worktree_broker.py": (0o644, b'"""Fleet broker."""\n'),
         "hooks/run.sh": (0o755, b"#!/usr/bin/env bash\nexit 0\n"),
         "phases/PHASES.json": (0o644, b"{}\n"),
         "reference.md": (0o644, b"# Reference\n"),

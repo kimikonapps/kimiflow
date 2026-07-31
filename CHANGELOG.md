@@ -4,7 +4,19 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Added
+
+- The Pi Captain now has a private metadata-only project registry and routes every new writing top-level task
+  through the existing three-slot Fleet broker into an isolated Git worktree before Pi starts. One Captain can
+  supervise multiple worker identities while its own normal write tools remain disabled.
+- Dead resumable Pi runners can transfer their bridge to a replacement Captain after positive controller-death
+  proof without changing the Run or provider-session identity.
+
+### Fixed
+
+- Herdr's user-managed Pi agent-state integration is now marker- and digest-verified, copied into each endpoint,
+  and explicitly loaded for main and phase workers under `--no-extensions`. Native `agent_session` reporting
+  therefore remains available during resume instead of causing `herdr_endpoint_invalid` and tab cleanup.
 
 ## 0.2.35
 

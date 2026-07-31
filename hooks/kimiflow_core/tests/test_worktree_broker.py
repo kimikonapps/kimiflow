@@ -2998,6 +2998,19 @@ class WorktreeBrokerCase(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(foreign, "manual.txt")))
         self.assertFalse(wp.read_registry(self.repo)["entries"])
 
+    def test_captain_force_route_isolates_a_clean_primary(self):
+        result = broker.route(
+            self.repo,
+            ".kimiflow/captain-task",
+            write=True,
+            force_worktree=True,
+        )
+        self.assertEqual((result["status"], result["route"]), ("allocated", "worktree"))
+        self.assertNotEqual(os.path.realpath(result["root"]), self.repo)
+        entry = wp.read_registry(self.repo)["entries"][0]
+        self.assertEqual(entry["run"], ".kimiflow/captain-task")
+        self.assertTrue(wp.owner_receipt_matches(result["root"], entry))
+
     def test_backward_compatible_status_and_candidate_packaging(self):
         self.ignore("dist/")
         local_artifact = os.path.join(self.repo, "dist", "release.zip")

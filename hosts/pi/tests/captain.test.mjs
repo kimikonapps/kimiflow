@@ -117,6 +117,8 @@ function production({
       acquire() { return null; },
       release() { return false; },
     },
+    resolveProject: async (_selector, current) => ({ root: current.cwd }),
+    prepareWorker: async ({ root, request }) => ({ root, request, run: null }),
     attentionPollMs: 250,
     ...(timers ? {
       setTimeout: timers.setTimeout,
@@ -229,7 +231,10 @@ test("primary Pi activation starts only the existing runner and returns after sp
   assert.equal(call.options.detached, true);
   assert.equal(call.options.stdio, "ignore");
   assert.equal(call.child.unrefCount, 1);
-  assert.doesNotMatch(JSON.stringify(call), /captain start|herdr|workspace|pane/);
+  assert.doesNotMatch(
+    JSON.stringify({ file: call.file, args: call.args, cwd: call.options.cwd }),
+    /captain start|herdr|workspace|pane/,
+  );
   const binding = JSON.parse(call.options.env.KIMIFLOW_PI_BRIDGE_BINDING);
   assert.equal(binding.captain_session_id, "pi-primary-0001");
   assert.equal(binding.worker_id, result.workerId);
@@ -263,6 +268,73 @@ test("natural activation tool and slash command use the same durable transaction
   }
 });
 
+test("production Captain resolves a project and allocates its worktree before runner spawn", async () => {
+  const entries = [];
+  const calls = [];
+  const spawned = spawnFixture();
+  const handlers = new Map();
+  const activeSets = [];
+  const pi = {
+    appendEntry(customType, data) { entries.push({ type: "custom", customType, data }); },
+    getActiveTools() {
+      return ["read", "grep", "find", "ls", "bash", "edit", "write", "kimiflow_activate"];
+    },
+    on(name, handler) { handlers.set(name, handler); },
+    registerCommand() {},
+    registerTool(value) { if (value.name === "kimiflow_activate") this.activate = value; },
+    setActiveTools(value) { activeSets.push(value); },
+  };
+  const projectRoot = process.cwd();
+  const workerRoot = "/tmp/kimiflow-production-worker";
+  const exec = async (file, args) => {
+    calls.push({ file, args });
+    if (args.slice(0, 2).join(" ") === "project resolve") {
+      return { schema_version: 1, status: "resolved", project: { root: projectRoot } };
+    }
+    if (args.slice(0, 2).join(" ") === "fleet allocate") {
+      return {
+        schema_version: 1,
+        status: "allocated",
+        root: workerRoot,
+        run: ".kimiflow/isolated-feature",
+      };
+    }
+    if (file.endsWith("/pi-host.sh")) return piCapabilities;
+    return { schema_version: 1, status: "idle", runner: null, active_run: { present: false } };
+  };
+  registerCaptainExtension(pi, {
+    root: "/pkg",
+    exec,
+    spawn: spawned.spawn,
+    startClaims: { acquire() { return null; }, release() { return false; } },
+    attentionPollMs: 250,
+  });
+  const current = context(entries);
+
+  await pi.activate.execute(
+    "tool-call-project",
+    { request: "build isolated feature" },
+    undefined,
+    undefined,
+    current,
+  );
+
+  assert.ok(calls.some((call) => call.args.slice(0, 2).join(" ") === "project resolve"));
+  const allocation = calls.find((call) => call.args.slice(0, 2).join(" ") === "fleet allocate");
+  assert.ok(allocation);
+  assert.equal(
+    Buffer.from(allocation.args[allocation.args.indexOf("--request-base64") + 1], "base64").toString("utf8"),
+    "build isolated feature",
+  );
+  const runner = spawned.calls[0];
+  assert.equal(runner.options.cwd, workerRoot);
+  assert.equal(runner.args[runner.args.indexOf("--root") + 1], workerRoot);
+  assert.match(runner.args[1], /use the exact run \.kimiflow\/isolated-feature/);
+  assert.equal(activeSets.at(-1).includes("bash"), false);
+  const blocked = await handlers.get("tool_call")({ toolName: "write" });
+  assert.equal(blocked.block, true);
+});
+
 test("activation preserves slash, at-sign, colon, and max model selection", async () => {
   const spawned = spawnFixture();
   const extension = createCaptainExtension({
@@ -279,6 +351,32 @@ test("activation preserves slash, at-sign, colon, and max model selection", asyn
     args[args.indexOf("--model") + 1],
     "cloudflare/@cf/meta/llama:free:max",
   );
+});
+
+test("one Captain can launch multiple isolated Fleet workers without blocking", async () => {
+  const spawned = spawnFixture();
+  const status = statusFixture();
+  const extension = createCaptainExtension({
+    root: "/pkg",
+    exec: status.exec,
+    spawn: spawned.spawn,
+    prepareWorker: async ({ request, workerId }) => ({
+      root: `/tmp/kimiflow-fleet/${workerId}`,
+      request,
+      run: `.kimiflow/${workerId}`,
+    }),
+  });
+  const current = context();
+
+  const first = await extension.activate("build task a", current);
+  const second = await extension.activate("build task b", current);
+
+  assert.notEqual(first.workerId, second.workerId);
+  assert.equal(extension.bindings().length, 2);
+  assert.equal(spawned.calls.length, 2);
+  const roots = spawned.calls.map((call) => call.args[call.args.indexOf("--root") + 1]);
+  assert.equal(new Set(roots).size, 2);
+  assert.ok(roots.every((root) => root.startsWith("/tmp/kimiflow-fleet/worker-")));
 });
 
 test("existing active run blocks a fresh activation before another spawn", async () => {
@@ -383,6 +481,35 @@ test("a mismatched pending activation cannot adopt another active run", async ()
   );
   assert.equal(wiring.spawned.calls.length, 0);
   assert.equal(wiring.appended.length, 0);
+});
+
+test("a new Captain safely adopts and resumes a dead Fleet runner", async () => {
+  const snapshot = activeSnapshot({
+    status: "transport_error",
+    controllerPid: 99999999,
+    workerId: "worker-existing01",
+  });
+  const status = statusFixture(snapshot);
+  const spawned = spawnFixture();
+  const adopted = [];
+  const extension = createCaptainExtension({
+    root: "/pkg",
+    exec: status.exec,
+    spawn: spawned.spawn,
+    adoptWorker: async (value) => {
+      adopted.push(value);
+      return { workerId: "worker-existing01" };
+    },
+  });
+
+  const result = await extension.activate("continue exact run", context());
+
+  assert.equal(result.status, "recovered");
+  assert.equal(result.workerId, "worker-existing01");
+  assert.equal(adopted.length, 1);
+  assert.equal(spawned.calls.length, 1);
+  assert.equal(spawned.calls[0].args[0], "resume");
+  assert.equal(spawned.calls[0].args.includes("continue exact run"), false);
 });
 
 test("matching durable pending claim recovers the running Pi bridge without another spawn", async () => {
@@ -1791,6 +1918,7 @@ test("Pi tools expose bounded dependency-free schemas", () => {
   const wiring = production();
   assert.deepEqual([...wiring.tools.keys()], [
     "kimiflow_activate",
+    "kimiflow_project",
     "kimiflow_reply",
     "kimiflow_steer",
   ]);

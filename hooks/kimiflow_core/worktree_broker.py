@@ -1086,7 +1086,7 @@ def _allocate(primary, state, task, descriptor, write):
     _recover_allocation(primary, state, task, descriptor, write=True)
 
 
-def route(root, run, write=False):
+def route(root, run, write=False, force_worktree=False):
     _slug(run)
     current = wp.repo_root(root)
     with wp.registry_operation(current, write) as descriptor:
@@ -1156,7 +1156,9 @@ def route(root, run, write=False):
                 "queue_position": None,
             }
         queued = [item for item in state["tasks"] if item["state"] == "queued"]
-        if active_run == run or (main_free and task is None and not queued):
+        if active_run == run or (
+            main_free and task is None and not queued and not force_worktree
+        ):
             return {
                 "schema_version": BROKER_SCHEMA,
                 "status": "direct",
@@ -1178,7 +1180,7 @@ def route(root, run, write=False):
             if write:
                 _write_broker(descriptor, state)
         queued = [item for item in state["tasks"] if item["state"] == "queued"]
-        if main_free:
+        if main_free and not force_worktree:
             first_queued = queued[0] if queued else None
             if first_queued is not None and first_queued is not task:
                 return {
@@ -3178,6 +3180,7 @@ def add_parsers(sub):
     route_parser.add_argument("--root")
     route_parser.add_argument("--run", required=True)
     route_parser.add_argument("--write", action="store_true")
+    route_parser.add_argument("--force-worktree", action="store_true")
     route_parser.add_argument("--pretty", action="store_true")
 
     declare_parser = sub.add_parser("declare")
@@ -3222,7 +3225,10 @@ def add_parsers(sub):
 
 def dispatch(command, args):
     if command == "route":
-        return route(args.root, args.run, args.write)
+        return route(
+            args.root, args.run, args.write,
+            force_worktree=args.force_worktree,
+        )
     if command == "declare":
         return declare(args.root, args.run, args.basis, args.path, args.contract, args.write)
     if command == "revalidate":

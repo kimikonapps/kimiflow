@@ -56,8 +56,12 @@ class PiHostTests(unittest.TestCase):
             )
         os.chmod(self.pi, 0o755)
         self.env = {
-            **os.environ,
+            **{
+                key: value for key, value in os.environ.items()
+                if not key.startswith("HERDR_")
+            },
             "KIMIFLOW_PI_COMMAND": self.pi,
+            "PI_CODING_AGENT_DIR": os.path.join(self.temp, "pi-agent"),
             "PI_TEST_VERSION": self.version,
             "PI_TEST_SESSION": "pi-worker-0001",
             "PI_TEST_ARGV_LOG": self.argv_log,
@@ -562,6 +566,34 @@ class PiHostTests(unittest.TestCase):
         pi_host._terminate(process)
         time.sleep(0.8)
         self.assertFalse(os.path.exists(marker))
+
+    def test_user_managed_herdr_agent_state_extension_is_explicitly_trusted(self):
+        integration = os.path.join(self.temp, "herdr-agent-state.ts")
+        with open(integration, "wb") as handle:
+            handle.write(
+                b"// installed by herdr\n"
+                b"// HERDR_INTEGRATION_ID=pi\n"
+                b"// HERDR_INTEGRATION_VERSION=6\n"
+                b"// pane.report_agent_session pane.report_agent\n"
+                b"export default function herdr() {}\n"
+            )
+        environment = {
+            **self.env,
+            "HERDR_ENV": "1",
+            "KIMIFLOW_HERDR_PI_EXTENSION": os.path.realpath(integration),
+        }
+        path, digest = pi_host._herdr_extension(environment, required=True)
+        self.assertEqual(path, os.path.realpath(integration))
+        self.assertRegex(digest, r"^sha256:[0-9a-f]{64}$")
+        material = pi_host._capability_material(environment)
+        self.assertEqual(material["herdr_extension"], path)
+        self.assertEqual(material["herdr_extension_digest"], digest)
+
+    def test_missing_herdr_agent_state_extension_fails_only_when_required(self):
+        self.assertIsNone(pi_host._herdr_extension(self.env, required=False))
+        with self.assertRaises(pi_host.PiHostError) as raised:
+            pi_host._herdr_extension(self.env, required=True)
+        self.assertEqual(raised.exception.status, "herdr_integration_unavailable")
 
     def test_selection_and_terminal_lifecycle_match_supported_pi(self):
         features = pi_host.capabilities(self.env)["features"]

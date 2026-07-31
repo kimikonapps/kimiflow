@@ -23,6 +23,16 @@ class PiHerdrTests(unittest.TestCase):
                 "id": self.session_id,
                 "cwd": self.root,
             }) + "\n")
+        self.herdr_extension = os.path.join(self.root, "herdr-agent-state.ts")
+        self.herdr_content = (
+            b"// installed by herdr\n"
+            b"// HERDR_INTEGRATION_ID=pi\n"
+            b"// HERDR_INTEGRATION_VERSION=6\n"
+            b"// pane.report_agent_session pane.report_agent\n"
+            b"export default function herdr() {}\n"
+        )
+        with open(self.herdr_extension, "wb") as handle:
+            handle.write(self.herdr_content)
         self.environment = {
             **os.environ,
             "HERDR_ENV": "1",
@@ -56,6 +66,10 @@ class PiHerdrTests(unittest.TestCase):
             "worker_extension": extension,
             "worker_extension_digest": (
                 "sha256:" + hashlib.sha256(content).hexdigest()
+            ),
+            "herdr_extension": self.herdr_extension,
+            "herdr_extension_digest": (
+                "sha256:" + hashlib.sha256(self.herdr_content).hexdigest()
             ),
         }
         calls = []
@@ -116,7 +130,7 @@ class PiHerdrTests(unittest.TestCase):
         self.assertIn("pi", start_args)
         self.assertNotIn("--mode", start_args)
         self.assertIn("--extension", start_args)
-        self.assertEqual(start_args.count("--extension"), 2)
+        self.assertEqual(start_args.count("--extension"), 3)
         extension_args = [
             start_args[index + 1]
             for index, value in enumerate(start_args)
@@ -124,7 +138,7 @@ class PiHerdrTests(unittest.TestCase):
         ]
         self.assertEqual(
             [os.path.basename(value) for value in extension_args],
-            ["calm.js", "worker.js"],
+            ["herdr-agent-state.ts", "calm.js", "worker.js"],
         )
         self.assertIn("--session", start_args)
         self.assertNotIn("--session-id", start_args)
@@ -239,9 +253,10 @@ class PiHerdrTests(unittest.TestCase):
             pi_herdr,
             "_finish_sentinel",
         ) as finish:
-            with self.assertRaises(pi_herdr.HerdrError):
+            with self.assertRaises(pi_herdr.HerdrError) as raised:
                 pi_herdr._prompt(state, "exact prompt", self.environment)
 
+        self.assertTrue(raised.exception.preserve_herdr_endpoint)
         settled.assert_called_once_with(state, self.root, self.environment)
         finish.assert_called_once_with(sentinel, True)
 
@@ -262,6 +277,10 @@ class PiHerdrTests(unittest.TestCase):
             "calm_extension": calm_extension,
             "calm_extension_digest": (
                 "sha256:" + hashlib.sha256(calm_content).hexdigest()
+            ),
+            "herdr_extension": self.herdr_extension,
+            "herdr_extension_digest": (
+                "sha256:" + hashlib.sha256(self.herdr_content).hexdigest()
             ),
             "verbosity": "quiet",
             "selection": {
@@ -334,7 +353,7 @@ class PiHerdrTests(unittest.TestCase):
             payload["selection"],
             self.session_id,
             self.environment,
-            extensions=(calm_extension,),
+            extensions=(mock.ANY, calm_extension),
             read_only=True,
         )
         close_tab.assert_called_once_with(

@@ -23,9 +23,11 @@ Pi's exact version-3 `type: "session"` header, balanced `agent_start`/`agent_end
 exit after Pi has handled any automatic retry, compaction, or queued continuation in the process fallback. The last completed lifecycle
 controls provider-turn success. Pi lifecycle is never Kimiflow completion evidence; only the matching terminal
 Kimiflow runner receipt is authoritative. The primary Pi extension starts that existing runner in the
-background and derives status, questions, replies, and completion from its runner/Active-Run state. It does not
-add a Captain CLI, a second worker registry, or a delivery spool. Missing Pi,
-incompatible version, capability drift, or an invalid session/lifecycle event fails closed. An uninstalled or
+background and derives status, questions, replies, and completion from runner/Active-Run state. Its private
+`kimiflow-projects-v1.json` registry stores only project id, name, exact Git root, and registration time; the
+existing per-project `FLEET.json` remains the worktree/lease authority. Up to three top-level Pi workers use
+separate Fleet worktrees and bridge identities. Missing Pi, incompatible version, capability drift, or an
+invalid project/session/lifecycle event fails closed. An uninstalled or
 unused Pi package is absent from execution, so embedded Claude Code and Codex remain independent. A detached,
 single-purpose cleanup sentinel owns only the transient Pi process-tree tag and a local cleanup lease. It keeps
 successor activation closed after a hard runner-group kill until tagged Pi descendants are gone; it has no Run,
@@ -48,14 +50,14 @@ answers, transcripts, credentials, or hidden reasoning. Pi controls persistence 
 conversation separately and may store its user and assistant messages in the Pi session transcript.
 
 When Captain already runs inside verified Herdr 0.7.5 protocol 17 context, Kimiflow uses Herdr as a visible
-UI transport: one unfocused interactive Pi tab hosts the persistent main worker and temporary unfocused
-interactive Pi tabs host at most three concurrent role-bound agents. The Phase-5 implementation role receives
-bounded write tools; research, plan-review, verification, and code-review roles remain read-only. Those tabs are
-named by role and stable seat, created only through `kimiflow_subagent`, and bound to private completion receipts;
-the main worker survives active user waits and transient
-Herdr status-settle lag. Captain retains focus. Kimiflow
-correlates every turn with Pi's native v3 session JSONL and owns only the exact tab IDs it created; runner and
-Active Run remain the sole workflow authority. Outside Herdr, the existing process transport is unchanged.
+UI transport: each top-level Fleet worker receives one unfocused interactive Pi tab rooted at its isolated
+worktree; temporary tabs host at most three concurrent role-bound phase agents. The Phase-5 implementation role
+receives bounded write tools; research, plan-review, verification, and code-review roles remain read-only.
+Kimiflow requires Herdr's user-managed `herdr-agent-state.ts`, validates its integration markers and digest,
+copies it into the endpoint's private state directory, and explicitly passes it to Pi with `--extension` after
+`--no-extensions`. Main and phase workers therefore report the native v3 session path required by exact resume.
+Captain retains focus. Kimiflow owns only the exact tab IDs it created; runner and Active Run remain the sole
+workflow authority. Outside Herdr, the existing process transport is unchanged.
 
 For resolved `quiet` (one-off flag, project, then Codex-global precedence), the main Pi worker and visible Herdr
 leaves load a renderer-only Calm adapter verified against Pi 0.83.0. It suppresses only supported built-in and

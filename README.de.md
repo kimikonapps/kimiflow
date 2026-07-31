@@ -136,25 +136,30 @@ Baue das gewuenschte Feature mit Kimiflow.
 /kimiflow-status
 ```
 
-Der natuerliche Auftrag und der optionale Slash-Befehl verwenden dieselbe dauerhafte Aktivierung. Genau diese
-Pi-Sitzung bleibt der ansprechbare Captain und startet den vorhandenen Kimiflow-Runner im Hintergrund. Runner
-und Active Run bleiben die einzigen Workflow-Autoritaeten; die Pi-Bruecke fuegt keine zweite Registry, keinen
-Worker-Orchestrator, keine Delivery-Queue und keinen Daemon hinzu.
+Der natuerliche Auftrag und der optionale Slash-Befehl verwenden dieselbe dauerhafte Aktivierung. Diese
+Pi-Sitzung bleibt der ansprechbare, nur lesende Captain. Eine private reine Metadaten-Registry
+(`/kimiflow-project` oder Tool `kimiflow_project`) ordnet Projektnamen exakten Git-Roots zu; Prompts, Code,
+Antworten und Terminal-Transkripte werden dort nicht gespeichert. Mit
+`/kimiflow --project <name> <auftrag>` oder dem optionalen `project`-Feld des Aktivierungs-Tools wird ein
+registriertes Projekt explizit gewaehlt.
 
-Der Pi-Adapter uebernimmt die providerneutrale Auswahl `provider/model:thinking` der Sitzung. Kimiflow bleibt
-fuer Intake, Planung, seine normalen begrenzten Subagents, Gates, Worktrees, Recovery und Abschluss zustaendig.
-Reply und Steering setzen nur die exakte Runner-Sitzung an einer sicheren materiellen Grenze fort.
-Pi-Lifecycle-Text beweist nie den Abschluss; nur das passende terminale Kimiflow-Runner-Receipt tut das. Die
-Aktivierung kehrt nach dem Start des Hintergrundprozesses zurueck, damit die Pi-Unterhaltung nutzbar bleibt.
-Ein dauerhafter opaker Claim laesst dieselbe Pi-Sitzung nach einer unterbrochenen Aktivierung wieder andocken,
-ohne einen zweiten Runner zu starten.
+Jeder schreibende Top-Level-Auftrag wird vor dem Pi-Start durch den bestehenden Fleet-Broker geroutet. Auch ein
+sauberer Primary-Checkout erhaelt einen eigenen Kimiflow-Worktree, ein Runner-Receipt, eine Pi-Sitzung und einen
+Endpunkt. Bis zu drei disjunkte Auftraege koennen parallel laufen; weitere bleiben in der Broker-Queue. Solange
+Fleet-Arbeit laeuft, bietet der Captain nur Lese-/Such- und Kimiflow-Control-Tools an. Ein toter fortsetzbarer
+Runner darf seine Bridge erst nach positivem Nachweis des beendeten Controllers an einen neuen Captain
+uebergeben; Provider-Sitzung und Run-Besitz bleiben unveraendert.
 
-Wenn dieser Captain bereits in Herdr laeuft, verwendet Kimiflow denselben Herdr-Workspace als sichtbaren
-UI-Transport: Ein nicht fokussierter interaktiver Pi-Tab zeigt den dauerhaften Haupt-Worker; temporaere,
-nicht fokussierte Pi-Tabs zeigen begrenzte, nur lesende semantische Agents. Der Captain behaelt den Fokus und
-bleibt ansprechbar. Kimiflow besitzt nur die exakten selbst erzeugten Tabs; Runner und Active Run bleiben
-autoritaer. Ausserhalb von Herdr bleibt der vorhandene Prozess-Transport unveraendert. Kimiflow installiert
-weder Pi noch Herdr oder einen Modell-Provider.
+Der Pi-Adapter uebernimmt die providerneutrale Auswahl `provider/model:thinking`. Runner, Active Run,
+Fleet-Leases, Gates und terminale Receipts bleiben die einzigen Workflow-Autoritaeten. Reply und Steering
+adressieren die exakte Run-/Worker-/Provider-Sitzungs-Grenze; Pi-Lifecycle-Text beweist nie den Abschluss.
+
+Laeuft der Captain in Herdr, erhaelt jeder Fleet-Worker einen eigenen nicht fokussierten interaktiven Pi-Tab im
+Workspace des Captains und startet im isolierten Worktree. Temporaere begrenzte semantische Agents verwenden
+eigene Tabs. Kimiflow kopiert die benutzerverwaltete Herdr-Pi-Agent-State-Integration digestgebunden und laedt
+sie auch mit `--no-extensions` explizit; dadurch bleibt die native `agent_session`-Identitaet beim Resume
+sichtbar. Kimiflow besitzt nur seine exakten Tab-IDs. Ausserhalb von Herdr bleibt der Prozess-Transport
+unveraendert; Kimiflow installiert weder Pi noch Herdr oder einen Modell-Provider.
 
 Eine Anfrage mit einem bestehenden nummerierten Plan (zum Beispiel `Run 7`) waehlt nur diesen exakten
 Projektplan; sie kann weder versehentlich `Run 7.2` verwenden noch bestaetigte Fakten durch generische Intake-

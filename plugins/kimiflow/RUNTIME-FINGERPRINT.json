@@ -1,5 +1,5 @@
 {
-  "file_count": 182,
+  "file_count": 183,
   "files": [
     {
       "bytes": 511,
@@ -14,10 +14,10 @@
       "sha256": "sha256:e7108bcea69d01740da406419c9245ad0128fdcf6e4f525dba470524bf169960"
     },
     {
-      "bytes": 21839,
+      "bytes": 22118,
       "mode": "0644",
       "path": "COMPATIBILITY.md",
-      "sha256": "sha256:0139acc9753b245d56d8aa9a70c13d12076d755d8759eeba344db00cd7fd4d43"
+      "sha256": "sha256:14426d5281b0cfe192c61f4143c2723c208e2d68c5d3e0ca8edf65a6d9414610"
     },
     {
       "bytes": 1064,
@@ -26,16 +26,16 @@
       "sha256": "sha256:b796986e145d409f27c8ec0edaaf223ee51bdbbc2fa4477fe2d6c0984d5adf5b"
     },
     {
-      "bytes": 34988,
+      "bytes": 35403,
       "mode": "0644",
       "path": "README.de.md",
-      "sha256": "sha256:59151909a6aad742cd050614952be67a44bc6875e60ca2900b78444a0665b522"
+      "sha256": "sha256:9c647d605612d906bd35f43860d66fd253e5fe1c26e654889d8619905196f4b9"
     },
     {
-      "bytes": 40887,
+      "bytes": 41327,
       "mode": "0644",
       "path": "README.md",
-      "sha256": "sha256:3d764b7e95dcd32400af8978c3d1d26c523dfeb94ab74844f5ff10790515fe73"
+      "sha256": "sha256:a92e18f6564c0d7b1f9267b9a3ed3d0b53bfcbdaf7b2e8290c5f66609ddbc860"
     },
     {
       "bytes": 16996,
@@ -356,16 +356,22 @@
       "sha256": "sha256:0fa9bf8578ac75f3233609182f38ca2c0e8d8dd89e7dabbe49ba9a1e05b431f5"
     },
     {
-      "bytes": 36759,
+      "bytes": 38465,
       "mode": "0644",
       "path": "hooks/kimiflow_core/pi_herdr.py",
-      "sha256": "sha256:f2269203019ddfb5685ce1abc24d9f7a4b6e6b443b9d4dd2535487970ad94626"
+      "sha256": "sha256:6ac1948111f23344f1e07f7c28b1e563faef8c980c3bff731e4d5bd0944c04b8"
     },
     {
-      "bytes": 46428,
+      "bytes": 52869,
       "mode": "0644",
       "path": "hooks/kimiflow_core/pi_host.py",
-      "sha256": "sha256:2e14a22b509b07a4fdb2bbcc99adf752d91b516a5e6cddfaeb5e30f8930a0e90"
+      "sha256": "sha256:e0d46b43a1845bafe8e6f9c0b4442728461699dd462c821b70db5e975ca6f0b9"
+    },
+    {
+      "bytes": 20102,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/pi_project.py",
+      "sha256": "sha256:20a46ab152a866f495e46730d0b63ff14130de8a50cfafb833bbc5f14de6ff2f"
     },
     {
       "bytes": 55587,
@@ -458,10 +464,10 @@
       "sha256": "sha256:ce8b7b537753203b7f402ba737e75b5636b85f0c8006945ee0a74ecbc88ea62b"
     },
     {
-      "bytes": 121631,
+      "bytes": 121863,
       "mode": "0644",
       "path": "hooks/kimiflow_core/worktree_broker.py",
-      "sha256": "sha256:b43a76d7ebd2dc37304ebba6e807b48abf12ce749d7d29f60c3aa104dd51a712"
+      "sha256": "sha256:e1508365e0c6f44919c908ebe43c0fbb083c9394632fcb937c4754b83c47dcff"
     },
     {
       "bytes": 418,
@@ -872,10 +878,10 @@
       "sha256": "sha256:78d34e3dd4323d65638b1fc2dc8b8ab3c436fc4281586b0603a84978dd6f9e73"
     },
     {
-      "bytes": 44702,
+      "bytes": 58119,
       "mode": "0644",
       "path": "hosts/pi/extensions/captain.js",
-      "sha256": "sha256:93792d33531cf696c2552c74d028b1a50ce92fd4cd374a7312ca1b1b1e62fd22"
+      "sha256": "sha256:0c456076465998757ad29019da1b753ae18dcb041124a6e3d9dc4be49f3051e1"
     },
     {
       "bytes": 40185,
@@ -884,10 +890,10 @@
       "sha256": "sha256:8cdc71df0015868050dc4400555cec150ba3e7b443c3c3788179049f95a303b2"
     },
     {
-      "bytes": 1598,
+      "bytes": 2218,
       "mode": "0644",
       "path": "hosts/pi/skills/kimiflow/SKILL.md",
-      "sha256": "sha256:4e32b94a2a45754173417a0a567b6d08bee32ac91b971347ae220d30479d918f"
+      "sha256": "sha256:399a8f3c972e0beda17853e598cd46e4918d828ca2e8b4c6e0f9addf3e89af82"
     },
     {
       "bytes": 407,
@@ -1094,6 +1100,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:7f91510b463bf6b11a2f801062f731e97cc3a0ad5e90e82b4b76b5ce988799ab",
+  "runtime_fingerprint": "sha256:d6d7166f00a284f082ee49c82f3420df1033319c5b6362d11a57c3450b8ab702",
   "schema_version": 1
 }

@@ -11,6 +11,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -140,11 +141,10 @@ def _context(environ, root):
         or pane.get("tab_id") != values["HERDR_TAB_ID"]
         or pane.get("pane_id") != values["HERDR_PANE_ID"]
         or pane.get("agent") != "pi"
-        or os.path.realpath(pane.get("cwd", "")) != root
     ):
         raise HerdrError(
             "herdr_context_invalid",
-            "Kimiflow could not verify the exact Captain Herdr context",
+            "Kimiflow could not verify the exact Captain Herdr identity",
             2,
         )
     return {
@@ -565,6 +565,12 @@ def _create_endpoint(
         endpoint_directory,
         "worker.js",
     )
+    herdr_extension = _copy_extension(
+        material["herdr_extension"],
+        material["herdr_extension_digest"],
+        endpoint_directory,
+        "herdr-agent-state.ts",
+    )
     worker_env = {
         BRIDGE_ENV: environ[BRIDGE_ENV],
         "KIMIFLOW_PI_EXECUTABLE": material["command"],
@@ -594,7 +600,7 @@ def _create_endpoint(
             selection,
             session_id,
             environ,
-            extensions=(calm_extension, worker_extension),
+            extensions=(herdr_extension, calm_extension, worker_extension),
             resume=resume,
         )
         session_path = (
@@ -863,6 +869,10 @@ def _prompt(state, prompt, environ):
                 _write_state(state_path, state)
         result = _turn_result(session_path, offset, prompt)
         return result
+    except Exception as exc:
+        if keep:
+            setattr(exc, "preserve_herdr_endpoint", True)
+        raise
     finally:
         _finish_sentinel(sentinel, keep)
 
@@ -933,10 +943,11 @@ def run_turn(payload, material, selection, prompt, environ, emit):
     _watch_parent(environ)
     try:
         text = _prompt(state, prompt, environ)
-    except Exception:
-        _cleanup_tracked_endpoint(
-            state, state_path, endpoint_directory, environ,
-        )
+    except Exception as exc:
+        if not getattr(exc, "preserve_herdr_endpoint", False):
+            _cleanup_tracked_endpoint(
+                state, state_path, endpoint_directory, environ,
+            )
         raise
     if text:
         emit({"schema_version": 1, "type": "message", "text": text})
@@ -972,6 +983,7 @@ def terminate(root, session_id, environ):
 def run_subagent(payload, environ, emit):
     root = os.path.realpath(payload.get("root", ""))
     calm_extension = payload.get("calm_extension", "")
+    herdr_extension = payload.get("herdr_extension", "")
     if (
         payload.get("schema_version") != 1
         or not os.path.isabs(root)
@@ -993,6 +1005,11 @@ def run_subagent(payload, environ, emit):
         or os.path.realpath(calm_extension) != calm_extension
         or os.path.basename(calm_extension) != "calm.js"
         or re.fullmatch(r"sha256:[0-9a-f]{64}", payload.get("calm_extension_digest", "")) is None
+        or not isinstance(herdr_extension, str)
+        or not os.path.isabs(herdr_extension)
+        or os.path.realpath(herdr_extension) != herdr_extension
+        or os.path.basename(herdr_extension) != "herdr-agent-state.ts"
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", payload.get("herdr_extension_digest", "")) is None
         or payload.get("verbosity") not in {"quiet", "balanced", "verbose"}
         or not isinstance(payload.get("selection"), dict)
     ):
@@ -1001,8 +1018,11 @@ def run_subagent(payload, environ, emit):
         calm_info = os.lstat(calm_extension)
         with open(calm_extension, "rb") as handle:
             calm_content = handle.read(MAX_JSON * 4 + 1)
+        herdr_info = os.lstat(herdr_extension)
+        with open(herdr_extension, "rb") as handle:
+            herdr_content = handle.read(MAX_JSON * 4 + 1)
     except OSError as exc:
-        raise HerdrError("herdr_subagent_invalid", "Herdr Calm extension is unavailable", 2) from exc
+        raise HerdrError("herdr_subagent_invalid", "Herdr Pi extensions are unavailable", 2) from exc
     if (
         not stat.S_ISREG(calm_info.st_mode)
         or stat.S_ISLNK(calm_info.st_mode)
@@ -1011,6 +1031,16 @@ def run_subagent(payload, environ, emit):
         != payload["calm_extension_digest"]
     ):
         raise HerdrError("herdr_subagent_invalid", "Herdr Calm extension is invalid", 2)
+    if (
+        not stat.S_ISREG(herdr_info.st_mode)
+        or stat.S_ISLNK(herdr_info.st_mode)
+        or len(herdr_content) > MAX_JSON * 4
+        or "sha256:" + hashlib.sha256(herdr_content).hexdigest()
+        != payload["herdr_extension_digest"]
+        or b"HERDR_INTEGRATION_ID=pi" not in herdr_content
+        or b"pane.report_agent_session" not in herdr_content
+    ):
+        raise HerdrError("herdr_subagent_invalid", "Herdr agent-state extension is invalid", 2)
     selection = payload["selection"]
     if (
         set(selection) != {"provider", "model", "thinking"}
@@ -1029,6 +1059,13 @@ def run_subagent(payload, environ, emit):
     tab_id = pane_id = None
     state = None
     sentinel = None
+    extension_directory = tempfile.mkdtemp(prefix="kimiflow-herdr-subagent-")
+    copied_herdr = _copy_extension(
+        herdr_extension,
+        payload["herdr_extension_digest"],
+        extension_directory,
+        "herdr-agent-state.ts",
+    )
     try:
         tab_id, pane_id = _tab(
             root,
@@ -1045,7 +1082,7 @@ def run_subagent(payload, environ, emit):
             selection,
             session_id,
             environ,
-            extensions=(calm_extension,),
+            extensions=(copied_herdr, calm_extension),
             read_only=SUBAGENT_ROLES[payload["role"]],
         )
         state = {
@@ -1112,6 +1149,7 @@ def run_subagent(payload, environ, emit):
             _finish_sentinel(sentinel, closed)
         elif tab_id is not None and pane_id is not None:
             _close_exact_ids(context["workspace_id"], tab_id, pane_id, environ)
+        shutil.rmtree(extension_directory, ignore_errors=True)
 
 
 def main(argv=None):
