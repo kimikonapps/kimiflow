@@ -512,6 +512,49 @@ test("a new Captain safely adopts and resumes a dead Fleet runner", async () => 
   assert.equal(spawned.calls[0].args.includes("continue exact run"), false);
 });
 
+test("a restored binding does not hide a dead runner behind its live Active Run", async () => {
+  const snapshot = activeSnapshot({
+    status: "transport_error",
+    controllerPid: 99999999,
+    workerId: "worker-existing01",
+  });
+  const status = statusFixture(snapshot);
+  const spawned = spawnFixture();
+  const adopted = [];
+  const extension = createCaptainExtension({
+    root: "/pkg",
+    exec: status.exec,
+    spawn: spawned.spawn,
+    adoptWorker: async (value) => {
+      adopted.push(value);
+      return { workerId: "worker-existing01" };
+    },
+  });
+  const current = context([{
+    type: "custom",
+    customType: "kimiflow_pi_bridge_binding_v1",
+    data: {
+      schemaVersion: 1,
+      root: process.cwd(),
+      captainSessionId: "pi-primary-0001",
+      workerId: "worker-existing01",
+      modelSelection: "openai/gpt-5.6:high",
+      run: ".kimiflow/feature-x",
+      providerSessionId: "provider-session-0001",
+      deliveryBoundary: null,
+      deliveryPending: false,
+      terminal: false,
+    },
+  }]);
+  extension.restoreForSession(current);
+
+  const result = await extension.activate("continue exact run", current);
+
+  assert.equal(result.status, "recovered");
+  assert.equal(adopted.length, 1);
+  assert.equal(spawned.calls[0].args[0], "resume");
+});
+
 test("matching durable pending claim recovers the running Pi bridge without another spawn", async () => {
   const seed = createCaptainExtension({
     root: "/pkg",

@@ -878,10 +878,10 @@
       "sha256": "sha256:78d34e3dd4323d65638b1fc2dc8b8ab3c436fc4281586b0603a84978dd6f9e73"
     },
     {
-      "bytes": 58119,
+      "bytes": 58131,
       "mode": "0644",
       "path": "hosts/pi/extensions/captain.js",
-      "sha256": "sha256:0c456076465998757ad29019da1b753ae18dcb041124a6e3d9dc4be49f3051e1"
+      "sha256": "sha256:1484750abfe38a9e9fd7bfaa3d74ed899cb53d63ffaba21c4584dbc91fc97568"
     },
     {
       "bytes": 40185,
@@ -1100,6 +1100,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:6b9b0fa267d008ae0a1db0cdf9e518375d31754198b120e795c392baad1d5924",
+  "runtime_fingerprint": "sha256:61998f953ae62c5f3f70d392138c2591e27cc42184bd173b2025600026633f55",
   "schema_version": 1
 }
