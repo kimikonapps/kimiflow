@@ -24,6 +24,7 @@ test_optional_pi_package_release_and_embedded_host_parity() {
     hosts/pi/extensions/worker.js \
     hosts/pi/skills/kimiflow/SKILL.md \
     hooks/pi-host.sh \
+    hooks/pi-subagent-gate.sh \
     hooks/kimiflow_core/pi_herdr.py \
     hooks/kimiflow_core/pi_host.py; do
     [ -f "$CANDIDATE/$rel" ]
@@ -41,6 +42,7 @@ test_required_pi_runtime_paths_must_be_git_indexed() {
   cp "$ROOT/hooks/build-plugin-candidate.sh" "$fixture/hooks/"
   cp "$ROOT/package.json" "$fixture/"
   cp "$ROOT/hooks/pi-host.sh" "$fixture/hooks/"
+  cp "$ROOT/hooks/pi-subagent-gate.sh" "$fixture/hooks/"
   cp "$ROOT/hooks/kimiflow_core/pi_herdr.py" \
     "$fixture/hooks/kimiflow_core/"
   cp "$ROOT/hooks/kimiflow_core/pi_host.py" \
@@ -54,6 +56,7 @@ test_required_pi_runtime_paths_must_be_git_indexed() {
   git -C "$fixture" init -q
   git -C "$fixture" add \
     hooks/build-plugin-candidate.sh package.json hooks/pi-host.sh \
+    hooks/pi-subagent-gate.sh \
     hooks/kimiflow_core/pi_herdr.py \
     hooks/kimiflow_core/pi_host.py \
     hosts/pi/extensions/calm.js \

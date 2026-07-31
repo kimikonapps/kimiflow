@@ -6,6 +6,27 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.34
+
+The role-bound Herdr/Pi FirstMate and Calm reliability patch.
+
+### Changed
+
+- Scheduled Pi work now declares a phase role, round, and stable seat. Herdr presents each leaf as its own
+  visible Pi tab; implementation receives bounded write tools, while research, planning, verification, and
+  code-review leaves remain read-only.
+- The three-worker limit now applies to concurrent leaves. Completed leaves release their durable slot, and a
+  versioned lease registry prevents 0.2.33 lifetime counters from blocking upgraded sessions.
+- Completed Pi leaves write private role-bound receipts. Plan review, implementation conformance, verification,
+  and code-review gates now fail closed when a scheduled visible worker did not actually complete.
+
+### Fixed
+
+- Calm now follows the full one-off, project, and Codex-global verbosity precedence and is inherited by visible
+  Herdr leaf workers.
+- Quiet rendering now also collapses Kimiflow activation, reply, steering, and subagent tool rows without
+  changing Pi messages, session history, execution, or export/share content.
+
 ## 0.2.33
 
 The stable Herdr/Pi FirstMate correction.

@@ -21,6 +21,7 @@ git -C "$REPO" commit -qm fixture
 cat > "$FAKE_PI" <<'PY'
 #!/usr/bin/env python3
 import json
+import hashlib
 import os
 import subprocess
 import sys
@@ -50,6 +51,51 @@ def write(path, content):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(content)
+
+
+def write_implementation_receipt(run_dir, root, binding, worker_session):
+    role = "implementation"
+    phase = 5
+    round_number = 1
+    seat = "implementation-1"
+    subagent_session = "pi-subagent-e2e-0001"
+    receipt_id = "sha256:" + hashlib.sha256("\0".join((
+        binding["worker_id"], worker_session, subagent_session,
+        str(phase), role, str(round_number), seat,
+    )).encode("utf-8")).hexdigest()
+    directory = os.path.join(run_dir, "PI-SUBAGENTS")
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    os.chmod(directory, 0o700)
+    name = "%s-%s-%s-%s-%s.json" % (
+        phase, round_number, role, seat, receipt_id[7:31],
+    )
+    value = {
+        "schema_version": 1,
+        "receipt_id": receipt_id,
+        "root": root,
+        "run": ".kimiflow/pi-bridge-e2e",
+        "worker_id": binding["worker_id"],
+        "worker_session_id": worker_session,
+        "subagent_session_id": subagent_session,
+        "phase": phase,
+        "role": role,
+        "round": round_number,
+        "seat": seat,
+        "slot": 1,
+        "backend": "process",
+        "status": "completed",
+        "task_digest": "sha256:" + hashlib.sha256(
+            b"build fixture-output.txt",
+        ).hexdigest(),
+        "result_digest": "sha256:" + hashlib.sha256(
+            b"fixture-output.txt verified",
+        ).hexdigest(),
+    }
+    target = os.path.join(directory, name)
+    descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        json.dump(value, handle, separators=(",", ":"))
+        handle.write("\n")
 
 
 if sys.argv[1:] == ["--version"]:
@@ -252,6 +298,7 @@ Check: `test -f fixture-output.txt && grep -q built-by-thin-pi-bridge fixture-ou
             os.path.join(root, "fixture-output.txt"),
             "built-by-thin-pi-bridge\n",
         )
+        write_implementation_receipt(run_dir, root, binding, session)
         run_checked([
             "git", "-C", root, "add", "--", "fixture-output.txt",
         ], env)

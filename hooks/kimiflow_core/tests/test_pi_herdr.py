@@ -208,12 +208,24 @@ class PiHerdrTests(unittest.TestCase):
         sleep.assert_called_once_with(0.05)
 
     def test_subagent_owns_a_numbered_visible_read_only_worker_tab(self):
+        calm_extension = os.path.join(self.root, "calm.js")
+        calm_content = b"export default function calm() {}\n"
+        with open(calm_extension, "wb") as handle:
+            handle.write(calm_content)
         payload = {
             "schema_version": 1,
             "root": self.root,
             "session_id": self.session_id,
             "slot": 2,
             "task": "independently review the accepted behavior",
+            "role": "code_review",
+            "round": 1,
+            "seat": "code-review-1",
+            "calm_extension": calm_extension,
+            "calm_extension_digest": (
+                "sha256:" + hashlib.sha256(calm_content).hexdigest()
+            ),
+            "verbosity": "quiet",
             "selection": {
                 "provider": "openai",
                 "model": "gpt-5.6",
@@ -274,16 +286,17 @@ class PiHerdrTests(unittest.TestCase):
         create_tab.assert_called_once_with(
             self.root,
             "w2",
-            "kimiflow · subagent 2",
-            {},
+            "kimiflow · code review · code-review-1",
+            {"KIMIFLOW_PI_VERBOSITY": "quiet"},
             self.environment,
         )
         start_agent.assert_called_once_with(
-            "kimiflow-subagent-2",
+            "kimiflow-code-review-2",
             "w2:p2",
             payload["selection"],
             self.session_id,
             self.environment,
+            extensions=(calm_extension,),
             read_only=True,
         )
         close_tab.assert_called_once_with(
@@ -291,6 +304,10 @@ class PiHerdrTests(unittest.TestCase):
         )
         finish_sentinel.assert_called_once_with(sentinel, True)
         self.assertEqual(emitted[-1]["type"], "agent_settled")
+
+    def test_implementation_role_is_write_capable(self):
+        self.assertFalse(pi_herdr.SUBAGENT_ROLES["implementation"])
+        self.assertTrue(pi_herdr.SUBAGENT_ROLES["code_review"])
 
     def test_exact_endpoint_close_never_guesses_another_tab(self):
         wrong = {

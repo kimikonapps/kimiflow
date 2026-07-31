@@ -1,23 +1,23 @@
 {
-  "file_count": 173,
+  "file_count": 174,
   "files": [
     {
       "bytes": 511,
       "mode": "0644",
       "path": ".claude-plugin/plugin.json",
-      "sha256": "sha256:613c83c49d7b203894639edc82c368210714c864ce1580c10e3b8519514545cc"
+      "sha256": "sha256:a9c2476e16afe40ed58af31d64db22661cf39e59fdd88fcf2b260d742755e3b4"
     },
     {
       "bytes": 3614,
       "mode": "0644",
       "path": ".codex-plugin/plugin.json",
-      "sha256": "sha256:eb1592696d19bc6892750571759d492cb98efd9aecdfa377182b33140ff4ca2b"
+      "sha256": "sha256:430d793e0c9399c684ead3319efaa9da08ade70bed1ba7e9ad677259e182972c"
     },
     {
-      "bytes": 21552,
+      "bytes": 21839,
       "mode": "0644",
       "path": "COMPATIBILITY.md",
-      "sha256": "sha256:89a0776f0f830f530b5c73e30240f2b83eed8aa94c496c36dcdfebb351321ec9"
+      "sha256": "sha256:436601335f1c16726a2f2052990da76d49c8f6cbf0333d0dedaa095205791f3b"
     },
     {
       "bytes": 1064,
@@ -110,10 +110,10 @@
       "sha256": "sha256:3f796193923d1d7fbd4eb7badcb250a20bcc3a702747dee679784ae2ac725b07"
     },
     {
-      "bytes": 58812,
+      "bytes": 59828,
       "mode": "0755",
       "path": "hooks/conformance-gate.sh",
-      "sha256": "sha256:5d8cf287375475d042bd568f44b2ff4ad496d7e76e857572b6c3921d376440ce"
+      "sha256": "sha256:64197e6d944984a97cc5cfe52bae8feea5ca8775ae86d34ffde2b4df104b8023"
     },
     {
       "bytes": 325,
@@ -308,16 +308,16 @@
       "sha256": "sha256:0fa9bf8578ac75f3233609182f38ca2c0e8d8dd89e7dabbe49ba9a1e05b431f5"
     },
     {
-      "bytes": 34228,
+      "bytes": 36605,
       "mode": "0644",
       "path": "hooks/kimiflow_core/pi_herdr.py",
-      "sha256": "sha256:579f55a163df90f02071af6212199c7e676ec98d2be3a7017694c8a7355943dd"
+      "sha256": "sha256:7d58311be143b87974dafe0183fcb544a05254eb1e9ffc7df6137fdd22743436"
     },
     {
-      "bytes": 45271,
+      "bytes": 46385,
       "mode": "0644",
       "path": "hooks/kimiflow_core/pi_host.py",
-      "sha256": "sha256:f3230f155d07f0deb1aa4d7364bf584f4d1c361cca0b1280b5c15b30f29330ab"
+      "sha256": "sha256:f3802744a1f8d7896837272eecbf9038ae46301b8b0a7d17fee7693f8cedd821"
     },
     {
       "bytes": 55587,
@@ -674,6 +674,12 @@
       "sha256": "sha256:f1abfe525b1eacc2b6f8547f29212f911803497aec18ed62fc44b7eefbdf17f5"
     },
     {
+      "bytes": 6570,
+      "mode": "0755",
+      "path": "hooks/pi-subagent-gate.sh",
+      "sha256": "sha256:9f92bf49a273759e2171c491247614860e3f9a0e1811a358e059cc24d8e3cec4"
+    },
+    {
       "bytes": 18637,
       "mode": "0755",
       "path": "hooks/plan-blocker-gate.sh",
@@ -722,16 +728,16 @@
       "sha256": "sha256:fd9599494be0fddfc592907f7b4fc2b13ba89bce77baf8a96bb0946044a52955"
     },
     {
-      "bytes": 27866,
+      "bytes": 28998,
       "mode": "0755",
       "path": "hooks/resolve-review-gate.sh",
-      "sha256": "sha256:0529fedd9a86b6d542e2b0d443cd488b1030861684df733ffb9b2901aec6864e"
+      "sha256": "sha256:4e8e4e3cb163e3c66fe59be313181d064881313fff0ccf64a1c9dd26e451c78d"
     },
     {
-      "bytes": 4036,
+      "bytes": 4047,
       "mode": "0755",
       "path": "hooks/resolve-verbosity.sh",
-      "sha256": "sha256:2ff0137f63206419dda99077d6595d6d3bb892e6fba634da0d48616f4d1e1d77"
+      "sha256": "sha256:1ba9da60333614cd57132f63dc5e436907c5d2608e9d2f7f76e80f0d5cda7225"
     },
     {
       "bytes": 351,
@@ -812,10 +818,10 @@
       "sha256": "sha256:69b1dd90595aecb844c9473889a41c65df9cc01a3005719e2cd8d0bb41dddba2"
     },
     {
-      "bytes": 7497,
+      "bytes": 8925,
       "mode": "0644",
       "path": "hosts/pi/extensions/calm.js",
-      "sha256": "sha256:ba191c9d5ac52cd8581aa4f2a08da21ddad972e503c47e65af66ddd7e7d5de66"
+      "sha256": "sha256:78d34e3dd4323d65638b1fc2dc8b8ab3c436fc4281586b0603a84978dd6f9e73"
     },
     {
       "bytes": 44508,
@@ -824,10 +830,10 @@
       "sha256": "sha256:501933dd91a8c5f429f933efe79a2bcc7694d3519bcb9e23c87850eae76dcd86"
     },
     {
-      "bytes": 32361,
+      "bytes": 40185,
       "mode": "0644",
       "path": "hosts/pi/extensions/worker.js",
-      "sha256": "sha256:09f2d3a1aab2688ac933512e09b609a22c62edb6dc0d73e33274347299c39942"
+      "sha256": "sha256:8cdc71df0015868050dc4400555cec150ba3e7b443c3c3788179049f95a303b2"
     },
     {
       "bytes": 1598,
@@ -839,7 +845,7 @@
       "bytes": 407,
       "mode": "0644",
       "path": "package.json",
-      "sha256": "sha256:693429a8e576e45f0e5657734b22a714813c0945fc7161837fb4723608350c25"
+      "sha256": "sha256:a71d4a42a335058aeb14f8260c12684c661c876687462a930d99455fc3feb43a"
     },
     {
       "bytes": 8943,
@@ -872,28 +878,28 @@
       "sha256": "sha256:b37b0b425a41cb93069499f2f9df035e58b6a7adffa44eb716b67e0ec592da3e"
     },
     {
-      "bytes": 9678,
+      "bytes": 9879,
       "mode": "0644",
       "path": "phases/phase-4-review-approval.md",
-      "sha256": "sha256:9f5e8dd1b89c8b997224056b1d6f951a1a6d128bfbaba3a003f92a689f5b5e9f"
+      "sha256": "sha256:c27003f606d312759fb3b01400b0dd4356e1fe3f2c00c9746970ebf701c507b7"
     },
     {
-      "bytes": 5975,
+      "bytes": 6167,
       "mode": "0644",
       "path": "phases/phase-5-build.md",
-      "sha256": "sha256:61eb87f4439d84dd33fedc1bc4541815a2bff6667914f6ad443b0561141af838"
+      "sha256": "sha256:51214135a428855b741f10c4a55c4b5da3a144e10a8517b95449684b31414114"
     },
     {
-      "bytes": 10566,
+      "bytes": 10716,
       "mode": "0644",
       "path": "phases/phase-6-verify.md",
-      "sha256": "sha256:8c44f974192f6610bd72294a0fa5718d195f36144398180c37ee97a7075cbeaf"
+      "sha256": "sha256:f95dfbf6f3ea1cf63b041d3c6e37bd8a0f5173a18fa7ee4ddccb31483d3c2243"
     },
     {
-      "bytes": 19978,
+      "bytes": 19972,
       "mode": "0644",
       "path": "phases/phase-7-review-commit.md",
-      "sha256": "sha256:ffa3018fc1766b2c7e38c1afc59efcf7f14ce5ef9d0240f7b4aa00a6fe973ffe"
+      "sha256": "sha256:223f1da8220f541554a6dfcd8632f5bdd509b5466258510d416081f72b9c9b4b"
     },
     {
       "bytes": 230972,
@@ -1040,6 +1046,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:e4c7e051c21ed9f6d34beef54b9ec1617d85c23b18f6dd3fe4cb698602b9ce87",
+  "runtime_fingerprint": "sha256:7fdaf832a05a1f484411820d3a74f66b408e2189d92f0b07082b658d34eb5ab6",
   "schema_version": 1
 }

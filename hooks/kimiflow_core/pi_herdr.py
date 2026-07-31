@@ -30,6 +30,14 @@ HERDR_FLAG_ENV = "HERDR_ENV"
 HERDR_KEYS = ("HERDR_WORKSPACE_ID", "HERDR_TAB_ID", "HERDR_PANE_ID")
 WORKER_RE = re.compile(r"^worker-[A-Za-z0-9]{8,64}$")
 HERDR_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{2,128}$")
+SUBAGENT_SEAT_RE = re.compile(r"^[a-z][a-z0-9-]{0,47}$")
+SUBAGENT_ROLES = {
+    "research": True,
+    "plan_review": True,
+    "implementation": False,
+    "verification": True,
+    "code_review": True,
+}
 
 
 class HerdrError(ValueError):
@@ -565,6 +573,11 @@ def _create_endpoint(
             selection, sort_keys=True, separators=(",", ":"),
         ),
         "KIMIFLOW_PI_HERDR": "1",
+        "KIMIFLOW_PI_CALM_EXTENSION": calm_extension,
+        "KIMIFLOW_PI_CALM_EXTENSION_DIGEST": material["calm_extension_digest"],
+        "KIMIFLOW_PI_VERBOSITY": environ.get(
+            "KIMIFLOW_PI_VERBOSITY", "balanced",
+        ),
     }
     tab_id = pane_id = None
     try:
@@ -956,6 +969,7 @@ def terminate(root, session_id, environ):
 
 def run_subagent(payload, environ, emit):
     root = os.path.realpath(payload.get("root", ""))
+    calm_extension = payload.get("calm_extension", "")
     if (
         payload.get("schema_version") != 1
         or not os.path.isabs(root)
@@ -966,9 +980,35 @@ def run_subagent(payload, environ, emit):
         or isinstance(payload.get("slot"), bool)
         or not isinstance(payload.get("slot"), int)
         or payload["slot"] not in {1, 2, 3}
+        or payload.get("role") not in SUBAGENT_ROLES
+        or isinstance(payload.get("round"), bool)
+        or not isinstance(payload.get("round"), int)
+        or payload["round"] < 1
+        or payload["round"] > 99
+        or SUBAGENT_SEAT_RE.fullmatch(payload.get("seat", "")) is None
+        or not isinstance(calm_extension, str)
+        or not os.path.isabs(calm_extension)
+        or os.path.realpath(calm_extension) != calm_extension
+        or os.path.basename(calm_extension) != "calm.js"
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", payload.get("calm_extension_digest", "")) is None
+        or payload.get("verbosity") not in {"quiet", "balanced", "verbose"}
         or not isinstance(payload.get("selection"), dict)
     ):
         raise HerdrError("herdr_subagent_invalid", "Herdr subagent request is invalid", 2)
+    try:
+        calm_info = os.lstat(calm_extension)
+        with open(calm_extension, "rb") as handle:
+            calm_content = handle.read(MAX_JSON * 4 + 1)
+    except OSError as exc:
+        raise HerdrError("herdr_subagent_invalid", "Herdr Calm extension is unavailable", 2) from exc
+    if (
+        not stat.S_ISREG(calm_info.st_mode)
+        or stat.S_ISLNK(calm_info.st_mode)
+        or len(calm_content) > MAX_JSON * 4
+        or "sha256:" + hashlib.sha256(calm_content).hexdigest()
+        != payload["calm_extension_digest"]
+    ):
+        raise HerdrError("herdr_subagent_invalid", "Herdr Calm extension is invalid", 2)
     selection = payload["selection"]
     if (
         set(selection) != {"provider", "model", "thinking"}
@@ -991,17 +1031,20 @@ def run_subagent(payload, environ, emit):
         tab_id, pane_id = _tab(
             root,
             context["workspace_id"],
-            "kimiflow · subagent %s" % payload["slot"],
-            {},
+            "kimiflow · %s · %s" % (
+                payload["role"].replace("_", " "), payload["seat"],
+            ),
+            {"KIMIFLOW_PI_VERBOSITY": payload["verbosity"]},
             environ,
         )
         _start_agent(
-            "kimiflow-subagent-%s" % payload["slot"],
+            "kimiflow-%s-%s" % (payload["role"].replace("_", "-"), payload["slot"]),
             pane_id,
             selection,
             session_id,
             environ,
-            read_only=True,
+            extensions=(calm_extension,),
+            read_only=SUBAGENT_ROLES[payload["role"]],
         )
         state = {
             "root": root,
@@ -1013,7 +1056,19 @@ def run_subagent(payload, environ, emit):
         }
         sentinel = _start_sentinel(state, environ)
         offset = 0
-        prompt = "Kimiflow bounded read-only subagent task:\n" + payload["task"].strip()
+        prompt = "Kimiflow bounded %s subagent task (phase %s, round %s, seat %s):\n%s" % (
+            payload["role"],
+            {
+                "research": 2,
+                "plan_review": 4,
+                "implementation": 5,
+                "verification": 6,
+                "code_review": 7,
+            }[payload["role"]],
+            payload["round"],
+            payload["seat"],
+            payload["task"].strip(),
+        )
         _invoke(
             [
                 "agent", "prompt", pane_id, prompt,

@@ -61,6 +61,7 @@ RUNTIME_REQUIRED_FILES = {
     "hooks/active-run.sh",
     "hooks/hooks.json",
     "hooks/pi-host.sh",
+    "hooks/pi-subagent-gate.sh",
     "hooks/kimiflow_core/pi_herdr.py",
     "hooks/kimiflow_core/pi_host.py",
     "phases/PHASES.json",

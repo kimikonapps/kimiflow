@@ -113,6 +113,30 @@ fi
 contracted=false
 [ "$finding_contract" = "1" ] && contracted=true
 
+if [ "${KIMIFLOW_SESSION_HOST:-${KIMIFLOW_HOST:-}}" = pi ]; then
+  [ -x "$SCRIPT_DIR/pi-subagent-gate.sh" ] \
+    || emit CLOSED - malformed "Pi subagent gate unavailable"
+  receipt_phase=4
+  receipt_role=plan_review
+  receipt_min=1
+  if [ "$expect" = code-verified ] || [ "$gate" = code ]; then
+    receipt_phase=7
+    receipt_role=code_review
+  elif [ "$(state_value "$state" "Scope" | awk '{print tolower($1)}')" = large ]; then
+    receipt_min=2
+  fi
+  if [ "$receipt_phase" -ne 7 ] || [ "$round" -lt "$CODE_REVIEW_CLOSEOUT_ROUND" ]; then
+    receipt_out="$("$SCRIPT_DIR/pi-subagent-gate.sh" "$run_dir" \
+      --phase "$receipt_phase" --role "$receipt_role" --round "$round" \
+      --min "$receipt_min" 2>/dev/null)" \
+      || emit CLOSED - malformed "Pi subagent receipt gate failed"
+    receipt_status="$(printf '%s\n' "$receipt_out" | awk -F '\t' 'NR == 1 { print $2 }')"
+    receipt_reason="$(printf '%s\n' "$receipt_out" | awk -F '\t' 'NR == 1 { sub(/^reason=/, "", $4); print $4 }')"
+    [ "$receipt_status" = OPEN ] \
+      || emit CLOSED - incomplete "Pi ${receipt_role} receipts ${receipt_reason:-invalid}"
+  fi
+fi
+
 if [ "$contracted" = true ] && [ "$expect" = code-verified ] && [ "$gate" != code ]; then
   emit CLOSED - malformed "contracted code review requires --gate code"
 fi

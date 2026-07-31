@@ -6,7 +6,7 @@ subagent contracts. If a host moves one of these primitives, parts of kimiflow c
 kimiflow concretely uses, what breaks if it changes, and a smoke checklist to run at each version bump.
 
 **Last verified against:** Claude Code **2.1.202** · Codex CLI **0.142.5** · Pi **0.83.0** · kimiflow
-**0.2.33** · 2026-07-31.
+**0.2.34** · 2026-07-31.
 
 > **0.x expectation.** These primitives are NOT a stable public contract. Treat breakage as *expected*
 > across Claude Code or Codex minor versions until a version is explicitly pinned — keep the README's
@@ -49,15 +49,18 @@ conversation separately and may store its user and assistant messages in the Pi 
 
 When Captain already runs inside verified Herdr 0.7.5 protocol 17 context, Kimiflow uses Herdr as a visible
 UI transport: one unfocused interactive Pi tab hosts the persistent main worker and temporary unfocused
-interactive Pi tabs host at most three bounded read-only semantic agents. Those semantic-agent tabs are
-numbered and created only through `kimiflow_subagent`; the main worker survives active user waits and transient
+interactive Pi tabs host at most three concurrent role-bound agents. The Phase-5 implementation role receives
+bounded write tools; research, plan-review, verification, and code-review roles remain read-only. Those tabs are
+named by role and stable seat, created only through `kimiflow_subagent`, and bound to private completion receipts;
+the main worker survives active user waits and transient
 Herdr status-settle lag. Captain retains focus. Kimiflow
 correlates every turn with Pi's native v3 session JSONL and owns only the exact tab IDs it created; runner and
 Active Run remain the sole workflow authority. Outside Herdr, the existing process transport is unchanged.
 
-For project `quiet`, the main Pi worker also loads a renderer-only Calm adapter verified against Pi 0.83.0.
-It suppresses only supported transcript rows on screen; execution, messages, model context, native session
-history, and export/share content remain authoritative and unchanged.
+For resolved `quiet` (one-off flag, project, then Codex-global precedence), the main Pi worker and visible Herdr
+leaves load a renderer-only Calm adapter verified against Pi 0.83.0. It suppresses only supported built-in and
+Kimiflow operational transcript rows on screen; execution, messages, model context, native session history, and
+export/share content remain authoritative and unchanged.
 
 ## Claude Code primitives used
 

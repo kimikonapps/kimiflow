@@ -337,7 +337,40 @@ def _payload(stdin=None):
     return value
 
 
-def _workflow_prompt(payload):
+def _resolved_verbosity(payload, environ=None):
+    env = dict(os.environ if environ is None else environ)
+    inherited = env.get("KIMIFLOW_PI_VERBOSITY")
+    if inherited in {"quiet", "balanced", "verbose"}:
+        return inherited
+    flags = re.findall(r"(?<!\S)--(quiet|verbose)(?!\S)", payload.get("prompt", ""))
+    hook = os.path.realpath(os.path.join(
+        os.path.dirname(__file__), "..", "resolve-verbosity.sh",
+    ))
+    command = [hook, "get"]
+    if flags:
+        command += ["--flag", flags[-1]]
+    resolver_env = dict(env)
+    resolver_env["KIMIFLOW_HOST"] = "codex"
+    try:
+        result = subprocess.run(
+            command,
+            cwd=os.path.realpath(payload["root"]),
+            env=resolver_env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=False,
+            timeout=3,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "balanced"
+    level = result.stdout.strip()
+    return level if result.returncode == 0 and level in {
+        "quiet", "balanced", "verbose",
+    } else "balanced"
+
+
+def _workflow_prompt(payload, environ=None, verbosity=None):
     context = payload.get("workflow_context")
     if context is None:
         return payload["prompt"]
@@ -382,17 +415,7 @@ def _workflow_prompt(payload):
                 2,
             )
         targets[key] = target
-    verbosity = "balanced"
-    verbosity_path = os.path.join(
-        os.path.realpath(payload["root"]), ".kimiflow", "verbosity",
-    )
-    try:
-        with open(verbosity_path, encoding="utf-8") as handle:
-            candidate = handle.readline().strip()
-        if candidate in {"quiet", "balanced", "verbose"}:
-            verbosity = candidate
-    except OSError:
-        pass
+    verbosity = verbosity or _resolved_verbosity(payload, environ)
     presentation = (
         "Presentation mode: calm (configured as quiet). Show only a required "
         "user question, one short phase/gate line when materially useful, "
@@ -422,7 +445,9 @@ def _workflow_prompt(payload):
         "The main Pi worker is the orchestrator. After intake confirmation, every "
         "independent reviewer or subagent seat required by the phase schedule must "
         "call kimiflow_subagent exactly once. Never simulate a scheduled subagent "
-        "inside the main worker; each call is a separate visible Herdr/Pi worker.\n"
+        "inside the main worker; each call is a separate visible Herdr/Pi worker. "
+        "Pass the phase role, current round, and stable seat exactly as the phase "
+        "document specifies. Phase gates require the resulting mechanical receipt.\n"
         "%s\n\n"
         "Transport request:\n%s"
         % (
@@ -1072,7 +1097,9 @@ def run_turn(payload, environ=None, stdout=None):
     extension_digest = material["worker_extension_digest"]
     calm_extension = material["calm_extension"]
     calm_extension_digest = material["calm_extension_digest"]
-    prompt = _workflow_prompt(payload)
+    verbosity = _resolved_verbosity(payload, env)
+    env["KIMIFLOW_PI_VERBOSITY"] = verbosity
+    prompt = _workflow_prompt(payload, env, verbosity)
     output = sys.stdout if stdout is None else stdout
     if pi_herdr.requested(env):
         try:

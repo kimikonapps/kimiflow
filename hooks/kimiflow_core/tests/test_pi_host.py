@@ -744,6 +744,8 @@ class PiHostTests(unittest.TestCase):
             pi_host, "_command", return_value=material["command"],
         ), mock.patch.object(
             pi_host, "_version", return_value=material["version"],
+        ), mock.patch.object(
+            pi_host, "_resolved_verbosity", return_value="balanced",
         ), mock.patch.object(pi_host.subprocess, "Popen") as popen:
             with self.assertRaises(pi_host.PiHostError) as raised:
                 pi_host.run_turn(
@@ -806,8 +808,43 @@ class PiHostTests(unittest.TestCase):
         self.assertIn(".kimiflow/session/ACTIVE_RUN.json", prompt)
         self.assertIn("never execute it directly", prompt)
         self.assertIn("call kimiflow_subagent exactly once", prompt)
+        self.assertIn("Phase gates require the resulting mechanical receipt", prompt)
         self.assertIn("separate visible Herdr/Pi worker", prompt)
         self.assertTrue(prompt.startswith("\u2063kimiflow:transport-v1\n"))
+
+    def test_pi_verbosity_uses_flag_project_global_precedence(self):
+        codex_home = os.path.join(self.temp, "codex-home")
+        os.makedirs(os.path.join(codex_home, "kimiflow"), exist_ok=True)
+        with open(
+            os.path.join(codex_home, "kimiflow", "verbosity"),
+            "w",
+            encoding="utf-8",
+        ) as handle:
+            handle.write("quiet\n")
+        payload = {"root": self.temp, "prompt": "build the feature"}
+        environment = {**self.env, "CODEX_HOME": codex_home}
+        self.assertEqual(
+            pi_host._resolved_verbosity(payload, environment),
+            "quiet",
+        )
+        os.makedirs(os.path.join(self.temp, ".kimiflow"), exist_ok=True)
+        with open(
+            os.path.join(self.temp, ".kimiflow", "verbosity"),
+            "w",
+            encoding="utf-8",
+        ) as handle:
+            handle.write("balanced\n")
+        self.assertEqual(
+            pi_host._resolved_verbosity(payload, environment),
+            "balanced",
+        )
+        self.assertEqual(
+            pi_host._resolved_verbosity(
+                {**payload, "prompt": "build the feature --quiet"},
+                environment,
+            ),
+            "quiet",
+        )
 
     def test_worker_extension_copy_is_verified_and_read_only(self):
         path, digest = pi_host._worker_extension()

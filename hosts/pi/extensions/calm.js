@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { resolve } from "node:path";
 import * as PiCodingAgent from "@earendil-works/pi-coding-agent";
 import {
@@ -10,18 +11,52 @@ import {
 const TRANSPORT_PREFIX = "\u2063kimiflow:transport-v1\n";
 const ASSISTANT_PATCH = Symbol.for("kimiflow:calm-assistant-layout:pi-0.83");
 const USER_PATCH = Symbol.for("kimiflow:calm-user-layout:pi-0.83");
+const TOOL_PATCH = Symbol.for("kimiflow:calm-operational-tools:pi-0.83");
+const KIMIFLOW_OPERATIONAL_TOOLS = new Set([
+  "kimiflow_activate",
+  "kimiflow_reply",
+  "kimiflow_steer",
+  "kimiflow_subagent",
+]);
 
 let exportRendering = false;
 
-export function calmEnabled(root) {
+function configuredLevel(pathname) {
   try {
-    return readFileSync(
-      resolve(root, ".kimiflow", "verbosity"),
-      "utf8",
-    ).split(/\r?\n/, 1)[0].trim() === "quiet";
+    const value = readFileSync(pathname, "utf8")
+      .split(/\r?\n/, 1)[0]
+      .trim();
+    return ["quiet", "balanced", "verbose"].includes(value) ? value : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function calmEnabled(root, environment = process.env) {
+  if (["quiet", "balanced", "verbose"].includes(environment.KIMIFLOW_PI_VERBOSITY)) {
+    return environment.KIMIFLOW_PI_VERBOSITY === "quiet";
+  }
+  const project = configuredLevel(resolve(root, ".kimiflow", "verbosity"));
+  if (project !== null) return project === "quiet";
+  const codexHome = environment.CODEX_HOME ?? resolve(homedir(), ".codex");
+  return configuredLevel(resolve(codexHome, "kimiflow", "verbosity")) === "quiet";
+}
+
+function installOperationalToolLayout() {
+  const registry = globalThis;
+  if (registry[TOOL_PATCH]) return;
+  const Component = PiCodingAgent.ToolExecutionComponent;
+  const original = Component?.prototype?.render;
+  if (typeof Component !== "function" || typeof original !== "function") {
+    throw new Error("Pi ToolExecutionComponent.render is unavailable");
+  }
+  Component.prototype.render = function render(width) {
+    if (!exportRendering && KIMIFLOW_OPERATIONAL_TOOLS.has(this.toolName)) {
+      return [];
+    }
+    return original.call(this, width);
+  };
+  registry[TOOL_PATCH] = true;
 }
 
 export function operationalInput(text) {
@@ -175,7 +210,11 @@ function registerBuiltIn(pi, factory) {
 
 export default function registerCalmExtension(pi) {
   if (!calmEnabled(process.cwd())) return;
-  for (const install of [installAssistantLayout, installOperationalUserLayout]) {
+  for (const install of [
+    installAssistantLayout,
+    installOperationalUserLayout,
+    installOperationalToolLayout,
+  ]) {
     try {
       install();
     } catch (error) {

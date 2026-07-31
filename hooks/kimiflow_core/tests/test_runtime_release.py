@@ -43,6 +43,7 @@ def make_candidate(root):
         "hooks/active-run.sh": (0o755, b"#!/usr/bin/env bash\nexit 0\n"),
         "hooks/hooks.json": (0o644, b"{}\n"),
         "hooks/pi-host.sh": (0o755, b"#!/usr/bin/env bash\nexit 0\n"),
+        "hooks/pi-subagent-gate.sh": (0o755, b"#!/usr/bin/env bash\nexit 0\n"),
         "hooks/kimiflow_core/pi_herdr.py": (0o644, b'"""Herdr transport."""\n'),
         "hooks/kimiflow_core/pi_host.py": (0o644, b'"""Pi host."""\n'),
         "hooks/run.sh": (0o755, b"#!/usr/bin/env bash\nexit 0\n"),
@@ -230,6 +231,7 @@ class RuntimeReleaseTests(unittest.TestCase):
                     "hooks/run.sh",
                     "hooks/active-run.sh",
                     "hooks/pi-host.sh",
+                    "hooks/pi-subagent-gate.sh",
                 )):
                     self.assertEqual(mode, 0o755)
                 else:
@@ -372,6 +374,7 @@ class RuntimeReleaseTests(unittest.TestCase):
             "kimiflow/hosts/pi/extensions/worker.js",
             "kimiflow/hosts/pi/skills/kimiflow/SKILL.md",
             "kimiflow/hooks/pi-host.sh",
+            "kimiflow/hooks/pi-subagent-gate.sh",
         }.issubset(names))
         status, _, compatibility = runtime_release.verify_artifact(
             manifest_path,

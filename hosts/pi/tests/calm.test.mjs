@@ -60,6 +60,8 @@ function fixture(modules, verbosity) {
     path.join(root, "exercise.mjs"),
     `
 import assert from "node:assert/strict";
+import { mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import * as PiCodingAgent from "@earendil-works/pi-coding-agent";
 import registerCalm, {
   calmEnabled,
@@ -68,6 +70,23 @@ import registerCalm, {
 
 const expected = process.argv[2];
 assert.equal(calmEnabled(process.cwd()), expected === "quiet");
+assert.equal(
+  calmEnabled(process.cwd(), { KIMIFLOW_PI_VERBOSITY: "quiet" }),
+  true,
+);
+assert.equal(
+  calmEnabled(process.cwd(), { KIMIFLOW_PI_VERBOSITY: "balanced" }),
+  false,
+);
+const globalRoot = path.join(process.cwd(), "codex-home");
+mkdirSync(path.join(globalRoot, "kimiflow"), { recursive: true });
+writeFileSync(path.join(globalRoot, "kimiflow", "verbosity"), "quiet\\n");
+assert.equal(
+  calmEnabled(path.join(process.cwd(), "project-without-setting"), {
+    CODEX_HOME: globalRoot,
+  }),
+  true,
+);
 assert.equal(
   operationalInput("\\u2063kimiflow:transport-v1\\nrequest"),
   true,
@@ -170,6 +189,19 @@ start({}, {
   },
 });
 assert.equal(hiddenThinkingLabel, "");
+
+for (const name of [
+  "kimiflow_activate",
+  "kimiflow_reply",
+  "kimiflow_steer",
+  "kimiflow_subagent",
+]) {
+  const component = Object.create(
+    PiCodingAgent.ToolExecutionComponent.prototype,
+  );
+  component.toolName = name;
+  assert.deepEqual(component.render(100), []);
+}
 `,
   );
   return root;

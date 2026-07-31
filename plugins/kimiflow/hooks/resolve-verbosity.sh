@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # kimiflow — display-verbosity helper (read + write). The single tested place for
 # verbosity precedence + persistence. This is an OUTPUT-ONLY feature: it never
-# affects gates, on-disk artifacts, evidence, subagents or thresholds — only how
-# much the orchestrator prints. Orchestrator-invoked (not a Claude Code event hook).
+# affects gates, on-disk artifacts, evidence, subagent scheduling or thresholds —
+# only how much Pi/Herdr sessions render. Orchestrator-invoked (not a Claude Code event hook).
 #
 # Usage:
 #   resolve-verbosity.sh [get] [--flag <level>]      -> echo resolved level word

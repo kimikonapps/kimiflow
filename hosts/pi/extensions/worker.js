@@ -13,7 +13,11 @@ import {
   openSync,
   readFileSync,
   readdirSync,
+  renameSync,
   realpathSync,
+  rmdirSync,
+  unlinkSync,
+  writeFileSync,
 } from "node:fs";
 import {
   dirname,
@@ -30,12 +34,23 @@ const BRIDGE_ENV = "KIMIFLOW_PI_BRIDGE_BINDING";
 const ACTIVE_RUN_ENV = "KIMIFLOW_PI_ACTIVE_RUN";
 const SUBAGENT_TREE_TOKEN_ENV = "__KIMIFLOW_PI_SUBAGENT_TOKEN";
 const TREE_TOKEN = /^[0-9a-f]{64}$/;
-const SUBAGENT_RESERVATION_DIRECTORY = "PI-SUBAGENT-SLOTS-v1";
-const SUBAGENT_GENERATION_AUTHORITY_DIRECTORY = "PI-SUBAGENT-GENERATIONS-v1";
+// v2 stores live concurrency leases. v1 stored lifetime launch counts and must
+// never be restored as active work after an upgrade.
+const SUBAGENT_RESERVATION_DIRECTORY = "PI-SUBAGENT-SLOTS-v2";
+const SUBAGENT_GENERATION_AUTHORITY_DIRECTORY = "PI-SUBAGENT-GENERATIONS-v2";
 const MAX_SUBAGENTS = 3;
 const MAX_TASK_BYTES = 64 * 1024;
 const MAX_SUBAGENT_OUTPUT = 256 * 1024;
 const MAX_HOOK_OUTPUT = 64 * 1024;
+const RECEIPT_DIRECTORY = "PI-SUBAGENTS";
+const RECEIPT_ID = /^[a-z][a-z0-9-]{0,47}$/;
+const SUBAGENT_ROLES = Object.freeze({
+  research: Object.freeze({ phase: 2, readOnly: true }),
+  plan_review: Object.freeze({ phase: 4, readOnly: true }),
+  implementation: Object.freeze({ phase: 5, readOnly: false }),
+  verification: Object.freeze({ phase: 6, readOnly: true }),
+  code_review: Object.freeze({ phase: 7, readOnly: true }),
+});
 const BINDING_KEYS = [
   "schema_version",
   "root",
@@ -71,7 +86,7 @@ const PROTECTED_RUN_ARTIFACT = /^(?:INTENT-LOCK\.json|INTAKE-RECEIPT-[12]\.json)
 const BOOTSTRAP_ARTIFACT = /^(?:STATE\.md|INTENT\.md|INTAKE(?:-2)?\.md|WORKSPACE-PREFLIGHT\.json|ADAPTIVE-CLASSIFICATION\.json)$/;
 
 // Pi loads this package without project-local dependencies. This is the
-// runtime shape produced by Type.Object({ task: Type.String(...) }).
+// runtime shape produced by Type.Object({ task, role, round, seat }).
 const SUBAGENT_PARAMETERS = Object.freeze({
   type: "object",
   properties: {
@@ -81,8 +96,24 @@ const SUBAGENT_PARAMETERS = Object.freeze({
       maxLength: MAX_TASK_BYTES,
       description: "One bounded task for a fresh Kimiflow Pi subagent.",
     },
+    role: {
+      type: "string",
+      enum: Object.keys(SUBAGENT_ROLES),
+      description: "The canonical Kimiflow phase role this worker must perform.",
+    },
+    round: {
+      type: "integer",
+      minimum: 1,
+      maximum: 99,
+      description: "The owning Kimiflow phase round; use 1 when the phase is not iterative.",
+    },
+    seat: {
+      type: "string",
+      pattern: "^[a-z][a-z0-9-]{0,47}$",
+      description: "A stable seat name such as implementation-1 or plan-review-2.",
+    },
   },
-  required: ["task"],
+  required: ["task", "role", "round", "seat"],
   additionalProperties: false,
 });
 
@@ -231,19 +262,53 @@ export function createFileSubagentReservations(authority) {
       }
       throw new Error("subagent_capacity");
     },
+    release(slot) {
+      validateDirectory();
+      if (!Number.isInteger(slot) || slot < 1 || slot > MAX_SUBAGENTS) {
+        throw new Error("subagent_capacity_invalid");
+      }
+      const pathname = resolve(directory.path, `slot-${slot}`);
+      if (!existsSync(pathname)) return false;
+      validateSlot(pathname);
+      try {
+        rmdirSync(pathname);
+      } catch {
+        throw new Error("subagent_capacity_invalid");
+      }
+      const descriptor = openSync(
+        directory.path,
+        constants.O_RDONLY | (constants.O_DIRECTORY ?? 0),
+      );
+      try {
+        fsyncSync(descriptor);
+      } finally {
+        closeSync(descriptor);
+      }
+      return true;
+    },
   });
 }
 
 function createMemorySubagentReservations() {
-  let count = 0;
+  const slots = new Set();
   return Object.freeze({
     count() {
-      return count;
+      return slots.size;
     },
     reserve() {
-      if (count >= MAX_SUBAGENTS) throw new Error("subagent_capacity");
-      count += 1;
-      return count;
+      for (let slot = 1; slot <= MAX_SUBAGENTS; slot += 1) {
+        if (!slots.has(slot)) {
+          slots.add(slot);
+          return slot;
+        }
+      }
+      throw new Error("subagent_capacity");
+    },
+    release(slot) {
+      if (!Number.isInteger(slot) || slot < 1 || slot > MAX_SUBAGENTS) {
+        throw new Error("subagent_capacity_invalid");
+      }
+      return slots.delete(slot);
     },
   });
 }
@@ -309,12 +374,48 @@ export function loadWorkerAuthority(environment = process.env) {
   ) {
     throw new Error("pi_host_invalid");
   }
+  const herdr = environment.KIMIFLOW_PI_HERDR === "1";
+  const calmExtension = herdr
+    ? environment.KIMIFLOW_PI_CALM_EXTENSION
+    : null;
+  const calmDigest = herdr
+    ? environment.KIMIFLOW_PI_CALM_EXTENSION_DIGEST
+    : null;
+  if (herdr) {
+    let calmInfo;
+    try {
+      calmInfo = lstatSync(calmExtension);
+    } catch {
+      throw new Error("calm_extension_invalid");
+    }
+    if (
+      typeof calmExtension !== "string"
+      || !isAbsolute(calmExtension)
+      || realpathSync(calmExtension) !== calmExtension
+      || calmInfo.isSymbolicLink()
+      || !calmInfo.isFile()
+      || calmExtension.slice(calmExtension.lastIndexOf("/") + 1) !== "calm.js"
+      || typeof calmDigest !== "string"
+      || calmDigest !== `sha256:${createHash("sha256")
+        .update(readFileSync(calmExtension))
+        .digest("hex")}`
+    ) {
+      throw new Error("calm_extension_invalid");
+    }
+  }
+  const verbosity = environment.KIMIFLOW_PI_VERBOSITY ?? "balanced";
+  if (!["quiet", "balanced", "verbose"].includes(verbosity)) {
+    throw new Error("pi_verbosity_invalid");
+  }
   return Object.freeze({
     ...binding,
     executable,
     activeRun,
     piHost,
-    herdr: environment.KIMIFLOW_PI_HERDR === "1",
+    calmExtension,
+    calmDigest,
+    verbosity,
+    herdr,
     selection: Object.freeze(parseSelection(environment.KIMIFLOW_PI_SELECTION)),
   });
 }
@@ -661,6 +762,117 @@ function boundedTask(value) {
   return value.trim();
 }
 
+function boundedSubagentRequest(value) {
+  if (
+    !exactKeys(value, ["task", "role", "round", "seat"])
+    || !Object.hasOwn(SUBAGENT_ROLES, value.role)
+    || typeof value.round === "boolean"
+    || !Number.isInteger(value.round)
+    || value.round < 1
+    || value.round > 99
+    || typeof value.seat !== "string"
+    || !RECEIPT_ID.test(value.seat)
+  ) {
+    throw new Error("subagent_request_invalid");
+  }
+  const role = SUBAGENT_ROLES[value.role];
+  return Object.freeze({
+    task: boundedTask(value.task),
+    role: value.role,
+    phase: role.phase,
+    readOnly: role.readOnly,
+    round: value.round,
+    seat: value.seat,
+  });
+}
+
+export function createSubagentReceiptWriter(
+  authority,
+  getIntakeState = () => intakeState(authority),
+) {
+  return (value) => {
+    const active = normalizedIntakeState(getIntakeState());
+    if (active.state !== "confirmed" || active.run === null) {
+      throw new Error("subagent_receipt_run_invalid");
+    }
+    const runDirectory = resolve(authority.root, active.run);
+    if (
+      !existsSync(runDirectory)
+      || realpathSync(runDirectory) !== runDirectory
+      || !lstatSync(runDirectory).isDirectory()
+      || lstatSync(runDirectory).isSymbolicLink()
+    ) {
+      throw new Error("subagent_receipt_run_invalid");
+    }
+    const directory = resolve(runDirectory, RECEIPT_DIRECTORY);
+    ensureReservationDirectory(directory, true);
+    const receiptId = `sha256:${createHash("sha256")
+      .update([
+        value.workerId,
+        value.workerSessionId,
+        value.subagentSessionId,
+        String(value.phase),
+        value.role,
+        String(value.round),
+        value.seat,
+      ].join("\0"))
+      .digest("hex")}`;
+    const receipt = {
+      schema_version: 1,
+      receipt_id: receiptId,
+      root: authority.root,
+      run: active.run,
+      worker_id: value.workerId,
+      worker_session_id: value.workerSessionId,
+      subagent_session_id: value.subagentSessionId,
+      phase: value.phase,
+      role: value.role,
+      round: value.round,
+      seat: value.seat,
+      slot: value.slot,
+      backend: value.backend,
+      status: value.status,
+      task_digest: `sha256:${createHash("sha256").update(value.task).digest("hex")}`,
+      result_digest: `sha256:${createHash("sha256").update(value.result).digest("hex")}`,
+    };
+    const payload = `${JSON.stringify(receipt)}\n`;
+    const name = `${value.phase}-${value.round}-${value.role}-${value.seat}-${receiptId.slice(7, 31)}.json`;
+    const target = resolve(directory, name);
+    const temporary = `${target}.tmp-${randomUUID()}`;
+    let descriptor = null;
+    try {
+      descriptor = openSync(
+        temporary,
+        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL
+          | (constants.O_NOFOLLOW ?? 0),
+        0o600,
+      );
+      writeFileSync(descriptor, payload, "utf8");
+      fsyncSync(descriptor);
+      closeSync(descriptor);
+      descriptor = null;
+      renameSync(temporary, target);
+      const directoryDescriptor = openSync(
+        directory,
+        constants.O_RDONLY | (constants.O_DIRECTORY ?? 0),
+      );
+      try {
+        fsyncSync(directoryDescriptor);
+      } finally {
+        closeSync(directoryDescriptor);
+      }
+    } finally {
+      if (descriptor !== null) closeSync(descriptor);
+      try {
+        unlinkSync(temporary);
+      } catch (error) {
+        if (error?.code !== "ENOENT") throw error;
+      }
+    }
+    return `${active.run}/${RECEIPT_DIRECTORY}/${name}`;
+  };
+}
+
 function assistantMessage(event) {
   const message = event?.message;
   if (message?.role !== "assistant" || !Array.isArray(message.content)) {
@@ -777,6 +989,7 @@ export class GenerationSupervisor {
     spawn = nodeSpawn,
     idFactory = randomUUID,
     reservations = null,
+    receiptWriter = null,
   } = {}) {
     if (!authority) throw new Error("subagent_capacity_invalid");
     if (
@@ -785,16 +998,20 @@ export class GenerationSupervisor {
         typeof reservations !== "object"
         || typeof reservations.count !== "function"
         || typeof reservations.reserve !== "function"
+        || typeof reservations.release !== "function"
       )
     ) {
       throw new Error("subagent_capacity_invalid");
+    }
+    if (receiptWriter !== null && typeof receiptWriter !== "function") {
+      throw new Error("subagent_receipt_invalid");
     }
     this.authority = authority;
     this.spawn = spawn;
     this.idFactory = idFactory;
     this.reservations = reservations ?? createMemorySubagentReservations();
+    this.receiptWriter = receiptWriter;
     this.active = new Set();
-    this.launched = 0;
     this.workerSessionId = null;
     this.stopping = false;
   }
@@ -804,24 +1021,23 @@ export class GenerationSupervisor {
   }
 
   restoreReservations(_context) {
-    if (this.active.size !== 0 || this.launched !== 0) {
+    if (this.active.size !== 0) {
       throw new Error("subagent_capacity_invalid");
     }
-    this.launched = this.reservations.count();
+    const reserved = this.reservations.count();
     if (
-      !Number.isInteger(this.launched)
-      || this.launched < 0
-      || this.launched > MAX_SUBAGENTS
+      !Number.isInteger(reserved)
+      || reserved < 0
+      || reserved > MAX_SUBAGENTS
     ) {
       throw new Error("subagent_capacity_invalid");
     }
-    return this.launched;
+    return reserved;
   }
 
-  async launchSubagent(task) {
-    const input = boundedTask(task);
+  async launchSubagent(params) {
+    const request = boundedSubagentRequest(params);
     if (this.stopping) throw new Error("subagent_generation_stopping");
-    if (this.launched >= MAX_SUBAGENTS) throw new Error("subagent_capacity");
     exactId(this.workerSessionId, "worker_session");
     const sessionId = exactId(this.idFactory(), "subagent_identity");
     const slot = this.reservations.reserve();
@@ -830,23 +1046,26 @@ export class GenerationSupervisor {
       || slot < 1
       || slot > MAX_SUBAGENTS
     ) {
+      this.reservations.release(slot);
       throw new Error("subagent_capacity_invalid");
     }
     const subagentId = `subagent-${slot}-${sessionId.slice(0, 12)}`;
-    this.launched = Math.max(this.launched, slot);
     const selection = this.authority.selection;
     const herdr = this.authority.herdr === true;
+    const directTools = request.readOnly
+      ? "read,grep,find,ls"
+      : "read,bash,edit,write,grep,find,ls";
     const args = herdr
       ? ["subagent", "--json"]
       : [
           "--mode", "json",
           "--no-extensions",
-          "--tools", "read,grep,find,ls",
+          "--tools", directTools,
           "--provider", selection.provider,
           "--model", selection.model,
           "--thinking", selection.thinking,
           "--session-id", sessionId,
-          `Kimiflow bounded subagent task:\n${input}`,
+          `Kimiflow bounded ${request.role} subagent task:\n${request.task}`,
         ];
     const environment = { ...process.env };
     for (const key of Object.keys(environment)) {
@@ -856,18 +1075,25 @@ export class GenerationSupervisor {
       .update(`${randomUUID()}:${sessionId}`)
       .digest("hex");
     environment[SUBAGENT_TREE_TOKEN_ENV] = cleanupToken;
-    const child = this.spawn(
-      herdr ? this.authority.piHost : this.authority.executable,
-      args,
-      {
-      cwd: this.authority.root,
-      env: environment,
-      detached: true,
-      stdio: [herdr ? "pipe" : "ignore", "pipe", "ignore"],
-      },
-    );
+    let child;
+    try {
+      child = this.spawn(
+        herdr ? this.authority.piHost : this.authority.executable,
+        args,
+        {
+          cwd: this.authority.root,
+          env: environment,
+          detached: true,
+          stdio: [herdr ? "pipe" : "ignore", "pipe", "ignore"],
+        },
+      );
+    } catch (error) {
+      this.reservations.release(slot);
+      throw error;
+    }
     if (!Number.isInteger(child?.pid) || child.pid < 1) {
       child?.kill?.("SIGKILL");
+      this.reservations.release(slot);
       throw new Error("subagent_spawn_failed");
     }
     child.kimiflowProcessGroup = true;
@@ -878,25 +1104,43 @@ export class GenerationSupervisor {
         root: this.authority.root,
         session_id: sessionId,
         slot,
-        task: input,
+        task: request.task,
+        role: request.role,
+        round: request.round,
+        seat: request.seat,
+        calm_extension: this.authority.calmExtension,
+        calm_extension_digest: this.authority.calmDigest,
+        verbosity: this.authority.verbosity,
         selection,
       })}\n`);
     }
     this.active.add(child);
     try {
-      return {
+      const value = {
         generation: this.generationId(),
         workerId: this.authority.worker_id,
         workerSessionId: this.workerSessionId,
         subagentId,
         subagentSessionId: sessionId,
+        phase: request.phase,
+        role: request.role,
+        round: request.round,
+        seat: request.seat,
+        slot,
+        task: request.task,
         status: "completed",
         result: await collectSubagent(child, this.authority, sessionId),
         backend: herdr ? "herdr" : "process",
       };
+      value.receipt = this.receiptWriter?.(value) ?? null;
+      return value;
     } finally {
-      await stopChild(child);
-      this.active.delete(child);
+      try {
+        await stopChild(child);
+      } finally {
+        this.active.delete(child);
+        this.reservations.release(slot);
+      }
     }
   }
 
@@ -1024,6 +1268,8 @@ export default function registerWorkerExtension(pi, options = {}) {
     idFactory: options.idFactory ?? randomUUID,
     reservations: options.reservations
       ?? createFileSubagentReservations(authority),
+    receiptWriter: options.receiptWriter
+      ?? createSubagentReceiptWriter(authority),
   });
   pi.on("tool_call", createPreIntakeGuard(authority, options));
   pi.on("before_agent_start", (event, context) => forwardPromptContext(
@@ -1046,10 +1292,10 @@ export default function registerWorkerExtension(pi, options = {}) {
   pi.registerTool({
     name: "kimiflow_subagent",
     label: "Kimiflow Subagent",
-    description: "Run one bounded fresh Pi subagent for this Kimiflow worker generation.",
+    description: "Run one role-bound fresh Pi subagent and record its mechanical Kimiflow phase receipt.",
     parameters: SUBAGENT_PARAMETERS,
     async execute(_toolCallId, params) {
-      const value = await supervisor.launchSubagent(params.task);
+      const value = await supervisor.launchSubagent(params);
       return {
         content: [{ type: "text", text: JSON.stringify(value) }],
         details: value,

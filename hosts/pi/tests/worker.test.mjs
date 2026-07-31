@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { spawn as spawnProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import {
   existsSync,
   linkSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -21,12 +23,17 @@ import test from "node:test";
 import registerWorkerExtension, {
   createFileSubagentReservations,
   createPreIntakeGuard,
+  createSubagentReceiptWriter,
   forwardPromptContext,
   GenerationSupervisor,
   loadWorkerAuthority,
 } from "../extensions/worker.js";
 
 function authority(root = process.cwd()) {
+  const calmExtension = realpathSync(path.join(
+    process.cwd(),
+    "hosts/pi/extensions/calm.js",
+  ));
   return {
     schema_version: 1,
     root,
@@ -34,6 +41,11 @@ function authority(root = process.cwd()) {
     worker_id: "worker-00000001",
     executable: process.execPath,
     activeRun: `${process.cwd()}/hooks/active-run.sh`,
+    calmExtension,
+    calmDigest: `sha256:${createHash("sha256")
+      .update(readFileSync(calmExtension))
+      .digest("hex")}`,
+    verbosity: "quiet",
     selection: {
       provider: "openai",
       model: "gpt-5.6",
@@ -46,6 +58,9 @@ function environment(overrides = {}, root = process.cwd()) {
   const value = authority(root);
   delete value.executable;
   delete value.activeRun;
+  delete value.calmExtension;
+  delete value.calmDigest;
+  delete value.verbosity;
   delete value.selection;
   return {
     KIMIFLOW_PI_BRIDGE_BINDING: JSON.stringify(value),
@@ -56,6 +71,8 @@ function environment(overrides = {}, root = process.cwd()) {
       model: "gpt-5.6",
       thinking: "high",
     }),
+    KIMIFLOW_PI_CALM_EXTENSION: value.calmExtension,
+    KIMIFLOW_PI_CALM_EXTENSION_DIGEST: value.calmDigest,
     ...overrides,
   };
 }
@@ -75,6 +92,20 @@ function lifecycle(sessionId, cwd, result = "bounded result") {
     { type: "agent_end" },
     { type: "agent_settled" },
   ];
+}
+
+function subagentRequest(task, overrides = {}) {
+  const stem = task.toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 42) || "worker";
+  return {
+    task,
+    role: "code_review",
+    round: 1,
+    seat: `test-${stem}`,
+    ...overrides,
+  };
 }
 
 function completingSpawn(log, eventsFactory = lifecycle) {
@@ -118,6 +149,8 @@ test("worker authority is optional, exact, and preserves colon model IDs", () =>
     /worker_binding_invalid/,
   );
   const loaded = loadWorkerAuthority(environment({
+    KIMIFLOW_PI_CALM_EXTENSION: "/missing/calm.js",
+    KIMIFLOW_PI_CALM_EXTENSION_DIGEST: "invalid",
     KIMIFLOW_PI_SELECTION: JSON.stringify({
       provider: "cloudflare",
       model: "@cf/meta/llama:free",
@@ -130,7 +163,15 @@ test("worker authority is optional, exact, and preserves colon model IDs", () =>
     thinking: "max",
   });
   assert.equal(loaded.worker_id, "worker-00000001");
+  assert.equal(loaded.calmExtension, null);
   assert.equal(Object.isFrozen(loaded), true);
+  assert.throws(
+    () => loadWorkerAuthority(environment({
+      KIMIFLOW_PI_HERDR: "1",
+      KIMIFLOW_PI_CALM_EXTENSION: "/missing/calm.js",
+    })),
+    /calm_extension_invalid/,
+  );
 });
 
 test("pre-intake guard permits only reads, trusted control, and current run artifacts", async () => {
@@ -257,7 +298,9 @@ test("subagent command, identity, model, root, and environment are derived", asy
   });
   supervisor.workerSessionId = "pi-worker-00000001";
 
-  const result = await supervisor.launchSubagent("--model attacker-controlled");
+  const result = await supervisor.launchSubagent(
+    subagentRequest("--model attacker-controlled"),
+  );
   for (const [key, value] of previous) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -275,7 +318,7 @@ test("subagent command, identity, model, root, and environment are derived", asy
     "--model", "gpt-5.6",
     "--thinking", "high",
     "--session-id", "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
-    "Kimiflow bounded subagent task:\n--model attacker-controlled",
+    "Kimiflow bounded code_review subagent task:\n--model attacker-controlled",
   ]);
   assert.equal(call.options.cwd, process.cwd());
   assert.equal(call.options.detached, true);
@@ -323,14 +366,76 @@ test("Herdr workers launch visible read-only Pi subagents through pi-host", asyn
     idFactory: () => "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
   });
   supervisor.workerSessionId = "pi-worker-00000001";
-  const result = await supervisor.launchSubagent("review the current code");
+  const result = await supervisor.launchSubagent(
+    subagentRequest("review the current code"),
+  );
   assert.equal(result.backend, "herdr");
   assert.equal(result.result, "visible review");
   assert.equal(calls[0].command, `${process.cwd()}/hooks/pi-host.sh`);
   assert.deepEqual(calls[0].args, ["subagent", "--json"]);
   assert.equal(calls[0].payload.task, "review the current code");
   assert.equal(calls[0].payload.slot, 1);
+  assert.equal(calls[0].payload.role, "code_review");
+  assert.equal(calls[0].payload.round, 1);
+  assert.equal(calls[0].payload.seat, "test-review-the-current-code");
+  assert.equal(calls[0].payload.calm_extension, authority().calmExtension);
+  assert.equal(calls[0].payload.calm_extension_digest, authority().calmDigest);
+  assert.equal(calls[0].payload.verbosity, "quiet");
   assert.deepEqual(calls[0].payload.selection, authority().selection);
+});
+
+test("implementation workers receive the bounded write-capable tool set", async () => {
+  const calls = [];
+  const supervisor = new GenerationSupervisor({
+    authority: authority(),
+    spawn: completingSpawn(calls),
+    idFactory: () => "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+  });
+  supervisor.workerSessionId = "pi-worker-00000001";
+  const result = await supervisor.launchSubagent(subagentRequest(
+    "implement the accepted slice",
+    { role: "implementation", seat: "implementation-1" },
+  ));
+  assert.equal(result.role, "implementation");
+  assert.equal(result.phase, 5);
+  const args = calls[0].args;
+  assert.equal(args[args.indexOf("--tools") + 1], "read,bash,edit,write,grep,find,ls");
+});
+
+test("completed role-bound subagents write one private mechanical receipt", (t) => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "kimiflow-receipt-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const run = path.join(root, ".kimiflow", "run-7");
+  mkdirSync(run, { recursive: true });
+  const value = authority(root);
+  const writeReceipt = createSubagentReceiptWriter(value, () => ({
+    state: "confirmed",
+    run: ".kimiflow/run-7",
+  }));
+  const relative = writeReceipt({
+    workerId: value.worker_id,
+    workerSessionId: "pi-worker-00000001",
+    subagentSessionId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+    phase: 5,
+    role: "implementation",
+    round: 1,
+    seat: "implementation-1",
+    slot: 1,
+    backend: "herdr",
+    status: "completed",
+    task: "implement the accepted slice",
+    result: "implemented and verified",
+  });
+  const receiptPath = path.join(root, relative);
+  const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+  assert.equal(lstatSync(path.dirname(receiptPath)).mode & 0o077, 0);
+  assert.equal(lstatSync(receiptPath).mode & 0o077, 0);
+  assert.equal(receipt.role, "implementation");
+  assert.equal(receipt.phase, 5);
+  assert.equal(receipt.seat, "implementation-1");
+  assert.match(receipt.receipt_id, /^sha256:[0-9a-f]{64}$/);
+  assert.match(receipt.task_digest, /^sha256:[0-9a-f]{64}$/);
+  assert.match(receipt.result_digest, /^sha256:[0-9a-f]{64}$/);
 });
 
 test("subagent completion uses the last successful Pi retry lifecycle", async () => {
@@ -365,7 +470,7 @@ test("subagent completion uses the last successful Pi retry lifecycle", async ()
     idFactory: () => "11111111-2222-4333-8444-555555555555",
   });
   supervisor.workerSessionId = "pi-worker-00000001";
-  const result = await supervisor.launchSubagent("recover once");
+  const result = await supervisor.launchSubagent(subagentRequest("recover once"));
   assert.equal(result.result, "recovered result");
 });
 
@@ -392,7 +497,7 @@ test("subagent completion rejects Pi 0.83 pending output", async () => {
   });
   supervisor.workerSessionId = "pi-worker-00000001";
   await assert.rejects(
-    supervisor.launchSubagent("reject partial output"),
+    supervisor.launchSubagent(subagentRequest("reject partial output")),
     /subagent_lifecycle_incomplete/,
   );
 });
@@ -425,7 +530,7 @@ test("subagent output rejects invalid UTF-8", async () => {
   });
   supervisor.workerSessionId = "pi-worker-00000001";
   await assert.rejects(
-    supervisor.launchSubagent("reject invalid UTF-8"),
+    supervisor.launchSubagent(subagentRequest("reject invalid UTF-8")),
     /subagent_output_invalid/,
   );
 });
@@ -457,7 +562,9 @@ test("subagent output waits for close after exit", async () => {
     idFactory: () => "11111111-2222-4333-8444-555555555555",
   });
   supervisor.workerSessionId = "pi-worker-00000001";
-  const result = await supervisor.launchSubagent("wait for stdout close");
+  const result = await supervisor.launchSubagent(
+    subagentRequest("wait for stdout close"),
+  );
   assert.equal(result.result, "bounded result");
 });
 
@@ -493,12 +600,15 @@ test("generation enforces three fresh children and shutdown stops all of them", 
   });
   supervisor.workerSessionId = "pi-worker-00000001";
   const pending = [
-    supervisor.launchSubagent("one"),
-    supervisor.launchSubagent("two"),
-    supervisor.launchSubagent("three"),
+    supervisor.launchSubagent(subagentRequest("one")),
+    supervisor.launchSubagent(subagentRequest("two")),
+    supervisor.launchSubagent(subagentRequest("three")),
   ];
   await new Promise((done) => setImmediate(done));
-  await assert.rejects(supervisor.launchSubagent("four"), /subagent_capacity/);
+  await assert.rejects(
+    supervisor.launchSubagent(subagentRequest("four")),
+    /subagent_capacity/,
+  );
   assert.equal(supervisor.active.size, 3);
   assert.deepEqual(await supervisor.stopGeneration(), {
     generation: "generation-worker-00000001",
@@ -507,10 +617,13 @@ test("generation enforces three fresh children and shutdown stops all of them", 
   });
   assert.equal(supervisor.active.size, 0);
   assert.ok((await Promise.allSettled(pending)).every(({ status }) => status === "rejected"));
-  await assert.rejects(supervisor.launchSubagent("later"), /subagent_generation_stopping/);
+  await assert.rejects(
+    supervisor.launchSubagent(subagentRequest("later")),
+    /subagent_generation_stopping/,
+  );
 });
 
-test("generation rejects a fourth sequential fresh subagent", async () => {
+test("generation reuses a released slot after sequential subagents", async () => {
   const calls = [];
   const identities = [
     "11111111-2222-4333-8444-555555555555",
@@ -524,17 +637,15 @@ test("generation rejects a fourth sequential fresh subagent", async () => {
     idFactory: () => identities.shift(),
   });
   supervisor.workerSessionId = "pi-worker-00000001";
-  await supervisor.launchSubagent("one");
-  await supervisor.launchSubagent("two");
-  await supervisor.launchSubagent("three");
-  await assert.rejects(
-    supervisor.launchSubagent("four"),
-    /subagent_capacity/,
-  );
-  assert.equal(calls.length, 3);
+  await supervisor.launchSubagent(subagentRequest("one"));
+  await supervisor.launchSubagent(subagentRequest("two"));
+  await supervisor.launchSubagent(subagentRequest("three"));
+  const fourth = await supervisor.launchSubagent(subagentRequest("four"));
+  assert.equal(fourth.slot, 1);
+  assert.equal(calls.length, 4);
 });
 
-test("generation cap survives a fresh Pi transport process", async (t) => {
+test("a fresh Pi transport sees released completed slots", async (t) => {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "kimiflow-worker-slots-")));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const calls = [];
@@ -561,6 +672,7 @@ test("generation cap survives a fresh Pi transport process", async (t) => {
       environment: environment({}, root),
       spawn: completingSpawn(calls),
       idFactory: () => identities.shift(),
+      receiptWriter: () => ".kimiflow/run/PI-SUBAGENTS/test.json",
     });
     handlers.get("session_start")({}, current);
     return tools.get("kimiflow_subagent");
@@ -568,23 +680,20 @@ test("generation cap survives a fresh Pi transport process", async (t) => {
 
   const first = createTransport();
   for (const task of ["one", "two", "three"]) {
-    await first.execute("tool-call", { task });
+    await first.execute("tool-call", subagentRequest(task));
   }
   const second = createTransport();
-  await assert.rejects(
-    second.execute("tool-call", { task: "four" }),
-    /subagent_capacity/,
-  );
-  assert.equal(calls.length, 3);
+  await second.execute("tool-call", subagentRequest("four"));
+  assert.equal(calls.length, 4);
   assert.deepEqual(
     readdirSync(path.join(
       root,
       ".kimiflow",
       "session",
-      "PI-SUBAGENT-SLOTS-v1",
+      "PI-SUBAGENT-SLOTS-v2",
       "worker-00000001",
     )).sort(),
-    ["slot-1", "slot-2", "slot-3"],
+    [],
   );
 });
 
@@ -608,7 +717,7 @@ test("generation cap survives Pi branch rewind", async (t) => {
   });
   first.workerSessionId = "pi-worker-00000001";
   for (const task of ["one", "two", "three"]) {
-    await first.launchSubagent(task);
+    await first.launchSubagent(subagentRequest(task));
   }
   const restored = new GenerationSupervisor({
     authority: value,
@@ -619,9 +728,9 @@ test("generation cap survives Pi branch rewind", async (t) => {
   restored.workerSessionId = "pi-worker-00000001";
   assert.equal(restored.restoreReservations({
     sessionManager: { getBranch() { return []; } },
-  }), 3);
-  await assert.rejects(restored.launchSubagent("four"), /subagent_capacity/);
-  assert.equal(calls.length, 3);
+  }), 0);
+  await restored.launchSubagent(subagentRequest("four"));
+  assert.equal(calls.length, 4);
 });
 
 test("file generation slots serialize fresh transport processes", async (t) => {
@@ -702,7 +811,7 @@ test("removing a known generation ledger fails closed instead of resetting capac
       root,
       ".kimiflow",
       "session",
-      "PI-SUBAGENT-SLOTS-v1",
+      "PI-SUBAGENT-SLOTS-v2",
       value.worker_id,
     );
     renameSync(generation, `${generation}-removed`);
@@ -728,7 +837,7 @@ test("replacing a pinned generation directory cannot reset live reservations", (
       root,
       ".kimiflow",
       "session",
-      "PI-SUBAGENT-SLOTS-v1",
+      "PI-SUBAGENT-SLOTS-v2",
       value.worker_id,
     );
     renameSync(generation, `${generation}-removed`);
@@ -755,7 +864,7 @@ test("moving the ledger and colocated marker preserves external generation autho
       root,
       ".kimiflow",
       "session",
-      "PI-SUBAGENT-SLOTS-v1",
+      "PI-SUBAGENT-SLOTS-v2",
     );
     renameSync(
       path.join(registry, value.worker_id),
@@ -818,7 +927,9 @@ test("generation shutdown settles a real descendant process group", async (t) =>
     idFactory: () => "subagent-00000001",
   });
   supervisor.workerSessionId = "worker-session-0001";
-  const launch = supervisor.launchSubagent("hold one descendant").then(
+  const launch = supervisor.launchSubagent(
+    subagentRequest("hold one descendant"),
+  ).then(
     () => null,
     (error) => error,
   );
