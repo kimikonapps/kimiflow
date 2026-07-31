@@ -6,6 +6,25 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.32
+
+The visible Herdr/Pi correction patch.
+
+### Changed
+
+- A Pi Captain running in Herdr opens one unfocused visible interactive Pi tab for the persistent Kimiflow
+  worker. Bounded semantic agents use visible temporary read-only Pi tabs in the same workspace; the Captain
+  stays focused and conversational. Outside Herdr, the existing process transport remains available.
+- Herdr endpoints are correlated with Pi's native v3 session file and exact submitted prompt. Kimiflow closes
+  only verified tab IDs on failure, terminal completion, or subagent cleanup.
+- Captain attention is emitted exactly once per transition as readable text with structured details. Durable
+  Pi session history prevents replay after restore; synchronous send failures remain retryable.
+- Worker prompt context now uses the current Pi `before_agent_start` prompt, preserving every byte after the
+  first authoritative transport delimiter.
+- Exact numbered requests resolve existing project plans without prefix collisions: `Run 7` cannot select a
+  `Run 7.2` plan, and ambiguous exact plans fail closed.
+- Pi semantic-agent process fallback is explicitly read-only.
+
 ## 0.2.31
 
 The Pi 0.83 compatibility patch: Kimiflow now accepts the verified Pi 0.83 JSON/session contract while

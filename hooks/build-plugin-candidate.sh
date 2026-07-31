@@ -85,6 +85,7 @@ required_additive = {
     "hosts/pi/extensions/worker.js",
     "hosts/pi/skills/kimiflow/SKILL.md",
     "hooks/pi-host.sh",
+    "hooks/kimiflow_core/pi_herdr.py",
     "hooks/kimiflow_core/pi_host.py",
 }
 missing_additive = sorted(

@@ -155,7 +155,7 @@ Build the requested feature with Kimiflow.
 The natural request and optional slash command use the same durable activation transaction. That exact Pi
 session remains the responsive Captain while it starts the existing Kimiflow runner in the background. The
 runner and Active Run remain the only workflow authorities; the Pi bridge adds no second registry, worker
-orchestrator, delivery queue, daemon, or Herdr control plane.
+orchestrator, delivery queue, or daemon.
 
 The Pi adapter inherits the session's provider-neutral `provider/model:thinking` selection. Kimiflow continues
 to own intake, planning, its normal bounded subagents, gates, worktrees, recovery, and completion. Replies and
@@ -164,8 +164,14 @@ completion; only the matching terminal Kimiflow runner receipt does. Activation 
 runner process has spawned, so the Pi conversation stays usable. A durable opaque claim lets the same Pi
 session reattach after an interrupted activation without starting another runner.
 
-Herdr may host the already-running Pi application, but Kimiflow neither requires nor controls Herdr. It never
-installs or starts Pi, Herdr, or a model provider.
+If that Captain is already running in Herdr, Kimiflow uses the same Herdr workspace as a visible UI transport:
+one unfocused interactive Pi tab hosts the persistent main worker and temporary unfocused Pi tabs show bounded
+read-only semantic agents. The Captain keeps focus and remains conversational. Kimiflow owns only the exact
+tabs it creates; runner and Active Run remain authoritative. Outside Herdr, the existing process transport is
+unchanged. Kimiflow never installs Pi, Herdr, or a model provider.
+
+A request that names an existing numbered plan (for example `Run 7`) selects only that exact project plan;
+it cannot silently fall through to `Run 7.2` or replace confirmed plan facts with generic intake.
 
 This package is additive. If it is not installed or activated in Pi, the embedded `$kimiflow`
 Codex and `/kimiflow` Claude Code paths, their hooks, and the optional terminal runner behave exactly as before.

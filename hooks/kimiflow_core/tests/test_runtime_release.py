@@ -41,6 +41,7 @@ def make_candidate(root):
         "hooks/active-run.sh": (0o755, b"#!/usr/bin/env bash\nexit 0\n"),
         "hooks/hooks.json": (0o644, b"{}\n"),
         "hooks/pi-host.sh": (0o755, b"#!/usr/bin/env bash\nexit 0\n"),
+        "hooks/kimiflow_core/pi_herdr.py": (0o644, b'"""Herdr transport."""\n'),
         "hooks/kimiflow_core/pi_host.py": (0o644, b'"""Pi host."""\n'),
         "hooks/run.sh": (0o755, b"#!/usr/bin/env bash\nexit 0\n"),
         "phases/PHASES.json": (0o644, b"{}\n"),

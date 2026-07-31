@@ -6,7 +6,7 @@ subagent contracts. If a host moves one of these primitives, parts of kimiflow c
 kimiflow concretely uses, what breaks if it changes, and a smoke checklist to run at each version bump.
 
 **Last verified against:** Claude Code **2.1.202** · Codex CLI **0.142.5** · Pi **0.83.0** · kimiflow
-**0.2.31** · 2026-07-30.
+**0.2.32** · 2026-07-31.
 
 > **0.x expectation.** These primitives are NOT a stable public contract. Treat breakage as *expected*
 > across Claude Code or Codex minor versions until a version is explicitly pinned — keep the README's
@@ -20,11 +20,11 @@ install or launch Pi, Herdr, or a provider. A natural user request to build with
 `kimiflow_activate`; `/kimiflow <request>` is an equivalent convenience path. Both bind the already-running Pi
 session as Captain and forward its `provider/model:thinking` selection through `hooks/pi-host.sh`. The transport requires
 Pi's exact version-3 `type: "session"` header, balanced `agent_start`/`agent_end` lifecycles, and a clean process
-exit after Pi has handled any automatic retry, compaction, or queued continuation. The last completed lifecycle
+exit after Pi has handled any automatic retry, compaction, or queued continuation in the process fallback. The last completed lifecycle
 controls provider-turn success. Pi lifecycle is never Kimiflow completion evidence; only the matching terminal
 Kimiflow runner receipt is authoritative. The primary Pi extension starts that existing runner in the
 background and derives status, questions, replies, and completion from its runner/Active-Run state. It does not
-add a Captain CLI, a second worker registry, a delivery spool, or Herdr lifecycle ownership. Missing Pi,
+add a Captain CLI, a second worker registry, or a delivery spool. Missing Pi,
 incompatible version, capability drift, or an invalid session/lifecycle event fails closed. An uninstalled or
 unused Pi package is absent from execution, so embedded Claude Code and Codex remain independent. A detached,
 single-purpose cleanup sentinel owns only the transient Pi process-tree tag and a local cleanup lease. It keeps
@@ -47,8 +47,11 @@ request digest, and the exact non-secret `provider/model:thinking` selector requ
 answers, transcripts, credentials, or hidden reasoning. Pi controls persistence of the ordinary Captain
 conversation separately and may store its user and assistant messages in the Pi session transcript.
 
-Herdr may host the already-running Pi UI, but it is not a Kimiflow dependency or control plane. Kimiflow never
-installs, starts, configures, or projects workers into Herdr.
+When Captain already runs inside verified Herdr 0.7.5 protocol 17 context, Kimiflow uses Herdr as a visible
+UI transport: one unfocused interactive Pi tab hosts the persistent main worker and temporary unfocused
+interactive Pi tabs host at most three bounded read-only semantic agents. Captain retains focus. Kimiflow
+correlates every turn with Pi's native v3 session JSONL and owns only the exact tab IDs it created; runner and
+Active Run remain the sole workflow authority. Outside Herdr, the existing process transport is unchanged.
 
 ## Claude Code primitives used
 

@@ -120,7 +120,7 @@ Baue das gewuenschte Feature mit Kimiflow.
 Der natuerliche Auftrag und der optionale Slash-Befehl verwenden dieselbe dauerhafte Aktivierung. Genau diese
 Pi-Sitzung bleibt der ansprechbare Captain und startet den vorhandenen Kimiflow-Runner im Hintergrund. Runner
 und Active Run bleiben die einzigen Workflow-Autoritaeten; die Pi-Bruecke fuegt keine zweite Registry, keinen
-Worker-Orchestrator, keine Delivery-Queue, keinen Daemon und keine Herdr-Control-Plane hinzu.
+Worker-Orchestrator, keine Delivery-Queue und keinen Daemon hinzu.
 
 Der Pi-Adapter uebernimmt die providerneutrale Auswahl `provider/model:thinking` der Sitzung. Kimiflow bleibt
 fuer Intake, Planung, seine normalen begrenzten Subagents, Gates, Worktrees, Recovery und Abschluss zustaendig.
@@ -130,8 +130,16 @@ Aktivierung kehrt nach dem Start des Hintergrundprozesses zurueck, damit die Pi-
 Ein dauerhafter opaker Claim laesst dieselbe Pi-Sitzung nach einer unterbrochenen Aktivierung wieder andocken,
 ohne einen zweiten Runner zu starten.
 
-Herdr kann die bereits laufende Pi-Anwendung beherbergen, wird von Kimiflow aber weder vorausgesetzt noch
-gesteuert. Kimiflow installiert oder startet weder Pi noch Herdr oder einen Modell-Provider.
+Wenn dieser Captain bereits in Herdr laeuft, verwendet Kimiflow denselben Herdr-Workspace als sichtbaren
+UI-Transport: Ein nicht fokussierter interaktiver Pi-Tab zeigt den dauerhaften Haupt-Worker; temporaere,
+nicht fokussierte Pi-Tabs zeigen begrenzte, nur lesende semantische Agents. Der Captain behaelt den Fokus und
+bleibt ansprechbar. Kimiflow besitzt nur die exakten selbst erzeugten Tabs; Runner und Active Run bleiben
+autoritaer. Ausserhalb von Herdr bleibt der vorhandene Prozess-Transport unveraendert. Kimiflow installiert
+weder Pi noch Herdr oder einen Modell-Provider.
+
+Eine Anfrage mit einem bestehenden nummerierten Plan (zum Beispiel `Run 7`) waehlt nur diesen exakten
+Projektplan; sie kann weder versehentlich `Run 7.2` verwenden noch bestaetigte Fakten durch generische Intake-
+Fragen ersetzen.
 
 Dieses Paket ist additiv. Ohne Installation oder Aktivierung in Pi bleiben die
 eingebetteten `$kimiflow`-Codex- und `/kimiflow`-Claude-Code-Wege, ihre Hooks und der optionale Terminal-Runner

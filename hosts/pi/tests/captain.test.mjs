@@ -1373,14 +1373,13 @@ test("attention is derived from runner state, stable per turn, and restored per 
   const pi = { sendMessage(value) { messages.push(value); } };
   const first = await extension.pollAttention(pi);
   const duplicate = await extension.pollAttention(pi);
-  const deduplicated = await extension.pollAttention(pi);
   assert.equal(first.announced, 1);
-  assert.equal(duplicate.announced, 1);
-  assert.equal(deduplicated.announced, 0);
-  assert.equal(messages.length, 2);
-  const attention = JSON.parse(messages[0].content);
+  assert.equal(duplicate.announced, 0);
+  assert.equal(messages.length, 1);
+  const attention = messages[0].details;
   assert.equal(attention.kind, "question");
   assert.equal(attention.transition_version, 4);
+  assert.equal(messages[0].content, attention.question);
   assert.match(attention.question, /Product flow entry: Open Pi\./);
   assert.match(attention.question, /Done scenario: Report verified completion\./);
 
@@ -1390,16 +1389,24 @@ test("attention is derived from runner state, stable per turn, and restored per 
     exec: status.exec,
     spawn: spawnFixture().spawn,
   });
-  restored.restoreForSession(context([{
-    type: "custom",
-    customType: "kimiflow_pi_bridge_binding_v1",
-    data: binding,
-  }]));
+  restored.restoreForSession(context([
+    {
+      type: "custom",
+      customType: "kimiflow_pi_bridge_binding_v1",
+      data: binding,
+    },
+    {
+      type: "custom_message",
+      customType: "kimiflow_attention",
+      content: messages[0].content,
+      details: attention,
+    },
+  ]));
   const restoredMessages = [];
   assert.equal((await restored.pollAttention({
     sendMessage(value) { restoredMessages.push(value); },
-  })).announced, 1);
-  assert.equal(restoredMessages.length, 1);
+  })).announced, 0);
+  assert.equal(restoredMessages.length, 0);
 });
 
 test("a failed attention send is retried on the unchanged transition", async () => {
@@ -1430,10 +1437,10 @@ test("a failed attention send is retried on the unchanged transition", async () 
   });
   assert.equal(retried.announced, 1);
   assert.equal(messages.length, 1);
-  assert.equal(JSON.parse(messages[0].content).kind, "question");
+  assert.equal(messages[0].details.kind, "question");
 });
 
-test("a Pi-0.82.1 void attention send receives one bounded unchanged retry", async () => {
+test("a Pi-0.82.1 void attention send is still announced exactly once", async () => {
   const status = statusFixture();
   const extension = createCaptainExtension({
     root: "/pkg",
@@ -1455,13 +1462,10 @@ test("a Pi-0.82.1 void attention send receives one bounded unchanged retry", asy
     },
   };
   const first = await extension.pollAttention(pi0821);
-  const retry = await extension.pollAttention(pi0821);
   const deduplicated = await extension.pollAttention(pi0821);
   assert.equal(first.announced, 1);
-  assert.equal(retry.announced, 1);
   assert.equal(deduplicated.announced, 0);
-  assert.equal(messages.length, 2);
-  assert.equal(messages[0].content, messages[1].content);
+  assert.equal(messages.length, 1);
 });
 
 test("a provisional Captain announces an exact fast terminal receipt", async () => {
@@ -1485,9 +1489,10 @@ test("a provisional Captain announces an exact fast terminal receipt", async () 
   const result = await extension.pollAttention(pi);
   const retry = await extension.pollAttention(pi);
   assert.equal(result.announced, 1);
-  assert.equal(retry.announced, 1);
-  assert.equal(messages.length, 2);
-  assert.equal(JSON.parse(messages[0].content).kind, "completion");
+  assert.equal(retry.announced, 0);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].details.kind, "completion");
+  assert.match(messages[0].content, /^✓ Kimiflow · /);
   assert.equal(extension.binding().run, ".kimiflow/feature-x");
   assert.equal(extension.binding().terminal, true);
   assert.equal(entries.at(-1).data.terminal, true);
@@ -1526,7 +1531,7 @@ test("a provisional Captain surfaces transport failure before Run creation", asy
   });
   assert.equal(first.announced, 1);
   assert.equal(messages.length, 1);
-  const attention = JSON.parse(messages[0].content);
+  const attention = messages[0].details;
   assert.equal(attention.kind, "failure");
   assert.equal(attention.run, null);
   assert.equal(attention.provider_session_id, "pi-worker-00000001");
@@ -1706,7 +1711,7 @@ test("a dead runner controller exposes interruption and permits exact continuati
     sendMessage(value) { messages.push(value); },
   });
   assert.equal(attention.snapshot.status, "interrupted");
-  assert.equal(JSON.parse(messages[0].content).kind, "failure");
+  assert.equal(messages[0].details.kind, "failure");
   const result = await extension.deliver("reply", {
     workerId: binding.workerId,
     providerSessionId: binding.providerSessionId,

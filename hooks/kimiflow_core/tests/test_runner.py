@@ -180,6 +180,38 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("$kimiflow", runner._initial_prompt("build it"))
         self.assertNotIn("$kimiflow", runner._initial_prompt("build it", workflow_aware=True))
 
+    def test_exact_numbered_run_uses_only_its_existing_project_plan(self):
+        project = os.path.join(self.root, ".kimiflow", "project")
+        os.makedirs(project)
+        run7 = os.path.join(project, "RUN-7-EXECUTABLE-EVIDENCE-PLAN.md")
+        run72 = os.path.join(project, "RUN-7.2-MODEL-DIVERSITY-PLAN.md")
+        with open(run7, "w", encoding="utf-8") as handle:
+            handle.write("# Run 7\n")
+        with open(run72, "w", encoding="utf-8") as handle:
+            handle.write("# Run 7.2\n")
+        adapter = FakeAdapter(start_action=lambda: self.write_active(awaiting=True))
+        runner.run_task(self.root, "Starte Kimiflow Run 7.", adapter=adapter)
+        prompt = adapter.starts[0][1]
+        self.assertIn(os.path.realpath(run7), prompt)
+        self.assertNotIn(os.path.realpath(run72), prompt)
+        self.assertIn("do not create a generic replacement intake", prompt)
+
+    def test_decimal_run_selects_decimal_plan_and_ambiguous_exact_run_fails(self):
+        project = os.path.join(self.root, ".kimiflow", "project")
+        os.makedirs(project)
+        run72 = os.path.join(project, "RUN-7.2-MODEL-DIVERSITY-PLAN.md")
+        with open(run72, "w", encoding="utf-8") as handle:
+            handle.write("# Run 7.2\n")
+        self.assertEqual(
+            runner._project_plan_for_task(self.root, "starte Lauf 7.2"),
+            os.path.realpath(run72),
+        )
+        for name in ("RUN-7-FIRST.md", "RUN-7-SECOND.md"):
+            with open(os.path.join(project, name), "w", encoding="utf-8") as handle:
+                handle.write("# duplicate\n")
+        with self.assertRaisesRegex(runner.RunnerError, "multiple exact"):
+            runner._project_plan_for_task(self.root, "Run 7")
+
     def test_pi_bridge_identity_is_persisted_and_required_for_resume(self):
         binding = {
             "schema_version": 1,

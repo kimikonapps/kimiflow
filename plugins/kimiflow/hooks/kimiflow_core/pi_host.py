@@ -17,7 +17,7 @@ import tempfile
 import threading
 import time
 
-from . import model_adapter
+from . import model_adapter, pi_herdr
 
 
 PI_VERSION_RE = re.compile(
@@ -1013,6 +1013,19 @@ def run_turn(payload, environ=None, stdout=None):
     extension = material["worker_extension"]
     extension_digest = material["worker_extension_digest"]
     prompt = _workflow_prompt(payload)
+    output = sys.stdout if stdout is None else stdout
+    if pi_herdr.requested(env):
+        try:
+            return pi_herdr.run_turn(
+                payload,
+                material,
+                selection,
+                prompt,
+                env,
+                lambda value: _emit(value, output),
+            )
+        except pi_herdr.HerdrError as exc:
+            raise PiHostError(exc.status, exc.message, exc.code)
     sealed_descriptor, sealed_extension = _sealed_worker_extension(
         extension, extension_digest,
     )
@@ -1032,9 +1045,6 @@ def run_turn(payload, environ=None, stdout=None):
     env["KIMIFLOW_PI_ACTIVE_RUN"] = material["active_run_hook"]
     env["KIMIFLOW_PI_SELECTION"] = json.dumps(
         selection, ensure_ascii=True, sort_keys=True, separators=(",", ":"),
-    )
-    env["KIMIFLOW_PI_TRANSPORT_PROMPT"] = json.dumps(
-        payload["prompt"], ensure_ascii=False,
     )
     tree_token = secrets.token_hex(32)
     env[TREE_TOKEN_ENV] = tree_token
@@ -1098,7 +1108,6 @@ def run_turn(payload, environ=None, stdout=None):
     agent_settled_seen = False
     current_agent_error = False
     last_agent_error = False
-    output = sys.stdout if stdout is None else stdout
     assert process.stdout is not None
     for raw in _transport_lines(process):
         if len(raw.encode("utf-8")) > MAX_LINE:
@@ -1220,12 +1229,50 @@ def main(argv=None):
         if args == ["capabilities", "--json"]:
             _emit(capabilities())
             return 0
+        if args == ["subagent", "--json"]:
+            raw = sys.stdin.readline(MAX_LINE + 1)
+            try:
+                payload = json.loads(raw)
+                return pi_herdr.run_subagent(
+                    payload,
+                    os.environ.copy(),
+                    _emit,
+                )
+            except (TypeError, ValueError) as exc:
+                raise PiHostError(
+                    "herdr_subagent_invalid",
+                    "Herdr subagent request is invalid: %s" % exc,
+                    2,
+                )
+            except pi_herdr.HerdrError as exc:
+                raise PiHostError(exc.status, exc.message, exc.code)
+        if (
+            len(args) == 6
+            and args[0] == "terminate"
+            and args[1] == "--root"
+            and args[3] == "--session-id"
+            and args[5] == "--json"
+        ):
+            try:
+                closed = pi_herdr.terminate(
+                    os.path.realpath(args[2]),
+                    args[4],
+                    os.environ.copy(),
+                )
+            except pi_herdr.HerdrError as exc:
+                raise PiHostError(exc.status, exc.message, exc.code)
+            _emit({"schema_version": 1, "status": "closed" if closed else "absent"})
+            return 0
         if len(args) == 2 and args[0] in {"start", "resume"} and args[1] == "--json":
             payload = _payload()
             if payload["action"] != args[0]:
                 raise PiHostError("pi_request_invalid", "Pi action does not match argv", 2)
             return run_turn(payload)
-        raise PiHostError("usage", "usage: pi-host.sh capabilities|start|resume --json", 2)
+        raise PiHostError(
+            "usage",
+            "usage: pi-host.sh capabilities|start|resume|subagent|terminate --json",
+            2,
+        )
     except PiHostError as exc:
         _emit({
             "schema_version": 1,

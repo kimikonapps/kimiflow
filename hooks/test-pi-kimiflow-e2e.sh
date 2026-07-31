@@ -75,7 +75,10 @@ env.update({
     "KIMIFLOW_SESSION_HOST": "pi",
     "KIMIFLOW_SESSION_ID": session,
 })
-transport_prompt = json.loads(os.environ["KIMIFLOW_PI_TRANSPORT_PROMPT"])
+delimiter = "\n\nTransport request:\n"
+if delimiter not in args[-1]:
+    raise RuntimeError("Kimiflow transport wrapper is missing")
+transport_prompt = args[-1].split(delimiter, 1)[1]
 
 try:
     if "--prompt" in args or "--extension" not in args or "--no-extensions" not in args:
@@ -368,7 +371,7 @@ let deadline = Date.now() + 30000;
 while (Date.now() < deadline) {
   const attention = await extension.pollAttention(pi);
   if (attention.announced === 1) {
-    question = JSON.parse(messages.at(-1).content);
+    question = messages.at(-1).details;
     if (question.kind === "question") break;
   }
   if (["failed", "aborted", "transport_error"].includes(attention.snapshot?.status)) {
@@ -381,6 +384,7 @@ assert.equal(question.captain_session_id, "pi-primary-e2e");
 assert.equal(question.worker_id, activated.workerId);
 assert.equal(question.run, ".kimiflow/pi-bridge-e2e");
 assert.match(question.question, /concrete Pi-to-Kimiflow product flow/i);
+assert.equal(messages.at(-1).content, question.question);
 const intakeText = fs.readFileSync(
   path.join(context.cwd, ".kimiflow/pi-bridge-e2e/INTAKE.md"),
   "utf8",
@@ -448,10 +452,11 @@ assert.match(gates.build, /^BUILD_GATE\tCONTINUE\t/);
 
 const completionPoll = await extension.pollAttention(pi);
 assert.equal(completionPoll.announced, 1);
-const completion = JSON.parse(messages.at(-1).content);
+const completion = messages.at(-1).details;
 assert.equal(completion.kind, "completion");
 assert.equal(completion.run, question.run);
 assert.equal(completion.provider_session_id, question.provider_session_id);
+assert.match(messages.at(-1).content, /^✓ Kimiflow · /);
 JS
 
 export KIMIFLOW_PI_COMMAND="$FAKE_PI"

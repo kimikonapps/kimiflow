@@ -36,7 +36,6 @@ const MAX_ATTENTION_POLL_MS = 30000;
 const SPAWN_ACCEPTANCE_MS = 250;
 const SPAWN_HANDOFF_TIMEOUT_MS = 5000;
 const STALE_REAP_TIMEOUT_MS = 5000;
-const ATTENTION_SEND_ATTEMPTS = 2;
 const ACTIVE_RUNNER_STATES = new Set([
   "running",
   "parked",
@@ -753,6 +752,40 @@ function transition(snapshot, binding) {
   return { attention_id: `attention-${hash}`, ...identity, actionable: true };
 }
 
+function attentionContent(value) {
+  if (value.kind === "question") return value.question;
+  const run = typeof value.run === "string" ? value.run : "Kimiflow";
+  return value.kind === "completion"
+    ? `✓ Kimiflow · ${run}`
+    : `⚠ Kimiflow · ${run}`;
+}
+
+function restoredAttentionIds(context) {
+  const result = new Set();
+  const branch = context?.sessionManager?.getBranch?.();
+  if (!Array.isArray(branch)) return result;
+  for (const entry of branch) {
+    if (
+      entry?.type !== "custom_message"
+      || entry?.customType !== "kimiflow_attention"
+    ) {
+      continue;
+    }
+    let attentionId = entry?.details?.attention_id;
+    if (typeof attentionId !== "string" && typeof entry?.content === "string") {
+      try {
+        attentionId = JSON.parse(entry.content)?.attention_id;
+      } catch {
+        attentionId = null;
+      }
+    }
+    if (typeof attentionId === "string" && IDENTITY.test(attentionId)) {
+      result.add(attentionId);
+    }
+  }
+  return result;
+}
+
 function boundedStatus(value) {
   const state = typeof value?.status === "string" ? value.status : "unknown";
   const run = value?.active_run?.run ?? value?.runner?.active_run;
@@ -785,7 +818,6 @@ export function createCaptainExtension({
   const runner = path.join(root, "hooks", "kimiflow-runner.sh");
   const piHost = path.join(root, "hooks", "pi-host.sh");
   const seenAttention = new Set();
-  const attentionAttempts = new Map();
   let active = null;
 
   async function runnerStatus(cwd) {
@@ -1009,7 +1041,6 @@ export function createCaptainExtension({
       : provisional;
     if (active === null) throw new Error("kimiflow_runner_identity_invalid");
     seenAttention.clear();
-    attentionAttempts.clear();
     return {
       status: recovering && runnerIsActive(snapshot) ? "recovered" : "activated",
       ...active,
@@ -1225,14 +1256,11 @@ export function createCaptainExtension({
       if (typeof pi.sendMessage === "function") {
         pi.sendMessage({
           customType: "kimiflow_attention",
-          content: JSON.stringify(value),
+          content: attentionContent(value),
+          details: value,
           display: true,
         });
-        const attempts = (attentionAttempts.get(value.attention_id) ?? 0) + 1;
-        attentionAttempts.set(value.attention_id, attempts);
-        if (attempts >= ATTENTION_SEND_ATTEMPTS) {
-          seenAttention.add(value.attention_id);
-        }
+        seenAttention.add(value.attention_id);
         announced = 1;
       }
     }
@@ -1243,6 +1271,24 @@ export function createCaptainExtension({
       )
       && (value === null || seenAttention.has(value.attention_id))
     ) {
+      if (active.providerSessionId !== null) {
+        await exec(
+          piHost,
+          [
+            "terminate",
+            "--root", active.root,
+            "--session-id", active.providerSessionId,
+            "--json",
+          ],
+          {
+            cwd: active.root,
+            env: {
+              ...process.env,
+              ...bridgeEnvironment(active),
+            },
+          },
+        );
+      }
       const terminal = { ...active, deliveryPending: false, terminal: true };
       pi.appendEntry?.(BINDING_ENTRY, terminal);
       active = terminal;
@@ -1258,6 +1304,9 @@ export function createCaptainExtension({
     deliver,
     pollAttention,
     restoreForSession(context) {
+      for (const attentionId of restoredAttentionIds(context)) {
+        seenAttention.add(attentionId);
+      }
       const current = currentBridgeEntry(context);
       const binding = current?.kind === BINDING_ENTRY
         ? current.value
@@ -1270,7 +1319,6 @@ export function createCaptainExtension({
     clearMemory() {
       active = null;
       seenAttention.clear();
-      attentionAttempts.clear();
     },
     binding() {
       return active ? { ...active } : null;

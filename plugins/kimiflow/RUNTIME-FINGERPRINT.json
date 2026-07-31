@@ -1,23 +1,23 @@
 {
-  "file_count": 171,
+  "file_count": 172,
   "files": [
     {
       "bytes": 511,
       "mode": "0644",
       "path": ".claude-plugin/plugin.json",
-      "sha256": "sha256:52a0d10991937105690bbd2bad926cd6dbfd791eabd385bca045532161472f28"
+      "sha256": "sha256:1dae4d3eeb181fc66ffe4afb1db588a0402a7a71479ea039f3022fb33e8a1f7f"
     },
     {
       "bytes": 3614,
       "mode": "0644",
       "path": ".codex-plugin/plugin.json",
-      "sha256": "sha256:9ba8cde1f8d6c505b6582ae1cb637c7dab484af2e4a5134fe127cb5f8c305ed9"
+      "sha256": "sha256:8ee126407ca50a9499289f825cf14a8826efb1b555e9d26261c79baf9e314b99"
     },
     {
-      "bytes": 20739,
+      "bytes": 21099,
       "mode": "0644",
       "path": "COMPATIBILITY.md",
-      "sha256": "sha256:ab90387880a1f1db756eabfd74f9ab3953b20eff289bb0415b4f11d09ed88a5a"
+      "sha256": "sha256:a060236d5e580831da4ccbdbf4b3b30cd686b78fe029753dc488e2654183a4d4"
     },
     {
       "bytes": 1064,
@@ -26,16 +26,16 @@
       "sha256": "sha256:b796986e145d409f27c8ec0edaaf223ee51bdbbc2fa4477fe2d6c0984d5adf5b"
     },
     {
-      "bytes": 31572,
+      "bytes": 32159,
       "mode": "0644",
       "path": "README.de.md",
-      "sha256": "sha256:0c9c95d472643da98669e53cdb805e64653a2bdfdcd221217d16054dd5888a64"
+      "sha256": "sha256:84db37b74d1d0f506a2ec4ed0992c24e733b269a0ff6dfdc00bbeb630dc3f887"
     },
     {
-      "bytes": 38005,
+      "bytes": 38536,
       "mode": "0644",
       "path": "README.md",
-      "sha256": "sha256:50588486517f0a5dcb660746c90706664bda45bd17aabd5820c5c9c08d3fb527"
+      "sha256": "sha256:3a815ce9068b3718b821b8dcc6cfcd1474e56896bd2baad32ed1708c053f0b6b"
     },
     {
       "bytes": 16990,
@@ -308,10 +308,16 @@
       "sha256": "sha256:0fa9bf8578ac75f3233609182f38ca2c0e8d8dd89e7dabbe49ba9a1e05b431f5"
     },
     {
-      "bytes": 40616,
+      "bytes": 33077,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/pi_herdr.py",
+      "sha256": "sha256:4a3d82b47ab67fead4ab92c5f731bd7cd81d9e7adcad4b4469ad831601bf0f95"
+    },
+    {
+      "bytes": 42254,
       "mode": "0644",
       "path": "hooks/kimiflow_core/pi_host.py",
-      "sha256": "sha256:b8cf9a659ed1b3134fd6ae7cbeec9c2bdfdfe5c341e39df3e03b3dd71babe05e"
+      "sha256": "sha256:93341325b10ae8b15b3a9177b861eb63619f6579119ffc03c9942ae646fb1a91"
     },
     {
       "bytes": 55587,
@@ -356,10 +362,10 @@
       "sha256": "sha256:8259f8f05f45a3239f3a54f6c5f0abe8c454ccf501a48011b365995dcf65ddff"
     },
     {
-      "bytes": 59641,
+      "bytes": 61754,
       "mode": "0644",
       "path": "hooks/kimiflow_core/runner.py",
-      "sha256": "sha256:70960aac808913ad6f4886650d902221dd20e67c6ecaa80d11dc3ef52cdbe351"
+      "sha256": "sha256:7d6abadd46271262ecfbcc9be8762602315089a573d137f0dd5638a42a2ae99e"
     },
     {
       "bytes": 11255,
@@ -806,28 +812,28 @@
       "sha256": "sha256:69b1dd90595aecb844c9473889a41c65df9cc01a3005719e2cd8d0bb41dddba2"
     },
     {
-      "bytes": 43075,
+      "bytes": 44300,
       "mode": "0644",
       "path": "hosts/pi/extensions/captain.js",
-      "sha256": "sha256:b7fa06144429b082efca7fe4e43c96e5064a83f3ec07d6cf22dd34bbe49a6c1e"
+      "sha256": "sha256:ca5dabce6f68012080a8f9bf47b7a491c43c4718823f0be49ce4906c753d090b"
     },
     {
-      "bytes": 31195,
+      "bytes": 31743,
       "mode": "0644",
       "path": "hosts/pi/extensions/worker.js",
-      "sha256": "sha256:ec2d81e9d6ff030167a58a24bdcf579142f63d766fa5af49cd941402390afb00"
+      "sha256": "sha256:4cbc06a0c730abec26bb431c8fec375bbae0256080ee52845b71c46f874f1c28"
     },
     {
-      "bytes": 1076,
+      "bytes": 1598,
       "mode": "0644",
       "path": "hosts/pi/skills/kimiflow/SKILL.md",
-      "sha256": "sha256:c6bb2e97a8035f3f247337e70d4f182facefb97140843c451cd0bb956dd3f3a2"
+      "sha256": "sha256:4e32b94a2a45754173417a0a567b6d08bee32ac91b971347ae220d30479d918f"
     },
     {
       "bytes": 368,
       "mode": "0644",
       "path": "package.json",
-      "sha256": "sha256:030fcb1e608bdd2796cb8e41d4fd011857673010d20593a6587f1cd85e22e029"
+      "sha256": "sha256:a80d829fec846c10e9bd27ca9a00ce736d55487c2d200ee61e5e812b11483608"
     },
     {
       "bytes": 8943,
@@ -1028,6 +1034,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:79c0d40c11a32013be49a8dbf53d40dd8917630275be1567b4e91ff030b6b040",
+  "runtime_fingerprint": "sha256:40499230ee825e73fbeabee0289168f010ab28900a67ba32ff1460ff56f568bd",
   "schema_version": 1
 }

@@ -34,7 +34,6 @@ function authority(root = process.cwd()) {
     worker_id: "worker-00000001",
     executable: process.execPath,
     activeRun: `${process.cwd()}/hooks/active-run.sh`,
-    transportPrompt: "confirmed",
     selection: {
       provider: "openai",
       model: "gpt-5.6",
@@ -47,13 +46,11 @@ function environment(overrides = {}, root = process.cwd()) {
   const value = authority(root);
   delete value.executable;
   delete value.activeRun;
-  delete value.transportPrompt;
   delete value.selection;
   return {
     KIMIFLOW_PI_BRIDGE_BINDING: JSON.stringify(value),
     KIMIFLOW_PI_EXECUTABLE: process.execPath,
     KIMIFLOW_PI_ACTIVE_RUN: `${process.cwd()}/hooks/active-run.sh`,
-    KIMIFLOW_PI_TRANSPORT_PROMPT: JSON.stringify("confirmed"),
     KIMIFLOW_PI_SELECTION: JSON.stringify({
       provider: "openai",
       model: "gpt-5.6",
@@ -132,15 +129,8 @@ test("worker authority is optional, exact, and preserves colon model IDs", () =>
     model: "@cf/meta/llama:free",
     thinking: "max",
   });
-  assert.equal(loaded.transportPrompt, "confirmed");
   assert.equal(loaded.worker_id, "worker-00000001");
   assert.equal(Object.isFrozen(loaded), true);
-  assert.throws(
-    () => loadWorkerAuthority(environment({
-      KIMIFLOW_PI_TRANSPORT_PROMPT: JSON.stringify({ prompt: "confirmed" }),
-    })),
-    /pi_transport_prompt_invalid/,
-  );
 });
 
 test("pre-intake guard permits only reads, trusted control, and current run artifacts", async () => {
@@ -268,6 +258,7 @@ test("subagent command, identity, model, root, and environment are derived", asy
   assert.deepEqual(call.args, [
     "--mode", "json",
     "--no-extensions",
+    "--tools", "read,grep,find,ls",
     "--provider", "openai",
     "--model", "gpt-5.6",
     "--thinking", "high",
@@ -280,6 +271,53 @@ test("subagent command, identity, model, root, and environment are derived", asy
     Object.keys(call.options.env).filter((key) => key.startsWith("KIMIFLOW_")),
     [],
   );
+});
+
+test("Herdr workers launch visible read-only Pi subagents through pi-host", async () => {
+  const calls = [];
+  const spawn = (command, args, options) => {
+    const child = new EventEmitter();
+    child.pid = 4201;
+    child.exitCode = null;
+    child.signalCode = null;
+    child.stdout = new EventEmitter();
+    child.kill = () => true;
+    child.stdin = {
+      end(raw) {
+        const payload = JSON.parse(raw);
+        calls.push({ command, args, options, payload });
+        queueMicrotask(() => {
+          child.stdout.emit("data", Buffer.from(
+            `${lifecycle(
+              payload.session_id,
+              payload.root,
+              "visible review",
+            ).map(JSON.stringify).join("\n")}\n`,
+          ));
+          child.exitCode = 0;
+          child.emit("close", 0, null);
+        });
+      },
+    };
+    return child;
+  };
+  const supervisor = new GenerationSupervisor({
+    authority: {
+      ...authority(),
+      herdr: true,
+      piHost: `${process.cwd()}/hooks/pi-host.sh`,
+    },
+    spawn,
+    idFactory: () => "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+  });
+  supervisor.workerSessionId = "pi-worker-00000001";
+  const result = await supervisor.launchSubagent("review the current code");
+  assert.equal(result.backend, "herdr");
+  assert.equal(result.result, "visible review");
+  assert.equal(calls[0].command, `${process.cwd()}/hooks/pi-host.sh`);
+  assert.deepEqual(calls[0].args, ["subagent", "--json"]);
+  assert.equal(calls[0].payload.task, "review the current code");
+  assert.deepEqual(calls[0].payload.selection, authority().selection);
 });
 
 test("subagent completion uses the last successful Pi retry lifecycle", async () => {
@@ -822,8 +860,19 @@ test("before_agent_start forwards the exact Pi prompt to Active Run", async () =
     return child;
   };
   const result = await forwardPromptContext(
-    { ...authority(), transportPrompt: "Yes, confirm this corrected flow." },
-    { prompt: "Authoritative workflow wrapper, not the transport answer." },
+    authority(),
+    {
+      prompt: [
+        "Authoritative Kimiflow workflow_context:",
+        "skill=/plugin/SKILL.md",
+        "",
+        "Transport request:",
+        "Use the current answer.",
+        "",
+        "Transport request:",
+        "Keep this embedded marker too.",
+      ].join("\n"),
+    },
     { sessionId: "pi-worker-00000001" },
     hookSpawn,
   );
@@ -833,7 +882,12 @@ test("before_agent_start forwards the exact Pi prompt to Active Run", async () =
   assert.deepEqual(calls[0].payload, {
     cwd: process.cwd(),
     session_id: "pi-worker-00000001",
-    prompt: "Yes, confirm this corrected flow.",
+    prompt: [
+      "Use the current answer.",
+      "",
+      "Transport request:",
+      "Keep this embedded marker too.",
+    ].join("\n"),
   });
   assert.equal(result.message.content, "Kimiflow intake resumed.");
 });

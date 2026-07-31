@@ -376,6 +376,71 @@ def _initial_prompt(task, workflow_aware=False):
     )
 
 
+def _project_plan_for_task(root, task):
+    match = re.search(
+        r"\b(?:run|lauf)\s+([0-9]+(?:\.[0-9]+)?)\b",
+        task,
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    run_number = match.group(1)
+    project = os.path.join(root, ".kimiflow", "project")
+    try:
+        names = os.listdir(project)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise RunnerError(
+            "project_plan_unavailable",
+            "cannot inspect Kimiflow project plans: %s" % exc,
+            2,
+        )
+    pattern = re.compile(
+        r"^RUN-%s-[A-Za-z0-9][A-Za-z0-9._-]*\.md$"
+        % re.escape(run_number),
+        flags=re.IGNORECASE,
+    )
+    matches = []
+    for name in names:
+        if pattern.fullmatch(name) is None:
+            continue
+        candidate = os.path.join(project, name)
+        try:
+            info = os.stat(candidate, follow_symlinks=False)
+        except OSError as exc:
+            raise RunnerError(
+                "project_plan_unavailable",
+                "cannot inspect Kimiflow project plan: %s" % exc,
+                2,
+            )
+        if stat.S_ISREG(info.st_mode):
+            matches.append(os.path.realpath(candidate))
+    matches.sort()
+    if len(matches) > 1:
+        raise RunnerError(
+            "project_plan_ambiguous",
+            "Run %s has multiple exact project plans; select one explicitly"
+            % run_number,
+            2,
+        )
+    return matches[0] if matches else None
+
+
+def _task_with_project_plan(root, task):
+    plan = _project_plan_for_task(root, task)
+    if plan is None:
+        return task
+    return (
+        "Authoritative existing Kimiflow project plan: %s\n"
+        "Treat this plan as the confirmed scope for this run. Read it before "
+        "planning, do not create a generic replacement intake, and do not "
+        "re-ask facts already confirmed there. Ask only if a genuinely material "
+        "decision is still absent.\n\nOriginal request:\n%s"
+        % (plan, task.strip())
+    )
+
+
 def _continuation_prompt(status):
     transition = status.get("transition") if isinstance(status.get("transition"), dict) else {}
     parts = []
@@ -1072,6 +1137,7 @@ def run_task(root, task, adapter=None):
     root = _resolve_project_root(root)
     if not isinstance(task, str) or not task.strip():
         raise RunnerError("task_missing", "run requires a non-empty task", 2)
+    task = _task_with_project_plan(root, task)
     adapter = adapter or CodexExecAdapter()
     try:
         adapter_info = model_adapter.info_for(adapter)

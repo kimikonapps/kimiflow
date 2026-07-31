@@ -28,7 +28,6 @@ const RUN = /^\.kimiflow\/(?!session(?:\/|$))(?!.*\/\.\.(?:\/|$))[A-Za-z0-9][A-Z
 const INTENT_DIGEST = /^sha256:[0-9a-f]{64}$/;
 const BRIDGE_ENV = "KIMIFLOW_PI_BRIDGE_BINDING";
 const ACTIVE_RUN_ENV = "KIMIFLOW_PI_ACTIVE_RUN";
-const TRANSPORT_PROMPT_ENV = "KIMIFLOW_PI_TRANSPORT_PROMPT";
 const SUBAGENT_TREE_TOKEN_ENV = "__KIMIFLOW_PI_SUBAGENT_TOKEN";
 const TREE_TOKEN = /^[0-9a-f]{64}$/;
 const SUBAGENT_RESERVATION_DIRECTORY = "PI-SUBAGENT-SLOTS-v1";
@@ -262,23 +261,6 @@ function parseSelection(value) {
   return parsed;
 }
 
-function parseTransportPrompt(value) {
-  let parsed;
-  try {
-    parsed = JSON.parse(value ?? "");
-  } catch {
-    throw new Error("pi_transport_prompt_invalid");
-  }
-  if (
-    typeof parsed !== "string"
-    || parsed.length === 0
-    || Buffer.byteLength(parsed, "utf8") > MAX_TASK_BYTES
-  ) {
-    throw new Error("pi_transport_prompt_invalid");
-  }
-  return parsed;
-}
-
 export function loadWorkerAuthority(environment = process.env) {
   const encoded = environment[BRIDGE_ENV];
   if (encoded === undefined) return null;
@@ -315,12 +297,20 @@ export function loadWorkerAuthority(environment = process.env) {
   ) {
     throw new Error("active_run_hook_invalid");
   }
+  const piHost = resolve(dirname(activeRun), "pi-host.sh");
+  if (
+    realpathSync(piHost) !== piHost
+    || piHost.slice(piHost.lastIndexOf("/") + 1) !== "pi-host.sh"
+  ) {
+    throw new Error("pi_host_invalid");
+  }
   return Object.freeze({
     ...binding,
     executable,
     activeRun,
+    piHost,
+    herdr: environment.KIMIFLOW_PI_HERDR === "1",
     selection: Object.freeze(parseSelection(environment.KIMIFLOW_PI_SELECTION)),
-    transportPrompt: parseTransportPrompt(environment[TRANSPORT_PROMPT_ENV]),
   });
 }
 
@@ -826,15 +816,19 @@ export class GenerationSupervisor {
     const subagentId = `subagent-${slot}-${sessionId.slice(0, 12)}`;
     this.launched = Math.max(this.launched, slot);
     const selection = this.authority.selection;
-    const args = [
-      "--mode", "json",
-      "--no-extensions",
-      "--provider", selection.provider,
-      "--model", selection.model,
-      "--thinking", selection.thinking,
-      "--session-id", sessionId,
-      `Kimiflow bounded subagent task:\n${input}`,
-    ];
+    const herdr = this.authority.herdr === true;
+    const args = herdr
+      ? ["subagent", "--json"]
+      : [
+          "--mode", "json",
+          "--no-extensions",
+          "--tools", "read,grep,find,ls",
+          "--provider", selection.provider,
+          "--model", selection.model,
+          "--thinking", selection.thinking,
+          "--session-id", sessionId,
+          `Kimiflow bounded subagent task:\n${input}`,
+        ];
     const environment = { ...process.env };
     for (const key of Object.keys(environment)) {
       if (key.startsWith("KIMIFLOW_")) delete environment[key];
@@ -843,18 +837,31 @@ export class GenerationSupervisor {
       .update(`${randomUUID()}:${sessionId}`)
       .digest("hex");
     environment[SUBAGENT_TREE_TOKEN_ENV] = cleanupToken;
-    const child = this.spawn(this.authority.executable, args, {
+    const child = this.spawn(
+      herdr ? this.authority.piHost : this.authority.executable,
+      args,
+      {
       cwd: this.authority.root,
       env: environment,
       detached: true,
-      stdio: ["ignore", "pipe", "ignore"],
-    });
+      stdio: [herdr ? "pipe" : "ignore", "pipe", "ignore"],
+      },
+    );
     if (!Number.isInteger(child?.pid) || child.pid < 1) {
       child?.kill?.("SIGKILL");
       throw new Error("subagent_spawn_failed");
     }
     child.kimiflowProcessGroup = true;
     child.kimiflowCleanupToken = cleanupToken;
+    if (herdr) {
+      child.stdin?.end(`${JSON.stringify({
+        schema_version: 1,
+        root: this.authority.root,
+        session_id: sessionId,
+        task: input,
+        selection,
+      })}\n`);
+    }
     this.active.add(child);
     try {
       return {
@@ -865,7 +872,7 @@ export class GenerationSupervisor {
         subagentSessionId: sessionId,
         status: "completed",
         result: await collectSubagent(child, this.authority, sessionId),
-        backend: "process",
+        backend: herdr ? "herdr" : "process",
       };
     } finally {
       await stopChild(child);
@@ -890,7 +897,7 @@ export class GenerationSupervisor {
 
 export function forwardPromptContext(
   authority,
-  _event,
+  event,
   context,
   spawn = nodeSpawn,
 ) {
@@ -899,7 +906,15 @@ export function forwardPromptContext(
       ?? context?.sessionId,
     "worker_session",
   );
-  const prompt = authority.transportPrompt;
+  const wrapper = "Authoritative Kimiflow workflow_context:";
+  const delimiter = "\n\nTransport request:\n";
+  let prompt = event?.prompt;
+  if (typeof prompt === "string" && prompt.startsWith(wrapper)) {
+    const boundary = prompt.indexOf(delimiter);
+    if (boundary >= 0) {
+      prompt = prompt.slice(boundary + delimiter.length);
+    }
+  }
   if (typeof prompt !== "string" || Buffer.byteLength(prompt, "utf8") > MAX_TASK_BYTES) {
     throw new Error("prompt_context_invalid");
   }

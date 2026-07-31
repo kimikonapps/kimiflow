@@ -31,8 +31,7 @@ class PiHostTests(unittest.TestCase):
                 " print(open(os.environ['PI_TEST_VERSION']).read().strip()); raise SystemExit(0)\n"
                 "args=sys.argv[1:]\n"
                 "open(os.environ['PI_TEST_ARGV_LOG'],'w').write(json.dumps(args))\n"
-                "transport=json.loads(os.environ['KIMIFLOW_PI_TRANSPORT_PROMPT'])\n"
-                "assert args[-1].rsplit('Transport request:\\n',1)[-1] == transport\n"
+                "assert '\\n\\nTransport request:\\n' in args[-1]\n"
                 "session=(os.environ.get('PI_TEST_SESSION') or (args[args.index('--session')+1] if '--session' in args else 'pi-worker-0001'))\n"
                 "print(json.dumps({'type':'session','version':3,'id':session,'timestamp':'2026-07-29T00:00:00Z','cwd':os.environ.get('PI_TEST_CWD',os.getcwd())}))\n"
                 "print(json.dumps({'type':'agent_start'}))\n"
@@ -674,9 +673,6 @@ class PiHostTests(unittest.TestCase):
             "model": "gpt-5.4",
             "thinking": "high",
         })
-        environment["KIMIFLOW_PI_TRANSPORT_PROMPT"] = json.dumps(
-            "contract smoke",
-        )
         extension = os.path.abspath(os.path.join(
             os.path.dirname(__file__), "..", "..", "..", "hosts", "pi",
             "extensions", "worker.js",
