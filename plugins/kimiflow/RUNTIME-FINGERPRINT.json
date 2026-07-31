@@ -1,23 +1,23 @@
 {
-  "file_count": 172,
+  "file_count": 173,
   "files": [
     {
       "bytes": 511,
       "mode": "0644",
       "path": ".claude-plugin/plugin.json",
-      "sha256": "sha256:1dae4d3eeb181fc66ffe4afb1db588a0402a7a71479ea039f3022fb33e8a1f7f"
+      "sha256": "sha256:613c83c49d7b203894639edc82c368210714c864ce1580c10e3b8519514545cc"
     },
     {
       "bytes": 3614,
       "mode": "0644",
       "path": ".codex-plugin/plugin.json",
-      "sha256": "sha256:8ee126407ca50a9499289f825cf14a8826efb1b555e9d26261c79baf9e314b99"
+      "sha256": "sha256:eb1592696d19bc6892750571759d492cb98efd9aecdfa377182b33140ff4ca2b"
     },
     {
-      "bytes": 21099,
+      "bytes": 21552,
       "mode": "0644",
       "path": "COMPATIBILITY.md",
-      "sha256": "sha256:a060236d5e580831da4ccbdbf4b3b30cd686b78fe029753dc488e2654183a4d4"
+      "sha256": "sha256:89a0776f0f830f530b5c73e30240f2b83eed8aa94c496c36dcdfebb351321ec9"
     },
     {
       "bytes": 1064,
@@ -308,16 +308,16 @@
       "sha256": "sha256:0fa9bf8578ac75f3233609182f38ca2c0e8d8dd89e7dabbe49ba9a1e05b431f5"
     },
     {
-      "bytes": 33077,
+      "bytes": 34228,
       "mode": "0644",
       "path": "hooks/kimiflow_core/pi_herdr.py",
-      "sha256": "sha256:4a3d82b47ab67fead4ab92c5f731bd7cd81d9e7adcad4b4469ad831601bf0f95"
+      "sha256": "sha256:579f55a163df90f02071af6212199c7e676ec98d2be3a7017694c8a7355943dd"
     },
     {
-      "bytes": 42254,
+      "bytes": 45271,
       "mode": "0644",
       "path": "hooks/kimiflow_core/pi_host.py",
-      "sha256": "sha256:93341325b10ae8b15b3a9177b861eb63619f6579119ffc03c9942ae646fb1a91"
+      "sha256": "sha256:f3230f155d07f0deb1aa4d7364bf584f4d1c361cca0b1280b5c15b30f29330ab"
     },
     {
       "bytes": 55587,
@@ -812,16 +812,22 @@
       "sha256": "sha256:69b1dd90595aecb844c9473889a41c65df9cc01a3005719e2cd8d0bb41dddba2"
     },
     {
-      "bytes": 44300,
+      "bytes": 7497,
       "mode": "0644",
-      "path": "hosts/pi/extensions/captain.js",
-      "sha256": "sha256:ca5dabce6f68012080a8f9bf47b7a491c43c4718823f0be49ce4906c753d090b"
+      "path": "hosts/pi/extensions/calm.js",
+      "sha256": "sha256:ba191c9d5ac52cd8581aa4f2a08da21ddad972e503c47e65af66ddd7e7d5de66"
     },
     {
-      "bytes": 31743,
+      "bytes": 44508,
+      "mode": "0644",
+      "path": "hosts/pi/extensions/captain.js",
+      "sha256": "sha256:501933dd91a8c5f429f933efe79a2bcc7694d3519bcb9e23c87850eae76dcd86"
+    },
+    {
+      "bytes": 32361,
       "mode": "0644",
       "path": "hosts/pi/extensions/worker.js",
-      "sha256": "sha256:4cbc06a0c730abec26bb431c8fec375bbae0256080ee52845b71c46f874f1c28"
+      "sha256": "sha256:09f2d3a1aab2688ac933512e09b609a22c62edb6dc0d73e33274347299c39942"
     },
     {
       "bytes": 1598,
@@ -830,10 +836,10 @@
       "sha256": "sha256:4e32b94a2a45754173417a0a567b6d08bee32ac91b971347ae220d30479d918f"
     },
     {
-      "bytes": 368,
+      "bytes": 407,
       "mode": "0644",
       "path": "package.json",
-      "sha256": "sha256:a80d829fec846c10e9bd27ca9a00ce736d55487c2d200ee61e5e812b11483608"
+      "sha256": "sha256:693429a8e576e45f0e5657734b22a714813c0945fc7161837fb4723608350c25"
     },
     {
       "bytes": 8943,
@@ -1034,6 +1040,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:40499230ee825e73fbeabee0289168f010ab28900a67ba32ff1460ff56f568bd",
+  "runtime_fingerprint": "sha256:e4c7e051c21ed9f6d34beef54b9ec1617d85c23b18f6dd3fe4cb698602b9ce87",
   "schema_version": 1
 }

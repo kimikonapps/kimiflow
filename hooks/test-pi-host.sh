@@ -11,5 +11,6 @@ python3 -m unittest \
   kimiflow_core.tests.test_active_run.ActiveRunContractTests
 
 node --test \
+  "$ROOT/hosts/pi/tests/calm.test.mjs" \
   "$ROOT/hosts/pi/tests/worker.test.mjs" \
   "$ROOT/hosts/pi/tests/captain.test.mjs"

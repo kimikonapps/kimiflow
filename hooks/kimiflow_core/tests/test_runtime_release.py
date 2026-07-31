@@ -29,12 +29,14 @@ def make_candidate(root):
             "type": "module",
             "pi": {
                 "extensions": [
+                    "./hosts/pi/extensions/calm.js",
                     "./hosts/pi/extensions/captain.js",
                     "./hosts/pi/extensions/worker.js",
                 ],
                 "skills": ["./hosts/pi/skills/kimiflow"],
             },
         })),
+        "hosts/pi/extensions/calm.js": (0o644, b"export default function calm() {}\n"),
         "hosts/pi/extensions/captain.js": (0o644, b"export default function captain() {}\n"),
         "hosts/pi/extensions/worker.js": (0o644, b"export class Worker {}\n"),
         "hosts/pi/skills/kimiflow/SKILL.md": (0o644, b"# Kimiflow for Pi\n"),
@@ -365,6 +367,7 @@ class RuntimeReleaseTests(unittest.TestCase):
         self.assertEqual(package["version"], manifest["version"])
         self.assertEqual(package["name"], "@kimiflow/pi")
         self.assertTrue({
+            "kimiflow/hosts/pi/extensions/calm.js",
             "kimiflow/hosts/pi/extensions/captain.js",
             "kimiflow/hosts/pi/extensions/worker.js",
             "kimiflow/hosts/pi/skills/kimiflow/SKILL.md",

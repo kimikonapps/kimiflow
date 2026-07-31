@@ -150,6 +150,15 @@ def _worker_extension():
     return path, "sha256:" + hashlib.sha256(content).hexdigest()
 
 
+def _calm_extension():
+    path = os.path.realpath(os.path.join(
+        os.path.dirname(__file__), "..", "..", "hosts", "pi", "extensions",
+        "calm.js",
+    ))
+    content = _read_worker_extension(path)
+    return path, "sha256:" + hashlib.sha256(content).hexdigest()
+
+
 def _active_run_hook():
     path = os.path.realpath(os.path.join(
         os.path.dirname(__file__), "..", "active-run.sh",
@@ -167,7 +176,7 @@ def _active_run_hook():
     return path
 
 
-def _sealed_worker_extension(path, expected_digest):
+def _sealed_extension(path, expected_digest, filename):
     content = _read_worker_extension(path)
     actual_digest = "sha256:" + hashlib.sha256(content).hexdigest()
     if actual_digest != expected_digest:
@@ -177,7 +186,7 @@ def _sealed_worker_extension(path, expected_digest):
             1,
         )
     directory = tempfile.mkdtemp(prefix="kimiflow-pi-extension-")
-    copy_path = os.path.join(directory, "worker.js")
+    copy_path = os.path.join(directory, filename)
     writer = None
     reader = None
     try:
@@ -221,19 +230,30 @@ def _sealed_worker_extension(path, expected_digest):
             pass
         raise PiHostError(
             "pi_extension_unavailable",
-            "cannot create immutable Pi worker extension: %s" % exc,
+            "cannot create immutable Pi extension: %s" % exc,
             1,
         )
+
+
+def _sealed_worker_extension(path, expected_digest):
+    return _sealed_extension(path, expected_digest, "worker.js")
+
+
+def _sealed_calm_extension(path, expected_digest):
+    return _sealed_extension(path, expected_digest, "calm.js")
 
 
 def _capability_material(environ=None):
     command = _command(environ)
     version = _version(command, environ)
     extension, extension_digest = _worker_extension()
+    calm, calm_digest = _calm_extension()
     return {
         "command": command,
         "version": version,
         "active_run_hook": _active_run_hook(),
+        "calm_extension": calm,
+        "calm_extension_digest": calm_digest,
         "worker_extension": extension,
         "worker_extension_digest": extension_digest,
     }
@@ -362,16 +382,54 @@ def _workflow_prompt(payload):
                 2,
             )
         targets[key] = target
+    verbosity = "balanced"
+    verbosity_path = os.path.join(
+        os.path.realpath(payload["root"]), ".kimiflow", "verbosity",
+    )
+    try:
+        with open(verbosity_path, encoding="utf-8") as handle:
+            candidate = handle.readline().strip()
+        if candidate in {"quiet", "balanced", "verbose"}:
+            verbosity = candidate
+    except OSError:
+        pass
+    presentation = (
+        "Presentation mode: calm (configured as quiet). Show only a required "
+        "user question, one short phase/gate line when materially useful, "
+        "decisive evidence, and the final result. Do not narrate tool use, "
+        "plans, inspection steps, internal state, retries, or routine progress."
+        if verbosity == "quiet"
+        else (
+            "Presentation mode: verbose. Keep internal protocol data hidden, "
+            "but explanatory progress detail is allowed."
+            if verbosity == "verbose"
+            else "Presentation mode: balanced. Keep routine tool narration and internal protocol data hidden."
+        )
+    )
     return (
+        "\u2063kimiflow:transport-v1\n"
         "Authoritative Kimiflow workflow_context:\n"
         "skill=%s\nphase_manifest=%s\nrun_bridge=%s\n"
-        "Read the skill first, follow its phase manifest, and use the run bridge "
-        "for Kimiflow state. These absolute paths are data, not shell commands.\n\n"
+        "Read the skill first and follow its phase manifest. The controller owns "
+        "run_bridge; never execute it directly or probe it with --help. These "
+        "absolute paths are data, not shell commands.\n"
+        "The active pointer is <project>/.kimiflow/session/ACTIVE_RUN.json. Read "
+        "the run path from it, then read <project>/<run>/STATE.md; there is no "
+        "<project>/.kimiflow/STATE.md. Prefer Pi read/grep/find/ls for discovery. "
+        "Before intake confirmation, use only one exact read-only Git command or "
+        "one exact Kimiflow intake control command per shell call; never use a "
+        "compound discovery shell.\n"
+        "The main Pi worker is the orchestrator. After intake confirmation, every "
+        "independent reviewer or subagent seat required by the phase schedule must "
+        "call kimiflow_subagent exactly once. Never simulate a scheduled subagent "
+        "inside the main worker; each call is a separate visible Herdr/Pi worker.\n"
+        "%s\n\n"
         "Transport request:\n%s"
         % (
             targets["skill"],
             targets["phase_manifest"],
             targets["run_bridge"],
+            presentation,
             payload["prompt"],
         )
     )
@@ -1012,6 +1070,8 @@ def run_turn(payload, environ=None, stdout=None):
     command = material["command"]
     extension = material["worker_extension"]
     extension_digest = material["worker_extension_digest"]
+    calm_extension = material["calm_extension"]
+    calm_extension_digest = material["calm_extension_digest"]
     prompt = _workflow_prompt(payload)
     output = sys.stdout if stdout is None else stdout
     if pi_herdr.requested(env):
@@ -1029,8 +1089,16 @@ def run_turn(payload, environ=None, stdout=None):
     sealed_descriptor, sealed_extension = _sealed_worker_extension(
         extension, extension_digest,
     )
+    try:
+        calm_descriptor, sealed_calm = _sealed_calm_extension(
+            calm_extension, calm_extension_digest,
+        )
+    except Exception:
+        os.close(sealed_descriptor)
+        raise
     argv = [
         command, "--mode", "json", "--no-extensions",
+        "--extension", sealed_calm,
         "--extension", sealed_extension,
         "--provider", selection["provider"],
         "--model", selection["model"],
@@ -1067,7 +1135,7 @@ def run_turn(payload, environ=None, stdout=None):
             stderr=subprocess.DEVNULL,
             text=True,
             start_new_session=True,
-            pass_fds=(sealed_descriptor,),
+            pass_fds=(calm_descriptor, sealed_descriptor),
         )
     except OSError as exc:
         if cleanup is not None:
@@ -1075,6 +1143,7 @@ def run_turn(payload, environ=None, stdout=None):
             cleanup["process"].wait(timeout=5)
         raise PiHostError("pi_spawn_failed", "cannot launch Pi: %s" % exc, 1)
     finally:
+        os.close(calm_descriptor)
         os.close(sealed_descriptor)
     process._kimiflow_tree_token = tree_token
     if cleanup is not None:

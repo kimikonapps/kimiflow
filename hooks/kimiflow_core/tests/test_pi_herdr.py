@@ -38,6 +38,10 @@ class PiHerdrTests(unittest.TestCase):
         }
 
     def test_endpoint_creation_uses_an_unfocused_visible_interactive_pi_tab(self):
+        calm_extension = os.path.join(self.temp, "calm-source.js")
+        calm_content = b"export default function calm() {}\n"
+        with open(calm_extension, "wb") as handle:
+            handle.write(calm_content)
         extension = os.path.join(self.temp, "worker-source.js")
         content = b"export default function worker() {}\n"
         with open(extension, "wb") as handle:
@@ -45,6 +49,10 @@ class PiHerdrTests(unittest.TestCase):
         material = {
             "command": "/usr/local/bin/pi",
             "active_run_hook": "/plugin/hooks/active-run.sh",
+            "calm_extension": calm_extension,
+            "calm_extension_digest": (
+                "sha256:" + hashlib.sha256(calm_content).hexdigest()
+            ),
             "worker_extension": extension,
             "worker_extension_digest": (
                 "sha256:" + hashlib.sha256(content).hexdigest()
@@ -108,6 +116,16 @@ class PiHerdrTests(unittest.TestCase):
         self.assertIn("pi", start_args)
         self.assertNotIn("--mode", start_args)
         self.assertIn("--extension", start_args)
+        self.assertEqual(start_args.count("--extension"), 2)
+        extension_args = [
+            start_args[index + 1]
+            for index, value in enumerate(start_args)
+            if value == "--extension"
+        ]
+        self.assertEqual(
+            [os.path.basename(value) for value in extension_args],
+            ["calm.js", "worker.js"],
+        )
         self.assertIn("--session", start_args)
         self.assertNotIn("--session-id", start_args)
         self.assertFalse(any(
@@ -150,6 +168,129 @@ class PiHerdrTests(unittest.TestCase):
         )
         with self.assertRaises(pi_herdr.HerdrError):
             pi_herdr._turn_result(self.session_path, offset, "other prompt")
+
+    def test_endpoint_settle_lag_is_waited_out_without_closing_the_worker(self):
+        state = {
+            "root": self.root,
+            "session_id": self.session_id,
+            "workspace_id": "w2",
+            "tab_id": "w2:t2",
+            "pane_id": "w2:p2",
+            "session_path": None,
+        }
+        panes = [
+            {
+                "workspace_id": "w2",
+                "tab_id": "w2:t2",
+                "pane_id": "w2:p2",
+                "agent": "pi",
+                "agent_status": "working",
+                "cwd": self.root,
+            },
+            {
+                "workspace_id": "w2",
+                "tab_id": "w2:t2",
+                "pane_id": "w2:p2",
+                "agent": "pi",
+                "agent_status": "idle",
+                "cwd": self.root,
+            },
+        ]
+        with mock.patch.object(
+            pi_herdr,
+            "_pane",
+            side_effect=panes,
+        ), mock.patch.object(pi_herdr.time, "sleep") as sleep:
+            pane = pi_herdr._wait_for_settled_endpoint(
+                state, self.root, self.environment, timeout=1,
+            )
+        self.assertEqual(pane["agent_status"], "idle")
+        sleep.assert_called_once_with(0.05)
+
+    def test_subagent_owns_a_numbered_visible_read_only_worker_tab(self):
+        payload = {
+            "schema_version": 1,
+            "root": self.root,
+            "session_id": self.session_id,
+            "slot": 2,
+            "task": "independently review the accepted behavior",
+            "selection": {
+                "provider": "openai",
+                "model": "gpt-5.6",
+                "thinking": "high",
+            },
+        }
+        emitted = []
+        sentinel = {"control": 10, "process": mock.Mock()}
+        with mock.patch.object(
+            pi_herdr,
+            "_context",
+            return_value={
+                "workspace_id": "w2",
+                "tab_id": "w2:t1",
+                "pane_id": "w2:p1",
+            },
+        ), mock.patch.object(
+            pi_herdr,
+            "_tab",
+            return_value=("w2:t2", "w2:p2"),
+        ) as create_tab, mock.patch.object(
+            pi_herdr,
+            "_start_agent",
+        ) as start_agent, mock.patch.object(
+            pi_herdr,
+            "_start_sentinel",
+            return_value=sentinel,
+        ), mock.patch.object(
+            pi_herdr,
+            "_invoke",
+            return_value={},
+        ), mock.patch.object(
+            pi_herdr,
+            "_wait_for_native_session",
+            return_value=self.session_path,
+        ), mock.patch.object(
+            pi_herdr,
+            "_wait_for_settled_endpoint",
+        ), mock.patch.object(
+            pi_herdr,
+            "_turn_result",
+            return_value="independent result",
+        ), mock.patch.object(
+            pi_herdr,
+            "_close_exact_ids",
+            return_value=True,
+        ) as close_tab, mock.patch.object(
+            pi_herdr,
+            "_finish_sentinel",
+        ) as finish_sentinel:
+            result = pi_herdr.run_subagent(
+                payload,
+                self.environment,
+                emitted.append,
+            )
+
+        self.assertEqual(result, 0)
+        create_tab.assert_called_once_with(
+            self.root,
+            "w2",
+            "kimiflow · subagent 2",
+            {},
+            self.environment,
+        )
+        start_agent.assert_called_once_with(
+            "kimiflow-subagent-2",
+            "w2:p2",
+            payload["selection"],
+            self.session_id,
+            self.environment,
+            read_only=True,
+        )
+        close_tab.assert_called_once_with(
+            "w2", "w2:t2", "w2:p2", self.environment,
+        )
+        finish_sentinel.assert_called_once_with(sentinel, True)
+        self.assertEqual(emitted[-1]["type"], "agent_settled")
 
     def test_exact_endpoint_close_never_guesses_another_tab(self):
         wrong = {

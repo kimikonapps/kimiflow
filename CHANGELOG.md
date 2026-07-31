@@ -6,6 +6,33 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.33
+
+The stable Herdr/Pi FirstMate correction.
+
+### Changed
+
+- Project `quiet` now loads a renderer-only Calm projection in Pi: collapsed thinking, the seven built-in
+  tool shells, and Kimiflow's exact operational transport row render at zero height while execution, model
+  context, Pi session history, and export/share content remain unchanged. Required questions, decisive evidence,
+  and the final result stay visible; the low-narration prompt remains an independent presentation contract.
+- Every scheduled independent Kimiflow semantic agent must use the existing bounded `kimiflow_subagent`
+  transport. In Herdr, each call opens its own numbered visible read-only Pi worker tab while the main Pi
+  worker remains the orchestrator.
+- Pre-intake Pi discovery uses native read tools, exact Kimiflow control calls, and three narrowly allowlisted
+  read-only Git commands. The transport names the canonical Active Run pointer and state location and no longer
+  invites the worker to execute the internal run bridge.
+
+### Fixed
+
+- The persistent Herdr main worker now waits through Herdr's short post-start and post-prompt status lag instead
+  of treating a still-settling Pi pane as invalid and closing its tab.
+- A live Active Run and its material user wait now outrank a stale `running` or `transport_error` runner receipt.
+  The Captain surfaces the real question, keeps the exact worker/session binding resumable, and performs terminal
+  cleanup only after no live run remains.
+- The real Pi end-to-end test now covers the valid timing window where Active Run exposes an intake question
+  before the background runner has synchronized its receipt.
+
 ## 0.2.32
 
 The visible Herdr/Pi correction patch.

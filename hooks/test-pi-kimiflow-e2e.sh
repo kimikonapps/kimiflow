@@ -407,12 +407,18 @@ for (const label of [
 const waiting = await extension.status();
 assert.equal(waiting.status, "awaiting_user");
 assert.equal(waiting.active_run.awaiting_kind, "intake");
-const receiptBeforeReply = JSON.parse(
-  fs.readFileSync(
-    path.join(context.cwd, ".kimiflow/session/HEADLESS_RUN.json"),
-    "utf8",
-  ),
-);
+let receiptBeforeReply;
+deadline = Date.now() + 5000;
+while (Date.now() < deadline) {
+  receiptBeforeReply = JSON.parse(
+    fs.readFileSync(
+      path.join(context.cwd, ".kimiflow/session/HEADLESS_RUN.json"),
+      "utf8",
+    ),
+  );
+  if (receiptBeforeReply.status === "awaiting_user") break;
+  await delay(25);
+}
 assert.equal(receiptBeforeReply.status, "awaiting_user");
 assert.equal(receiptBeforeReply.session_id, question.provider_session_id);
 

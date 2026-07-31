@@ -147,6 +147,16 @@ test("pre-intake guard permits only reads, trusted control, and current run arti
     toolName: "bash",
     input: { command: `hooks/active-run.sh status --root '${value.root}'` },
   }, context), undefined);
+  for (const command of [
+    "git rev-parse --is-inside-work-tree",
+    "git status --short --branch",
+    "git worktree list --porcelain",
+  ]) {
+    assert.equal(await guard({
+      toolName: "bash",
+      input: { command },
+    }, context), undefined);
+  }
   assert.equal(await guard({
     toolName: "write",
     input: { path: ".kimiflow/run-6-fixture/INTAKE.md" },
@@ -158,6 +168,8 @@ test("pre-intake guard permits only reads, trusted control, and current run arti
 
   for (const event of [
     { toolName: "bash", input: { command: "npm test" } },
+    { toolName: "bash", input: { command: "git status --short --branch; env" } },
+    { toolName: "bash", input: { command: "git diff" } },
     { toolName: "bash", input: { command: `hooks/active-run.sh abort --root '${value.root}'` } },
     { toolName: "bash", input: { command: "hooks/active-run.sh abort --root /tmp/project" } },
     { toolName: "bash", input: { command: "bash hooks/workspace-preflight.sh integrate --root=/tmp/project" } },
@@ -317,6 +329,7 @@ test("Herdr workers launch visible read-only Pi subagents through pi-host", asyn
   assert.equal(calls[0].command, `${process.cwd()}/hooks/pi-host.sh`);
   assert.deepEqual(calls[0].args, ["subagent", "--json"]);
   assert.equal(calls[0].payload.task, "review the current code");
+  assert.equal(calls[0].payload.slot, 1);
   assert.deepEqual(calls[0].payload.selection, authority().selection);
 });
 

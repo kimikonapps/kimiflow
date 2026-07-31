@@ -417,9 +417,10 @@ PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import runner; assert ru
   && ok "shared-core runner module imports" || bad "shared-core runner module unavailable"
 if jq -e --arg version "$cv" '
     .name == "@kimiflow/pi" and .version == $version and .type == "module"
-    and .pi.extensions == ["./hosts/pi/extensions/captain.js","./hosts/pi/extensions/worker.js"]
+    and .pi.extensions == ["./hosts/pi/extensions/calm.js","./hosts/pi/extensions/captain.js","./hosts/pi/extensions/worker.js"]
     and .pi.skills == ["./hosts/pi/skills/kimiflow"]
   ' "$ROOT/package.json" >/dev/null 2>&1 \
+  && [ -f "$ROOT/hosts/pi/extensions/calm.js" ] \
   && [ -f "$ROOT/hosts/pi/extensions/captain.js" ] \
   && [ -f "$ROOT/hosts/pi/extensions/worker.js" ] \
   && [ -f "$ROOT/hosts/pi/skills/kimiflow/SKILL.md" ] \

@@ -24,6 +24,7 @@ SESSION_VERSION = 3
 MAX_JSON = 256 * 1024
 MAX_SESSION_DELTA = 16 * 1024 * 1024
 SETTLED = {"idle", "blocked", "done"}
+ENDPOINT_SETTLE_TIMEOUT = 30
 BRIDGE_ENV = "KIMIFLOW_PI_BRIDGE_BINDING"
 HERDR_FLAG_ENV = "HERDR_ENV"
 HERDR_KEYS = ("HERDR_WORKSPACE_ID", "HERDR_TAB_ID", "HERDR_PANE_ID")
@@ -258,7 +259,7 @@ def _load_state(path):
     return value
 
 
-def _copy_extension(source, expected_digest, directory):
+def _copy_extension(source, expected_digest, directory, filename):
     with open(source, "rb") as handle:
         content = handle.read(MAX_JSON * 4 + 1)
     digest = "sha256:" + hashlib.sha256(content).hexdigest()
@@ -270,7 +271,7 @@ def _copy_extension(source, expected_digest, directory):
         info = os.lstat(directory)
         if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
             raise HerdrError("herdr_state_unsafe", "Herdr extension state is unsafe", 2)
-    target = os.path.join(directory, "worker.js")
+    target = os.path.join(directory, filename)
     temporary = target + ".tmp-" + uuid.uuid4().hex
     descriptor = None
     try:
@@ -339,16 +340,33 @@ def _endpoint_pane(state, root, environ, require_settled=True):
                 or os.path.realpath(session.get("value", "")) != expected_path
             )
         )
-        or require_settled and status_value not in SETTLED
     ):
         raise HerdrError(
             "herdr_endpoint_invalid",
-            "The exact Kimiflow Herdr endpoint is not settled and reusable",
+            "The exact Kimiflow Herdr endpoint identity is invalid",
+            1,
+        )
+    if require_settled and status_value not in SETTLED:
+        raise HerdrError(
+            "herdr_endpoint_busy",
+            "The exact Kimiflow Herdr endpoint is still settling",
             1,
         )
     if expected_path is not None:
         _session_header(expected_path, root, state["session_id"])
     return pane
+
+
+def _wait_for_settled_endpoint(state, root, environ, timeout=None):
+    timeout = ENDPOINT_SETTLE_TIMEOUT if timeout is None else timeout
+    deadline = time.time() + timeout
+    while True:
+        try:
+            return _endpoint_pane(state, root, environ, require_settled=True)
+        except HerdrError as exc:
+            if exc.status != "herdr_endpoint_busy" or time.time() >= deadline:
+                raise
+            time.sleep(0.05)
 
 
 def _close_exact_ids(workspace_id, tab_id, pane_id, environ):
@@ -480,12 +498,12 @@ def _start_agent(
     selection,
     session_id,
     environ,
-    extension=None,
+    extensions=(),
     resume=False,
     read_only=False,
 ):
     agent_args = ["--no-extensions"]
-    if extension is not None:
+    for extension in extensions:
         agent_args += ["--extension", extension]
     if read_only:
         agent_args += ["--tools", "read,grep,find,ls"]
@@ -527,10 +545,17 @@ def _create_endpoint(
     state_path, endpoint_directory = _state_paths(root, binding["worker_id"])
     resume = session_id is not None
     session_id = session_id or str(uuid.uuid4())
-    extension = _copy_extension(
+    calm_extension = _copy_extension(
+        material["calm_extension"],
+        material["calm_extension_digest"],
+        endpoint_directory,
+        "calm.js",
+    )
+    worker_extension = _copy_extension(
         material["worker_extension"],
         material["worker_extension_digest"],
         endpoint_directory,
+        "worker.js",
     )
     worker_env = {
         BRIDGE_ENV: environ[BRIDGE_ENV],
@@ -556,7 +581,7 @@ def _create_endpoint(
             selection,
             session_id,
             environ,
-            extension=extension,
+            extensions=(calm_extension, worker_extension),
             resume=resume,
         )
         session_path = (
@@ -788,7 +813,7 @@ def _watch_parent(environ):
 
 
 def _prompt(state, prompt, environ):
-    _endpoint_pane(state, state["root"], environ, require_settled=True)
+    _wait_for_settled_endpoint(state, state["root"], environ)
     session_path = state.get("session_path")
     offset = os.path.getsize(session_path) if session_path is not None else 0
     sentinel = _start_sentinel(state, environ)
@@ -819,7 +844,7 @@ def _prompt(state, prompt, environ):
                     state["root"], state["worker_id"],
                 )
                 _write_state(state_path, state)
-        _endpoint_pane(state, state["root"], environ, require_settled=True)
+        _wait_for_settled_endpoint(state, state["root"], environ)
         result = _turn_result(session_path, offset, prompt)
         keep = True
         return result
@@ -856,8 +881,10 @@ def run_turn(payload, material, selection, prompt, environ, emit):
         state = None
     if state is not None:
         try:
-            _endpoint_pane(state, root, environ, require_settled=True)
-        except HerdrError:
+            _wait_for_settled_endpoint(state, root, environ)
+        except HerdrError as exc:
+            if exc.status == "herdr_endpoint_busy":
+                raise
             if not _cleanup_tracked_endpoint(
                 state, state_path, endpoint_directory, environ,
             ):
@@ -936,6 +963,9 @@ def run_subagent(payload, environ, emit):
         or not isinstance(payload.get("task"), str)
         or not payload["task"].strip()
         or len(payload["task"].encode("utf-8")) > 64 * 1024
+        or isinstance(payload.get("slot"), bool)
+        or not isinstance(payload.get("slot"), int)
+        or payload["slot"] not in {1, 2, 3}
         or not isinstance(payload.get("selection"), dict)
     ):
         raise HerdrError("herdr_subagent_invalid", "Herdr subagent request is invalid", 2)
@@ -961,12 +991,12 @@ def run_subagent(payload, environ, emit):
         tab_id, pane_id = _tab(
             root,
             context["workspace_id"],
-            "kimiflow · review",
+            "kimiflow · subagent %s" % payload["slot"],
             {},
             environ,
         )
         _start_agent(
-            "kimiflow-review",
+            "kimiflow-subagent-%s" % payload["slot"],
             pane_id,
             selection,
             session_id,
@@ -1000,6 +1030,7 @@ def run_subagent(payload, environ, emit):
             pane_id, root, session_id, environ,
         )
         state["session_path"] = session_path
+        _wait_for_settled_endpoint(state, root, environ)
         result = _turn_result(session_path, offset, prompt)
         emit({"type": "session", "version": 3, "id": session_id, "cwd": root})
         emit({"type": "agent_start"})

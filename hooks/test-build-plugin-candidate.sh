@@ -15,10 +15,11 @@ test_optional_pi_package_release_and_embedded_host_parity() {
   version="$(jq -r '.version' "$ROOT/.claude-plugin/plugin.json")"
   jq -e --arg version "$version" '
     .name == "@kimiflow/pi" and .version == $version and .type == "module"
-    and .pi.extensions == ["./hosts/pi/extensions/captain.js","./hosts/pi/extensions/worker.js"]
+    and .pi.extensions == ["./hosts/pi/extensions/calm.js","./hosts/pi/extensions/captain.js","./hosts/pi/extensions/worker.js"]
     and .pi.skills == ["./hosts/pi/skills/kimiflow"]
   ' "$CANDIDATE/package.json" >/dev/null
   for rel in \
+    hosts/pi/extensions/calm.js \
     hosts/pi/extensions/captain.js \
     hosts/pi/extensions/worker.js \
     hosts/pi/skills/kimiflow/SKILL.md \
@@ -44,7 +45,8 @@ test_required_pi_runtime_paths_must_be_git_indexed() {
     "$fixture/hooks/kimiflow_core/"
   cp "$ROOT/hooks/kimiflow_core/pi_host.py" \
     "$fixture/hooks/kimiflow_core/"
-  cp "$ROOT/hosts/pi/extensions/captain.js" \
+  cp "$ROOT/hosts/pi/extensions/calm.js" \
+    "$ROOT/hosts/pi/extensions/captain.js" \
     "$ROOT/hosts/pi/extensions/worker.js" \
     "$fixture/hosts/pi/extensions/"
   cp "$ROOT/hosts/pi/skills/kimiflow/SKILL.md" \
@@ -54,6 +56,7 @@ test_required_pi_runtime_paths_must_be_git_indexed() {
     hooks/build-plugin-candidate.sh package.json hooks/pi-host.sh \
     hooks/kimiflow_core/pi_herdr.py \
     hooks/kimiflow_core/pi_host.py \
+    hosts/pi/extensions/calm.js \
     hosts/pi/extensions/captain.js \
     hosts/pi/skills/kimiflow/SKILL.md
   if "$fixture/hooks/build-plugin-candidate.sh" \

@@ -54,6 +54,7 @@ RUNTIME_REQUIRED_FILES = {
     ".codex-plugin/plugin.json",
     "SKILL.md",
     "package.json",
+    "hosts/pi/extensions/calm.js",
     "hosts/pi/extensions/captain.js",
     "hosts/pi/extensions/worker.js",
     "hosts/pi/skills/kimiflow/SKILL.md",
@@ -69,6 +70,7 @@ PI_PACKAGE = {
     "name": "@kimiflow/pi",
     "type": "module",
     "extensions": [
+        "./hosts/pi/extensions/calm.js",
         "./hosts/pi/extensions/captain.js",
         "./hosts/pi/extensions/worker.js",
     ],

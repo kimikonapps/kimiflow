@@ -81,6 +81,7 @@ tracked_paths = {
 }
 required_additive = {
     "package.json",
+    "hosts/pi/extensions/calm.js",
     "hosts/pi/extensions/captain.js",
     "hosts/pi/extensions/worker.js",
     "hosts/pi/skills/kimiflow/SKILL.md",

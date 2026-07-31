@@ -85,11 +85,11 @@ class PiHostTests(unittest.TestCase):
             argv = json.load(handle)
         self.assertNotIn("--prompt", argv)
         self.assertIn("--extension", argv)
+        self.assertEqual(argv.count("--extension"), 2)
         self.assertIn("--no-extensions", argv)
-        self.assertRegex(
-            argv[argv.index("--extension") + 1],
-            r"^/dev/fd/[0-9]+$",
-        )
+        for index, value in enumerate(argv):
+            if value == "--extension":
+                self.assertRegex(argv[index + 1], r"^/dev/fd/[0-9]+$")
         self.assertIn("Authoritative Kimiflow workflow_context:", argv[-1])
         self.assertIn("Transport request:\nbuild fixture", argv[-1])
 
@@ -673,14 +673,27 @@ class PiHostTests(unittest.TestCase):
             "model": "gpt-5.4",
             "thinking": "high",
         })
-        extension = os.path.abspath(os.path.join(
+        calm_extension = os.path.abspath(os.path.join(
+            os.path.dirname(__file__), "..", "..", "..", "hosts", "pi",
+            "extensions", "calm.js",
+        ))
+        worker_extension = os.path.abspath(os.path.join(
             os.path.dirname(__file__), "..", "..", "..", "hosts", "pi",
             "extensions", "worker.js",
         ))
+        os.makedirs(os.path.join(self.temp, ".kimiflow"), exist_ok=True)
+        with open(
+            os.path.join(self.temp, ".kimiflow", "verbosity"),
+            "w",
+            encoding="utf-8",
+        ) as handle:
+            handle.write("quiet\n")
         result = subprocess.run(
             [
                 executable, "--mode", "json", "--no-session",
-                "--no-extensions", "--extension", extension,
+                "--no-extensions",
+                "--extension", calm_extension,
+                "--extension", worker_extension,
                 "--provider", "openai-codex", "--model", "gpt-5.4",
                 "contract smoke",
             ],
@@ -775,6 +788,27 @@ class PiHostTests(unittest.TestCase):
         ):
             pi_host._workflow_prompt(payload)
 
+    def test_workflow_prompt_enforces_calm_and_visible_subagent_contracts(self):
+        os.makedirs(os.path.join(self.temp, ".kimiflow"), exist_ok=True)
+        with open(
+            os.path.join(self.temp, ".kimiflow", "verbosity"),
+            "w",
+            encoding="utf-8",
+        ) as handle:
+            handle.write("quiet\n")
+        prompt = pi_host._workflow_prompt({
+            "root": self.temp,
+            "prompt": "build the accepted feature",
+            "workflow_context": model_adapter.workflow_context(),
+        })
+        self.assertIn("Presentation mode: calm (configured as quiet)", prompt)
+        self.assertIn("Do not narrate tool use", prompt)
+        self.assertIn(".kimiflow/session/ACTIVE_RUN.json", prompt)
+        self.assertIn("never execute it directly", prompt)
+        self.assertIn("call kimiflow_subagent exactly once", prompt)
+        self.assertIn("separate visible Herdr/Pi worker", prompt)
+        self.assertTrue(prompt.startswith("\u2063kimiflow:transport-v1\n"))
+
     def test_worker_extension_copy_is_verified_and_read_only(self):
         path, digest = pi_host._worker_extension()
         descriptor, sealed_path = pi_host._sealed_worker_extension(
@@ -795,6 +829,18 @@ class PiHostTests(unittest.TestCase):
             self.assertEqual(os.read(descriptor, len(expected) + 1), expected)
             with self.assertRaises(OSError):
                 os.write(descriptor, b"mutation")
+        finally:
+            os.close(descriptor)
+
+    def test_calm_extension_copy_is_verified_and_read_only(self):
+        path, digest = pi_host._calm_extension()
+        descriptor, sealed_path = pi_host._sealed_calm_extension(path, digest)
+        try:
+            self.assertEqual(sealed_path, "/dev/fd/%s" % descriptor)
+            self.assertEqual(stat.S_IMODE(os.fstat(descriptor).st_mode), 0o400)
+            with open(path, "rb") as handle:
+                expected = handle.read()
+            self.assertEqual(os.read(descriptor, len(expected) + 1), expected)
         finally:
             os.close(descriptor)
 

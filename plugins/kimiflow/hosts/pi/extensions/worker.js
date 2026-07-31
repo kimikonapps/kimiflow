@@ -60,6 +60,11 @@ const ACTIVE_RUN_INTAKE_COMMANDS = new Set([
 ]);
 const WORKSPACE_PREFLIGHT_INTAKE_COMMANDS = new Set(["status", "write-gate"]);
 const SAFE_CONTROL_COMMAND = /^[A-Za-z0-9._/@:=+,'"\- ]+$/;
+const SAFE_READ_ONLY_GIT = new Set([
+  "git rev-parse --is-inside-work-tree",
+  "git status --short --branch",
+  "git worktree list --porcelain",
+]);
 const ROOT_OPTION = /(?:^| )--root(?:=| +)(?:"([^"]+)"|'([^']+)'|([^ "'=]+))/g;
 const ROOT_MENTION = /(?:^| )--root(?:(?:=| +)|$)/g;
 const PROTECTED_RUN_ARTIFACT = /^(?:INTENT-LOCK\.json|INTAKE-RECEIPT-[12]\.json)$/;
@@ -426,6 +431,17 @@ function trustedControlCommand(authority, context, command) {
   }
 }
 
+function trustedReadOnlyGitCommand(authority, context, command) {
+  if (typeof command !== "string" || !SAFE_READ_ONLY_GIT.has(command.trim())) {
+    return false;
+  }
+  try {
+    return realpathSync(resolve(context?.cwd ?? authority.root)) === authority.root;
+  } catch {
+    return false;
+  }
+}
+
 function writableRunArtifact(authority, state, target) {
   const kimiflowRoot = resolve(authority.root, ".kimiflow");
   if (!inside(kimiflowRoot, target)) return false;
@@ -452,12 +468,15 @@ export function createPreIntakeGuard(authority, {
     if (READ_TOOLS.has(toolName)) return undefined;
     if (toolName === "bash" || toolName === "shell") {
       const command = event?.input?.command ?? event?.arguments?.command;
-      if (trustedControlCommand(authority, context, command)) {
+      if (
+        trustedControlCommand(authority, context, command)
+        || trustedReadOnlyGitCommand(authority, context, command)
+      ) {
         return undefined;
       }
       return {
         block: true,
-        reason: "Kimiflow intake is not confirmed; product commands are blocked.",
+        reason: "Kimiflow intake is not confirmed. Use Pi read/find/grep/ls, one exact read-only Git command, or an exact Kimiflow intake control command.",
       };
     }
     if (WRITE_TOOLS.has(toolName)) {
@@ -858,6 +877,7 @@ export class GenerationSupervisor {
         schema_version: 1,
         root: this.authority.root,
         session_id: sessionId,
+        slot,
         task: input,
         selection,
       })}\n`);

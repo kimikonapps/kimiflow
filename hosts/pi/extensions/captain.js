@@ -602,7 +602,8 @@ function runnerIsActive(snapshot) {
 }
 
 function runnerIsTerminal(snapshot) {
-  return TERMINAL_RUNNER_STATES.has(snapshot?.status);
+  return snapshot?.active_run?.present !== true
+    && TERMINAL_RUNNER_STATES.has(snapshot?.status);
 }
 
 function snapshotIdentity(snapshot, binding = null) {
@@ -663,6 +664,15 @@ function runnerControllerLost(snapshot, binding) {
 }
 
 function visibleSnapshot(snapshot, binding) {
+  if (
+    snapshot?.active_run?.present === true
+    && snapshot.active_run.awaiting_user === true
+  ) {
+    return {
+      ...snapshot,
+      status: "awaiting_user",
+    };
+  }
   if (!runnerControllerLost(snapshot, binding)) return snapshot;
   return {
     ...snapshot,
@@ -694,8 +704,7 @@ function transition(snapshot, binding) {
   const receipt = snapshot.runner;
   let kind = null;
   if (
-    snapshot.status === "awaiting_user"
-    && activeRun?.present === true
+    activeRun?.present === true
     && activeRun.awaiting_user === true
   ) {
     kind = "question";
@@ -1069,7 +1078,7 @@ export function createCaptainExtension({
       const bound = bindSnapshot(active, snapshot);
       if (bound !== null) {
         active = bound;
-        return snapshot;
+        return visibleSnapshot(snapshot, active);
       }
       if (provisionalTransportFailure(snapshot, active) !== null) {
         return snapshot;
@@ -1129,8 +1138,8 @@ export function createCaptainExtension({
     ) {
       throw new Error("kimiflow_runner_identity_mismatch");
     }
-    const waiting = snapshot?.status === "awaiting_user"
-      && snapshot?.active_run?.awaiting_user === true;
+    const waiting = snapshot?.active_run?.present === true
+      && snapshot.active_run.awaiting_user === true;
     if (
       !waiting
       && !RESUMABLE_STATES.has(snapshot?.status)

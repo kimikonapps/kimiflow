@@ -1537,6 +1537,52 @@ test("a provisional Captain surfaces transport failure before Run creation", asy
   assert.equal(attention.provider_session_id, "pi-worker-00000001");
 });
 
+test("a live intake wait outranks a stale transport error and keeps its worker resumable", async () => {
+  const status = statusFixture();
+  const spawned = spawnFixture();
+  const extension = createCaptainExtension({
+    root: "/pkg",
+    exec: status.exec,
+    spawn: spawned.spawn,
+  });
+  await extension.activate("build feature-x", context());
+  const provisional = extension.binding();
+  status.set(activeSnapshot({
+    status: "transport_error",
+    awaiting: true,
+    awaitingRequest: "Confirm the simple product flow.",
+    workerId: provisional.workerId,
+  }));
+  assert.equal((await extension.status()).status, "awaiting_user");
+  const messages = [];
+  const observed = await extension.pollAttention({
+    appendEntry() {},
+    sendMessage(value) { messages.push(value); },
+  });
+  assert.equal(observed.snapshot.status, "awaiting_user");
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].details.kind, "question");
+  assert.equal(messages[0].content, "Confirm the simple product flow.");
+  assert.equal(extension.binding().terminal, false);
+  assert.equal(
+    status.calls.filter(({ args }) => args?.[0] === "terminate").length,
+    0,
+  );
+
+  const binding = extension.binding();
+  const result = await extension.deliver("reply", {
+    workerId: binding.workerId,
+    providerSessionId: binding.providerSessionId,
+    run: binding.run,
+    message: "Confirmed.",
+  }, context());
+  assert.equal(result.status, "queued");
+  assert.equal(
+    spawned.calls.filter(({ args }) => args[0] === "resume").length,
+    1,
+  );
+});
+
 test("a provisional failure tombstone allows a later unrelated activation", async () => {
   const entries = [];
   const status = statusFixture();
