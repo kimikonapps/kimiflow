@@ -47,6 +47,194 @@ class ActiveRunContractTests(unittest.TestCase):
         subprocess.run(["git", "-C", self.root, "add", "tracked.txt"], check=True)
         subprocess.run(["git", "-C", self.root, "commit", "-qm", "base"], check=True)
 
+    def schema2_scope(self, language="de"):
+        return (
+            "<!-- kimiflow:intake contract=4 schema=2 stage=scope round=1 "
+            "questions=2 selection=impact_uncertainty technical_questions=0 "
+            "confirmation=scope_deliberation user_language=%s -->\n" % language
+            + "Problem: Feature requests can be implemented from an unverified assumption.\n"
+            + "Observable success: The user sees and corrects the understood product flow.\n"
+            + "Boundary: Product intent is discussed before research, planning, or writes.\n"
+            + "Option 1: Reuse the current intake gate.\n"
+            + "Option 2: Evolve the current contract with structured actions.\n"
+            + "Included: One replaceable scope draft.\n"
+            + "Later: Optional richer product discovery.\n"
+            + "Excluded: Automatic scope expansion.\n"
+            + "Counter perspective: A smaller change may solve the actual problem.\n"
+            + "Completeness check: No material user-visible capability is missing.\n"
+            + "Action scope_ready: Umfang ist bereit\n"
+            + "Action discuss: Weiter besprechen\n"
+        )
+
+    def schema2_final(self, language="de"):
+        return (
+            "<!-- kimiflow:intake contract=4 schema=2 stage=final round=2 "
+            "questions=1 selection=impact_uncertainty technical_questions=0 "
+            "confirmation=final_contract cause=scope_ready user_language=%s -->\n" % language
+            + "Problem: Feature requests can be implemented from an unverified assumption.\n"
+            + "Step 1: The user starts a feature run.\n"
+            + "Step 2: Kimiflow discusses and confirms the product intent.\n"
+            + "Roles and boundaries: The user owns what and why; the model owns how.\n"
+            + "Included: Structured product deliberation.\n"
+            + "Excluded: Automatic scope expansion.\n"
+            + "Observable success: Planning stays closed until explicit confirmation.\n"
+            + "End-to-end example: A correction replaces the draft before confirmation.\n"
+            + "Requirement R1: Product scope is discussed before implementation.\n"
+            + "Requirement R2: Only a structured action confirms the contract.\n"
+            + "Action confirmed: Vertrag bestätigen\n"
+            + "Action corrected: Korrektur erforderlich\n"
+        )
+
+    def schema2_active(self, run_rel, round_number, request):
+        digest = "sha256:" + hashlib.sha256(request.encode("utf-8")).hexdigest()
+        return {
+            "schema_version": 1,
+            "status": "active",
+            "run": run_rel,
+            "mode": "feature",
+            "scope": "small",
+            "host": "codex",
+            "intent_contract": "4",
+            "intake_schema": 2,
+            "interaction_language": "de",
+            "awaiting_user": True,
+            "awaiting_kind": "intake",
+            "intake_round": round_number,
+            "intake_request": run_rel + "/" + active_run.intake_request_name(round_number),
+            "intake_request_digest": digest,
+        }
+
+    def test_contract4_schema2_scope_requires_exact_deliberation_shape(self):
+        run_rel = ".kimiflow/schema2-shape"
+        run_dir = os.path.join(self.root, run_rel)
+        os.makedirs(run_dir)
+        path = os.path.join(run_dir, "INTAKE.md")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(self.schema2_scope())
+        request, _, intake_text = active_run._strict_intake_document(
+            self.root,
+            run_dir,
+            run_rel + "/INTAKE.md",
+            1,
+            4,
+            expected_language="de",
+        )
+        intake = active_run.parse_intake_document(intake_text, 4, 1, "de")
+        self.assertEqual(request, run_rel + "/INTAKE.md")
+        self.assertEqual(intake["schema"], 2)
+        self.assertEqual(intake["stage"], "scope")
+
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(self.schema2_scope().replace("Option 2:", "Option 4:"))
+        with self.assertRaisesRegex(active_run.ActiveError, "ordered Option"):
+            active_run.strict_intake_request(
+                self.root,
+                run_dir,
+                run_rel + "/INTAKE.md",
+                1,
+                4,
+                expected_language="de",
+            )
+
+    def test_contract4_schema2_actions_are_explicit_and_receipts_are_stage_bound(self):
+        run_rel = ".kimiflow/schema2-actions"
+        run_dir = os.path.join(self.root, run_rel)
+        os.makedirs(run_dir)
+        scope = self.schema2_scope()
+        with open(os.path.join(run_dir, "INTAKE.md"), "w", encoding="utf-8") as handle:
+            handle.write(scope)
+        active = self.schema2_active(run_rel, 1, scope)
+        active_run.write_active(self.root, active)
+
+        self.assertIsNone(active_run.structured_intake_action("Okay", scope, 4, 1, "de"))
+        self.assertEqual(
+            active_run.structured_intake_action("Umfang ist bereit", scope, 4, 1, "de"),
+            "scope_ready",
+        )
+
+        self.assertFalse(active_run.record_intake_response(self.root, active, "chat"))
+        self.assertFalse(os.path.exists(os.path.join(run_dir, "INTAKE-RECEIPT-1.json")))
+        self.assertTrue(active_run.load_active(self.root)["awaiting_user"])
+
+        self.assertTrue(active_run.record_intake_response(
+            self.root, active, "chat", action="discuss",
+        ))
+        resumed = active_run.load_active(self.root)
+        self.assertEqual(resumed["intake_action"], "discuss")
+        self.assertFalse(os.path.exists(os.path.join(run_dir, "INTAKE-RECEIPT-1.json")))
+
+        active_run.write_active(self.root, active)
+        self.assertTrue(active_run.record_intake_response(
+            self.root, active, "native_tool", action="scope_ready",
+        ))
+        with open(os.path.join(run_dir, "INTAKE-RECEIPT-1.json"), encoding="utf-8") as handle:
+            receipt = json.load(handle)
+        self.assertEqual(receipt["schema_version"], 2)
+        self.assertEqual(receipt["stage"], "scope")
+        self.assertEqual(receipt["action"], "scope_ready")
+        self.assertEqual(receipt["user_language"], "de")
+
+    def test_contract4_schema2_final_correction_does_not_confirm(self):
+        run_rel = ".kimiflow/schema2-final"
+        run_dir = os.path.join(self.root, run_rel)
+        os.makedirs(run_dir)
+        scope = self.schema2_scope()
+        final = self.schema2_final()
+        with open(os.path.join(run_dir, "INTAKE.md"), "w", encoding="utf-8") as handle:
+            handle.write(scope)
+        scope_digest = "sha256:" + hashlib.sha256(scope.encode("utf-8")).hexdigest()
+        with open(os.path.join(run_dir, "INTAKE-RECEIPT-1.json"), "w", encoding="utf-8") as handle:
+            json.dump({
+                "schema_version": 2,
+                "contract": 4,
+                "round": 1,
+                "stage": "scope",
+                "action": "scope_ready",
+                "request": "INTAKE.md",
+                "request_digest": scope_digest,
+                "contract_digest": active_run.structured_intake_digest(
+                    active_run.parse_intake_document(scope, 4, 1, "de")
+                ),
+                "user_language": "de",
+                "channel": "chat",
+                "responded_at": "2026-07-31T12:00:00Z",
+            }, handle)
+        with open(os.path.join(run_dir, "INTAKE-2.md"), "w", encoding="utf-8") as handle:
+            handle.write(final)
+        active = self.schema2_active(run_rel, 2, final)
+        active_run.write_active(self.root, active)
+
+        self.assertTrue(active_run.record_intake_response(
+            self.root, active, "chat", action="corrected",
+        ))
+        self.assertFalse(os.path.exists(os.path.join(run_dir, "INTAKE-RECEIPT-2.json")))
+        self.assertEqual(active_run.load_active(self.root)["intake_action"], "corrected")
+
+        active_run.write_active(self.root, active)
+        self.assertTrue(active_run.record_intake_response(
+            self.root, active, "native_tool", action="confirmed",
+        ))
+        with open(os.path.join(run_dir, "INTAKE-RECEIPT-2.json"), encoding="utf-8") as handle:
+            receipt = json.load(handle)
+        self.assertEqual(receipt["action"], "confirmed")
+        self.assertEqual(receipt["stage"], "final")
+
+    def test_contract4_schema2_rejects_language_drift(self):
+        run_rel = ".kimiflow/schema2-language"
+        run_dir = os.path.join(self.root, run_rel)
+        os.makedirs(run_dir)
+        with open(os.path.join(run_dir, "INTAKE.md"), "w", encoding="utf-8") as handle:
+            handle.write(self.schema2_scope(language="en"))
+        with self.assertRaisesRegex(active_run.ActiveError, "user language"):
+            active_run.strict_intake_request(
+                self.root,
+                run_dir,
+                run_rel + "/INTAKE.md",
+                1,
+                4,
+                expected_language="de",
+            )
+
     def test_intake_receipt_retry_clears_wait_after_crash(self):
         run_rel = ".kimiflow/intake-retry"
         run_dir = os.path.join(self.root, run_rel)
@@ -444,6 +632,7 @@ class TestExecutionControlIntegration(unittest.TestCase):
         lines = [
             "Flow schema: 4",
             "Intent contract: 3",
+            "Interaction language: en",
             "Status: active",
             "Mode: feature",
             "Scope: large",

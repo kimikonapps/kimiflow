@@ -502,6 +502,37 @@ for header in "Affected files" "Affected paths" "Files" "Paths" "Touches" "files
   fi
 done
 
+# Contract-4 schema-2 planning is byte-bound before the first product write.
+reset_run
+git -C "$WORK" init -q
+git -C "$WORK" config user.email test@example.test
+git -C "$WORK" config user.name test
+mkdir -p "$WORK/src" "$WORK/tests"
+printf 'feature\n' > "$WORK/src/feature.ts"
+printf 'test\n' > "$WORK/tests/feature.test.ts"
+git -C "$WORK" add src/feature.ts tests/feature.test.ts
+git -C "$WORK" commit -qm base
+printf '{"schema_version":2,"contract":4}\n' > "$RUN/INTENT-LOCK.json"
+"$(dirname "$SCRIPT")/codebase-basis.sh" create --root "$WORK" --run "$RUN" --write >/dev/null
+basis_digest="sha256:$(shasum -a 256 "$RUN/CODEBASE-BASIS.json" | awk '{print $1}')"
+cat >> "$RUN/RESEARCH.md" <<EOF
+<!-- kimiflow:scope-research contract=4 schema=2 codebase_basis=$basis_digest scope=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa selection=non_expanded -->
+<!-- kimiflow:reuse-order contract=4 schema=2 reuse=fit evolve=not_needed new=not_needed selected=reuse -->
+Reuse candidate: Keep the existing feature boundary.
+Reuse evidence: src/feature.ts:1
+Codebase basis: $basis_digest
+Own idea: Reuse the existing feature boundary before adding another path.
+Research finding: The affected implementation already exists at the declared path.
+Code comparison: Reuse avoids a parallel implementation for the same behavior.
+Scope result: non_expanded
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "contract4_schema2_current_codebase_basis_opens"
+printf 'drift\n' >> "$WORK/src/feature.ts"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "contract4_schema2_stale_codebase_basis_closes"
+assert_contains "$out" "codebase_basis_closed:affected_path_drift:src/feature.ts" "contract4_schema2_stale_codebase_basis_detail"
+
 # --- Audit-mode profile (finding C1: audit runs carry AUDIT-INTENT.md + AUDIT.md, not
 # PLAN.md/ACCEPTANCE.md; the gate must not hard-require plan artifacts or it deadlocks) ---
 reset_audit() {

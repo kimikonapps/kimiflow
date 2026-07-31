@@ -51,6 +51,32 @@ Feasibility summary: The current architecture can evolve reversibly.
 EOF
 }
 
+reset_contract4_schema2() {
+  reset_run
+  sed -i.bak 's/Flow schema: 3/Flow schema: 5/' "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+  printf 'Intent contract: 4\n' >> "$RUN/STATE.md"
+  mkdir -p "$WORK/src"
+  printf 'existing feature\n' > "$WORK/src/feature.py"
+  printf '{"head":"abc","affected_paths":[],"snapshot_sha256":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","map_coverage":{}}\n' > "$RUN/CODEBASE-BASIS.json"
+  basis_digest="sha256:$(shasum -a 256 "$RUN/CODEBASE-BASIS.json" | awk '{print $1}')"
+  cat > "$RUN/INTENT-LOCK.json" <<'EOF'
+{"schema_version":2,"contract":4}
+EOF
+  cat >> "$RUN/RESEARCH.md" <<EOF
+<!-- kimiflow:scope-research contract=4 schema=2 codebase_basis=$basis_digest scope=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa selection=non_expanded -->
+<!-- kimiflow:reuse-order contract=4 schema=2 reuse=gap evolve=fit new=not_needed selected=evolve -->
+Reuse candidate: src/feature.py current implementation
+Reuse evidence: src/feature.py:1
+Evolve candidate: Extend the current feature boundary.
+Evolve evidence: src/feature.py:1
+Codebase basis: $basis_digest
+Own idea: Add a new helper only if the current boundary cannot evolve.
+Research finding: The current boundary can be extended safely.
+Code comparison: Evolving the current file is smaller than a parallel system.
+Scope result: non_expanded
+EOF
+}
+
 reset_run
 out="$(run_gate)"
 assert_field "$out" 2 OPEN "complete_discovery_opens"
@@ -157,6 +183,28 @@ assert_contains "$out" "flow_schema_invalid" "invalid_flow_schema_detail"
 reset_contract3
 out="$(run_gate)"
 assert_field "$out" 2 OPEN "contract3_evolve_opens_autonomously"
+
+reset_contract4_schema2
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "contract4_schema2_evolve_after_reuse_gap_opens"
+
+reset_contract4_schema2
+printf 'drift\n' >> "$RUN/CODEBASE-BASIS.json"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "contract4_schema2_stale_research_basis_closes"
+assert_contains "$out" "research_codebase_basis_stale" "contract4_schema2_stale_research_basis_detail"
+
+reset_contract4_schema2
+sed -i.bak 's/reuse=gap evolve=fit new=not_needed selected=evolve/reuse=gap evolve=gap new=selected selected=new/' "$RUN/RESEARCH.md" && rm "$RUN/RESEARCH.md.bak"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "contract4_schema2_new_without_gap_falsifier_closes"
+assert_contains "$out" "new_without_proven_gap" "contract4_schema2_new_without_gap_falsifier_detail"
+
+reset_contract4_schema2
+sed -i.bak 's/reuse=gap evolve=fit new=not_needed selected=evolve/reuse=gap evolve=gap new=selected selected=new/' "$RUN/RESEARCH.md" && rm "$RUN/RESEARCH.md.bak"
+printf 'New gap: No current boundary can satisfy the required invariant.\nNew falsifier: command :: python3 spikes/new_boundary.py\n' >> "$RUN/RESEARCH.md"
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "contract4_schema2_new_with_gap_and_falsifier_opens"
 
 reset_contract3
 sed -i.bak 's/status=evolve user_gate=no decision=not_required/status=replace user_gate=no decision=not_required/' "$RUN/RESEARCH.md" && rm "$RUN/RESEARCH.md.bak"

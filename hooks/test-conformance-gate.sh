@@ -147,6 +147,42 @@ Falsifier check F1: passed :: command :: test -s src/a.txt
 EOF
 }
 
+enable_review_evidence_contract() {
+  sed -i.bak '/^Evidence D1:/a\
+Evidence class D1: review_only' "$RUN/PLAN.md" && rm "$RUN/PLAN.md.bak"
+  printf 'Evidence result D1: review_only :: passed :: plan and code review\n' >> "$RUN/VERIFICATION.md"
+}
+
+enable_spike_evidence_contract() {
+  local fixture fixture_digest output_digest spike_digest command
+  mkdir -p "$RUN/spikes"
+  fixture="$RUN/spikes/decision.py"
+  cat > "$fixture" <<'PY'
+print("SPIKE decision=yes")
+PY
+  fixture_digest="$(shasum -a 256 "$fixture" | awk '{print $1}')"
+  output_digest="$(printf 'SPIKE decision=yes\n' | shasum -a 256 | awk '{print $1}')"
+  command='python3 .kimiflow/demo/spikes/decision.py'
+  cat > "$RUN/SPIKE.md" <<EOF
+# Spike evidence
+Spike execution D1: command :: $command
+Spike fixture D1: .kimiflow/demo/spikes/decision.py@sha256:$fixture_digest
+Spike assumption D1: current bytes produce a deterministic decision
+Spike outcome D1: passed
+Spike exit D1: 0
+Spike output D1: SPIKE decision=yes
+Spike output sha256 D1: sha256:$output_digest
+EOF
+  spike_digest="$(shasum -a 256 "$RUN/SPIKE.md" | awk '{print $1}')"
+  sed -i.bak '/^Evidence D1:/a\
+Evidence class D1: spike_required' "$RUN/PLAN.md" && rm "$RUN/PLAN.md.bak"
+  cat >> "$RUN/PLAN.md" <<EOF
+Spike D1: fixture=.kimiflow/demo/spikes/decision.py; assumption=current bytes produce a deterministic decision; method=command :: $command
+Spike check D1: passed :: command :: $command :: evidence=.kimiflow/demo/SPIKE.md@sha256:$spike_digest
+EOF
+  printf 'Evidence result D1: spike_required :: passed :: .kimiflow/demo/SPIKE.md@sha256:%s\n' "$spike_digest" >> "$RUN/VERIFICATION.md"
+}
+
 run_gate() { "$SCRIPT" "$RUN" "$@"; }
 
 out="$("$SCRIPT" "$WORK/missing")"
@@ -247,6 +283,43 @@ reset_repo
 write_contract small
 out="$(run_gate --plan)"
 assert_status "$out" OPEN "valid_plan_contract_opens"
+
+reset_repo
+write_contract small
+enable_review_evidence_contract
+out="$(run_gate --plan)"
+assert_status "$out" OPEN "review_evidence_class_opens_plan"
+sed -i.bak 's/Evidence class D1: review_only/Evidence class D1: opinion_only/' "$RUN/PLAN.md" && rm "$RUN/PLAN.md.bak"
+out="$(run_gate --plan)"
+assert_status "$out" CLOSED "invalid_evidence_class_closes_plan"
+assert_contains "$out" "evidence_class_D1_invalid" "invalid_evidence_class_detail"
+
+reset_repo
+write_contract small
+enable_spike_evidence_contract
+out="$(run_gate --plan)"
+assert_status "$out" OPEN "digest_bound_passed_spike_opens_plan"
+printf 'forged\n' >> "$RUN/SPIKE.md"
+out="$(run_gate --plan)"
+assert_status "$out" CLOSED "mutated_spike_receipt_closes_plan"
+assert_contains "$out" "spike_check_D1_evidence_digest_invalid" "mutated_spike_receipt_detail"
+
+reset_repo
+write_contract small
+enable_spike_evidence_contract
+sed -i.bak '/^Spike check D1:/d' "$RUN/PLAN.md" && rm "$RUN/PLAN.md.bak"
+printf 'Spike check D1: passed :: command :: false\n' >> "$RUN/PLAN.md"
+out="$(run_gate --plan)"
+assert_status "$out" CLOSED "free_standing_passed_spike_line_closes_plan"
+assert_contains "$out" "spike_check_D1_unbound" "free_standing_passed_spike_detail"
+
+reset_repo
+write_contract small
+enable_review_evidence_contract
+sed -i.bak '/^Evidence result D1:/d' "$RUN/VERIFICATION.md" && rm "$RUN/VERIFICATION.md.bak"
+out="$(run_gate --record)"
+assert_status "$out" CLOSED "missing_executed_evidence_result_closes_verification"
+assert_contains "$out" "evidence_result_D1_missing" "missing_executed_evidence_result_detail"
 
 reset_repo
 write_contract small
@@ -411,6 +484,52 @@ sed -i.bak 's/Intent contract: 3/Intent contract: 2/' "$RUN/STATE.md" && rm "$RU
 out="$(run_gate --plan)"
 assert_status "$out" CLOSED "contract3_state_downgrade_closes"
 assert_contains "$out" "active_intent_contract_mismatch" "contract3_state_downgrade_detail"
+
+reset_repo
+write_contract small
+printf 'Intent contract: 4\n' >> "$RUN/STATE.md"
+cat > "$RUN/INTENT.md" <<'EOF'
+# Intent
+Requirement R1: Preserve the selected decision invariant.
+Requirement R2: Produce current verification evidence.
+EOF
+mkdir -p "$REPO/.kimiflow/session"
+python3 - "$RUN" "$REPO/.kimiflow/session/ACTIVE_RUN.json" "$START" <<'PY'
+import datetime, hashlib, json, pathlib, sys
+run=pathlib.Path(sys.argv[1]); active=pathlib.Path(sys.argv[2]); started=sys.argv[3]
+intent=(run/'INTENT.md').read_text()
+lock={
+    'schema_version':1,
+    'contract':4,
+    'intent_digest':'sha256:'+hashlib.sha256(intent.encode()).hexdigest(),
+    'requirements':['R1','R2'],
+    'locked_at':datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'product_flow_digest':'sha256:'+'a'*64,
+}
+payload=json.dumps(lock,sort_keys=True)+'\n'
+(run/'INTENT-LOCK.json').write_text(payload)
+active.write_text(json.dumps({
+    'status':'active','run':'.kimiflow/demo','mode':'feature','scope':'small',
+    'started_head':started,'intent_contract':'4',
+    'intent_lock_digest':'sha256:'+hashlib.sha256(payload.encode()).hexdigest(),
+    'conformance_contract':'1',
+})+'\n')
+PY
+cat >> "$RUN/ACCEPTANCE.md" <<'EOF'
+Requirement trace R1: AC-1
+Requirement trace R2: AC-1
+EOF
+out="$(run_gate --plan)"
+assert_status "$out" OPEN "contract4_requirement_traces_open_plan"
+sed -i.bak '/Requirement trace R2:/d' "$RUN/ACCEPTANCE.md" && rm "$RUN/ACCEPTANCE.md.bak"
+out="$(run_gate --plan)"
+assert_status "$out" CLOSED "contract4_missing_requirement_trace_closes"
+assert_contains "$out" "requirement_trace_R2_missing" "contract4_missing_requirement_trace_detail"
+printf 'Requirement trace R2: AC-1\n' >> "$RUN/ACCEPTANCE.md"
+printf 'Requirement R1: passed :: test -s src/a.txt\n' >> "$RUN/VERIFICATION.md"
+out="$(run_gate)"
+assert_status "$out" CLOSED "contract4_missing_final_requirement_check_closes"
+assert_contains "$out" "requirement_check_R2_missing" "contract4_missing_final_requirement_check_detail"
 
 cat > "$RUN/PLAN.md" <<'EOF'
 # Plan

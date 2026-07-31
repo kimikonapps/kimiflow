@@ -41,6 +41,16 @@ EOF
       >> "$REPO/.kimiflow/demo/STATE.md.next"
     mv "$REPO/.kimiflow/demo/STATE.md.next" \
       "$REPO/.kimiflow/demo/STATE.md"
+    # This suite exercises the resumable Contract-4 schema-1 lifecycle. A
+    # pre-existing schema-1 request distinguishes it from fresh schema-2 runs.
+    cat > "$REPO/.kimiflow/demo/INTAKE.md" <<'EOF'
+<!-- kimiflow:intake contract=4 round=1 questions=1 selection=impact_uncertainty technical_questions=0 confirmation=concrete_product_flow -->
+Product flow entry: The developer starts the existing Kimiflow flow.
+User interaction: The assistant confirms the concrete flow once.
+Visible delegation outcome: The assistant reports the completed result.
+Unchanged path: Existing entrypoints remain unchanged.
+Done scenario: Completion follows the terminal gate receipt.
+EOF
   fi
   git -C "$REPO" add .gitignore src/app.txt
   git -C "$REPO" commit -qm base

@@ -179,6 +179,7 @@ alias_value="$(kimiflow_state_value "$state" alias | tr '[:upper:]' '[:lower:]')
 mode_value="$(kimiflow_state_value "$state" mode | tr '[:upper:]' '[:lower:]')"
 flow_schema="$(kimiflow_state_value "$state" "Flow schema" | awk '{print $1}')"
 intent_contract="$(kimiflow_state_value "$state" "Intent contract" | awk '{print $1}')"
+interaction_language="$(kimiflow_state_value "$state" "Interaction language" | awk '{print $1}')"
 affected_files="$(kimiflow_state_value "$state" "Affected files")"
 build_risk="$(kimiflow_state_value "$state" "Build risk" | tr '[:upper:]' '[:lower:]')"
 state_approval="$(kimiflow_state_value "$state" "Fix approval" | tr '[:upper:]' '[:lower:]')"
@@ -435,9 +436,11 @@ if [ "$mode_value" = "feature" ] && [ "$scope" != "trivial" ]; then
         [ "$coverage_done" = "user_confirmed" ] || add_blocker "product_flow_done_unconfirmed"
       fi
 
-      intake_detail="$(python3 - "$run_dir" "$coverage_rounds" "$record_intent_lock" "$SCRIPT_DIR/active-run.sh" "$intent_contract" <<'PY'
+      intake_detail="$(python3 - "$run_dir" "$coverage_rounds" "$record_intent_lock" "$SCRIPT_DIR/active-run.sh" "$intent_contract" "$interaction_language" <<'PY'
 import hashlib, json, os, re, subprocess, sys, tempfile
-run_dir, rounds_raw, record_raw, active_script, contract_raw = sys.argv[1:]
+run_dir, rounds_raw, record_raw, active_script, contract_raw, interaction_language = sys.argv[1:]
+sys.path.insert(0, os.path.dirname(active_script))
+from kimiflow_core import active_run as active_module
 errors=[]
 try: rounds=int(rounds_raw)
 except ValueError: rounds=0
@@ -493,12 +496,12 @@ def request(round_no):
     try:
         if os.path.islink(path) or not os.path.isfile(path) or not 0 < os.path.getsize(path) <= 65536:
             raise OSError
-        text=open(path,encoding="utf-8").read()
+        with open(path,encoding="utf-8") as handle: text=handle.read()
     except (OSError,UnicodeError):
-        errors.append("intake_request_%d_missing"%round_no); return None,None
+        errors.append("intake_request_%d_missing"%round_no); return None,None,None,None
     markers=re.findall(r"^<!-- kimiflow:intake ([^\n]+) -->$",text,re.M)
     if len(markers)!=1:
-        errors.append("intake_marker_%d_invalid"%round_no); return path,None
+        errors.append("intake_marker_%d_invalid"%round_no); return path,None,None,None
     attrs=dict(re.findall(r"([a-z_]+)=([A-Za-z0-9_-]+)",markers[0]))
     if attrs.get("contract")!=str(contract) or attrs.get("round")!=str(round_no): errors.append("intake_marker_%d_invalid"%round_no)
     try: questions=int(attrs.get("questions","0"))
@@ -506,40 +509,121 @@ def request(round_no):
     if not 1 <= questions <= 5: errors.append("intake_questions_%d_out_of_bounds"%round_no)
     if attrs.get("selection")!="impact_uncertainty": errors.append("intake_selection_%d_invalid"%round_no)
     if attrs.get("technical_questions")!="0": errors.append("intake_technical_questions_%d_forbidden"%round_no)
-    if round_no==2 and attrs.get("cause")!="first_response_conflict": errors.append("intake_round_2_cause_invalid")
-    if contract==4 and attrs.get("confirmation")!="concrete_product_flow": errors.append("intake_confirmation_%d_invalid"%round_no)
-    if contract==4:
+    schema_raw=attrs.get("schema","1")
+    if schema_raw not in ("1","2"):
+        errors.append("intake_schema_%d_invalid"%round_no); return path,sha(path),None,None
+    schema=int(schema_raw)
+    parsed=None
+    if contract==4 and schema==2:
+        try:
+            parsed=active_module.parse_intake_document(text,contract,round_no,interaction_language)
+        except active_module.ActiveError:
+            errors.append("intake_schema2_round_%d_invalid"%round_no)
+    else:
+        if round_no==2 and attrs.get("cause")!="first_response_conflict": errors.append("intake_round_2_cause_invalid")
+        if contract==4 and attrs.get("confirmation")!="concrete_product_flow": errors.append("intake_confirmation_%d_invalid"%round_no)
+    if contract==4 and schema==1:
         _,flow_digest=concrete_product_flow(text,"intake_product_flow_%d"%round_no)
         if flow_digest: request_flow_digests[round_no]=flow_digest
-    return path,sha(path)
+    return path,sha(path),schema,parsed
 
-def receipt(round_no,digest):
+def receipt(round_no,digest,schema,parsed):
     path=os.path.join(run_dir,"INTAKE-RECEIPT-%d.json"%round_no)
     try:
         if os.path.islink(path): raise OSError
-        value=json.load(open(path,encoding="utf-8"))
+        with open(path,encoding="utf-8") as handle: value=json.load(handle)
     except (OSError,ValueError,UnicodeError):
         errors.append("intake_receipt_%d_missing"%round_no); return
-    expected={"schema_version","contract","round","request","request_digest","channel","responded_at"}
     request_name="INTAKE.md" if round_no==1 else "INTAKE-2.md"
-    if set(value)!=expected or value.get("schema_version")!=1 or value.get("contract")!=contract or value.get("round")!=round_no or value.get("request")!=request_name or value.get("request_digest")!=digest or value.get("channel") not in ("chat","native_tool") or not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z",str(value.get("responded_at",""))):
+    common_valid=(
+        value.get("contract")==contract
+        and value.get("round")==round_no
+        and value.get("request")==request_name
+        and value.get("request_digest")==digest
+        and value.get("channel") in ("chat","native_tool")
+        and re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z",str(value.get("responded_at","")))
+    )
+    if schema==2:
+        expected={"schema_version","contract","round","stage","action","request","request_digest","contract_digest","user_language","channel","responded_at"}
+        expected_stage="scope" if round_no==1 else "final"
+        expected_action="scope_ready" if round_no==1 else "confirmed"
+        common_valid=(
+            common_valid
+            and value.get("schema_version")==2
+            and value.get("stage")==expected_stage
+            and value.get("action")==expected_action
+            and value.get("user_language")==interaction_language
+            and parsed is not None
+            and value.get("contract_digest")==active_module.structured_intake_digest(parsed)
+        )
+    else:
+        expected={"schema_version","contract","round","request","request_digest","channel","responded_at"}
+        common_valid=common_valid and value.get("schema_version")==1
+    if set(value)!=expected or not common_valid:
         errors.append("intake_receipt_%d_invalid"%round_no)
 
+request_data={}
 for n in range(1,rounds+1):
-    _,d=request(n)
-    if d: receipt(n,d)
+    _,d,schema,parsed=request(n)
+    if d and schema:
+        request_data[n]={"digest":d,"schema":schema,"parsed":parsed}
+        receipt(n,d,schema,parsed)
 if rounds==1 and os.path.lexists(os.path.join(run_dir,"INTAKE-RECEIPT-2.json")): errors.append("intake_round_2_unbound")
+schemas={row["schema"] for row in request_data.values()}
+if len(schemas)>1: errors.append("intake_schema_drift")
+intake_schema=next(iter(schemas)) if len(schemas)==1 else 1
+if intake_schema==2 and rounds!=2: errors.append("intake_schema2_final_required")
 
 intent=os.path.join(run_dir,"INTENT.md")
-try: intent_text=open(intent,encoding="utf-8").read(); intent_digest=sha(intent)
+try:
+    with open(intent,encoding="utf-8") as handle: intent_text=handle.read()
+    intent_digest=sha(intent)
 except (OSError,UnicodeError): errors.append("intent_missing"); intent_text=""; intent_digest=""
 requirements=re.findall(r"^Requirement (R[1-9][0-9]*):\s*\S.+$",intent_text,re.M)
 if not requirements or len(requirements)>20 or requirements != ["R%d"%n for n in range(1,len(requirements)+1)]: errors.append("intent_requirements_invalid")
 product_flow_digest=""
-if contract==4:
+scope_digest=""
+final_contract_digest=""
+if contract==4 and intake_schema==1:
     _,product_flow_digest=concrete_product_flow(intent_text,"product_flow")
     if product_flow_digest and request_flow_digests.get(rounds)!=product_flow_digest:
         errors.append("intake_product_flow_not_bound_to_intent")
+elif contract==4 and intake_schema==2:
+    scope_parsed=request_data.get(1,{}).get("parsed")
+    final_parsed=request_data.get(2,{}).get("parsed")
+    if scope_parsed is not None: scope_digest=active_module.structured_intake_digest(scope_parsed)
+    if final_parsed is not None: final_contract_digest=active_module.structured_intake_digest(final_parsed)
+    pseudo=(
+        "<!-- kimiflow:intake contract=4 schema=2 stage=final round=2 questions=1 selection=impact_uncertainty technical_questions=0 confirmation=final_contract cause=scope_ready user_language=%s -->\n"%interaction_language
+        + intent_text
+        + "\nAction confirmed: internal confirmed action\nAction corrected: internal corrected action\n"
+    )
+    try:
+        intent_contract=active_module.parse_intake_document(pseudo,4,2,interaction_language)
+        if active_module.structured_intake_digest(intent_contract)!=final_contract_digest:
+            errors.append("final_contract_not_bound_to_intent")
+    except active_module.ActiveError:
+        errors.append("intent_schema2_contract_invalid")
+    basis_path=os.path.join(run_dir,"CODEBASE-BASIS.json")
+    research_path=os.path.join(run_dir,"RESEARCH.md")
+    try:
+        basis_digest=sha(basis_path)
+        with open(research_path,encoding="utf-8") as handle: research_text=handle.read()
+    except (OSError,UnicodeError):
+        errors.append("scope_research_missing"); research_text=""; basis_digest=""
+    research_markers=re.findall(r"^<!-- kimiflow:scope-research ([^\n]+) -->$",research_text,re.M)
+    research_attrs=(
+        dict(re.findall(r"([a-z_]+)=([A-Za-z0-9_:-]+)",research_markers[0]))
+        if len(research_markers)==1 else {}
+    )
+    if (
+        research_attrs.get("contract")!="4"
+        or research_attrs.get("schema")!="2"
+        or research_attrs.get("codebase_basis")!=basis_digest
+        or research_attrs.get("scope")!=scope_digest
+        or research_attrs.get("selection")!="non_expanded"
+    ):
+        errors.append("scope_research_not_bound")
 lock_path=os.path.join(run_dir,"INTENT-LOCK.json")
 lock=None
 if os.path.lexists(lock_path):
@@ -548,8 +632,13 @@ if os.path.lexists(lock_path):
         lock=json.load(open(lock_path,encoding="utf-8"))
     except (OSError,ValueError,UnicodeError): errors.append("intent_lock_invalid")
 if lock is None and record_raw=="1" and not errors:
-    lock={"schema_version":1,"contract":contract,"intent_digest":intent_digest,"requirements":requirements,"locked_at":__import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
-    if contract==4: lock["product_flow_digest"]=product_flow_digest
+    lock={"schema_version":intake_schema,"contract":contract,"intent_digest":intent_digest,"requirements":requirements,"locked_at":__import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    if contract==4 and intake_schema==1:
+        lock["product_flow_digest"]=product_flow_digest
+    elif contract==4 and intake_schema==2:
+        lock["scope_digest"]=scope_digest
+        lock["final_contract_digest"]=final_contract_digest
+        lock["user_language"]=interaction_language
     try:
         fd=os.open(lock_path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
         with os.fdopen(fd,"w",encoding="utf-8") as f: json.dump(lock,f,ensure_ascii=False,indent=2); f.write("\n"); f.flush(); os.fsync(f.fileno())
@@ -557,8 +646,27 @@ if lock is None and record_raw=="1" and not errors:
 if lock is None and "intent_lock_invalid" not in errors: errors.append("intent_lock_missing")
 if isinstance(lock,dict):
     expected_keys={"schema_version","contract","intent_digest","requirements","locked_at"}
-    if contract==4: expected_keys.add("product_flow_digest")
-    if set(lock)!=expected_keys or lock.get("schema_version")!=1 or lock.get("contract")!=contract or lock.get("intent_digest")!=intent_digest or lock.get("requirements")!=requirements or (contract==4 and lock.get("product_flow_digest")!=product_flow_digest): errors.append("intent_lock_stale")
+    if contract==4 and intake_schema==1:
+        expected_keys.add("product_flow_digest")
+    elif contract==4 and intake_schema==2:
+        expected_keys.update({"scope_digest","final_contract_digest","user_language"})
+    lock_valid=(
+        set(lock)==expected_keys
+        and lock.get("schema_version")==intake_schema
+        and lock.get("contract")==contract
+        and lock.get("intent_digest")==intent_digest
+        and lock.get("requirements")==requirements
+    )
+    if contract==4 and intake_schema==1:
+        lock_valid=lock_valid and lock.get("product_flow_digest")==product_flow_digest
+    elif contract==4 and intake_schema==2:
+        lock_valid=(
+            lock_valid
+            and lock.get("scope_digest")==scope_digest
+            and lock.get("final_contract_digest")==final_contract_digest
+            and lock.get("user_language")==interaction_language
+        )
+    if not lock_valid: errors.append("intent_lock_stale")
     else:
         lock_digest=sha(lock_path)
         try:

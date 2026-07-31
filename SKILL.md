@@ -51,6 +51,7 @@ You are the **orchestrator**. Run the phases as a state machine, keep only essen
 - **Phase colors:** announce ⚪0 Setup · 🔵1 Clarify · 🟣2 Understand · ⚫3 Plan · 🟡4 Plan-gate · 🟠5 Implement · 🟤6 Verify · 🟢7 Review/Commit; keep the marker on STATE/status lines.
 - **Self-contained.** Gates/thresholds live here + reference.md, never personal/global `CLAUDE.md`; project `CLAUDE.md` is only an optional Phase-2 conventions hint.
 - **Minimum-complete.** User owns product WHAT/WHY; the agent owns technical HOW. Every task/file/test maps to approved behavior or verified `required` constraints. Research corrects HOW, never expands WHAT; keep `optional` out and defaults reversible.
+- **Confirm, inspect, then build.** Preserve user language; discuss scope/options and explicitly confirm the final flow. Bind research to current HEAD/path bytes and inspect `reuse → evolve → new`; research may correct HOW, never expand WHAT.
 - **Anti-hallucination.** Only claims you can back. "Not verifiable" is valid. Severity never higher than provable by a code reference.
 - **Evidence-before-assertion.** Never claim "done/green/root cause found" without showing the actual command + output / the `file:line`.
 - **Agent budget.** Default 1 implementer + 1–2 reviewers; fan out ~5–10 only when useful, >10 asks first. Record fan-out; substitutions reuse a seat and external CLI counts as one. Fold work unless independence matters.
@@ -66,12 +67,12 @@ You are the **orchestrator**. Run the phases as a state machine, keep only essen
 
 On phase entry, post-R2 runs (`phase_reads_required`) read `phases/PHASES.json`, its phase file, and only that row's `reference_sections` via `hooks/reference-section.sh "<section>"`. Record with `active-run.sh phase-read --run .kimiflow/<slug> --phase <N> --file phases/<file>.md --write`; the receipt binds both hash sets. Never preload all `reference.md`. Clarify checks through Phase 1, plan-blocker through Phase 4, and finish through Phase 7. Resume via `active-run.sh next-action`.
 
-Stable contracts/helpers: Contract-4 concrete Product Intake with Contract-3 resume compatibility; Current-State Pulse / Gate; Memory Router & Learning Loop; `clarify-gate.sh`, `discovery-gate.sh`, `lsp-diagnostics.sh`, `suggest-affected-sections.sh`, and P7 `refresh --changed`.
+Stable contracts/helpers: Contract-4 two-stage Product Intake with Contract-3/schema-1 resume compatibility; Current Codebase Basis; Current-State Pulse / Gate; Memory Router & Learning Loop; `clarify-gate.sh`, `codebase-basis.sh`, `discovery-gate.sh`, `lsp-diagnostics.sh`, `suggest-affected-sections.sh`, and P7 `refresh --changed`.
 
 | Phase | File | Always-loaded boundary cues |
 |---|---|---|
 | 0 Setup, Routing & Scope-Gate | `phases/phase-0-setup.md` | model/session; `workspace-preflight.sh` then clean gate; frontend Contract-1 start receipt; scope/verbosity. |
-| 1 Clarify | `phases/phase-1-clarify.md` | Contract-4 concrete Product Intake; mechanical intent/scope classification; no HOW; intent lock. |
+| 1 Clarify | `phases/phase-1-clarify.md` | Contract-4 scope discussion + final confirmation in the preserved user language; no HOW; intent lock. |
 | 2 Understand / diagnose | `phases/phase-2-understand.md` | Current-State/Discovery gates; selective Vault context; scoped standards; conditional architecture/domain/operations. |
 | 3 Plan | `phases/phase-3-plan.md` | acceptance criteria; conditional architecture/domain/operations checks; Red/cause proof for fixes. |
 | 4 Plan-gate / approval | `phases/phase-4-review-approval.md` | plan/review resolvers; plain-language build summary; material-risk CONTINUE/STOP/PARK. |
@@ -83,13 +84,13 @@ Stable contracts/helpers: Contract-4 concrete Product Intake with Contract-3 res
 
 These operative rules stay in the driver until a later approved packet proves an earlier mechanical gate for the target phase. Phase files may elaborate, but this section is always loaded.
 
-- **Phase 1 protected rules:** Contract-4 non-trivial feature intake asks 1–5 questions before plan/write and confirms entry, interaction, visible delegation outcome, unchanged path, and done. HOW is agent-owned; round 2 only resolves a round-1 conflict. Contract-3 resumes. Classification may raise scope, not answer product choices.
-- **Phase 2 protected rules:** top owns Discovery/synthesis/triage/fit; memory is bounded. Current coding/architecture research is at least medium; medium/high research needs one schema-2 subject-bound horizon/applicability receipt. Schema 1 resumes. Conditional architecture evidence maps to plan/verify. Technical gaps recover; only product/policy choices ask.
-- **Phase 3 protected rules:** one flat minimum-complete, subtracted, AC-mapped plan. Contract 1 adds 1–8 checkable slices; critical classes bind invariant, AC, typed falsifier, reset. Conditional contracts map to existing/one new AC. Dual-plan adoption takes isolated elements only; blockers never reach review. Managed trees bind paths/contracts to the final PLAN digest.
+- **Phase 1 protected rules:** Fresh Contract-4 has scope (`scope_ready|discuss`) then final (`confirmed|corrected`) in the preserved user language; generic assent never confirms. Revisions replace drafts; Contract-3/schema-1 resumes; HOW is agent-owned.
+- **Phase 2 protected rules:** top owns Discovery/synthesis/triage/fit; memory is bounded. Before external research, capture the current affected-path basis and inspect `reuse → evolve → new`; research is compared back to that basis and confirmed non-expanded scope. Technical gaps recover; only product/policy choices ask.
+- **Phase 3 protected rules:** one flat minimum-complete, subtracted, AC-mapped plan. Material decisions declare `review_only|spike_required|runtime_required`; required spikes are executed and digest-bound before build. Contract 1 adds 1–8 checkable slices; critical classes bind invariant, AC, typed falsifier, reset. Managed trees bind paths/contracts to the final PLAN digest.
 - **Phase 4 held rule:** only evidenced BLOCKER/HIGH revises; architecture changes need an executable failure/named-invariant violation. Contracted findings are candidate-first, typed, digest-pinned, class-stable, and need negative resolution evidence. Never reset valid rounds. Budgets: 2 small, 3 large/audit. Repeat class/oscillation/cap recovers autonomously. Schema 4+ pauses only for material risk.
-- **Phase 5 protected rules:** managed trees require the PLAN-digest write gate; serialization retries autonomously. Run slices/checks in order. Red commits tests only. Checkpoints inspect named staging, isolate foreign staging by path, and scan weakening/secrets/paths; production checkpoints need a clean-tree-only verifier. Review keeps `started_head`. Deletions need proof; failure changes approach; churn never resets recovery.
-- **Phase 6 protected rules:** fixes require `red-green-gate.sh`. Run declared slices/falsifiers and active conditional checks, then 1–5 decisions plus one whole-intent sweep; Contract 3/4 proves every Requirement. Code/scope gaps → Phase 5; strategy/architecture/research drift → Phase 2.
-- **Phase 7 protected rules:** One full review per stable PLAN; repairs use exact deltas. Limit: three semantic rounds + one resolution-only closeout; no epoch reset. Dispositions are evidence-bound. Resolver fails closed. Commit named paths; push/release explicit.
+- **Phase 5 protected rules:** require the PLAN-digest write gate; execute required spike/runtime evidence and slices. Stage named paths only, preserve foreign staging, and scan weakening/secrets/paths. Red commits tests only; deletion needs proof; failures change approach.
+- **Phase 6 protected rules:** fixes require `red-green-gate.sh`. Execute declared checks; record each decision's evidence result plus the whole-intent sweep, and trace every Contract-3/4 Requirement. Code gaps → Phase 5; strategy/research drift → Phase 2.
+- **Phase 7 protected rules:** review the stable PLAN once, then exact deltas. Schema-3 materiality admits only `promoted` repairs; protected/user-boundary impacts cannot be waived. Recovery is stable-class scoped; three semantic rounds plus one closeout are absolute.
 
 ## Scaling Knobs
 

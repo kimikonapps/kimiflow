@@ -122,6 +122,38 @@ write_saturation_v2_receipt() {
     }' > "$RUN/review-saturation/r${round}.json"
 }
 
+write_saturation_v3_receipt() {
+  local round="$1" scheduled_json="$2" axes_json="$3" files_json="$4"
+  local dispositions_json="$5" carried_json="$6" delta_receipt="$7"
+  local basis_json
+  basis_json="$("$SCRIPT" basis --run "$RUN" --base HEAD --details)"
+  jq -n \
+    --argjson round "$round" \
+    --arg plan_sha256 "$(hash_file "$RUN/PLAN.md")" \
+    --argjson scheduled_axes "$scheduled_json" \
+    --argjson axes "$axes_json" \
+    --argjson candidate_files "$files_json" \
+    --argjson dispositions "$dispositions_json" \
+    --argjson carried_classes "$carried_json" \
+    --argjson basis "$basis_json" \
+    --argjson delta_receipt "$delta_receipt" \
+    '{
+      schema_version: 3,
+      round: $round,
+      plan_sha256: $plan_sha256,
+      review_base_sha: $basis.review_base_sha,
+      review_target_sha: $basis.review_target_sha,
+      review_snapshot_sha256: $basis.review_snapshot_sha256,
+      scheduled_axes: $scheduled_axes,
+      axes: $axes,
+      review_files: $basis.review_files,
+      candidate_files: $candidate_files,
+      dispositions: $dispositions,
+      carried_classes: $carried_classes,
+      delta_receipt: $delta_receipt
+    }' > "$RUN/review-saturation/r${round}.json"
+}
+
 candidate_file_rows() {
   local round="$1"; shift
   local rows='[]' axis file
@@ -133,6 +165,24 @@ candidate_file_rows() {
       '. + [{axis:$axis,sha256:$sha256}]')"
   done
   printf '%s' "$rows"
+}
+
+seed_v3_failure() {
+  local round="$1" stable_class="$2" line evidence rows dispositions verify
+  verify="verifier:inspect ${stable_class} runtime path"
+  line="CANDIDATE HIGH src/reviewed.py:1 :: ${stable_class} remains reproducible :: verify=${verify}"
+  write_candidate "$round" spec-correctness "$line"
+  evidence="$(write_evidence "trajectory-r${round}-${stable_class}.txt" "$stable_class" "$verify" reproduced "confirmed ${stable_class} failure")"
+  printf 'FINDING HIGH src/reviewed.py:1 :: %s remains reproducible :: class=%s :: verify=%s :: evidence=%s\n' \
+    "$stable_class" "$stable_class" "$verify" "$evidence" > "$RUN/findings/r${round}-code-verified.md"
+  rows="$(candidate_file_rows "$round" spec-correctness)"
+  dispositions="$(jq -nc \
+    --arg id "$(candidate_id spec-correctness "$line")" \
+    --arg class "$stable_class" \
+    --arg verify "$verify" \
+    --arg evidence "$evidence" \
+    '[{candidate_id:$id,outcome:"promoted",stable_class:$class,verify:$verify,evidence:$evidence,contract_status:"violated",support_status:"supported",impact_class:"correctness",proportionality:"The reproduced supported behavior violates the confirmed contract."}]')"
+  write_saturation_v3_receipt "$round" '["spec-correctness"]' '["spec-correctness"]' "$rows" "$dispositions" '[]' 'null'
 }
 
 seed_selective_review_route() {
@@ -300,6 +350,87 @@ dispositions="$(jq -nc \
   '[{candidate_id:$id,outcome:"non_blocking",stable_class:"unsupported-edge",verify:"verifier:inspect supported call path",evidence:$evidence}]')"
 write_saturation_receipt 1 '["spec-correctness"]' "$rows" "$dispositions" '[]'
 assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness)" OPEN saturated "saturation_reproduced_non_blocking_candidate_opens"
+
+# Schema 3 makes relevance explicit: unsupported edge cases stay out of repair,
+# protected impacts cannot be waived, and user-boundary repairs stop at the
+# existing material-decision gate.
+reset_run
+line='CANDIDATE HIGH src/a:1 :: reproduced edge case is outside the supported contract :: verify=verifier:inspect supported call path'
+write_candidate 1 spec-correctness "$line"
+evidence="$(write_evidence v3-non-blocking.txt unsupported-edge verifier:'inspect supported call path' reproduced 'outside the supported contract and no product impact')"
+rows="$(candidate_file_rows 1 spec-correctness)"
+dispositions="$(jq -nc \
+  --arg id "$(candidate_id spec-correctness "$line")" \
+  --arg evidence "$evidence" \
+  '[{candidate_id:$id,outcome:"non_blocking",stable_class:"unsupported-edge",verify:"verifier:inspect supported call path",evidence:$evidence,contract_status:"not_violated",support_status:"unsupported",impact_class:"none",proportionality:"No supported user flow or confirmed contract is affected."}]')"
+write_saturation_v3_receipt 1 '["spec-correctness"]' '["spec-correctness"]' "$rows" "$dispositions" '[]' 'null'
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness)" OPEN saturated "saturation_v3_irrelevant_edge_stays_non_blocking"
+
+reset_run
+line='CANDIDATE HIGH src/a:1 :: reproduced supported edge is immaterial :: verify=verifier:inspect supported call path'
+write_candidate 1 spec-correctness "$line"
+evidence="$(write_evidence v3-supported-immaterial.txt immaterial-edge verifier:'inspect supported call path' reproduced 'supported edge does not violate the contract or affect product behavior')"
+rows="$(candidate_file_rows 1 spec-correctness)"
+dispositions="$(jq -nc \
+  --arg id "$(candidate_id spec-correctness "$line")" \
+  --arg evidence "$evidence" \
+  '[{candidate_id:$id,outcome:"non_blocking",stable_class:"immaterial-edge",verify:"verifier:inspect supported call path",evidence:$evidence,contract_status:"not_violated",support_status:"supported",impact_class:"none",proportionality:"The supported edge is reproduced but does not violate the contract or affect product behavior."}]')"
+write_saturation_v3_receipt 1 '["spec-correctness"]' '["spec-correctness"]' "$rows" "$dispositions" '[]' 'null'
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness)" OPEN saturated "saturation_v3_supported_immaterial_edge_stays_non_blocking"
+
+dispositions="$(printf '%s' "$dispositions" | jq -c '.[0].impact_class="privacy"')"
+write_saturation_v3_receipt 1 '["spec-correctness"]' '["spec-correctness"]' "$rows" "$dispositions" '[]' 'null'
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness)" CLOSED protected-impact-required "saturation_v3_protected_impact_cannot_be_waived"
+
+reset_run
+line='CANDIDATE BLOCKER src/a:1 :: fixing the defect requires a new privacy boundary :: verify=verifier:inspect data flow'
+write_candidate 1 spec-correctness "$line"
+evidence="$(write_evidence material-decision.txt privacy-boundary verifier:'inspect data flow' reproduced 'the defect is real and repair changes collection of personal data')"
+rows="$(candidate_file_rows 1 spec-correctness)"
+dispositions="$(jq -nc \
+  --arg id "$(candidate_id spec-correctness "$line")" \
+  --arg evidence "$evidence" \
+  '[{candidate_id:$id,outcome:"material_decision",stable_class:"privacy-boundary",verify:"verifier:inspect data flow",evidence:$evidence,contract_status:"violated",support_status:"supported",impact_class:"privacy",proportionality:"Repair changes the confirmed privacy boundary and needs user authority."}]')"
+write_saturation_v3_receipt 1 '["spec-correctness"]' '["spec-correctness"]' "$rows" "$dispositions" '[]' 'null'
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness)" CLOSED material-decision-required "saturation_v3_material_boundary_uses_typed_user_gate"
+assert_gate "$("$SCRIPT" repair --run "$RUN" --round 1)" CLOSED material-decision-required "repair_unavailable_while_material_decision_is_pending"
+
+dispositions="$(printf '%s' "$dispositions" | jq -c '.[0].impact_class="correctness"')"
+write_saturation_v3_receipt 1 '["spec-correctness"]' '["spec-correctness"]' "$rows" "$dispositions" '[]' 'null'
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness)" CLOSED material-decision-boundary-invalid "saturation_v3_routine_defect_cannot_force_user_decision"
+
+reset_run
+runtime_line='CANDIDATE HIGH src/a:1 :: runtime branch remains suspect :: verify=verifier:inspect runtime trace'
+runtime_evidence="$(write_evidence runtime-text.txt runtime-branch verifier:'inspect runtime trace' reproduced 'text-only runtime inspection')"
+runtime_disposition="$(jq -nc \
+  --arg id "$(candidate_id spec-correctness "$runtime_line")" \
+  --arg evidence "$runtime_evidence" \
+  '[{candidate_id:$id,outcome:"promoted",stable_class:"runtime-branch",verify:"verifier:inspect runtime trace",evidence:$evidence,contract_status:"violated",support_status:"supported",impact_class:"runtime",proportionality:"The supported runtime path violates the confirmed behavior."}]')"
+for round in 1 2; do
+  printf 'runtime strategy %s\n' "$round" > "$RUN/PLAN.md"
+  write_candidate "$round" spec-correctness "$runtime_line"
+  printf 'FINDING HIGH src/a:1 :: runtime branch remains suspect :: class=runtime-branch :: verify=verifier:inspect runtime trace :: evidence=%s\n' "$runtime_evidence" > "$RUN/findings/r${round}-code-verified.md"
+  rows="$(candidate_file_rows "$round" spec-correctness)"
+  write_saturation_v3_receipt "$round" '["spec-correctness"]' '["spec-correctness"]' "$rows" "$runtime_disposition" '[]' 'null'
+done
+printf 'runtime strategy 3\n' > "$RUN/PLAN.md"
+write_candidate 3 spec-correctness "$runtime_line"
+printf 'FINDING HIGH src/a:1 :: runtime branch remains suspect :: class=runtime-branch :: verify=verifier:inspect runtime trace :: evidence=%s\n' "$runtime_evidence" > "$RUN/findings/r3-code-verified.md"
+rows="$(candidate_file_rows 3 spec-correctness)"
+write_saturation_v3_receipt 3 '["spec-correctness"]' '["spec-correctness"]' "$rows" "$runtime_disposition" '[]' 'null'
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 3 --axes spec-correctness)" CLOSED runtime-evidence-required "saturation_v3_third_runtime_round_requires_executable_evidence"
+
+runtime_line='CANDIDATE HIGH src/a:1 :: runtime branch remains suspect :: verify=command:bash hooks/test-review-convergence-gate.sh'
+runtime_evidence="$(write_evidence runtime-command.txt runtime-branch 'command:bash hooks/test-review-convergence-gate.sh' reproduced 'executable runtime falsifier passed')"
+runtime_disposition="$(jq -nc \
+  --arg id "$(candidate_id spec-correctness "$runtime_line")" \
+  --arg evidence "$runtime_evidence" \
+  '[{candidate_id:$id,outcome:"promoted",stable_class:"runtime-branch",verify:"command:bash hooks/test-review-convergence-gate.sh",evidence:$evidence,contract_status:"violated",support_status:"supported",impact_class:"runtime",proportionality:"The executable check reproduces the supported runtime defect."}]')"
+write_candidate 3 spec-correctness "$runtime_line"
+printf 'FINDING HIGH src/a:1 :: runtime branch remains suspect :: class=runtime-branch :: verify=command:bash hooks/test-review-convergence-gate.sh :: evidence=%s\n' "$runtime_evidence" > "$RUN/findings/r3-code-verified.md"
+rows="$(candidate_file_rows 3 spec-correctness)"
+write_saturation_v3_receipt 3 '["spec-correctness"]' '["spec-correctness"]' "$rows" "$runtime_disposition" '[]' 'null'
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 3 --axes spec-correctness)" OPEN saturated "saturation_v3_executable_runtime_evidence_opens"
 
 reset_run
 line_a='CANDIDATE HIGH src/a:1 :: first independent issue :: verify=command:bash hooks/test-a.sh'
@@ -647,6 +778,96 @@ jq -n \
     checks:[{"kind":"command","method":"bash hooks/test-review-convergence-gate.sh"}]
   }' > "$RUN/review-trajectories/source-r3.json"
 assert_gate "$("$SCRIPT" preflight --run "$RUN" --round 4)" CLOSED trajectory-repeated "trajectory_repeated_strategy_closes"
+
+# Schema-3 saturation makes recovery class-scoped. A failure in class A and a
+# later failure in class B do not manufacture a repeated-strategy loop.
+reset_run
+baseline="$(hash_file "$RUN/PLAN.md")"
+printf '<!-- kimiflow:strategy gate=code epoch-start=1 fingerprint=%s -->\n' "$baseline" > "$RUN/RECOVERY.md"
+printf 'class a strategy\n' > "$RUN/PLAN.md"
+seed_v3_failure 1 class-a
+after_one="$(hash_file "$RUN/PLAN.md")"
+marker_one="<!-- kimiflow:recovery gate=code source-round=1 epoch-start=2 cap=4 before=$baseline after=$after_one -->"
+printf '%s\n' "$marker_one" >> "$RUN/RECOVERY.md"
+printf 'class b strategy\n' > "$RUN/PLAN.md"
+seed_v3_failure 2 class-b
+after_two="$(hash_file "$RUN/PLAN.md")"
+marker_two="<!-- kimiflow:recovery gate=code source-round=2 epoch-start=3 cap=5 before=$after_one after=$after_two -->"
+printf '%s\n' "$marker_two" >> "$RUN/RECOVERY.md"
+assert_gate "$("$SCRIPT" preflight --run "$RUN" --round 3)" OPEN below-threshold "trajectory_v2_different_classes_do_not_cross_count"
+
+reset_run
+baseline="$(hash_file "$RUN/PLAN.md")"
+printf '<!-- kimiflow:strategy gate=code epoch-start=1 fingerprint=%s -->\n' "$baseline" > "$RUN/RECOVERY.md"
+printf 'class a strategy one\n' > "$RUN/PLAN.md"
+seed_v3_failure 1 class-a
+after_one="$(hash_file "$RUN/PLAN.md")"
+marker_one="<!-- kimiflow:recovery gate=code source-round=1 epoch-start=2 cap=4 before=$baseline after=$after_one -->"
+printf '%s\n' "$marker_one" >> "$RUN/RECOVERY.md"
+printf '%s\n' \
+  'class a strategy two' \
+  'Trajectory class: class-a' \
+  'Trajectory action: replan' \
+  'Trajectory hypothesis: The class-a repair targeted a symptom outside its shared boundary.' \
+  'Changed assumption: Treat class-a as one boundary and falsify that boundary directly.' \
+  'Trajectory check: command :: bash hooks/test-review-convergence-gate.sh' \
+  > "$RUN/PLAN.md"
+seed_v3_failure 2 class-a
+after_two="$(hash_file "$RUN/PLAN.md")"
+marker_two="<!-- kimiflow:recovery gate=code source-round=2 epoch-start=3 cap=5 before=$after_one after=$after_two -->"
+printf '%s\n' "$marker_two" >> "$RUN/RECOVERY.md"
+assert_gate "$("$SCRIPT" preflight --run "$RUN" --round 3)" CLOSED trajectory-required "trajectory_v2_same_class_requires_changed_strategy"
+hashes="$(jq -nc --arg one "$(hash_text "$marker_one")" --arg two "$(hash_text "$marker_two")" '[$one,$two]')"
+jq -n \
+  --arg plan_sha256 "$after_two" \
+  --argjson receipt_sha256s "$hashes" \
+  '{
+    schema_version:2,
+    source_round:2,
+    plan_sha256:$plan_sha256,
+    failed_source_rounds:[1,2],
+    recovery_receipt_sha256s:$receipt_sha256s,
+    prior_trajectory_sha256s:[],
+    stable_class:"class-a",
+    hypothesis:"The class-a repair targeted a symptom outside its shared boundary.",
+    action:"replan",
+    changed_assumption:"Treat class-a as one boundary and falsify that boundary directly.",
+    checks:[{kind:"command",method:"bash hooks/test-review-convergence-gate.sh"}]
+  }' > "$RUN/review-trajectories/source-r2.json"
+assert_gate "$("$SCRIPT" preflight --run "$RUN" --round 3)" OPEN trajectory-ready "trajectory_v2_same_class_changed_strategy_opens"
+
+printf '%s\n' \
+  'class a strategy three with reworded explanation' \
+  'Trajectory class: class-a' \
+  'Trajectory action: replan' \
+  'Trajectory hypothesis: A newly worded explanation still points at the same class-a boundary.' \
+  'Changed assumption: Rephrase the class-a assumption without changing the falsifier.' \
+  'Trajectory check: command :: bash hooks/test-review-convergence-gate.sh' \
+  > "$RUN/PLAN.md"
+seed_v3_failure 3 class-a
+after_three="$(hash_file "$RUN/PLAN.md")"
+marker_three="<!-- kimiflow:recovery gate=code source-round=3 epoch-start=4 cap=6 before=$after_two after=$after_three -->"
+printf '%s\n' "$marker_three" >> "$RUN/RECOVERY.md"
+prior_hash="$(hash_file "$RUN/review-trajectories/source-r2.json")"
+hashes_three="$(jq -nc --arg two "$(hash_text "$marker_two")" --arg three "$(hash_text "$marker_three")" '[$two,$three]')"
+jq -n \
+  --arg plan_sha256 "$after_three" \
+  --argjson receipt_sha256s "$hashes_three" \
+  --arg prior "$prior_hash" \
+  '{
+    schema_version:2,
+    source_round:3,
+    plan_sha256:$plan_sha256,
+    failed_source_rounds:[2,3],
+    recovery_receipt_sha256s:$receipt_sha256s,
+    prior_trajectory_sha256s:[$prior],
+    stable_class:"class-a",
+    hypothesis:"A newly worded explanation still points at the same class-a boundary.",
+    action:"replan",
+    changed_assumption:"Rephrase the class-a assumption without changing the falsifier.",
+    checks:[{kind:"command",method:"bash hooks/test-review-convergence-gate.sh"}]
+  }' > "$RUN/review-trajectories/source-r3.json"
+assert_gate "$("$SCRIPT" preflight --run "$RUN" --round 4)" CLOSED trajectory-strategy-unchanged "trajectory_v2_reworded_same_strategy_closes"
 
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi

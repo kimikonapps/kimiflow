@@ -197,6 +197,43 @@ elif printf '%s\n' "$discovery_required" | grep -Eq '^(yes|true|1|required)$'; t
   add_blocker "discovery_gate_missing"
 fi
 
+# Contract-4 schema-2 planning is authoritative only against the exact current
+# bytes declared for this run. Legacy intake locks remain resumable.
+schema2_intake_lock=0
+if [ -f "$run_dir/INTENT-LOCK.json" ] && command -v python3 >/dev/null 2>&1; then
+  schema2_intake_lock="$(python3 - "$run_dir/INTENT-LOCK.json" <<'PY' 2>/dev/null || true
+import json, os, sys
+path=sys.argv[1]
+try:
+    if os.path.islink(path): raise OSError
+    with open(path,encoding="utf-8") as handle: value=json.load(handle)
+    print(1 if isinstance(value,dict) and value.get("schema_version")==2 and value.get("contract")==4 else 0)
+except (OSError,ValueError,UnicodeError):
+    print(0)
+PY
+)"
+fi
+if [ "$schema2_intake_lock" = "1" ]; then
+  basis_gate="$SCRIPT_DIR/codebase-basis.sh"
+  root="$(kimiflow_run_root "$run_dir" 2>/dev/null || true)"
+  if [ ! -x "$basis_gate" ] || [ -z "$root" ]; then
+    add_blocker "codebase_basis_gate_missing"
+  else
+    basis_out="$("$basis_gate" verify --root "$root" --run "$run_dir" 2>/dev/null)"
+    basis_rc=$?
+    basis_tag="$(printf '%s\n' "$basis_out" | cut -f1)"
+    basis_status="$(printf '%s\n' "$basis_out" | cut -f2)"
+    basis_detail="$(printf '%s\n' "$basis_out" | cut -f4 | sed 's/^detail=//')"
+    if [ "$basis_rc" -eq 0 ] && [ "$basis_tag" = "CODEBASE_BASIS" ] && [ "$basis_status" = "OPEN" ]; then
+      :
+    elif [ "$basis_tag" = "CODEBASE_BASIS" ] && [ "$basis_status" = "CLOSED" ]; then
+      add_blocker "codebase_basis_closed:${basis_detail:-unknown}"
+    else
+      add_blocker "codebase_basis_gate_error"
+    fi
+  fi
+fi
+
 # Contracted feature/fix runs must bind every plan-shaping decision to evidence,
 # affected paths, acceptance, and one later falsifier. Legacy runs remain resumable.
 conformance_contract="$(kimiflow_state_value "$state" "Conformance contract" | awk '{print $1}')"

@@ -12,6 +12,7 @@ import io
 import json
 import os
 import re
+import stat
 import string
 import sys
 
@@ -85,6 +86,18 @@ _VERIFIED_MARKER_RE = re.compile(
     r"[ \t]*@[ \t]*(\d{4}-\d{2}-\d{2})(?=[ \t]*(?:;|$))",
     re.IGNORECASE,
 )
+_CONFIRMED_CAUSE_RE = re.compile(
+    r"^(?:[-*][ \t]+)?confirmed root cause[ \t]*:[ \t]*(.+)$",
+    re.IGNORECASE,
+)
+_SOURCE_EVIDENCE_RE = re.compile(
+    r"^(?:[-*][ \t]+)?source evidence[ \t]*:[ \t]*"
+    r"([A-Za-z0-9._/-]+):([1-9][0-9]{0,6})$",
+    re.IGNORECASE,
+)
+_MAX_CONFIRMED_SOURCE_ROWS = 8
+_MAX_SOURCE_BYTES = 1024 * 1024
+_MAX_CAUSE_ARTIFACT_BYTES = 256 * 1024
 
 
 def _jq_or(value, default):
@@ -201,6 +214,83 @@ def learning_summary_json(file, kind):
     return {"line": int(line), "summary": summary, "source": source}
 
 
+def _regular_source_ref(root, relative, line_number):
+    if (
+        not isinstance(relative, str)
+        or relative.startswith("/")
+        or "\\" in relative
+        or relative == ".git"
+        or relative.startswith(".git/")
+        or relative == ".kimiflow"
+        or relative.startswith(".kimiflow/")
+    ):
+        return None
+    normalized = os.path.normpath(relative).replace(os.sep, "/")
+    if normalized != relative or normalized in ("", ".") or normalized.startswith("../"):
+        return None
+    current = os.path.abspath(root)
+    try:
+        for part in relative.split("/"):
+            current = os.path.join(current, part)
+            info = os.lstat(current)
+            if stat.S_ISLNK(info.st_mode):
+                return None
+        if not stat.S_ISREG(info.st_mode) or info.st_size > _MAX_SOURCE_BYTES:
+            return None
+        with open(current, "r", encoding="utf-8", newline="") as handle:
+            lines = handle.read().split("\n")
+    except (OSError, UnicodeDecodeError, UnboundLocalError):
+        return None
+    if line_number > len(lines) or not lines[line_number - 1].strip():
+        return None
+    return relative + ":" + str(line_number)
+
+
+def confirmed_cause_source_evidence(root, artifact, extraction_source):
+    try:
+        info = os.lstat(artifact)
+        if (
+            stat.S_ISLNK(info.st_mode)
+            or not stat.S_ISREG(info.st_mode)
+            or info.st_size > _MAX_CAUSE_ARTIFACT_BYTES
+        ):
+            return [], ["confirmed_cause_artifact_invalid"]
+    except OSError:
+        return [], ["confirmed_cause_artifact_invalid"]
+    lines = _read_lines(artifact)
+    causes = []
+    source_rows = []
+    malformed_source = False
+    for raw in lines:
+        line = raw.replace("\r", "").replace("**", "").strip()
+        cause = _CONFIRMED_CAUSE_RE.fullmatch(line)
+        if cause is not None:
+            causes.append(cause.group(1).strip())
+        if re.match(r"^(?:[-*][ \t]+)?source evidence[ \t]*:", line, re.I):
+            match = _SOURCE_EVIDENCE_RE.fullmatch(line)
+            if match is None:
+                malformed_source = True
+            else:
+                source_rows.append((match.group(1), int(match.group(2))))
+    if not causes:
+        return [], []
+    reasons = []
+    if extraction_source != "structured" or len(causes) != 1:
+        reasons.append("confirmed_cause_without_structured_learning")
+    if len(causes) != 1 or len(re.findall(r"\b[\w-]+\b", causes[0], re.UNICODE)) < 7:
+        reasons.append("confirmed_cause_invalid")
+    if malformed_source or not 1 <= len(source_rows) <= _MAX_CONFIRMED_SOURCE_ROWS:
+        reasons.append("confirmed_source_evidence_invalid")
+    refs = []
+    for relative, line_number in source_rows[:_MAX_CONFIRMED_SOURCE_ROWS]:
+        ref = _regular_source_ref(root, relative, line_number)
+        if ref is None or ref in refs:
+            reasons.append("confirmed_source_evidence_invalid")
+        else:
+            refs.append(ref)
+    return refs, list(dict.fromkeys(reasons))
+
+
 def review_candidate_json(root, run_dir, question, kind, topic, files):
     # Bash review_candidate_json (2738-2787): the FIRST file that yields a non-skip summary.
     for name in files:
@@ -215,6 +305,10 @@ def review_candidate_json(root, run_dir, question, kind, topic, files):
             continue
         rel = paths.rel_path(root, path)
         evidence = [rel + ":" + str(info["line"])]
+        source_evidence, source_reasons = confirmed_cause_source_evidence(
+            root, path, info["source"]
+        )
+        evidence.extend(source_evidence)
         classification = classify.classify_text(summary)["classification"]
         target = classification["target"]
         sensitivity = classification["sensitivity"]
@@ -224,6 +318,10 @@ def review_candidate_json(root, run_dir, question, kind, topic, files):
         if target == "run_only":
             target = "project_memory"
         quality = quality_gate_json(kind, summary, evidence)
+        if source_reasons:
+            quality["reasons"].extend(source_reasons)
+            quality["reasons"] = list(dict.fromkeys(quality["reasons"]))
+            quality["ok"] = False
         return {
             "question": question,
             "kind": kind,

@@ -313,7 +313,7 @@ def validate_intent_authority(root, run_dir, run_descriptor, state_contract, int
         active = None
     expected_run = os.path.relpath(run_dir, root).replace(os.sep, "/")
     if not isinstance(active, dict) or active.get("run") != expected_run:
-        if state_contract == "3":
+        if state_contract in ("3", "4"):
             errors.append("active_intent_contract_mismatch")
         return
     pinned_contract = str(active.get("intent_contract") or "").strip()
@@ -321,10 +321,10 @@ def validate_intent_authority(root, run_dir, run_descriptor, state_contract, int
         if pinned_contract != state_contract:
             errors.append("active_intent_contract_mismatch")
             return
-    elif state_contract == "3":
+    elif state_contract in ("3", "4"):
         errors.append("active_intent_contract_mismatch")
         return
-    if state_contract != "3":
+    if state_contract not in ("3", "4"):
         return
 
     lock_text = read_run_text(run_descriptor, "INTENT-LOCK.json")
@@ -336,16 +336,37 @@ def validate_intent_authority(root, run_dir, run_descriptor, state_contract, int
         errors.append("intent_lock_invalid")
         return
     current_intent_digest = "sha256:" + hashlib.sha256(intent.encode("utf-8")).hexdigest()
+    schema_version = lock.get("schema_version") if isinstance(lock, dict) else None
     expected_keys = {"schema_version", "contract", "intent_digest", "requirements", "locked_at"}
+    if state_contract == "4" and schema_version == 1:
+        expected_keys.add("product_flow_digest")
+    elif state_contract == "4" and schema_version == 2:
+        expected_keys.update({"scope_digest", "final_contract_digest", "user_language"})
     locked_at = str(lock.get("locked_at") or "")
-    if (
+    lock_valid = (
         set(lock) != expected_keys
-        or lock.get("schema_version") != 1
-        or lock.get("contract") != 3
+        or schema_version not in ((1,) if state_contract == "3" else (1, 2))
+        or lock.get("contract") != int(state_contract)
         or lock.get("intent_digest") != current_intent_digest
         or lock.get("requirements") != requirements
         or re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", locked_at) is None
-    ):
+    )
+    if state_contract == "4" and schema_version == 1:
+        lock_valid = lock_valid or re.fullmatch(
+            r"sha256:[0-9a-f]{64}", str(lock.get("product_flow_digest") or "")
+        ) is None
+    elif state_contract == "4" and schema_version == 2:
+        lock_valid = lock_valid or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", str(lock.get(key) or "")) is None
+            for key in ("scope_digest", "final_contract_digest")
+        ) or re.fullmatch(
+            r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*",
+            str(lock.get("user_language") or ""),
+        ) is None
+        pinned_schema = active.get("intake_schema")
+        if pinned_schema is not None and pinned_schema != 2:
+            lock_valid = True
+    if lock_valid:
         errors.append("intent_lock_stale")
         return
     lock_digest = "sha256:" + hashlib.sha256(lock_text.encode("utf-8")).hexdigest()
@@ -875,7 +896,7 @@ acceptance_lines = markdown_lines(acceptance)
 evidence_lines = markdown_lines(evidence)
 acceptance_criteria = declared_acceptance_criteria(acceptance_lines)
 requirements = []
-if mode == "feature" and intent_contract == "3":
+if mode == "feature" and intent_contract in ("3", "4"):
     requirements = re.findall(r"^Requirement (R[1-9][0-9]*):\s*\S.+$", intent, flags=re.MULTILINE)
     expected_requirements = ["R%s" % ident for ident in range(1, len(requirements) + 1)]
     if not requirements or len(requirements) > 20 or requirements != expected_requirements:
@@ -917,7 +938,7 @@ if root_probe.returncode == 0:
                 or convergence_contract
             ) and pinned_convergence != convergence_contract:
                 errors.append("active_convergence_contract_mismatch")
-elif intent_contract == "3":
+elif intent_contract in ("3", "4"):
     errors.append("git_root_missing")
 evidence_headings = {
     match.group(1).strip()
@@ -927,22 +948,33 @@ evidence_headings = {
 }
 marker_lines = [line for line in plan_lines if line.startswith("<!-- kimiflow:decision-contract ")]
 decision_count = 0
+decision_evidence_flag = False
 if len(marker_lines) != 1:
     errors.append("decision_marker_%s" % ("missing" if not marker_lines else "duplicate"))
 else:
-    match = re.fullmatch(r"<!-- kimiflow:decision-contract contract=1 decisions=([0-9]+) -->", marker_lines[0])
+    match = re.fullmatch(
+        r"<!-- kimiflow:decision-contract contract=1 decisions=([0-9]+)(?: evidence=(1))? -->",
+        marker_lines[0],
+    )
     if not match:
         errors.append("decision_marker_malformed")
     else:
         decision_count = int(match.group(1))
+        decision_evidence_flag = match.group(2) == "1"
         if decision_count < 1 or decision_count > 5:
             errors.append("decision_count_invalid")
 
+evidence_class_rows_present = any(
+    re.match(r"^Evidence class D[0-9]+:", line) for line in plan_lines
+)
+decision_evidence_active = decision_evidence_flag or evidence_class_rows_present
 labels = ("Decision", "Evidence", "Invariant", "Paths", "AC", "Check", "Recheck")
+if decision_evidence_active:
+    labels = ("Decision", "Evidence", "Evidence class", "Invariant", "Paths", "AC", "Check", "Recheck")
 decision_rows = {}
 all_field_ids = []
 for line in plan_lines:
-    match = re.match(r"^(Decision|Evidence|Invariant|Paths|AC|Check|Recheck) D([0-9]+):(?: (.*))?$", line)
+    match = re.match(r"^(Decision|Evidence|Evidence class|Invariant|Paths|AC|Check|Recheck) D([0-9]+):(?: (.*))?$", line)
     if match:
         all_field_ids.append(int(match.group(2)))
 if decision_count:
@@ -982,6 +1014,10 @@ if decision_count:
             errors.append("ac_D%s_invalid" % ident)
         elif ac not in acceptance_criteria:
             errors.append("ac_D%s_missing" % ident)
+        if decision_evidence_active and row.get("Evidence class") not in (
+            "review_only", "spike_required", "runtime_required",
+        ):
+            errors.append("evidence_class_D%s_invalid" % ident)
         check = row.get("Check", "")
         if not re.fullmatch(r"(?:command|verifier) :: .+", check):
             errors.append("check_D%s_invalid" % ident)
@@ -989,6 +1025,110 @@ if decision_count:
     unexpected = sorted(set(all_field_ids) - expected_ids)
     if unexpected:
         errors.append("decision_id_unexpected:D%s" % unexpected[0])
+
+if decision_evidence_active and decision_count:
+    spike_ids = {
+        int(match.group(1))
+        for line in plan_lines
+        for match in [re.match(r"^Spike D([0-9]+):", line)]
+        if match
+    }
+    spike_check_ids = {
+        int(match.group(1))
+        for line in plan_lines
+        for match in [re.match(r"^Spike check D([0-9]+):", line)]
+        if match
+    }
+    expected_spikes = {
+        ident for ident, row in decision_rows.items()
+        if row.get("Evidence class") == "spike_required"
+    }
+    for ident in sorted((spike_ids | spike_check_ids) - expected_spikes):
+        errors.append("spike_D%s_unexpected" % ident)
+    run_rel = os.path.relpath(run_dir, root).replace(os.sep, "/") if root else ""
+    expected_evidence_path = "%s/SPIKE.md" % run_rel if run_rel else ""
+    for ident in sorted(expected_spikes):
+        spike_rows = [
+            line for line in plan_lines if line.startswith("Spike D%s:" % ident)
+        ]
+        check_rows = [
+            line for line in plan_lines if line.startswith("Spike check D%s:" % ident)
+        ]
+        if len(spike_rows) != 1:
+            errors.append("spike_D%s_%s" % (ident, "missing" if not spike_rows else "duplicate"))
+            continue
+        spike_match = re.fullmatch(
+            r"Spike D%s: fixture=([^;]+); assumption=(\S.*); method=command :: (\S.*)" % ident,
+            spike_rows[0],
+        )
+        if not spike_match:
+            errors.append("spike_D%s_malformed" % ident)
+            continue
+        fixture, assumption, command = [value.strip() for value in spike_match.groups()]
+        if len(check_rows) != 1:
+            errors.append("spike_check_D%s_%s" % (ident, "missing" if not check_rows else "duplicate"))
+            continue
+        check_match = re.fullmatch(
+            r"Spike check D%s: passed :: command :: (\S.*) :: evidence=([^@\s]+)@sha256:([0-9a-f]{64})" % ident,
+            check_rows[0],
+        )
+        if not check_match:
+            errors.append("spike_check_D%s_unbound" % ident)
+            continue
+        check_command, evidence_ref, evidence_digest = check_match.groups()
+        if check_command != command:
+            errors.append("spike_check_D%s_command_mismatch" % ident)
+        if not root or evidence_ref != expected_evidence_path:
+            errors.append("spike_check_D%s_evidence_path_invalid" % ident)
+            continue
+        spike_text = read_run_text(run_descriptor, "SPIKE.md")
+        if spike_text is None or hashlib.sha256(spike_text.encode("utf-8")).hexdigest() != evidence_digest:
+            errors.append("spike_check_D%s_evidence_digest_invalid" % ident)
+            continue
+        spike_lines = markdown_lines(spike_text)
+
+        def spike_value(prefix):
+            values = [line[len(prefix):] for line in spike_lines if line.startswith(prefix)]
+            if len(values) != 1:
+                errors.append("spike_receipt_D%s_%s" % (ident, "missing" if not values else "duplicate"))
+                return ""
+            return values[0]
+
+        execution = spike_value("Spike execution D%s: " % ident)
+        fixture_receipt = spike_value("Spike fixture D%s: " % ident)
+        assumption_receipt = spike_value("Spike assumption D%s: " % ident)
+        outcome = spike_value("Spike outcome D%s: " % ident)
+        exit_code = spike_value("Spike exit D%s: " % ident)
+        output = spike_value("Spike output D%s: " % ident)
+        output_digest = spike_value("Spike output sha256 D%s: " % ident)
+        if execution != "command :: %s" % command:
+            errors.append("spike_receipt_D%s_command_mismatch" % ident)
+        if assumption_receipt != assumption:
+            errors.append("spike_receipt_D%s_assumption_mismatch" % ident)
+        if outcome != "passed" or exit_code != "0":
+            errors.append("spike_receipt_D%s_not_passed" % ident)
+        if output_digest != "sha256:" + hashlib.sha256((output + "\n").encode("utf-8")).hexdigest():
+            errors.append("spike_receipt_D%s_output_digest_invalid" % ident)
+        fixture_match = re.fullmatch(r"([^@\s]+)@sha256:([0-9a-f]{64})", fixture_receipt)
+        if not fixture_match or fixture_match.group(1) != fixture:
+            errors.append("spike_receipt_D%s_fixture_invalid" % ident)
+            continue
+        if not root or not fixture.startswith(run_rel + "/spikes/"):
+            errors.append("spike_receipt_D%s_fixture_invalid" % ident)
+            continue
+        fixture_path = os.path.join(root, *fixture.split("/"))
+        expected_fixture_path = os.path.abspath(fixture_path)
+        if (
+            os.path.realpath(fixture_path) != expected_fixture_path
+            or os.path.islink(fixture_path)
+            or not os.path.isfile(fixture_path)
+        ):
+            errors.append("spike_receipt_D%s_fixture_invalid" % ident)
+            continue
+        with open(fixture_path, "rb") as handle:
+            current_fixture_digest = hashlib.sha256(handle.read()).hexdigest()
+        if current_fixture_digest != fixture_match.group(2):
+            errors.append("spike_receipt_D%s_fixture_digest_invalid" % ident)
 
 slice_count = 0
 failure_count = 0
@@ -1178,7 +1318,7 @@ if root is None:
 verification_path = os.path.join(run_dir, "VERIFICATION.md")
 verification = artifact(verification_path, "verification", errors, directory=run_descriptor)
 verification_lines = markdown_lines(verification)
-if mode == "feature" and intent_contract == "3":
+if mode == "feature" and intent_contract in ("3", "4"):
     requirement_checks = {}
     for line in verification_lines:
         match = re.fullmatch(r"Requirement (R[1-9][0-9]*): (passed|failed) :: (\S.*)", line)
@@ -1377,6 +1517,41 @@ for ident in range(1, decision_count + 1):
 unexpected_checks = sorted(set(check_lines) - set(range(1, decision_count + 1)))
 if unexpected_checks:
     errors.append("check_D%s_unexpected" % unexpected_checks[0])
+
+if decision_evidence_active:
+    evidence_results = {}
+    for line in verification_lines:
+        match = re.fullmatch(
+            r"Evidence result D([0-9]+): (review_only|spike_required|runtime_required) :: (passed|failed) :: (\S.*)",
+            line,
+        )
+        if match:
+            ident = int(match.group(1))
+            evidence_results.setdefault(ident, []).append(match.groups()[1:])
+    for ident in range(1, decision_count + 1):
+        values = evidence_results.get(ident, [])
+        if len(values) != 1:
+            errors.append(
+                "evidence_result_D%s_%s"
+                % (ident, "missing" if not values else "duplicate")
+            )
+            continue
+        evidence_class, evidence_status, evidence_detail = values[0]
+        if evidence_class != decision_rows[ident].get("Evidence class"):
+            errors.append("evidence_result_D%s_class_mismatch" % ident)
+        if status == "converged" and evidence_status != "passed":
+            errors.append("evidence_result_D%s_not_passed" % ident)
+        if evidence_class == "spike_required" and not re.fullmatch(
+            r"[^@\s]+/SPIKE\.md@sha256:[0-9a-f]{64}", evidence_detail,
+        ):
+            errors.append("evidence_result_D%s_spike_unbound" % ident)
+    unexpected_evidence_results = sorted(
+        set(evidence_results) - set(range(1, decision_count + 1))
+    )
+    if unexpected_evidence_results:
+        errors.append(
+            "evidence_result_D%s_unexpected" % unexpected_evidence_results[0]
+        )
 
 phase6 = one_state(state_lines, "Phase 6", errors).lower().split(" ", 1)[0]
 if status != "converged":

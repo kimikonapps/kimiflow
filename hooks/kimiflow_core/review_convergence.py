@@ -67,6 +67,7 @@ SATURATION_V2_KEYS = SATURATION_KEYS | {
     "review_files",
     "delta_receipt",
 }
+SATURATION_V3_KEYS = SATURATION_V2_KEYS
 DELTA_KEYS = {
     "schema_version",
     "source_round",
@@ -102,6 +103,34 @@ DISPOSITION_KEYS = {
     "verify",
     "evidence",
 }
+DISPOSITION_V3_KEYS = DISPOSITION_KEYS | {
+    "contract_status",
+    "support_status",
+    "impact_class",
+    "proportionality",
+}
+DISPOSITION_OUTCOMES = {
+    "promoted",
+    "refuted",
+    "non_blocking",
+    "material_decision",
+}
+CONTRACT_STATUSES = {"violated", "not_violated"}
+SUPPORT_STATUSES = {"supported", "unsupported"}
+IMPACT_CLASSES = {
+    "none",
+    "correctness",
+    "runtime",
+    "security",
+    "privacy",
+    "data_loss",
+    "paid",
+    "scope",
+    "breaking",
+    "irreversible",
+}
+PROTECTED_IMPACTS = {"security", "privacy", "data_loss", "irreversible"}
+USER_BOUNDARY_IMPACTS = {"paid", "privacy", "scope", "breaking", "irreversible"}
 REPAIR_KEYS = {
     "schema_version",
     "round",
@@ -123,6 +152,7 @@ TRAJECTORY_KEYS = {
     "changed_assumption",
     "checks",
 }
+TRAJECTORY_V2_KEYS = TRAJECTORY_KEYS | {"stable_class"}
 TRAJECTORY_ACTIONS = {
     "replan",
     "decompose",
@@ -571,6 +601,87 @@ def _candidate_rows(path, axis):
     return payload, result
 
 
+def _saturation_keys(schema_version):
+    if schema_version == 1:
+        return SATURATION_KEYS
+    if schema_version == 2:
+        return SATURATION_V2_KEYS
+    if schema_version == 3:
+        return SATURATION_V3_KEYS
+    return set()
+
+
+def _schema3_disposition(row, candidate_id):
+    contract_status = row.get("contract_status")
+    support_status = row.get("support_status")
+    impact_class = row.get("impact_class")
+    proportionality = row.get("proportionality")
+    if contract_status not in CONTRACT_STATUSES:
+        raise GateError("disposition-contract-status-invalid", candidate_id)
+    if support_status not in SUPPORT_STATUSES:
+        raise GateError("disposition-support-status-invalid", candidate_id)
+    if impact_class not in IMPACT_CLASSES:
+        raise GateError("disposition-impact-invalid", candidate_id)
+    if not _bounded(proportionality, 1000, 8):
+        raise GateError("disposition-proportionality-invalid", candidate_id)
+    outcome = row["outcome"]
+    if outcome == "promoted":
+        if contract_status != "violated" or support_status != "supported":
+            raise GateError("promoted-relevance-unproven", candidate_id)
+        if impact_class == "none":
+            raise GateError("promoted-impact-unproven", candidate_id)
+    elif outcome == "refuted":
+        if contract_status != "not_violated" or impact_class != "none":
+            raise GateError("refuted-materiality-invalid", candidate_id)
+    elif outcome == "non_blocking":
+        if impact_class in PROTECTED_IMPACTS:
+            raise GateError("protected-impact-required", candidate_id)
+        if (
+            contract_status != "not_violated"
+            or impact_class != "none"
+        ):
+            raise GateError("non-blocking-relevance-invalid", candidate_id)
+    elif outcome == "material_decision":
+        if (
+            contract_status != "violated"
+            or support_status != "supported"
+            or impact_class not in USER_BOUNDARY_IMPACTS
+        ):
+            raise GateError("material-decision-boundary-invalid", candidate_id)
+
+
+def _prior_text_runtime_rounds(run, round_number, stable_class):
+    count = 0
+    for prior_round in range(1, round_number):
+        path = _artifact_path(
+            run, "review-saturation", "r%s.json" % prior_round
+        )
+        try:
+            receipt = _json(path)
+        except GateError as exc:
+            if exc.reason == "missing-artifact":
+                continue
+            raise
+        if (
+            not isinstance(receipt, dict)
+            or receipt.get("schema_version") != 3
+            or set(receipt) != SATURATION_V3_KEYS
+        ):
+            continue
+        for row in receipt.get("dispositions", []):
+            if (
+                isinstance(row, dict)
+                and set(row) == DISPOSITION_V3_KEYS
+                and row.get("stable_class") == stable_class
+                and row.get("impact_class") == "runtime"
+                and isinstance(row.get("verify"), str)
+                and row["verify"].startswith("verifier:")
+            ):
+                count += 1
+                break
+    return count
+
+
 def saturation(run, round_number, axes):
     run = _run_dir(run)
     round_number = _round(round_number)
@@ -608,13 +719,7 @@ def saturation(run, round_number, axes):
     if not isinstance(receipt, dict):
         raise GateError("saturation-malformed")
     schema_version = receipt.get("schema_version")
-    expected_keys = (
-        SATURATION_KEYS
-        if schema_version == 1
-        else SATURATION_V2_KEYS
-        if schema_version == 2
-        else set()
-    )
+    expected_keys = _saturation_keys(schema_version)
     if set(receipt) != expected_keys or receipt.get("round") != round_number:
         raise GateError("saturation-malformed")
     if receipt.get("plan_sha256") != plan_sha:
@@ -670,13 +775,7 @@ def saturation(run, round_number, axes):
                     if isinstance(previous, dict)
                     else None
                 )
-                previous_keys = (
-                    SATURATION_KEYS
-                    if previous_schema == 1
-                    else SATURATION_V2_KEYS
-                    if previous_schema == 2
-                    else set()
-                )
+                previous_keys = _saturation_keys(previous_schema)
                 if (
                     not isinstance(previous, dict)
                     or set(previous) != previous_keys
@@ -723,8 +822,12 @@ def saturation(run, round_number, axes):
     seen_candidates = set()
     promoted_by_class = {}
     class_outcomes = {}
+    material_decisions = []
     for row in dispositions:
-        if not isinstance(row, dict) or set(row) != DISPOSITION_KEYS:
+        disposition_keys = (
+            DISPOSITION_V3_KEYS if schema_version == 3 else DISPOSITION_KEYS
+        )
+        if not isinstance(row, dict) or set(row) != disposition_keys:
             raise GateError("disposition-malformed")
         candidate_id = row.get("candidate_id")
         candidate = candidates.get(candidate_id)
@@ -736,12 +839,25 @@ def saturation(run, round_number, axes):
         outcome = row.get("outcome")
         stable_class = row.get("stable_class")
         verify = row.get("verify")
-        if outcome not in ("promoted", "refuted", "non_blocking"):
+        allowed_outcomes = (
+            DISPOSITION_OUTCOMES
+            if schema_version == 3
+            else {"promoted", "refuted", "non_blocking"}
+        )
+        if outcome not in allowed_outcomes:
             raise GateError("disposition-outcome-invalid", candidate_id)
         if not isinstance(stable_class, str) or SLUG_RE.fullmatch(stable_class) is None:
             raise GateError("disposition-class-invalid", candidate_id)
         if verify != candidate["verify"]:
             raise GateError("disposition-verify-mismatch", candidate_id)
+        if schema_version == 3:
+            _schema3_disposition(row, candidate_id)
+            if (
+                row["impact_class"] == "runtime"
+                and verify.startswith("verifier:")
+                and _prior_text_runtime_rounds(run, round_number, stable_class) >= 2
+            ):
+                raise GateError("runtime-evidence-required", stable_class)
         expected_evidence_outcome = (
             "not_reproduced" if outcome == "refuted" else "reproduced"
         )
@@ -762,6 +878,8 @@ def saturation(run, round_number, axes):
             if prior_promoted is not None and prior_promoted != expected:
                 raise GateError("promoted-class-conflict", stable_class)
             promoted_by_class[stable_class] = expected
+        elif outcome == "material_decision":
+            material_decisions.append(stable_class)
     required_candidates = {
         candidate_id
         for candidate_id, row in candidates.items()
@@ -784,6 +902,13 @@ def saturation(run, round_number, axes):
     for stable_class in carried:
         if aggregate.get(stable_class) != previous_aggregate[stable_class]:
             raise GateError("carried-class-drift", stable_class)
+    if material_decisions:
+        return _emit(
+            "CLOSED",
+            "material-decision-required",
+            "classes=%s" % ",".join(sorted(set(material_decisions))),
+            blockers=len(set(material_decisions)),
+        )
     return _emit(
         "OPEN",
         "saturated",
@@ -928,9 +1053,44 @@ def _repair_details(run, round_number):
     }
 
 
+def _material_decision_pending(run, round_number):
+    path = _artifact_path(run, "review-saturation", "r%s.json" % round_number)
+    try:
+        receipt = _json(path)
+    except GateError as exc:
+        if exc.reason == "missing-artifact":
+            return []
+        raise
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("schema_version") != 3
+        or set(receipt) != SATURATION_V3_KEYS
+        or receipt.get("round") != round_number
+    ):
+        return []
+    classes = []
+    for row in receipt.get("dispositions", []):
+        if (
+            isinstance(row, dict)
+            and set(row) == DISPOSITION_V3_KEYS
+            and row.get("outcome") == "material_decision"
+            and isinstance(row.get("stable_class"), str)
+        ):
+            classes.append(row["stable_class"])
+    return sorted(set(classes))
+
+
 def repair(run, round_number):
     if _round(round_number) >= REVIEW_CLOSEOUT_ROUND:
         raise GateError("review-limit-reached")
+    pending = _material_decision_pending(_run_dir(run), _round(round_number))
+    if pending:
+        return _emit(
+            "CLOSED",
+            "material-decision-required",
+            "classes=%s" % ",".join(pending),
+            blockers=len(pending),
+        )
     details = _repair_details(run, round_number)
     if not details["required"]:
         return _emit("OPEN", "not-required", "no material findings")
@@ -995,10 +1155,15 @@ def _validate_delta(run, round_number, scheduled_axes, rerun_axes, spec=None):
         source_saturation = json.loads(source_saturation_payload.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError) as exc:
         raise GateError("source-saturation-malformed") from exc
+    source_schema = (
+        source_saturation.get("schema_version")
+        if isinstance(source_saturation, dict)
+        else None
+    )
     if (
         not isinstance(source_saturation, dict)
-        or source_saturation.get("schema_version") != 2
-        or set(source_saturation) != SATURATION_V2_KEYS
+        or source_schema not in (2, 3)
+        or set(source_saturation) != _saturation_keys(source_schema)
         or source_saturation.get("round") != source_round
         or source_saturation.get("plan_sha256") != plan_sha
     ):
@@ -1185,6 +1350,128 @@ def _trajectory_semantics(receipt):
     ), hypothesis, assumption, checks
 
 
+def _schema3_failure_classes(run, source_round):
+    path = _artifact_path(run, "review-saturation", "r%s.json" % source_round)
+    try:
+        receipt = _json(path)
+    except GateError as exc:
+        if exc.reason == "missing-artifact":
+            return None
+        raise
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("schema_version") != 3
+        or set(receipt) != SATURATION_V3_KEYS
+        or receipt.get("round") != source_round
+    ):
+        return None
+    _, _, aggregate = _aggregate(run, source_round)
+    return set(aggregate)
+
+
+def _prior_class_trajectories(run, markers, source_round, stable_class):
+    payloads = []
+    semantics = []
+    for row in markers:
+        prior_source = row["source"]
+        if prior_source >= source_round:
+            continue
+        path = _artifact_path(
+            run, "review-trajectories", "source-r%s.json" % prior_source
+        )
+        try:
+            payload = _regular_bytes(path, MAX_JSON_BYTES)
+        except GateError as exc:
+            if exc.reason == "missing-artifact":
+                continue
+            raise
+        try:
+            prior = json.loads(payload.decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise GateError("trajectory-malformed", path) from exc
+        if not isinstance(prior, dict):
+            raise GateError("trajectory-malformed", path)
+        if prior.get("schema_version") != 2:
+            continue
+        if (
+            set(prior) != TRAJECTORY_V2_KEYS
+            or prior.get("source_round") != prior_source
+        ):
+            raise GateError("trajectory-malformed", path)
+        if prior.get("stable_class") != stable_class:
+            continue
+        payloads.append(_sha(payload))
+        semantics.append(_trajectory_semantics(prior)[0])
+    return payloads, semantics
+
+
+def _class_scoped_preflight(run, round_number, markers, latest, common_classes):
+    source_round = latest[-1]["source"]
+    if round_number <= source_round:
+        raise GateError("round-invalid", str(round_number))
+    receipt_path = _artifact_path(
+        run, "review-trajectories", "source-r%s.json" % source_round
+    )
+    try:
+        receipt = _json(receipt_path)
+    except GateError as exc:
+        if exc.reason == "missing-artifact":
+            raise GateError("trajectory-required", receipt_path)
+        raise
+    if (
+        not isinstance(receipt, dict)
+        or set(receipt) != TRAJECTORY_V2_KEYS
+        or receipt.get("schema_version") != 2
+        or receipt.get("source_round") != source_round
+    ):
+        raise GateError("trajectory-malformed")
+    stable_class = receipt.get("stable_class")
+    if stable_class not in common_classes:
+        raise GateError("trajectory-class-mismatch", str(stable_class))
+    plan_payload, plan_sha = _plan(run)
+    if receipt.get("plan_sha256") != plan_sha:
+        raise GateError("stale-plan")
+    failed_rounds = [row["source"] for row in latest]
+    if receipt.get("failed_source_rounds") != failed_rounds:
+        raise GateError("trajectory-receipts-mismatch")
+    receipt_hashes = [_sha(row["line"].encode("utf-8")) for row in latest]
+    if receipt.get("recovery_receipt_sha256s") != receipt_hashes:
+        raise GateError("trajectory-receipts-mismatch")
+    prior_payloads, prior_semantics = _prior_class_trajectories(
+        run, markers, source_round, stable_class
+    )
+    if receipt.get("prior_trajectory_sha256s") != prior_payloads:
+        raise GateError("trajectory-receipts-mismatch")
+    semantics, hypothesis, assumption, checks = _trajectory_semantics(receipt)
+    if semantics in prior_semantics:
+        raise GateError("trajectory-repeated")
+    current_strategy = (semantics[0], semantics[3])
+    if prior_semantics and current_strategy == (
+        prior_semantics[-1][0],
+        prior_semantics[-1][3],
+    ):
+        raise GateError("trajectory-strategy-unchanged", stable_class)
+    try:
+        plan_text = plan_payload.decode("utf-8")
+    except UnicodeError as exc:
+        raise GateError("trajectory-plan-mismatch") from exc
+    required_lines = {
+        "Trajectory class: %s" % stable_class,
+        "Trajectory action: %s" % receipt["action"],
+        "Trajectory hypothesis: %s" % hypothesis,
+        "Changed assumption: %s" % assumption,
+    }
+    required_lines.update("Trajectory check: %s :: %s" % check for check in checks)
+    if not required_lines.issubset(set(plan_text.splitlines())):
+        raise GateError("trajectory-plan-mismatch")
+    return _emit(
+        "OPEN",
+        "trajectory-ready",
+        "source_round=%s class=%s action=%s"
+        % (source_round, stable_class, receipt["action"]),
+    )
+
+
 def preflight(run, round_number):
     run = _run_dir(run)
     round_number = _round(round_number)
@@ -1194,6 +1481,20 @@ def preflight(run, round_number):
     if len(markers) < 2:
         return _emit("OPEN", "below-threshold", "failed_strategies=%s" % len(markers))
     latest = markers[-2:]
+    latest_classes = [
+        _schema3_failure_classes(run, row["source"]) for row in latest
+    ]
+    if all(classes is not None for classes in latest_classes):
+        common_classes = set.intersection(*latest_classes)
+        if not common_classes:
+            return _emit(
+                "OPEN",
+                "below-threshold",
+                "failed_strategies=class-scoped",
+            )
+        return _class_scoped_preflight(
+            run, round_number, markers, latest, common_classes
+        )
     source_round = latest[-1]["source"]
     if round_number <= source_round:
         raise GateError("round-invalid", str(round_number))

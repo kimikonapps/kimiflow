@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from memory_router import recall_index, review
+from memory_router import recall_index, review, runs
 
 TAG = "kimiflow--v0.1.50"
 _FIXED_SALT = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -184,6 +184,67 @@ class ReviewHelperCase(unittest.TestCase):
         self.assertIsNone(review.review_candidate_json(self.dir, run_dir, "q", "learned",
                                                        "t", ["RESEARCH.md"]))
 
+    def test_confirmed_cause_attaches_valid_current_source_evidence(self):
+        run_dir = os.path.join(self.dir, "run")
+        source_dir = os.path.join(self.dir, "src")
+        os.makedirs(run_dir)
+        os.makedirs(source_dir)
+        with open(os.path.join(source_dir, "runtime.py"), "w", encoding="utf-8") as fh:
+            fh.write("def supported_path(): return False\n")
+        with open(os.path.join(run_dir, "CODE-REVIEW.md"), "w", encoding="utf-8") as fh:
+            fh.write(
+                "Pitfall: never accept a text-only runtime claim when the supported path can fail\n"
+                "Confirmed root cause: The reviewer trusted prose instead of executing the supported runtime branch.\n"
+                "Source evidence: src/runtime.py:1\n"
+            )
+        candidate = review.review_candidate_json(
+            self.dir, run_dir, "which_trap_or_pitfall_appeared",
+            "trap_or_pitfall", "pitfalls", ["CODE-REVIEW.md"]
+        )
+        self.assertTrue(candidate["quality"]["ok"])
+        self.assertEqual(
+            candidate["evidence"],
+            ["run/CODE-REVIEW.md:1", "src/runtime.py:1"],
+        )
+
+    def test_confirmed_cause_rejects_symlink_or_malformed_source_evidence(self):
+        run_dir = os.path.join(self.dir, "run")
+        source_dir = os.path.join(self.dir, "src")
+        os.makedirs(run_dir)
+        os.makedirs(source_dir)
+        outside = self._f("outside.py", "unsafe = True\n")
+        os.symlink(outside, os.path.join(source_dir, "linked.py"))
+        with open(os.path.join(run_dir, "CODE-REVIEW.md"), "w", encoding="utf-8") as fh:
+            fh.write(
+                "Pitfall: never accept a text-only runtime claim when the supported path can fail\n"
+                "Confirmed root cause: The reviewer trusted prose instead of executing the supported runtime branch.\n"
+                "Source evidence: src/linked.py:1\n"
+                "Source evidence: ../outside.py:1\n"
+            )
+        candidate = review.review_candidate_json(
+            self.dir, run_dir, "which_trap_or_pitfall_appeared",
+            "trap_or_pitfall", "pitfalls", ["CODE-REVIEW.md"]
+        )
+        self.assertFalse(candidate["quality"]["ok"])
+        self.assertIn(
+            "confirmed_source_evidence_invalid", candidate["quality"]["reasons"]
+        )
+        self.assertEqual(candidate["evidence"], ["run/CODE-REVIEW.md:1"])
+
+    def test_source_rows_without_confirmed_cause_are_not_attached(self):
+        run_dir = os.path.join(self.dir, "run")
+        os.makedirs(run_dir)
+        with open(os.path.join(run_dir, "CODE-REVIEW.md"), "w", encoding="utf-8") as fh:
+            fh.write(
+                "Pitfall: never accept a text-only runtime claim when the supported path can fail\n"
+                "Source evidence: README.md:1\n"
+            )
+        candidate = review.review_candidate_json(
+            self.dir, run_dir, "which_trap_or_pitfall_appeared",
+            "trap_or_pitfall", "pitfalls", ["CODE-REVIEW.md"]
+        )
+        self.assertEqual(candidate["evidence"], ["run/CODE-REVIEW.md:1"])
+
     # ---- run_lifecycle_json next_actions unique ----
     def test_lifecycle_next_actions_unique_sorted(self):
         with mock.patch.object(review.status_mod, "status_json", return_value={
@@ -195,6 +256,61 @@ class ReviewHelperCase(unittest.TestCase):
         self.assertEqual(obj["next_actions"],
                          ["alpha", "provider_sync_pending", "review_learning_proposals", "zeta"])
         self.assertEqual(obj["proposals"], {"notification": {"pending": 3}})
+
+
+class ReviewConfirmedSourceFreshnessCase(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.khome = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, self.khome, ignore_errors=True)
+        self.run_dir = os.path.join(self.root, ".kimiflow", "review-fixture")
+        os.makedirs(self.run_dir)
+        os.makedirs(os.path.join(self.root, ".kimiflow", "project"))
+        os.makedirs(os.path.join(self.root, "src"))
+        with open(os.path.join(self.root, "src", "runtime.py"), "w", encoding="utf-8") as fh:
+            fh.write("def supported_path(): return False\n")
+        with open(os.path.join(self.run_dir, "CODE-REVIEW.md"), "w", encoding="utf-8") as fh:
+            fh.write(
+                "Pitfall: never accept a text-only runtime claim when the supported path can fail\n"
+                "Confirmed root cause: The reviewer trusted prose instead of executing the supported runtime branch.\n"
+                "Source evidence: src/runtime.py:1\n"
+            )
+        with open(os.path.join(self.run_dir, "STATE.md"), "w", encoding="utf-8") as fh:
+            fh.write("# Run\n**Mode:** feature\n")
+        with open(os.path.join(self.run_dir, "RECALL.json"), "w", encoding="utf-8") as fh:
+            json.dump({"sources": {"memory": {"tokens_estimate": 0},
+                                    "user_profile": {"tokens_estimate": 0}}}, fh)
+
+    def _env(self):
+        return {
+            "HOME": "/tmp",
+            "KIMIFLOW_HOME": self.khome,
+            "KIMIFLOW_OBSIDIAN_URL": "http://127.0.0.1:9/",
+            "PATH": os.environ.get("PATH", ""),
+        }
+
+    def test_source_byte_drift_closes_recorded_learning(self):
+        with mock.patch.dict(os.environ, self._env(), clear=True), \
+                contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(review.run([
+                "--root", self.root, "--run", self.run_dir, "--write"
+            ]), 0)
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(runs.run([
+                "--root", self.root, "--run", self.run_dir
+            ]), 0)
+        self.assertIn("freshness=current", output.getvalue())
+        with open(os.path.join(self.root, "src", "runtime.py"), "a", encoding="utf-8") as fh:
+            fh.write("# drift\n")
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(runs.run([
+                "--root", self.root, "--run", self.run_dir
+            ]), 1)
+        self.assertIn("reason=evidence_stale", output.getvalue())
 
 
 class ReviewIndexFreshnessCase(unittest.TestCase):

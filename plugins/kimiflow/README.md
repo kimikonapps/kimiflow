@@ -61,6 +61,16 @@ abilities:
 
 The result is not maximum ceremony. The default is the smallest loop that still protects the work.
 
+## First Principles
+
+- **Understand before building.** Kimiflow restates the problem, observable success, boundaries, options, and the complete user flow in the user's language. The user can discuss and correct that contract before implementation starts.
+- **Current code beats remembered code.** Planning is bound to the current HEAD and the exact bytes/types of every affected path. Kimiflow searches in the order `reuse → evolve → new` so an existing feature or abstraction is not rebuilt by accident.
+- **Research challenges the local idea; it does not expand the product.** Project evidence comes first, current primary sources close named gaps, and the selected approach is compared back against the codebase and confirmed scope.
+- **Runtime claims need runtime evidence.** Important decisions declare whether review, an isolated spike, or executable runtime proof is required. A prose-only “passed” claim is never enough.
+- **Reviews are proportional and finite.** Reproduced findings are classified by contract, supported path, impact, and repair cost. Irrelevant edge cases do not enter the repair loop; security, privacy, data-loss, and irreversible impacts cannot be waived; repeated strategies are counted per stable root class.
+- **Prefer the smallest replaceable design.** Features, integrations, models, and review routes must be easy to add, adapt, or remove without rewriting the workflow. No new service, provider, or abstraction is introduced when an existing contract can evolve cleanly.
+- **Learning remains evidence-bound.** Durable lessons cite current source paths and become stale automatically when those source bytes change.
+
 ## Install
 
 Requirements: `jq`, Git, and `python3 >= 3.9` on `PATH`.

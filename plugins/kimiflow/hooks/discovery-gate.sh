@@ -115,6 +115,98 @@ case "$technical_gaps" in 0) ;; ""|*[!0-9]*) add_blocker "technical_gaps_invalid
 case "$user_decisions" in 0) ;; ""|*[!0-9]*) add_blocker "user_decisions_invalid" ;; *) add_blocker "user_decisions_open" ;; esac
 case "$scope_change" in no|confirmed) ;; pending|yes) add_blocker "scope_change_unconfirmed" ;; *) add_blocker "scope_change_invalid" ;; esac
 
+schema2_intake=0
+if [ -f "$run_dir/INTENT-LOCK.json" ] && command -v python3 >/dev/null 2>&1; then
+  schema2_intake="$(python3 - "$run_dir/INTENT-LOCK.json" <<'PY' 2>/dev/null || true
+import json, os, sys
+try:
+    path=sys.argv[1]
+    if os.path.islink(path): raise OSError
+    with open(path,encoding="utf-8") as handle: value=json.load(handle)
+    print(1 if isinstance(value,dict) and value.get("schema_version")==2 and value.get("contract")==4 else 0)
+except (OSError,ValueError,UnicodeError):
+    print(0)
+PY
+)"
+fi
+if [ "$schema2_intake" = "1" ]; then
+  schema2_details="$(python3 - "$run_dir" <<'PY'
+import hashlib, json, os, re, sys
+run_dir=os.path.realpath(sys.argv[1])
+root=os.path.realpath(os.path.join(run_dir,"..",".."))
+errors=[]
+research_path=os.path.join(run_dir,"RESEARCH.md")
+basis_path=os.path.join(run_dir,"CODEBASE-BASIS.json")
+try:
+    with open(research_path,encoding="utf-8") as handle: text=handle.read()
+    with open(basis_path,"rb") as handle: basis_payload=handle.read()
+    basis_digest="sha256:"+hashlib.sha256(basis_payload).hexdigest()
+except (OSError,UnicodeError):
+    print("codebase_basis_missing"); raise SystemExit
+
+def one(label):
+    values=re.findall(r"^%s:\s*(\S.+)$"%re.escape(label),text,re.M)
+    if len(values)!=1:
+        errors.append(label.lower().replace(" ","_")+"_invalid")
+        return ""
+    return values[0].strip()
+
+markers=re.findall(r"^<!-- kimiflow:reuse-order ([^\n]+) -->$",text,re.M)
+attrs=dict(re.findall(r"([a-z_]+)=([A-Za-z0-9_-]+)",markers[0])) if len(markers)==1 else {}
+if attrs.get("contract")!="4" or attrs.get("schema")!="2": errors.append("reuse_order_marker_invalid")
+reuse=attrs.get("reuse")
+evolve=attrs.get("evolve")
+new=attrs.get("new")
+selected=attrs.get("selected")
+reuse_candidate=one("Reuse candidate")
+reuse_evidence=one("Reuse evidence")
+one("Own idea"); one("Research finding"); one("Code comparison")
+if one("Codebase basis")!=basis_digest: errors.append("research_codebase_basis_stale")
+if one("Scope result")!="non_expanded": errors.append("research_scope_expanded")
+
+def current_source(value,label):
+    match=re.fullmatch(r"([^\s:]+):(\d+)",value)
+    if not match:
+        errors.append(label+"_invalid"); return
+    path=os.path.realpath(os.path.join(root,match.group(1)))
+    try:
+        if os.path.commonpath((root,path))!=root or os.path.islink(path) or not os.path.isfile(path): raise OSError
+    except (OSError,ValueError): errors.append(label+"_invalid")
+
+if reuse_candidate: current_source(reuse_evidence,"reuse_evidence")
+if reuse=="fit":
+    if selected!="reuse" or evolve!="not_needed" or new!="not_needed": errors.append("reuse_order_invalid")
+elif reuse=="gap":
+    evolve_candidate=one("Evolve candidate")
+    evolve_evidence=one("Evolve evidence")
+    if evolve_candidate: current_source(evolve_evidence,"evolve_evidence")
+    if evolve=="fit":
+        if selected!="evolve" or new!="not_needed": errors.append("reuse_order_invalid")
+    elif evolve=="gap":
+        one("New gap")
+        falsifier=one("New falsifier")
+        if selected!="new" or new!="selected" or not re.match(r"^(command|verifier) :: \S",falsifier): errors.append("new_without_proven_gap")
+    else: errors.append("reuse_order_invalid")
+else: errors.append("reuse_order_invalid")
+
+scope_markers=re.findall(r"^<!-- kimiflow:scope-research ([^\n]+) -->$",text,re.M)
+scope_attrs=dict(re.findall(r"([a-z_]+)=([A-Za-z0-9_:-]+)",scope_markers[0])) if len(scope_markers)==1 else {}
+if (
+    scope_attrs.get("contract")!="4"
+    or scope_attrs.get("schema")!="2"
+    or scope_attrs.get("codebase_basis")!=basis_digest
+    or not re.fullmatch(r"sha256:[0-9a-f]{64}",scope_attrs.get("scope", ""))
+    or scope_attrs.get("selection")!="non_expanded"
+): errors.append("scope_research_not_bound")
+print(",".join(dict.fromkeys(errors)))
+PY
+)"
+  if [ -n "$schema2_details" ]; then
+    old_ifs="$IFS"; IFS=','; set -- $schema2_details; IFS="$old_ifs"
+    for detail in "$@"; do add_blocker "$detail"; done
+  fi
+fi
+
 if [ "$nontrivial_feature" -eq 1 ] && [ "$intent_contract" = "3" ]; then
   feasibility_lines="$(grep -E '^<!--[[:space:]]*kimiflow:feasibility[[:space:]][^>]*-->$' "$research" 2>/dev/null || true)"
   feasibility_count="$(printf '%s\n' "$feasibility_lines" | grep -c . || true)"

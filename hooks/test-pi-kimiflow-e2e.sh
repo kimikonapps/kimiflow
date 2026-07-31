@@ -225,6 +225,7 @@ Depends S1: none
 AC-1 -- When the Pi-backed Kimiflow run completes, fixture-output.txt shall contain `built-by-thin-pi-bridge`.
 Example: existing repository -> fixture-output.txt.
 Check: `test -f fixture-output.txt && grep -q built-by-thin-pi-bridge fixture-output.txt` (exit 0) -> AC-1
+Requirement trace R1: AC-1
 """
         write(os.path.join(run_dir, "STATE.md"), state)
         write(os.path.join(run_dir, "INTENT.md"), intent)
@@ -323,6 +324,7 @@ Check: `test -f fixture-output.txt && grep -q built-by-thin-pi-bridge fixture-ou
 <!-- kimiflow:convergence-verification contract=1 risk=routine slices=1 failures=0 -->
 Slice check S1: passed :: command :: test -f fixture-output.txt && grep -q built-by-thin-pi-bridge fixture-output.txt
 Decision check D1: passed :: test -f fixture-output.txt && grep -q built-by-thin-pi-bridge fixture-output.txt
+Requirement R1: passed :: test -f fixture-output.txt && grep -q built-by-thin-pi-bridge fixture-output.txt
 """,
         )
         write(os.path.join(run_dir, "RECOVERY.md"), "# Recovery\n\nNo recovery was required.\n")

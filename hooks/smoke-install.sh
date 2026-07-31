@@ -79,7 +79,7 @@ for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'k
   grep -q "$term" "$ROOT/README.md" && ok "README documents mode alias: $term" || bad "README missing mode alias: $term"
 done
 grep -q 'full.*does not create an approval stop' "$ROOT/SKILL.md" && ok "full mode follows material-risk decisions" || bad "full mode still forces approval"
-grep -q 'Contract-4 concrete Product Intake with Contract-3 resume compatibility' "$ROOT/SKILL.md" && ok "canonical skill bounds intent interaction" || bad "canonical skill missing bounded intent interaction"
+grep -q 'Contract-4 two-stage Product Intake with Contract-3/schema-1 resume compatibility' "$ROOT/SKILL.md" && ok "canonical skill bounds intent interaction" || bad "canonical skill missing bounded intent interaction"
 grep -q 'Intent Coverage Scan (Contract 4)' "$ROOT/reference.md" && ok "reference documents provenance-aware intent coverage" || bad "reference missing provenance-aware intent coverage"
 grep -q 'one compact Product Intake' "$ROOT/README.md" && ok "README documents batched clarification" || bad "README missing batched clarification"
 grep -q 'git commit --only' "$ROOT/phases/phase-7-review-commit.md" && grep -q 'foreign staged' "$ROOT/phases/phase-7-review-commit.md" \
@@ -256,9 +256,9 @@ fi
 if [ -x "$ROOT/hooks/test-current-state-gate.sh" ] && bash -n "$ROOT/hooks/test-current-state-gate.sh" 2>/dev/null; then ok "current-state gate test ok"; else bad "current-state gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/review-convergence-gate.sh" ] \
   && bash -n "$ROOT/hooks/review-convergence-gate.sh" 2>/dev/null \
-  && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import review_convergence; assert callable(review_convergence.delta); assert review_convergence.REVIEW_CLOSEOUT_ROUND == 4' 2>/dev/null \
-  && grep -q 'Every later round on the same PLAN is an exact repair-delta review' "$ROOT/phases/phase-7-review-commit.md" \
-  && grep -q 'review-deltas/r<N>.json' "$ROOT/phases/phase-7-review-commit.md"; then
+  && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import review_convergence; assert callable(review_convergence.delta); assert review_convergence.REVIEW_CLOSEOUT_ROUND == 4; assert review_convergence.SATURATION_V3_KEYS == review_convergence.SATURATION_V2_KEYS' 2>/dev/null \
+  && grep -q 'schema-3 saturation' "$ROOT/phases/phase-7-review-commit.md" \
+  && grep -q 'material-decision-required' "$ROOT/phases/phase-7-review-commit.md"; then
   ok "review convergence gate helper ok"
 else
   bad "review convergence gate helper missing/not-exec/unloadable"
@@ -309,10 +309,12 @@ grep -q 'automatisch geroutete' "$ROOT/docs/architecture.md" && grep -q 'automat
 if [ -x "$ROOT/hooks/clarify-gate.sh" ] && bash -n "$ROOT/hooks/clarify-gate.sh" 2>/dev/null; then ok "clarify gate helper ok"; else bad "clarify gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-clarify-gate.sh" ] && bash -n "$ROOT/hooks/test-clarify-gate.sh" 2>/dev/null; then ok "clarify gate test ok"; else bad "clarify gate test missing/not-exec/bad"; fi
 if grep -q 'Intent contract: 4' "$ROOT/phases/phase-0-setup.md" \
-  && grep -q 'Impact x Uncertainty' "$ROOT/phases/phase-1-clarify.md" \
+  && grep -q 'Action scope_ready' "$ROOT/reference.md" \
+  && grep -q 'Action confirmed' "$ROOT/reference.md" \
+  && grep -q 'Interaction language:' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'technical_questions=0' "$ROOT/reference.md" \
   && grep -q 'intent_coverage_missing' "$ROOT/hooks/clarify-gate.sh" \
-  && grep -q 'test_contract4_requires_confirmed_concrete_product_flow' "$ROOT/hooks/test-clarify-gate.sh" \
+  && grep -q 'contract4_schema2_lock_binds_scope_final_and_language' "$ROOT/hooks/test-clarify-gate.sh" \
   && grep -q 'product-intent ownership' "$ROOT/evals/README.md"; then
   ok "product intent ownership and mandatory-intake autonomy"
 else
@@ -320,12 +322,20 @@ else
 fi
 if [ -x "$ROOT/hooks/plan-blocker-gate.sh" ] && bash -n "$ROOT/hooks/plan-blocker-gate.sh" 2>/dev/null; then ok "plan-blocker gate helper ok"; else bad "plan-blocker gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-plan-blocker-gate.sh" ] && bash -n "$ROOT/hooks/test-plan-blocker-gate.sh" 2>/dev/null; then ok "plan-blocker gate test ok"; else bad "plan-blocker gate test missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/codebase-basis.sh" ] \
+  && bash -n "$ROOT/hooks/codebase-basis.sh" 2>/dev/null \
+  && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import codebase_basis; assert callable(codebase_basis.capture); assert callable(codebase_basis.verify)' 2>/dev/null \
+  && grep -q 'reuse → evolve → new' "$ROOT/phases/phase-2-understand.md"; then
+  ok "current codebase basis and reuse-order wiring"
+else
+  bad "current codebase basis or reuse-order wiring incomplete"
+fi
 if [ -x "$ROOT/hooks/conformance-gate.sh" ] && bash -n "$ROOT/hooks/conformance-gate.sh" 2>/dev/null; then ok "implementation conformance gate helper ok"; else bad "implementation conformance gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-conformance-gate.sh" ] && bash -n "$ROOT/hooks/test-conformance-gate.sh" 2>/dev/null; then ok "implementation conformance gate test ok"; else bad "implementation conformance gate test missing/not-exec/bad"; fi
 if grep -q 'Conformance contract: 1' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'Implementation decision evidence' "$ROOT/phases/phase-2-understand.md" \
   && grep -q 'kimiflow:decision-contract contract=1 decisions=<1..5>' "$ROOT/phases/phase-3-plan.md" \
-  && grep -q 'kimiflow:conformance contract=1 status=' "$ROOT/phases/phase-6-verify.md" \
+  && grep -q 'Evidence result Dn:' "$ROOT/phases/phase-6-verify.md" \
   && grep -q 'Conformance serialization preflight' "$ROOT/phases/phase-7-review-commit.md" \
   && grep -q 'code-changing audit slice' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'release-discovered product-code/config repair' "$ROOT/reference.md" \
@@ -335,6 +345,9 @@ if grep -q 'Conformance contract: 1' "$ROOT/phases/phase-0-setup.md" \
 else
   bad "adaptive implementation conformance wiring incomplete"
 fi
+grep -q '^## First Principles' "$ROOT/README.md" \
+  && [ "$(grep -n '^## First Principles' "$ROOT/README.md" | cut -d: -f1)" -lt "$(grep -n '^## Install' "$ROOT/README.md" | cut -d: -f1)" ] \
+  && ok "README exposes First Principles before Install" || bad "README First Principles are missing or misplaced"
 if grep -q 'Flow schema: 5' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'Convergence contract: 1' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'kimiflow:convergence contract=1 risk=' "$ROOT/phases/phase-3-plan.md" \

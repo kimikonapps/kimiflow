@@ -594,6 +594,26 @@ def intake_request_name(round_number):
     return "INTAKE.md" if round_number == 1 else "INTAKE-2.md"
 
 
+def existing_intake_schema(run_dir):
+    path = os.path.join(run_dir, "INTAKE.md")
+    try:
+        if os.path.islink(path) or not os.path.isfile(path) or os.path.getsize(path) > INTAKE_REQUEST_LIMIT:
+            return None
+        with open(path, "r", encoding="utf-8") as handle:
+            text_value = handle.read()
+    except (OSError, UnicodeError):
+        return None
+    markers = re.findall(
+        r"^<!-- kimiflow:intake ([^\n]+) -->$",
+        text_value,
+        flags=re.MULTILINE,
+    )
+    if len(markers) != 1:
+        return None
+    attrs = dict(re.findall(r"([a-z_]+)=([A-Za-z0-9_-]+)", markers[0]))
+    return 2 if attrs.get("schema") == "2" else 1
+
+
 ABSTRACT_PRODUCT_FLOW_VALUES = {
     "anything",
     "as needed",
@@ -620,6 +640,161 @@ ABSTRACT_PRODUCT_FLOW_VALUES = {
 
 def normalized_product_flow_value(value):
     return re.sub(r"\s+", " ", value.strip().casefold()).strip(" .!?")
+
+
+INTAKE_LANGUAGE_RE = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*")
+SCHEMA2_INTAKE_ACTIONS = {
+    "scope": ("scope_ready", "discuss"),
+    "final": ("confirmed", "corrected"),
+}
+
+
+def _intake_marker(text_value):
+    markers = re.findall(
+        r"^<!-- kimiflow:intake ([^\n]+) -->$",
+        text_value,
+        flags=re.MULTILINE,
+    )
+    if len(markers) != 1:
+        die("await-user: intake marker missing or duplicate", 2)
+    return dict(re.findall(r"([a-z_]+)=([A-Za-z0-9_-]+)", markers[0]))
+
+
+def _intake_field(text_value, label):
+    values = re.findall(
+        r"^%s:\s*(\S.+)$" % re.escape(label),
+        text_value,
+        flags=re.MULTILINE,
+    )
+    if len(values) != 1:
+        die("await-user: schema-2 intake requires exactly one %s" % label, 2)
+    normalized = normalized_product_flow_value(values[0])
+    if not normalized or normalized in ABSTRACT_PRODUCT_FLOW_VALUES:
+        die("await-user: schema-2 intake requires a concrete %s" % label, 2)
+    return values[0].strip()
+
+
+def _ordered_intake_fields(text_value, prefix, minimum, maximum):
+    rows = re.findall(
+        r"^%s ([1-9][0-9]*):\s*(\S.+)$" % re.escape(prefix),
+        text_value,
+        flags=re.MULTILINE,
+    )
+    numbers = [int(number) for number, _ in rows]
+    if not minimum <= len(rows) <= maximum or numbers != list(range(1, len(rows) + 1)):
+        die(
+            "await-user: schema-2 intake requires %s-%s ordered %s rows"
+            % (minimum, maximum, prefix),
+            2,
+        )
+    values = []
+    for _, value in rows:
+        normalized = normalized_product_flow_value(value)
+        if not normalized or normalized in ABSTRACT_PRODUCT_FLOW_VALUES:
+            die("await-user: schema-2 intake requires concrete %s rows" % prefix, 2)
+        values.append(value.strip())
+    if len({normalized_product_flow_value(value) for value in values}) != len(values):
+        die("await-user: schema-2 intake %s rows must be distinct" % prefix, 2)
+    return values
+
+
+def _ordered_intake_requirements(text_value):
+    rows = re.findall(
+        r"^Requirement R([1-9][0-9]*):\s*(\S.+)$",
+        text_value,
+        flags=re.MULTILINE,
+    )
+    numbers = [int(number) for number, _ in rows]
+    if not 1 <= len(rows) <= 20 or numbers != list(range(1, len(rows) + 1)):
+        die("await-user: schema-2 intake requires 1-20 ordered Requirement rows", 2)
+    values = [value.strip() for _, value in rows]
+    if any(
+        not normalized_product_flow_value(value)
+        or normalized_product_flow_value(value) in ABSTRACT_PRODUCT_FLOW_VALUES
+        for value in values
+    ):
+        die("await-user: schema-2 intake requires concrete Requirement rows", 2)
+    return values
+
+
+def parse_intake_document(text_value, contract, round_number, expected_language=""):
+    attrs = _intake_marker(text_value)
+    schema_raw = attrs.get("schema", "1")
+    if schema_raw not in ("1", "2"):
+        die("await-user: unsupported intake schema", 2)
+    schema = int(schema_raw)
+    if contract != 4 or schema == 1:
+        return {"schema": 1, "stage": "legacy", "attrs": attrs, "text": text_value}
+    stage = "scope" if round_number == 1 else "final"
+    if attrs.get("stage") != stage:
+        die("await-user: schema-2 intake stage mismatch", 2)
+    expected_confirmation = "scope_deliberation" if stage == "scope" else "final_contract"
+    if attrs.get("confirmation") != expected_confirmation:
+        die("await-user: schema-2 intake confirmation mismatch", 2)
+    if round_number == 2 and attrs.get("cause") != "scope_ready":
+        die("await-user: schema-2 final intake requires cause=scope_ready", 2)
+    language = attrs.get("user_language", "")
+    if INTAKE_LANGUAGE_RE.fullmatch(language) is None:
+        die("await-user: schema-2 intake requires a valid user language", 2)
+    if expected_language and language.casefold() != expected_language.casefold():
+        die("await-user: schema-2 intake user language changed", 2)
+
+    structured = {"problem": _intake_field(text_value, "Problem")}
+    if stage == "scope":
+        structured.update({
+            "observable_success": _intake_field(text_value, "Observable success"),
+            "boundary": _intake_field(text_value, "Boundary"),
+            "options": _ordered_intake_fields(text_value, "Option", 2, 5),
+            "included": _intake_field(text_value, "Included"),
+            "later": _intake_field(text_value, "Later"),
+            "excluded": _intake_field(text_value, "Excluded"),
+            "counter_perspective": _intake_field(text_value, "Counter perspective"),
+            "completeness_check": _intake_field(text_value, "Completeness check"),
+        })
+    else:
+        structured.update({
+            "steps": _ordered_intake_fields(text_value, "Step", 2, 7),
+            "roles_and_boundaries": _intake_field(text_value, "Roles and boundaries"),
+            "included": _intake_field(text_value, "Included"),
+            "excluded": _intake_field(text_value, "Excluded"),
+            "observable_success": _intake_field(text_value, "Observable success"),
+            "end_to_end_example": _intake_field(text_value, "End-to-end example"),
+            "requirements": _ordered_intake_requirements(text_value),
+        })
+    labels = {}
+    normalized_labels = set()
+    for action in SCHEMA2_INTAKE_ACTIONS[stage]:
+        label = _intake_field(text_value, "Action %s" % action)
+        normalized = normalized_product_flow_value(label)
+        if normalized in normalized_labels:
+            die("await-user: schema-2 action labels must be distinct", 2)
+        normalized_labels.add(normalized)
+        labels[action] = label
+    return {
+        "schema": 2,
+        "stage": stage,
+        "language": language,
+        "actions": labels,
+        "structured": structured,
+        "attrs": attrs,
+        "text": text_value,
+    }
+
+
+def structured_intake_digest(intake):
+    payload = {
+        "schema": intake["schema"],
+        "stage": intake["stage"],
+        "user_language": intake.get("language", ""),
+        "contract": intake.get("structured", {}),
+    }
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
 @contextlib.contextmanager
@@ -682,6 +857,7 @@ def _strict_intake_document(
     round_number,
     contract=3,
     run_descriptor=None,
+    expected_language="",
 ):
     expected = os.path.join(run_dir, intake_request_name(round_number))
     requested = os.path.join(root, request) if not os.path.isabs(request) else request
@@ -702,6 +878,7 @@ def _strict_intake_document(
                 round_number,
                 contract,
                 run_descriptor=pinned["run_descriptor"],
+                expected_language=expected_language,
             )
     descriptor = None
     try:
@@ -739,15 +916,18 @@ def _strict_intake_document(
     finally:
         if descriptor is not None:
             os.close(descriptor)
-    marker = re.findall(r"^<!-- kimiflow:intake ([^\n]+) -->$", text_value, flags=re.MULTILINE)
-    if len(marker) != 1:
-        die("await-user: intake marker missing or duplicate", 2)
-    attrs = dict(re.findall(r"([a-z_]+)=([A-Za-z0-9_-]+)", marker[0]))
+    attrs = _intake_marker(text_value)
     if attrs.get("contract") != str(contract) or attrs.get("round") != str(round_number):
         die("await-user: intake marker contract or round mismatch", 2)
-    if contract == 4 and attrs.get("confirmation") != "concrete_product_flow":
+    intake = parse_intake_document(
+        text_value,
+        contract,
+        round_number,
+        expected_language=expected_language,
+    )
+    if contract == 4 and intake["schema"] == 1 and attrs.get("confirmation") != "concrete_product_flow":
         die("await-user: Contract-4 intake must confirm the concrete product flow", 2)
-    if contract == 4:
+    if contract == 4 and intake["schema"] == 1:
         product_flow = []
         for label in (
             "Product flow entry",
@@ -777,7 +957,7 @@ def _strict_intake_document(
                 "await-user: Contract-4 intake product-flow values must be distinct",
                 2,
             )
-    if round_number == 2 and attrs.get("cause") != "first_response_conflict":
+    if round_number == 2 and intake["schema"] == 1 and attrs.get("cause") != "first_response_conflict":
         die("await-user: round 2 requires cause=first_response_conflict", 2)
     return (
         rel_path(root, expected),
@@ -786,13 +966,21 @@ def _strict_intake_document(
     )
 
 
-def strict_intake_request(root, run_dir, request, round_number, contract=3):
+def strict_intake_request(
+    root,
+    run_dir,
+    request,
+    round_number,
+    contract=3,
+    expected_language="",
+):
     request_path, digest, _ = _strict_intake_document(
         root,
         run_dir,
         request,
         round_number,
         contract,
+        expected_language=expected_language,
     )
     return request_path, digest
 
@@ -817,6 +1005,10 @@ def visible_intake_request(root, active):
                 active["intake_round"],
                 int(active["intent_contract"]),
                 run_descriptor=pinned["run_descriptor"],
+                expected_language=(
+                    str(active.get("interaction_language") or "")
+                    if int(active.get("intake_schema") or 1) == 2 else ""
+                ),
             )
             if (
                 request != active["intake_request"]
@@ -835,6 +1027,10 @@ def valid_intake_receipt(
     request_digest=None,
     contract=3,
     run_descriptor=None,
+    schema=1,
+    action="",
+    user_language="",
+    contract_digest="",
 ):
     descriptor = None
     try:
@@ -876,16 +1072,38 @@ def valid_intake_receipt(
     finally:
         if descriptor is not None:
             os.close(descriptor)
-    expected_keys = {"schema_version", "contract", "round", "request", "request_digest", "channel", "responded_at"}
+    if schema == 2:
+        expected_keys = {
+            "schema_version", "contract", "round", "stage", "action",
+            "request", "request_digest", "contract_digest", "user_language", "channel",
+            "responded_at",
+        }
+    else:
+        expected_keys = {"schema_version", "contract", "round", "request", "request_digest", "channel", "responded_at"}
     if not isinstance(value, dict) or set(value) != expected_keys:
         return False
-    if value.get("schema_version") != 1 or value.get("contract") != contract or value.get("round") != round_number:
+    if value.get("schema_version") != schema or value.get("contract") != contract or value.get("round") != round_number:
         return False
     if value.get("request") != intake_request_name(round_number) or value.get("channel") not in ("chat", "native_tool"):
         return False
     digest = value.get("request_digest")
     if not isinstance(digest, str) or INTAKE_DIGEST_RE.fullmatch(digest) is None:
         return False
+    if schema == 2:
+        stage = "scope" if round_number == 1 else "final"
+        expected_action = "scope_ready" if round_number == 1 else "confirmed"
+        if value.get("stage") != stage or value.get("action") != (action or expected_action):
+            return False
+        language = value.get("user_language")
+        if not isinstance(language, str) or INTAKE_LANGUAGE_RE.fullmatch(language) is None:
+            return False
+        if user_language and language.casefold() != user_language.casefold():
+            return False
+        structured_digest = value.get("contract_digest")
+        if not isinstance(structured_digest, str) or INTAKE_DIGEST_RE.fullmatch(structured_digest) is None:
+            return False
+        if contract_digest and structured_digest != contract_digest:
+            return False
     return request_digest is None or digest == request_digest
 
 
@@ -928,7 +1146,7 @@ def write_intake_receipt(run_descriptor, name, value):
                 pass
 
 
-def record_intake_response(root, active, channel, confirmed=False):
+def record_intake_response(root, active, channel, confirmed=False, action=None):
     if active.get("awaiting_user") is not True or active.get("awaiting_kind") != "intake":
         return False
     round_number = active.get("intake_round")
@@ -943,61 +1161,102 @@ def record_intake_response(root, active, channel, confirmed=False):
     run_dir = resolve_run_dir(root, active.get("run", ""))
     try:
         with pinned_intake_run(root, run_dir, active) as pinned:
-            expected_rel, current_digest, _ = _strict_intake_document(
+            expected_language = str(active.get("interaction_language") or "")
+            expected_rel, current_digest, intake_text = _strict_intake_document(
                 root,
                 run_dir,
                 request_path,
                 round_number,
                 contract_number,
                 run_descriptor=pinned["run_descriptor"],
+                expected_language=expected_language,
             )
             if current_digest != request_digest or expected_rel != request_path:
+                return False
+            intake = parse_intake_document(
+                intake_text,
+                contract_number,
+                round_number,
+                expected_language=expected_language,
+            )
+            intake_schema = intake["schema"]
+            pinned_schema = active.get("intake_schema")
+            if pinned_schema is not None and int(pinned_schema) != intake_schema:
                 return False
             if round_number == 2 and not valid_intake_receipt(
                 run_dir,
                 1,
                 contract=contract_number,
                 run_descriptor=pinned["run_descriptor"],
+                schema=intake_schema,
+                action="scope_ready" if intake_schema == 2 else "",
+                user_language=expected_language,
             ):
                 return False
-            receipt = {
-                "schema_version": 1,
-                "contract": contract_number,
-                "round": round_number,
-                "request": intake_request_name(round_number),
-                "request_digest": request_digest,
-                "channel": channel,
-                "responded_at": iso_now(),
-            }
+            if intake_schema == 2:
+                allowed = SCHEMA2_INTAKE_ACTIONS[intake["stage"]]
+                if action not in allowed:
+                    return False
+                receipt_action = "scope_ready" if round_number == 1 else "confirmed"
+                should_write_receipt = action == receipt_action
+                receipt = {
+                    "schema_version": 2,
+                    "contract": contract_number,
+                    "round": round_number,
+                    "stage": intake["stage"],
+                    "action": action,
+                    "request": intake_request_name(round_number),
+                    "request_digest": request_digest,
+                    "contract_digest": structured_intake_digest(intake),
+                    "user_language": intake["language"],
+                    "channel": channel,
+                    "responded_at": iso_now(),
+                }
+            else:
+                should_write_receipt = True
+                receipt = {
+                    "schema_version": 1,
+                    "contract": contract_number,
+                    "round": round_number,
+                    "request": intake_request_name(round_number),
+                    "request_digest": request_digest,
+                    "channel": channel,
+                    "responded_at": iso_now(),
+                }
             receipt_name = os.path.basename(
                 intake_receipt_path(run_dir, round_number),
             )
-            try:
-                os.stat(
-                    receipt_name,
-                    dir_fd=pinned["run_descriptor"],
-                    follow_symlinks=False,
-                )
-            except FileNotFoundError:
-                write_intake_receipt(
-                    pinned["run_descriptor"],
-                    receipt_name,
-                    json_pretty(receipt) + "\n",
-                )
-            else:
-                if not valid_intake_receipt(
-                    run_dir,
-                    round_number,
-                    request_digest,
-                    contract_number,
-                    run_descriptor=pinned["run_descriptor"],
-                ):
-                    return False
+            if should_write_receipt:
+                try:
+                    os.stat(
+                        receipt_name,
+                        dir_fd=pinned["run_descriptor"],
+                        follow_symlinks=False,
+                    )
+                except FileNotFoundError:
+                    write_intake_receipt(
+                        pinned["run_descriptor"],
+                        receipt_name,
+                        json_pretty(receipt) + "\n",
+                    )
+                else:
+                    if not valid_intake_receipt(
+                        run_dir,
+                        round_number,
+                        request_digest,
+                        contract_number,
+                        run_descriptor=pinned["run_descriptor"],
+                        schema=intake_schema,
+                        action=receipt.get("action", ""),
+                        user_language=expected_language,
+                        contract_digest=receipt.get("contract_digest", ""),
+                    ):
+                        return False
             if not intake_run_name_matches(pinned):
                 return False
     except (ActiveError, OSError, UnicodeError):
         return False
-    if contract_number == 4 and confirmed is not True:
+    if intake_schema == 1 and contract_number == 4 and confirmed is not True:
         conflicted = dict(active)
         conflicted.pop("present", None)
         conflicted["intake_conflict"] = True
@@ -1012,6 +1271,10 @@ def record_intake_response(root, active, channel, confirmed=False):
         "intake_conflict",
     ):
         resumed.pop(key, None)
+    if intake_schema == 2:
+        resumed["intake_action"] = action
+        resumed["intake_stage"] = intake["stage"]
+        resumed["intake_response_at"] = iso_now()
     resumed["updated_at"] = iso_now()
     write_active(root, resumed)
     return True
@@ -1046,6 +1309,53 @@ def explicit_confirmation(value):
         return False
     words = set(re.findall(r"[^\W_]+", value.casefold(), flags=re.UNICODE))
     return bool(words) and words <= CONFIRMATION_POSITIVE
+
+
+def _response_strings(value):
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        keys = (
+            "answers", "answer", "responses", "response", "result", "value",
+            "selected", "selection", "text",
+        )
+        selected = [value[key] for key in keys if key in value]
+        values = selected or [
+            item for item in value.values() if isinstance(item, (dict, list))
+        ]
+        return [text for item in values for text in _response_strings(item)]
+    if isinstance(value, list):
+        return [text for item in value for text in _response_strings(item)]
+    return []
+
+
+def structured_intake_action(value, intake_text, contract, round_number, language=""):
+    try:
+        intake = parse_intake_document(
+            intake_text,
+            contract,
+            round_number,
+            expected_language=language,
+        )
+    except ActiveError:
+        return None
+    if intake["schema"] != 2:
+        return None
+    choices = {
+        normalized_product_flow_value(action): action
+        for action in SCHEMA2_INTAKE_ACTIONS[intake["stage"]]
+    }
+    choices.update({
+        normalized_product_flow_value(label): action
+        for action, label in intake["actions"].items()
+    })
+    matches = {
+        choices[normalized]
+        for text in _response_strings(value)
+        for normalized in [normalized_product_flow_value(text)]
+        if normalized in choices
+    }
+    return next(iter(matches)) if len(matches) == 1 else None
 
 
 def hook_prompt(data):
@@ -2253,6 +2563,32 @@ def cmd_start(args, _workspace_locked=False):
                 % (persisted_flow_schema, required_intent),
                 1,
             )
+    persisted_language = selector("Interaction language").strip()
+    if same_active and "intake_schema" in prior_active:
+        selected_intake_schema = int(prior_active["intake_schema"])
+    elif "intake_schema" in resume_pins:
+        selected_intake_schema = int(resume_pins["intake_schema"])
+    else:
+        prior_schema = existing_intake_schema(run_dir)
+        selected_intake_schema = prior_schema or (
+            2 if fresh_nontrivial_feature and selected_intent == "4" else 1
+        )
+    if selected_intake_schema not in (1, 2):
+        die("unsupported intake schema: %s" % selected_intake_schema, 1)
+    if selected_intent == "4":
+        status["intake_schema"] = selected_intake_schema
+    if same_active and "interaction_language" in prior_active:
+        selected_language = str(prior_active.get("interaction_language") or "").strip()
+    elif "interaction_language" in resume_pins:
+        selected_language = str(resume_pins.get("interaction_language") or "").strip()
+    else:
+        selected_language = persisted_language
+    if (same_active or resume_pins) and selected_language != persisted_language:
+        die("interaction language changed during the run", 1)
+    if selected_intent == "4" and selected_intake_schema == 2:
+        if INTAKE_LANGUAGE_RE.fullmatch(selected_language) is None:
+            die("schema-2 Contract-4 runs require Interaction language in STATE", 1)
+        status["interaction_language"] = selected_language
     persisted_convergence = selector("Convergence contract").strip()
     convergence_was_pinned = same_active or bool(resume_pins)
     if same_active and "convergence_contract" in prior_active:
@@ -2578,22 +2914,53 @@ def cmd_await_user(args):
             die("await-user: intake requires --round 1|2 and --request", 2)
         intake_round = int(opts["--round"])
         intake_contract_number = int(intake_contract)
-        intake_request, intake_digest = strict_intake_request(
-            root, run_dir, opts["--request"], intake_round,
-            intake_contract_number,
+        intake_schema = int(active.get("intake_schema") or 1)
+        intake_language = (
+            str(active.get("interaction_language") or "")
+            if intake_schema == 2 else ""
         )
+        intake_request, intake_digest, intake_text = _strict_intake_document(
+            root,
+            run_dir,
+            opts["--request"],
+            intake_round,
+            intake_contract_number,
+            expected_language=intake_language,
+        )
+        intake_document = parse_intake_document(
+            intake_text,
+            intake_contract_number,
+            intake_round,
+            expected_language=intake_language,
+        )
+        if intake_document["schema"] != intake_schema:
+            die("await-user: intake schema changed during the run", 1)
         if intake_round == 2 and (
             not valid_intake_receipt(
-                run_dir, 1, contract=intake_contract_number,
+                run_dir,
+                1,
+                contract=intake_contract_number,
+                schema=intake_schema,
+                action="scope_ready" if intake_schema == 2 else "",
+                user_language=intake_language,
             )
             or (
                 intake_contract_number == 4
+                and intake_schema == 1
                 and active.get("intake_conflict") is not True
             )
         ):
             die("await-user: round 2 requires a valid round-1 receipt", 2)
         if valid_intake_receipt(
-            run_dir, intake_round, intake_digest, intake_contract_number,
+            run_dir,
+            intake_round,
+            intake_digest,
+            intake_contract_number,
+            schema=intake_schema,
+            action=(
+                "scope_ready" if intake_round == 1 else "confirmed"
+            ) if intake_schema == 2 else "",
+            user_language=intake_language,
         ):
             die("await-user: intake round already has a valid receipt", 1)
     elif opts["--round"] or opts["--request"]:
@@ -2615,6 +2982,8 @@ def cmd_await_user(args):
     updated["awaiting_since"] = now
     updated["updated_at"] = now
     if kind == "intake":
+        for key in ("intake_action", "intake_stage", "intake_response_at"):
+            updated.pop(key, None)
         updated["intake_round"] = intake_round
         updated["intake_request"] = intake_request
         updated["intake_request_digest"] = intake_digest
@@ -2998,7 +3367,7 @@ def session_pins(active):
     keys = (
         "mode", "scope", "host", "started_at", "started_head", "flow_schema",
         "conformance_contract", "convergence_contract", "intent_contract",
-        "intent_lock_digest",
+        "intent_lock_digest", "intake_schema", "interaction_language",
         "frontend_quality_contract", "frontend_quality_start_head",
     )
     if "execution_contract" in active:
@@ -3998,11 +4367,26 @@ def cmd_prompt_context():
     active = load_active(root)
     if active.get("awaiting_user") is True:
         if active.get("awaiting_kind") == "intake":
+            intake_text = visible_intake_request(root, active) or ""
+            intake_schema = int(active.get("intake_schema") or 1)
             record_intake_response(
                 root,
                 active,
                 "chat",
-                confirmed=explicit_confirmation(hook_prompt(data)),
+                confirmed=(
+                    explicit_confirmation(hook_prompt(data))
+                    if intake_schema == 1 else False
+                ),
+                action=(
+                    structured_intake_action(
+                        hook_prompt(data),
+                        intake_text,
+                        4,
+                        active.get("intake_round"),
+                        str(active.get("interaction_language") or ""),
+                    )
+                    if intake_schema == 2 else None
+                ),
             )
         else:
             # The user answered the material gate question the orchestrator was awaiting.
@@ -4103,13 +4487,28 @@ def cmd_intake_response():
     if response is None or _native_response_rejected(data):
         return 0
     contract4 = active.get("intent_contract") == "4"
+    intake_schema = int(active.get("intake_schema") or 1)
     if not _native_response_present(response):
         return 0
+    intake_text = visible_intake_request(root, active) or ""
     record_intake_response(
         root,
         active,
         "native_tool",
-        confirmed=_native_response_confirmed(response) if contract4 else False,
+        confirmed=(
+            _native_response_confirmed(response)
+            if contract4 and intake_schema == 1 else False
+        ),
+        action=(
+            structured_intake_action(
+                response,
+                intake_text,
+                4,
+                active.get("intake_round"),
+                str(active.get("interaction_language") or ""),
+            )
+            if contract4 and intake_schema == 2 else None
+        ),
     )
     return 0
 

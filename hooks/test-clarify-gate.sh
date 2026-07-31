@@ -153,6 +153,103 @@ EOF
   KIMIFLOW_PLUGIN_ROOT="$PROJECT_ROOT" KIMIFLOW_HOST=codex KIMIFLOW_SESSION_ID=owner-session "$ACTIVE" phase-read --root "$WORK" --run .kimiflow/demo --phase 1 --file phases/phase-1-clarify.md --write >/dev/null
 }
 
+reset_contract4_schema2_feature() {
+  rm -rf "$WORK"
+  mkdir -p "$RUN" "$WORK/src" "$WORK/plugin"
+  git -C "$WORK" init -q
+  git -C "$WORK" config user.email test@example.test
+  git -C "$WORK" config user.name test
+  printf '.kimiflow/\n' > "$WORK/.gitignore"
+  printf 'base\n' > "$WORK/src/app.txt"
+  cat > "$RUN/STATE.md" <<'EOF'
+Flow schema: 5
+Intent contract: 4
+Interaction language: de
+Conformance contract: 1
+Convergence contract: 1
+Execution contract: 1
+Status: active
+Mode: feature
+Alias: automatic-kimiflow
+Scope: small
+Affected files: src/app.txt
+Phase 0: done
+Phase 1: done
+EOF
+  cat > "$RUN/INTAKE.md" <<'EOF'
+<!-- kimiflow:intake contract=4 schema=2 stage=scope round=1 questions=2 selection=impact_uncertainty technical_questions=0 confirmation=scope_deliberation user_language=de -->
+Problem: Feature requests can be implemented from an unverified assumption.
+Observable success: The user sees and corrects the understood product flow.
+Boundary: Product intent is discussed before research, planning, or writes.
+Option 1: Reuse the current intake gate.
+Option 2: Evolve the current contract with structured actions.
+Included: One replaceable scope draft.
+Later: Optional richer product discovery.
+Excluded: Automatic scope expansion.
+Counter perspective: A smaller change may solve the actual problem.
+Completeness check: No material user-visible capability is missing.
+Action scope_ready: Umfang ist bereit
+Action discuss: Weiter besprechen
+EOF
+  cat > "$RUN/INTAKE-2.md" <<'EOF'
+<!-- kimiflow:intake contract=4 schema=2 stage=final round=2 questions=1 selection=impact_uncertainty technical_questions=0 confirmation=final_contract cause=scope_ready user_language=de -->
+Problem: Feature requests can be implemented from an unverified assumption.
+Step 1: The user starts a feature run.
+Step 2: Kimiflow discusses and confirms the product intent.
+Roles and boundaries: The user owns what and why; the model owns how.
+Included: Structured product deliberation.
+Excluded: Automatic scope expansion.
+Observable success: Planning stays closed until explicit confirmation.
+End-to-end example: A correction replaces the draft before confirmation.
+Requirement R1: Product scope is discussed before implementation.
+Requirement R2: Only a structured action confirms the contract.
+Action confirmed: Vertrag bestätigen
+Action corrected: Korrektur erforderlich
+EOF
+  cat > "$RUN/INTENT.md" <<'EOF'
+# Intent
+<!-- kimiflow:intent-coverage contract=4 goal=user_confirmed actor=user_confirmed behavior=user_confirmed boundaries=user_confirmed success=user_confirmed constraints=user_confirmed unknown_material=0 question_rounds=2 technical_questions=0 critic=folded authority=explicit summary=present source=current-run entry=user_confirmed interaction=user_confirmed delegation=user_confirmed unchanged=user_confirmed done=user_confirmed -->
+Problem: Feature requests can be implemented from an unverified assumption.
+Step 1: The user starts a feature run.
+Step 2: Kimiflow discusses and confirms the product intent.
+Roles and boundaries: The user owns what and why; the model owns how.
+Included: Structured product deliberation.
+Excluded: Automatic scope expansion.
+Observable success: Planning stays closed until explicit confirmation.
+End-to-end example: A correction replaces the draft before confirmation.
+Requirement R1: Product scope is discussed before implementation.
+Requirement R2: Only a structured action confirms the contract.
+EOF
+  printf '{}\n' > "$RUN/CODEBASE-BASIS.json"
+  scope_contract_digest="$(PYTHONPATH="$PROJECT_ROOT/hooks" python3 - "$RUN/INTAKE.md" <<'PY'
+import sys
+from kimiflow_core import active_run
+text=open(sys.argv[1],encoding='utf-8').read()
+print(active_run.structured_intake_digest(active_run.parse_intake_document(text,4,1,'de')))
+PY
+)"
+  basis_digest="sha256:$(shasum -a 256 "$RUN/CODEBASE-BASIS.json" | awk '{print $1}')"
+  printf '<!-- kimiflow:scope-research contract=4 schema=2 codebase_basis=%s scope=%s selection=non_expanded -->\n' "$basis_digest" "$scope_contract_digest" > "$RUN/RESEARCH.md"
+  for round in 1 2; do
+    request="INTAKE.md"; stage="scope"; action="scope_ready"
+    [ "$round" -eq 1 ] || { request="INTAKE-2.md"; stage="final"; action="confirmed"; }
+    request_digest="sha256:$(shasum -a 256 "$RUN/$request" | awk '{print $1}')"
+    contract_digest="$(PYTHONPATH="$PROJECT_ROOT/hooks" python3 - "$RUN/$request" "$round" <<'PY'
+import sys
+from kimiflow_core import active_run
+text=open(sys.argv[1],encoding='utf-8').read()
+print(active_run.structured_intake_digest(active_run.parse_intake_document(text,4,int(sys.argv[2]),'de')))
+PY
+)"
+    jq -n --argjson round "$round" --arg stage "$stage" --arg action "$action" --arg request "$request" --arg request_digest "$request_digest" --arg contract_digest "$contract_digest" '{schema_version:2,contract:4,round:$round,stage:$stage,action:$action,request:$request,request_digest:$request_digest,contract_digest:$contract_digest,user_language:"de",channel:"native_tool",responded_at:"2026-07-31T12:00:00Z"}' > "$RUN/INTAKE-RECEIPT-$round.json"
+  done
+  git -C "$WORK" add .gitignore src/app.txt
+  git -C "$WORK" commit -qm base
+  KIMIFLOW_PLUGIN_ROOT="$PROJECT_ROOT" KIMIFLOW_HOST=codex KIMIFLOW_SESSION_ID=owner-session "$ACTIVE" start --root "$WORK" --run .kimiflow/demo --mode feature --scope small --write >/dev/null
+  KIMIFLOW_PLUGIN_ROOT="$PROJECT_ROOT" KIMIFLOW_HOST=codex KIMIFLOW_SESSION_ID=owner-session "$ACTIVE" phase-read --root "$WORK" --run .kimiflow/demo --phase 0 --file phases/phase-0-setup.md --write >/dev/null
+  KIMIFLOW_PLUGIN_ROOT="$PROJECT_ROOT" KIMIFLOW_HOST=codex KIMIFLOW_SESSION_ID=owner-session "$ACTIVE" phase-read --root "$WORK" --run .kimiflow/demo --phase 1 --file phases/phase-1-clarify.md --write >/dev/null
+}
+
 write_phase_fixture() {
   mkdir -p "$WORK/phases"
   cat > "$WORK/phases/PHASES.json" <<'EOF'
@@ -605,6 +702,37 @@ out="$(run_post_diagnosis_gate)"
 assert_field "$out" 2 OPEN "schema2_fix_resume_needs_no_new_approval_marker"
 
 if command -v jq >/dev/null 2>&1; then
+  reset_contract4_schema2_feature
+  out="$(record_intent_lock)"
+  assert_field "$out" 2 OPEN "contract4_schema2_structured_intake_opens"
+  jq -e '.schema_version == 2 and .contract == 4 and .user_language == "de" and (.scope_digest | startswith("sha256:")) and (.final_contract_digest | startswith("sha256:"))' "$RUN/INTENT-LOCK.json" >/dev/null \
+    && pass "contract4_schema2_lock_binds_scope_final_and_language" \
+    || fail "contract4_schema2_lock_binds_scope_final_and_language"
+
+  reset_contract4_schema2_feature
+  sed -i.bak '/^Counter perspective:/d' "$RUN/INTAKE.md" && rm "$RUN/INTAKE.md.bak"
+  out="$(record_intent_lock)"
+  assert_field "$out" 2 CLOSED "contract4_schema2_missing_counter_perspective_closes"
+  assert_contains "$out" "intake_schema2_round_1_invalid" "contract4_schema2_missing_counter_detail"
+
+  reset_contract4_schema2_feature
+  sed -i.bak 's/selection=non_expanded/selection=expanded/' "$RUN/RESEARCH.md" && rm "$RUN/RESEARCH.md.bak"
+  out="$(record_intent_lock)"
+  assert_field "$out" 2 CLOSED "contract4_schema2_scope_expansion_closes"
+  assert_contains "$out" "scope_research_not_bound" "contract4_schema2_scope_expansion_detail"
+
+  reset_contract4_schema2_feature
+  sed -i.bak 's/user_language=de/user_language=en/' "$RUN/INTAKE-2.md" && rm "$RUN/INTAKE-2.md.bak"
+  out="$(record_intent_lock)"
+  assert_field "$out" 2 CLOSED "contract4_schema2_language_drift_closes"
+  assert_contains "$out" "intake_schema2_round_2_invalid" "contract4_schema2_language_drift_detail"
+
+  reset_contract4_schema2_feature
+  sed -i.bak 's/Structured product deliberation/Automatic product expansion/' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
+  out="$(record_intent_lock)"
+  assert_field "$out" 2 CLOSED "contract4_schema2_final_contract_drift_closes"
+  assert_contains "$out" "final_contract_not_bound_to_intent" "contract4_schema2_final_contract_drift_detail"
+
   reset_contract4_feature
   out="$(record_intent_lock)"
   assert_field "$out" 2 OPEN "test_contract4_requires_confirmed_concrete_product_flow"
