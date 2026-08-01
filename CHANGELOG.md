@@ -6,6 +6,28 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.39
+
+The single-authority Pi lifecycle simplification release.
+
+### Changed
+
+- The Runner now combines durable Active Run state, its receipt, and controller reachability into one normalized
+  lifecycle view. Captain renders that view and forwards commands instead of independently interpreting raw
+  receipt states and process IDs.
+- Pi bridge adoption now uses the same Runner-owned lifecycle decision, removing a second status table and keeping
+  run, worker, Captain, provider-session, and controller identity checks at one boundary.
+- Herdr is explicitly treated as visible pane/tab/session transport; it no longer contributes an independent
+  interpretation of run success or recovery state.
+
+### Fixed
+
+- A dead controller with a durable open run is consistently exposed as resumable instead of being hidden behind a
+  stale `running` receipt.
+- An owned user wait outranks a late transport failure without losing the exact question or diagnostic boundary.
+- Pre-run failures such as `no_kimiflow_run` and `ownership_conflict` now produce actionable failure attention and
+  an exact endpoint cleanup instead of leaving an unexplained worker state behind.
+
 ## 0.2.38
 
 The authoritative Herdr/Pi runner-lifecycle repair.
