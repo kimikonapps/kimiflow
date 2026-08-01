@@ -83,7 +83,7 @@ class RunnerTests(unittest.TestCase):
     def active_path(self):
         return os.path.join(self.root, ".kimiflow", "session", "ACTIVE_RUN.json")
 
-    def write_active(self, awaiting=False, owner=THREAD):
+    def write_active(self, awaiting=False, owner=THREAD, host="codex"):
         os.makedirs(self.run_dir, exist_ok=True)
         os.makedirs(os.path.dirname(self.active_path), exist_ok=True)
         head = subprocess.check_output(["git", "-C", self.root, "rev-parse", "HEAD"], text=True).strip()
@@ -98,10 +98,10 @@ class RunnerTests(unittest.TestCase):
             "run": ".kimiflow/demo",
             "mode": "feature",
             "scope": "small",
-            "host": "codex",
+            "host": host,
             "started_head": head,
             "last_checked_head": head,
-            "owner": {"host": "codex", "session_id": owner},
+            "owner": {"host": host, "session_id": owner},
         }
         if awaiting:
             active.update({"awaiting_user": True, "awaiting_kind": "scope-risk", "awaiting_reason": "choose"})
@@ -423,6 +423,63 @@ class RunnerTests(unittest.TestCase):
             )
         self.assertEqual(drift.exception.status, "adapter_mismatch")
         self.assertEqual(drift.exception.code, 2)
+
+    def test_pi_resume_migrates_a_compatible_runtime_contract(self):
+        class PiAdapter(FakeAdapter):
+            def info(self):
+                return {
+                    "schema_version": 1,
+                    "name": "pi-bbbbbbbbbbbbbbbb",
+                    "host": "pi",
+                    "capabilities": {
+                        key: True for key in runner.model_adapter.CAPABILITY_KEYS
+                    },
+                    "features": {
+                        "workflow_context": True,
+                        "structured_events": True,
+                        "root_confinement": False,
+                    },
+                }
+
+            def contract_fingerprint(self):
+                return "sha256:" + "b" * 64
+
+        self.write_active(host="pi")
+        bridge = {
+            "schema_version": 1,
+            "captain_session_id": "captain-session-0001",
+            "worker_id": "worker-session-0001",
+        }
+        runner.write_receipt(self.root, {
+            "schema_version": 1,
+            "host": "pi",
+            "adapter": "pi-aaaaaaaaaaaaaaaa",
+            "adapter_contract": "sha256:" + "a" * 64,
+            "bridge": bridge,
+            "root": self.root,
+            "session_id": THREAD,
+            "thread_id": THREAD,
+            "status": "transport_error",
+            "controller_pid": 99999999,
+            "turns": 1,
+            "active_run": ".kimiflow/demo",
+            "started_at": "2026-07-27T00:00:00Z",
+            "updated_at": "2026-07-27T00:00:00Z",
+        })
+        adapter = PiAdapter(resume_actions=[lambda: self.write_outcome("done")])
+
+        with mock.patch.dict(os.environ, {
+            runner.PI_BRIDGE_ENV: json.dumps({
+                **bridge,
+                "root": self.root,
+            }),
+        }, clear=False):
+            result = runner.resume_task(self.root, adapter=adapter)
+
+        self.assertEqual(result["status"], "done")
+        receipt = self.read_receipt()
+        self.assertEqual(receipt["adapter"], "pi-bbbbbbbbbbbbbbbb")
+        self.assertEqual(receipt["adapter_contract"], "sha256:" + "b" * 64)
 
     def test_run_continues_same_thread_until_terminal_outcome(self):
         adapter = FakeAdapter(

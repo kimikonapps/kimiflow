@@ -33,6 +33,7 @@ RECEIPT_STATES = RESUMABLE_STATES | {
 NON_RETRYABLE_PROVIDER_ERRORS = {
     "turn_cancelled", "refusal", "quota_exceeded",
 }
+PI_ADAPTER_RE = re.compile(r"^pi-[0-9a-f]{16}$")
 
 
 class RunnerError(Exception):
@@ -1184,6 +1185,28 @@ def _adapter_contract(adapter):
     return value
 
 
+def _compatible_pi_adapter_upgrade(receipt, adapter_info, adapter_contract):
+    """Allow an exact Captain-owned Pi run to cross a compatible runtime update."""
+    bridge = receipt.get("bridge")
+    features = adapter_info.get("features")
+    return (
+        receipt.get("host") == "pi"
+        and adapter_info.get("host") == "pi"
+        and PI_ADAPTER_RE.fullmatch(receipt.get("adapter", "")) is not None
+        and PI_ADAPTER_RE.fullmatch(adapter_info.get("name", "")) is not None
+        and isinstance(receipt.get("adapter_contract"), str)
+        and re.fullmatch(r"sha256:[0-9a-f]{64}", receipt["adapter_contract"])
+        is not None
+        and isinstance(adapter_contract, str)
+        and re.fullmatch(r"sha256:[0-9a-f]{64}", adapter_contract) is not None
+        and isinstance(bridge, dict)
+        and bridge.get("schema_version") == 1
+        and isinstance(features, dict)
+        and features.get("workflow_context") is True
+        and features.get("structured_events") is True
+    )
+
+
 def _workflow_aware(adapter_info):
     features = adapter_info.get("features") if isinstance(adapter_info.get("features"), dict) else {}
     return features.get("workflow_context") is True
@@ -1261,13 +1284,18 @@ def _resume_task(root, message=None, adapter=None):
         adapter_info = model_adapter.info_for(adapter)
     except model_adapter.AdapterError as exc:
         raise RunnerError("adapter_incompatible", str(exc), 2)
-    if adapter_info["name"] != receipt.get("adapter") or adapter_info["host"] != receipt.get("host"):
-        raise RunnerError("adapter_mismatch", "resume requires the same adapter and host", 2)
     try:
         adapter_contract = _adapter_contract(adapter)
     except model_adapter.AdapterError as exc:
         raise RunnerError("adapter_incompatible", str(exc), 2)
-    if adapter_contract != receipt.get("adapter_contract"):
+    exact_adapter = (
+        adapter_info["name"] == receipt.get("adapter")
+        and adapter_info["host"] == receipt.get("host")
+        and adapter_contract == receipt.get("adapter_contract")
+    )
+    if not exact_adapter and not _compatible_pi_adapter_upgrade(
+        receipt, adapter_info, adapter_contract,
+    ):
         raise RunnerError("adapter_mismatch", "resume requires the same negotiated adapter contract", 2)
     workflow_aware = _workflow_aware(adapter_info)
     current = _active_status(root)
@@ -1305,6 +1333,8 @@ def _resume_task(root, message=None, adapter=None):
         root,
         receipt,
         "starting",
+        adapter=adapter_info["name"],
+        adapter_contract=adapter_contract,
         controller_pid=os.getpid(),
         **updates,
     )

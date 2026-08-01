@@ -593,6 +593,51 @@ test("a stale runner receipt is never reported as recovered after handoff", asyn
   assert.equal(spawned.calls.length, 1);
 });
 
+test("a matching pending claim cannot recover a stale failed runner receipt", async () => {
+  const seed = createCaptainExtension({
+    root: "/pkg",
+    exec: statusFixture().exec,
+    spawn: spawnFixture().spawn,
+  });
+  const request = "continue exact run";
+  const claim = seed.activationClaim(request, context());
+  const entries = [{
+    type: "custom",
+    customType: "kimiflow_pi_bridge_claim_v1",
+    data: claim,
+  }];
+  const current = context(entries);
+  const status = statusFixture(activeSnapshot({
+    status: "transport_error",
+    controllerPid: 99999999,
+    workerId: claim.workerId,
+  }));
+  const spawned = spawnFixture();
+  const extension = createCaptainExtension({
+    root: "/pkg",
+    exec: status.exec,
+    spawn: spawned.spawn,
+    startClaims: {
+      acquire() { return { token: "claim-00000000000000000000000000000001" }; },
+      accepted() { return true; },
+      release() { return true; },
+    },
+    adoptWorker: async () => {
+      throw new Error("matching_claim_must_not_be_readopted");
+    },
+    runnerReceiptTimeoutMs: 20,
+    runnerReceiptPollMs: 1,
+  });
+  extension.restoreForSession(current);
+
+  await assert.rejects(
+    extension.activate(request, current),
+    /kimiflow_runner_receipt_timeout/,
+  );
+  assert.equal(spawned.calls.length, 1);
+  assert.equal(spawned.calls[0].args[0], "resume");
+});
+
 test("a restored live binding does not block activation after its runner is terminal", async () => {
   const status = statusFixture(activeSnapshot({
     status: "done",
@@ -1716,6 +1761,40 @@ test("a Pi-0.82.1 void attention send is still announced exactly once", async ()
   assert.equal(messages.length, 1);
 });
 
+test("the same open user question is not repeated when the worker turn settles", async () => {
+  const status = statusFixture();
+  const extension = createCaptainExtension({
+    root: "/pkg",
+    exec: status.exec,
+    spawn: spawnFixture().spawn,
+  });
+  await extension.activate("build feature-x", context());
+  const workerId = extension.binding().workerId;
+  status.set(activeSnapshot({
+    status: "running",
+    awaiting: true,
+    awaitingRequest: "Confirm the final contract.",
+    turns: 5,
+    workerId,
+  }));
+  const messages = [];
+  const pi = {
+    appendEntry() {},
+    sendMessage(value) { messages.push(value); },
+  };
+  assert.equal((await extension.pollAttention(pi)).announced, 1);
+
+  status.set(activeSnapshot({
+    status: "awaiting_user",
+    awaiting: true,
+    awaitingRequest: "Confirm the final contract.",
+    turns: 6,
+    workerId,
+  }));
+  assert.equal((await extension.pollAttention(pi)).announced, 0);
+  assert.equal(messages.length, 1);
+});
+
 test("a provisional Captain announces an exact fast terminal receipt", async () => {
   const status = statusFixture();
   const extension = createCaptainExtension({
@@ -1785,6 +1864,10 @@ test("a provisional Captain surfaces transport failure before Run creation", asy
   assert.equal(attention.run, null);
   assert.equal(attention.provider_session_id, "pi-worker-00000001");
   assert.equal(attention.diagnostic_code, "herdr_turn_invalid");
+  assert.equal(
+    messages[0].content,
+    "⚠ Kimiflow failed · Kimiflow · herdr_turn_invalid",
+  );
 });
 
 test("a live intake wait outranks a stale transport error and keeps its worker resumable", async () => {
