@@ -4,6 +4,12 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.37
+
+The restored Pi Captain activation reliability patch.
+
 ### Fixed
 
 - A restored Pi Captain binding no longer hides a resumable dead runner behind its still-live Active Run; exact
