@@ -192,6 +192,18 @@ class PiProjectTests(unittest.TestCase):
             expected_worker_id="worker-00000001",
         )
         self.assertEqual(restarted["status"], "adopted")
+        runner.write_receipt(self.repo, {
+            **runner.load_receipt(self.repo),
+            "status": "running",
+            "controller_pid": 99999997,
+        })
+        interrupted = pi_project.adopt(
+            self.repo,
+            "captain-session-after-interruption",
+            expected_captain_id="captain-session-after-start",
+            expected_worker_id="worker-00000001",
+        )
+        self.assertEqual(interrupted["status"], "adopted")
         with self.assertRaises(pi_project.ProjectError):
             pi_project.adopt(
                 self.repo,

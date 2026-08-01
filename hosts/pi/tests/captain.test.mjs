@@ -20,12 +20,139 @@ import registerCaptainExtension, {
   createFileStartClaims,
 } from "../extensions/captain.js";
 
-const idle = {
+function fixtureDigest(value) {
+  return `sha256:${createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex")}`;
+}
+
+function withLifecycle(snapshot, { controllerLost = false } = {}) {
+  if (snapshot.lifecycle?.schema_version === 1) return snapshot;
+  const receipt = snapshot.runner;
+  const active = snapshot.active_run ?? { present: false };
+  const rawStatus = snapshot.status;
+  const awaiting = active.present === true && active.awaiting_user === true;
+  const run = active.present === true ? active.run : receipt?.active_run;
+  const bridge = receipt?.bridge ?? null;
+  const providerSessionId = receipt?.session_id ?? null;
+  let state = "failed";
+  let reason = rawStatus;
+  let visibleStatus = rawStatus;
+  if (awaiting) {
+    state = "waiting";
+    reason = "awaiting_user";
+    visibleStatus = "awaiting_user";
+  } else if (rawStatus === "idle") {
+    state = "idle";
+    reason = "no_run";
+  } else if (rawStatus === "starting") {
+    state = "starting";
+    reason = "controller_starting";
+  } else if (rawStatus === "running" && !controllerLost) {
+    state = "reachable";
+    reason = "controller_reachable";
+  } else if (rawStatus === "running" && controllerLost) {
+    state = "resumable";
+    reason = "controller_lost";
+    visibleStatus = "interrupted";
+  } else if (["awaiting_user", "parked"].includes(rawStatus)) {
+    state = "waiting";
+  } else if (["interrupted", "transport_error", "exhausted"].includes(rawStatus)) {
+    state = typeof run === "string" ? "resumable" : "failed";
+  } else if (["done", "failed", "aborted"].includes(rawStatus)) {
+    state = "terminal";
+  }
+  const identity = typeof run === "string" && bridge !== null
+    ? {
+        run,
+        provider_session_id: providerSessionId,
+        captain_session_id: bridge.captain_session_id,
+        worker_id: bridge.worker_id,
+      }
+    : null;
+  const provisionalIdentity = state === "failed"
+      && active.present !== true
+      && typeof receipt?.active_run !== "string"
+      && bridge !== null
+    ? {
+        run: null,
+        provider_session_id: providerSessionId,
+        captain_session_id: bridge.captain_session_id,
+        worker_id: bridge.worker_id,
+      }
+    : null;
+  let kind = null;
+  if (awaiting) kind = "question";
+  else if (rawStatus === "done") kind = "completion";
+  else if (
+    state === "failed"
+    || ["failed", "aborted", "transport_error"].includes(rawStatus)
+    || controllerLost
+  ) {
+    kind = "failure";
+  }
+  let attention = null;
+  const attentionIdentity = identity ?? provisionalIdentity;
+  if (kind !== null && attentionIdentity !== null) {
+    attention = {
+      root: process.cwd(),
+      run: attentionIdentity.run,
+      captain_session_id: attentionIdentity.captain_session_id,
+      worker_id: attentionIdentity.worker_id,
+      provider_session_id: attentionIdentity.provider_session_id,
+      kind,
+      transition_version: Number.isInteger(receipt?.turns) ? receipt.turns : 0,
+      ...(kind === "failure" && typeof receipt?.diagnostic_code === "string"
+        ? { diagnostic_code: receipt.diagnostic_code }
+        : {}),
+      ...(kind === "question"
+        ? {
+            question: active.awaiting_request
+              ?? active.awaiting_reason
+              ?? "Kimiflow is waiting for a material user decision.",
+          }
+        : {}),
+    };
+    const attentionKey = { ...attention };
+    if (kind === "question") delete attentionKey.transition_version;
+    attention.attention_id = `attention-${fixtureDigest(attentionKey).slice(7, 31)}`;
+    attention.actionable = true;
+  }
+  const deliveryBoundary = identity === null ? null : fixtureDigest({
+    run: identity.run,
+    providerSessionId: identity.provider_session_id,
+    status: visibleStatus,
+    transitionVersion: Number.isInteger(receipt?.turns) ? receipt.turns : 0,
+    awaitingUser: awaiting,
+  });
+  snapshot.status = visibleStatus;
+  snapshot.lifecycle = {
+    schema_version: 1,
+    state,
+    reason,
+    status: visibleStatus,
+    active: ["starting", "reachable", "waiting", "resumable", "embedded"].includes(state),
+    reachable: state === "reachable",
+    can_resume: ["waiting", "resumable"].includes(state),
+    terminal: ["terminal", "failed"].includes(state),
+    awaiting_user: awaiting,
+    controller_pid: receipt?.controller_pid ?? null,
+    bridge,
+    run: typeof run === "string" ? run : null,
+    provider_session_id: providerSessionId,
+    identity,
+    provisional_identity: provisionalIdentity,
+    delivery_boundary: deliveryBoundary,
+    attention,
+    cleanup_endpoint: ["terminal", "failed"].includes(state) && attention !== null,
+  };
+  return snapshot;
+}
+
+const idle = withLifecycle({
   schema_version: 1,
   status: "idle",
   runner: null,
   active_run: { present: false },
-};
+});
 const piCapabilities = {
   schema_version: 1,
   name: "pi-fixture00000001",
@@ -75,7 +202,7 @@ function spawnFixture(onSpawn = null) {
 
 function statusFixture(initial = idle) {
   const calls = [];
-  let snapshot = initial;
+  let snapshot = withLifecycle(initial);
   return {
     calls,
     exec: async (file, args, options) => {
@@ -83,7 +210,7 @@ function statusFixture(initial = idle) {
       if (file.endsWith("/pi-host.sh")) return piCapabilities;
       return snapshot;
     },
-    set(value) { snapshot = value; },
+    set(value, options) { snapshot = withLifecycle(value, options); },
   };
 }
 
@@ -155,8 +282,9 @@ function activeSnapshot({
   providerSessionId = "pi-worker-00000001",
   workerId = null,
   controllerPid = process.pid,
+  controllerLost = false,
 } = {}) {
-  return {
+  return withLifecycle({
     schema_version: 1,
     status,
     runner: {
@@ -185,7 +313,7 @@ function activeSnapshot({
         awaiting_request: awaitingRequest,
       }),
     },
-  };
+  }, { controllerLost });
 }
 
 function fakeTimers() {
@@ -232,8 +360,12 @@ test("primary Pi activation starts only the existing runner and returns after sp
   assert.equal(call.options.detached, true);
   assert.equal(call.options.stdio, "ignore");
   assert.equal(call.child.unrefCount, 1);
+  const rootIndex = call.args.indexOf("--root");
   assert.doesNotMatch(
-    JSON.stringify({ file: call.file, args: call.args, cwd: call.options.cwd }),
+    JSON.stringify({
+      file: call.file,
+      args: call.args.filter((_value, index) => index !== rootIndex + 1),
+    }),
     /captain start|herdr|workspace|pane/,
   );
   const binding = JSON.parse(call.options.env.KIMIFLOW_PI_BRIDGE_BINDING);
@@ -1208,6 +1340,7 @@ test("file claims serialize one delivery across separate Pi processes", async (t
   const snapshot = activeSnapshot({
     status: "awaiting_user",
     awaiting: true,
+    workerId: binding.workerId,
   });
   const moduleUrl = new URL("../extensions/captain.js", import.meta.url).href;
   const script = `
@@ -1302,6 +1435,7 @@ test("a dead pre-spawn delivery claim is recovered exactly once", async (t) => {
     status: "awaiting_user",
     awaiting: true,
     turns: 6,
+    workerId: "worker-00000001",
   });
   const boundary = `sha256:${createHash("sha256").update(JSON.stringify({
     run: ".kimiflow/feature-x",
@@ -2054,7 +2188,11 @@ test("reply resumes the exact runner boundary; mismatched or live steering is re
     message: "wrong",
   }, context()), /worker_mismatch/);
 
-  status.set(activeSnapshot({ status: "running", awaiting: false }));
+  status.set(activeSnapshot({
+    status: "running",
+    awaiting: false,
+    workerId: binding.workerId,
+  }));
   await assert.rejects(extension.deliver("steer", {
     workerId: binding.workerId,
     providerSessionId: "pi-worker-00000001",
@@ -2081,6 +2219,7 @@ test("a dead runner controller exposes interruption and permits exact continuati
   status.set(activeSnapshot({
     workerId: binding.workerId,
     controllerPid: 2147483647,
+    controllerLost: true,
   }));
 
   assert.equal((await extension.status()).status, "interrupted");

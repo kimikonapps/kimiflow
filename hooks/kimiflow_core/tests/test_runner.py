@@ -138,6 +138,103 @@ class RunnerTests(unittest.TestCase):
             }, handle)
         return claim_path
 
+    def write_pi_receipt(
+        self,
+        status,
+        *,
+        controller_pid=None,
+        active_run=".kimiflow/demo",
+        diagnostic_code=None,
+    ):
+        value = {
+            "schema_version": 1,
+            "host": "pi",
+            "adapter": "pi-fixture00000001",
+            "root": self.root,
+            "session_id": "provider-session-0001",
+            "thread_id": "provider-session-0001",
+            "status": status,
+            "started_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "turns": 3,
+            "controller_pid": os.getpid() if controller_pid is None else controller_pid,
+            "active_run": active_run,
+            "bridge": {
+                "schema_version": 1,
+                "captain_session_id": "captain-session-0001",
+                "worker_id": "worker-00000001",
+            },
+        }
+        if diagnostic_code is not None:
+            value["diagnostic_code"] = diagnostic_code
+        runner.write_receipt(self.root, value)
+
+    def test_runner_status_is_the_normalized_pi_lifecycle_authority(self):
+        idle = runner.runner_status(self.root)
+        self.assertEqual(idle["status"], "idle")
+        self.assertEqual(idle["lifecycle"]["state"], "idle")
+        self.assertFalse(idle["lifecycle"]["active"])
+
+        self.write_active()
+        self.write_pi_receipt("running")
+        reachable = runner.runner_status(self.root)
+        self.assertEqual(reachable["lifecycle"]["state"], "reachable")
+        self.assertTrue(reachable["lifecycle"]["reachable"])
+        self.assertEqual(
+            reachable["lifecycle"]["identity"]["worker_id"],
+            "worker-00000001",
+        )
+
+        self.write_pi_receipt("running", controller_pid=99999999)
+        interrupted = runner.runner_status(self.root)
+        self.assertEqual(interrupted["status"], "interrupted")
+        self.assertEqual(interrupted["lifecycle"]["state"], "resumable")
+        self.assertTrue(interrupted["lifecycle"]["can_resume"])
+        self.assertEqual(interrupted["lifecycle"]["attention"]["kind"], "failure")
+        self.assertFalse(interrupted["lifecycle"]["cleanup_endpoint"])
+
+    def test_user_wait_outranks_transport_failure_in_normalized_lifecycle(self):
+        self.write_active(awaiting=True)
+        self.write_pi_receipt(
+            "transport_error",
+            controller_pid=99999999,
+            diagnostic_code="herdr_turn_invalid",
+        )
+        status = runner.runner_status(self.root)
+        lifecycle = status["lifecycle"]
+        self.assertEqual(status["status"], "awaiting_user")
+        self.assertEqual(lifecycle["state"], "waiting")
+        self.assertEqual(lifecycle["attention"]["kind"], "question")
+        self.assertEqual(lifecycle["attention"]["question"], "choose")
+        self.assertFalse(lifecycle["cleanup_endpoint"])
+
+    def test_provisional_transport_failure_is_terminal_and_actionable(self):
+        self.write_pi_receipt(
+            "transport_error",
+            controller_pid=99999999,
+            active_run=None,
+            diagnostic_code="herdr_turn_invalid",
+        )
+        lifecycle = runner.runner_status(self.root)["lifecycle"]
+        self.assertEqual(lifecycle["state"], "failed")
+        self.assertTrue(lifecycle["terminal"])
+        self.assertIsNone(lifecycle["provisional_identity"]["run"])
+        self.assertEqual(lifecycle["attention"]["kind"], "failure")
+        self.assertTrue(lifecycle["cleanup_endpoint"])
+
+    def test_pre_run_workflow_failure_is_terminal_and_actionable(self):
+        self.write_pi_receipt(
+            "no_kimiflow_run",
+            controller_pid=99999999,
+            active_run=None,
+        )
+        lifecycle = runner.runner_status(self.root)["lifecycle"]
+        self.assertEqual(lifecycle["state"], "failed")
+        self.assertEqual(lifecycle["reason"], "no_kimiflow_run")
+        self.assertIsNone(lifecycle["provisional_identity"]["run"])
+        self.assertEqual(lifecycle["attention"]["kind"], "failure")
+        self.assertTrue(lifecycle["cleanup_endpoint"])
+
     def test_run_starts_codex_safely_and_writes_minimal_receipt(self):
         nested = os.path.join(self.root, "nested")
         os.mkdir(nested)

@@ -37,22 +37,6 @@ const SPAWN_ACCEPTANCE_MS = 250;
 const SPAWN_HANDOFF_TIMEOUT_MS = 5000;
 const RUNNER_RECEIPT_TIMEOUT_MS = 45000;
 const STALE_REAP_TIMEOUT_MS = 5000;
-const ACTIVE_RUNNER_STATES = new Set([
-  "starting",
-  "running",
-  "parked",
-  "interrupted",
-  "transport_error",
-  "exhausted",
-]);
-const RESUMABLE_STATES = new Set([
-  "starting",
-  "parked",
-  "interrupted",
-  "transport_error",
-  "exhausted",
-]);
-const TERMINAL_RUNNER_STATES = new Set(["done", "failed", "aborted"]);
 const ROOT_COORDINATORS = new Map();
 const NOOP_START_CLAIMS = Object.freeze({
   acquire() { return null; },
@@ -623,36 +607,24 @@ function textResult(value) {
 }
 
 function runnerIsActive(snapshot) {
-  if (
-    snapshot?.status === "transport_error"
-    && snapshot?.active_run?.present !== true
-    && typeof snapshot?.runner?.active_run !== "string"
-  ) {
-    return false;
-  }
-  return snapshot?.active_run?.present === true
-    || ACTIVE_RUNNER_STATES.has(snapshot?.status);
-}
-
-function runnerControllerAlive(snapshot) {
-  const controllerPid = snapshot?.runner?.controller_pid;
-  return Number.isInteger(controllerPid)
-    && controllerPid > 1
-    && (processAlive(controllerPid) || processGroupAlive(controllerPid));
+  return snapshot?.lifecycle?.schema_version === 1
+    && snapshot.lifecycle.active === true;
 }
 
 function runnerIsReachable(snapshot) {
-  return snapshot?.status === "running" && runnerControllerAlive(snapshot);
+  return snapshot?.lifecycle?.schema_version === 1
+    && snapshot.lifecycle.reachable === true;
 }
 
 function runnerIsTerminal(snapshot) {
-  return snapshot?.active_run?.present !== true
-    && TERMINAL_RUNNER_STATES.has(snapshot?.status);
+  return snapshot?.lifecycle?.schema_version === 1
+    && snapshot.lifecycle.terminal === true;
 }
 
 function snapshotIdentity(snapshot, binding = null) {
-  const run = snapshot?.active_run?.run ?? snapshot?.runner?.active_run;
-  const providerSessionId = snapshot?.runner?.session_id;
+  const identity = snapshot?.lifecycle?.identity;
+  const run = identity?.run;
+  const providerSessionId = identity?.provider_session_id;
   if (
     typeof run !== "string"
     || !RUN_IDENTITY.test(run)
@@ -661,160 +633,59 @@ function snapshotIdentity(snapshot, binding = null) {
   ) {
     return null;
   }
-  if (binding?.run === null) {
-    const bridge = snapshot?.runner?.bridge;
-    if (
-      bridge?.schema_version !== 1
-      || bridge.captain_session_id !== binding.captainSessionId
-      || bridge.worker_id !== binding.workerId
-    ) {
-      return null;
-    }
+  if (
+    binding !== null
+    && (
+      identity?.captain_session_id !== binding.captainSessionId
+      || identity?.worker_id !== binding.workerId
+    )
+  ) {
+    return null;
   }
   return { run, providerSessionId };
 }
 
 function provisionalTransportFailure(snapshot, binding) {
-  const receipt = snapshot?.runner;
-  const bridge = receipt?.bridge;
-  const providerSessionId = receipt?.session_id;
+  const identity = snapshot?.lifecycle?.provisional_identity;
+  const providerSessionId = identity?.provider_session_id;
   if (
     binding?.run !== null
     || binding?.providerSessionId !== null
-    || snapshot?.status !== "transport_error"
-    || snapshot?.active_run?.present !== false
-    || receipt?.active_run !== null
     || typeof providerSessionId !== "string"
     || !IDENTITY.test(providerSessionId)
-    || bridge?.schema_version !== 1
-    || bridge.captain_session_id !== binding.captainSessionId
-    || bridge.worker_id !== binding.workerId
+    || identity?.captain_session_id !== binding.captainSessionId
+    || identity?.worker_id !== binding.workerId
   ) {
     return null;
   }
   return { run: null, providerSessionId };
 }
 
-function runnerControllerLost(snapshot, binding) {
-  const controllerPid = snapshot?.runner?.controller_pid;
-  const identity = snapshotIdentity(snapshot, binding);
-  return snapshot?.status === "running"
-    && Number.isInteger(controllerPid)
-    && controllerPid > 1
-    && !processAlive(controllerPid)
-    && !processGroupAlive(controllerPid)
-    && identity?.run === binding?.run
-    && identity?.providerSessionId === binding?.providerSessionId;
-}
-
-function visibleSnapshot(snapshot, binding) {
-  if (
-    snapshot?.active_run?.present === true
-    && snapshot.active_run.awaiting_user === true
-  ) {
-    return {
-      ...snapshot,
-      status: "awaiting_user",
-    };
-  }
-  if (!runnerControllerLost(snapshot, binding)) return snapshot;
-  return {
-    ...snapshot,
-    status: "interrupted",
-    runner: {
-      ...snapshot.runner,
-      status: "interrupted",
-    },
-  };
-}
-
-function deliveryBoundary(snapshot, run, providerSessionId) {
-  return digest(JSON.stringify({
-    run,
-    providerSessionId,
-    status: typeof snapshot?.status === "string" ? snapshot.status : "unknown",
-    transitionVersion: Number.isInteger(snapshot?.runner?.turns)
-      ? snapshot.runner.turns
-      : 0,
-    awaitingUser: snapshot?.active_run?.awaiting_user === true,
-  }));
+function deliveryBoundary(snapshot) {
+  const boundary = snapshot?.lifecycle?.delivery_boundary;
+  return typeof boundary === "string" && DIGEST.test(boundary)
+    ? boundary
+    : null;
 }
 
 function transition(snapshot, binding) {
-  if (binding === null || snapshot === null || typeof snapshot !== "object") {
-    return null;
-  }
-  const activeRun = snapshot.active_run;
-  const receipt = snapshot.runner;
-  let kind = null;
+  const value = snapshot?.lifecycle?.attention;
   if (
-    activeRun?.present === true
-    && activeRun.awaiting_user === true
-  ) {
-    kind = "question";
-  } else if (snapshot.status === "done") {
-    kind = "completion";
-  } else if (["failed", "aborted", "transport_error"].includes(snapshot.status)) {
-    kind = "failure";
-  } else if (runnerControllerLost(snapshot, binding)) {
-    kind = "failure";
-  }
-  const run = activeRun?.run ?? receipt?.active_run;
-  let providerSessionId = receipt?.session_id;
-  const provisionalFailure = kind === "failure"
-    ? provisionalTransportFailure(snapshot, binding)
-    : null;
-  if (
-    kind === null
+    binding === null
+    || value === null
+    || typeof value !== "object"
+    || value.root !== binding.root
+    || value.captain_session_id !== binding.captainSessionId
+    || value.worker_id !== binding.workerId
+    || (binding.run !== null && value.run !== binding.run)
     || (
-      provisionalFailure === null
-      && (
-        run !== binding.run
-        || providerSessionId !== binding.providerSessionId
-      )
+      binding.providerSessionId !== null
+      && value.provider_session_id !== binding.providerSessionId
     )
   ) {
     return null;
   }
-  const boundRun = provisionalFailure === null ? run : null;
-  if (provisionalFailure !== null) {
-    providerSessionId = provisionalFailure.providerSessionId;
-  }
-  const identity = {
-    root: binding.root,
-    run: boundRun,
-    captain_session_id: binding.captainSessionId,
-    worker_id: binding.workerId,
-    provider_session_id: providerSessionId,
-    kind,
-    transition_version: Number.isInteger(receipt?.turns) ? receipt.turns : 0,
-  };
-  if (
-    kind === "failure"
-    && typeof receipt?.diagnostic_code === "string"
-    && IDENTITY.test(receipt.diagnostic_code)
-  ) {
-    identity.diagnostic_code = receipt.diagnostic_code;
-  }
-  if (kind === "question") {
-    const request = typeof activeRun.awaiting_request === "string"
-      && Buffer.byteLength(activeRun.awaiting_request, "utf8") <= 64 * 1024
-      ? activeRun.awaiting_request.trim()
-      : "";
-    identity.question = request || (
-      typeof activeRun.awaiting_reason === "string"
-      && activeRun.awaiting_reason.trim()
-      ? activeRun.awaiting_reason.trim()
-      : "Kimiflow is waiting for a material user decision."
-    );
-  }
-  const attentionIdentity = { ...identity };
-  if (kind === "question") delete attentionIdentity.transition_version;
-  const hash = digest(JSON.stringify(attentionIdentity)).slice(
-    "sha256:".length,
-    24 + "sha256:".length,
-  );
-  return { attention_id: `attention-${hash}`, ...identity, actionable: true };
+  return value;
 }
 
 function attentionContent(value) {
@@ -855,7 +726,7 @@ function restoredAttentionIds(context) {
 
 function boundedStatus(value) {
   const state = typeof value?.status === "string" ? value.status : "unknown";
-  const run = value?.active_run?.run ?? value?.runner?.active_run;
+  const run = value?.lifecycle?.run;
   const result = `Kimiflow: ${state}${typeof run === "string" ? `; run=${run}` : ""}.`;
   return result.length <= STATUS_LIMIT
     ? result
@@ -904,20 +775,19 @@ export function createCaptainExtension({
     const deadline = Date.now() + runnerReceiptTimeoutMs;
     while (true) {
       const snapshot = await runnerStatus(cwd);
-      const receipt = snapshot?.runner;
-      const bridge = receipt?.bridge;
-      const exactController = receipt?.controller_pid === controllerPid;
+      const lifecycle = snapshot?.lifecycle;
+      const bridge = lifecycle?.bridge;
+      const exactController = lifecycle?.controller_pid === controllerPid;
       const exactBridge = bridge?.schema_version === 1
         && bridge.captain_session_id === binding.captainSessionId
         && bridge.worker_id === binding.workerId;
       if (exactController && exactBridge) {
-        if (snapshot.status === "starting") {
+        if (lifecycle.state === "starting") {
           // The runner owns the start now, but the provider worker has not
           // acknowledged a reachable session yet.
         } else if (
-          snapshot.status === "running"
-          || snapshot.status === "awaiting_user"
-          || snapshot.status === "parked"
+          lifecycle.reachable === true
+          || lifecycle.state === "waiting"
         ) {
           if (!requireIdentity || snapshotIdentity(snapshot, binding) !== null) {
             return snapshot;
@@ -1119,7 +989,7 @@ export function createCaptainExtension({
       && active.terminal !== true
       && active.root === validated.root
       && !runnerIsTerminal(snapshot)
-      && !RESUMABLE_STATES.has(snapshot?.status)
+      && snapshot?.lifecycle?.can_resume !== true
       && !(recovering && active.run === null && !runnerIsActive(snapshot))
     ) {
       throw new Error("kimiflow_run_active");
@@ -1146,13 +1016,13 @@ export function createCaptainExtension({
 
     if (
       recovering
-      && snapshot?.status === "starting"
-      && runnerControllerAlive(snapshot)
+      && snapshot?.lifecycle?.state === "starting"
+      && Number.isInteger(snapshot?.lifecycle?.controller_pid)
     ) {
       snapshot = await waitForRunnerReceipt(
         validated.root,
         provisionalBinding(validated),
-        snapshot.runner.controller_pid,
+        snapshot.lifecycle.controller_pid,
         false,
       );
     }
@@ -1194,10 +1064,7 @@ export function createCaptainExtension({
         if (!resumeAfterAdoption) runnerArgs.push(preparedRequest);
         if (
           resumeAfterAdoption
-          && (
-            snapshot?.active_run?.awaiting_user === true
-            || snapshot?.status === "parked"
-          )
+          && snapshot?.lifecycle?.awaiting_user === true
         ) {
           runnerArgs.push("--message", request.trim());
         }
@@ -1266,7 +1133,7 @@ export function createCaptainExtension({
       const bound = bindSnapshot(active, snapshot);
       if (bound !== null) {
         active = bound;
-        return visibleSnapshot(snapshot, active);
+        return snapshot;
       }
       if (provisionalTransportFailure(snapshot, active) !== null) {
         return snapshot;
@@ -1288,7 +1155,7 @@ export function createCaptainExtension({
     ) {
       throw new Error("kimiflow_runner_identity_mismatch");
     }
-    return visibleSnapshot(snapshot, active);
+    return snapshot;
   }
 
   async function deliverActive(kind, params, context, persist) {
@@ -1323,16 +1190,13 @@ export function createCaptainExtension({
     ) {
       throw new Error("kimiflow_runner_identity_mismatch");
     }
-    const waiting = snapshot?.active_run?.present === true
-      && snapshot.active_run.awaiting_user === true;
-    if (
-      !waiting
-      && !RESUMABLE_STATES.has(snapshot?.status)
-      && !runnerControllerLost(snapshot, active)
-    ) {
+    if (snapshot?.lifecycle?.can_resume !== true) {
       throw new Error(`${kind}_requires_resumable_boundary`);
     }
-    const boundary = deliveryBoundary(snapshot, run, providerSessionId);
+    const boundary = deliveryBoundary(snapshot);
+    if (boundary === null) {
+      throw new Error("kimiflow_delivery_boundary_unavailable");
+    }
     let startClaim = null;
     if (active.deliveryBoundary === boundary && !active.deliveryPending) {
       throw new Error("kimiflow_delivery_in_progress");
@@ -1432,18 +1296,14 @@ export function createCaptainExtension({
       }
     }
     if (active.deliveryPending) {
-      const boundary = deliveryBoundary(
-        snapshot,
-        active.run,
-        active.providerSessionId,
-      );
+      const boundary = deliveryBoundary(snapshot);
       if (boundary !== active.deliveryBoundary) {
         const reconciled = { ...active, deliveryPending: false };
         pi.appendEntry?.(BINDING_ENTRY, reconciled);
         active = reconciled;
       }
     }
-    const observed = visibleSnapshot(snapshot, active);
+    const observed = snapshot;
     const value = transition(snapshot, active);
     let announced = 0;
     if (value !== null && !seenAttention.has(value.attention_id)) {
@@ -1460,8 +1320,7 @@ export function createCaptainExtension({
     }
     if (
       (
-        runnerIsTerminal(snapshot)
-        || provisionalTransportFailure(snapshot, active) !== null
+        snapshot?.lifecycle?.cleanup_endpoint === true
       )
       && (value === null || seenAttention.has(value.attention_id))
     ) {
@@ -1691,7 +1550,7 @@ export default function registerCaptainExtension(pi, options) {
     };
   });
   const adoptWorker = options?.adoptWorker ?? (async ({ root, captainSessionId, request, snapshot }) => {
-    const run = snapshot?.active_run?.run ?? snapshot?.runner?.active_run;
+    const run = snapshot?.lifecycle?.run;
     const numbered = typeof request === "string"
       ? request.match(/\b(?:run|lauf)\s+([0-9]+(?:\.[0-9]+)?)\b/i)?.[1]
       : null;
@@ -1709,8 +1568,8 @@ export default function registerCaptainExtension(pi, options) {
     ) {
       throw new Error("kimiflow_existing_run_requires_exact_resume_request");
     }
-    const expectedCaptain = snapshot?.runner?.bridge?.captain_session_id;
-    const expectedWorker = snapshot?.runner?.bridge?.worker_id;
+    const expectedCaptain = snapshot?.lifecycle?.bridge?.captain_session_id;
+    const expectedWorker = snapshot?.lifecycle?.bridge?.worker_id;
     if (typeof expectedCaptain !== "string" || typeof expectedWorker !== "string") {
       throw new Error("kimiflow_fleet_adoption_identity_missing");
     }

@@ -175,9 +175,11 @@ Captain exposes only read/search and Kimiflow control tools. A dead resumable ru
 a replacement Captain only after its old controller is positively absent; provider-session and Run ownership
 do not change.
 
-The Pi adapter inherits the session's provider-neutral `provider/model:thinking` selection. Runner, Active Run,
-Fleet leases, gates, and terminal receipts remain the only workflow authorities. Replies and steering target an
-exact run/worker/provider-session boundary; Pi lifecycle text never proves completion.
+The Pi adapter inherits the session's provider-neutral `provider/model:thinking` selection. Active Run, Fleet
+leases, gates, and terminal receipts remain the durable workflow authorities; the Runner alone combines them
+with controller reachability into one normalized lifecycle view for hosts. The Captain renders that view and
+forwards commands without interpreting raw receipt states or process IDs. Replies and steering target an exact
+run/worker/provider-session boundary; Pi or Herdr lifecycle text never proves completion.
 
 If the Captain runs in Herdr, each Fleet worker gets its own unfocused interactive Pi tab in the Captain's
 workspace, rooted at that worker's isolated worktree. Temporary bounded semantic agents use separate tabs. The

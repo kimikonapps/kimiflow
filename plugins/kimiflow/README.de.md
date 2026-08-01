@@ -150,9 +150,12 @@ Fleet-Arbeit laeuft, bietet der Captain nur Lese-/Such- und Kimiflow-Control-Too
 Runner darf seine Bridge erst nach positivem Nachweis des beendeten Controllers an einen neuen Captain
 uebergeben; Provider-Sitzung und Run-Besitz bleiben unveraendert.
 
-Der Pi-Adapter uebernimmt die providerneutrale Auswahl `provider/model:thinking`. Runner, Active Run,
-Fleet-Leases, Gates und terminale Receipts bleiben die einzigen Workflow-Autoritaeten. Reply und Steering
-adressieren die exakte Run-/Worker-/Provider-Sitzungs-Grenze; Pi-Lifecycle-Text beweist nie den Abschluss.
+Der Pi-Adapter uebernimmt die providerneutrale Auswahl `provider/model:thinking`. Active Run, Fleet-Leases,
+Gates und terminale Receipts bleiben die dauerhaften Workflow-Autoritaeten; nur der Runner verbindet sie mit
+der Controller-Erreichbarkeit zu einer normalisierten Lifecycle-Sicht fuer Hosts. Der Captain zeigt diese Sicht
+an und leitet Befehle weiter, ohne rohe Receipt-Status oder Prozess-IDs selbst zu interpretieren. Reply und
+Steering adressieren die exakte Run-/Worker-/Provider-Sitzungs-Grenze; Pi- oder Herdr-Lifecycle-Text beweist nie
+den Abschluss.
 
 Laeuft der Captain in Herdr, erhaelt jeder Fleet-Worker einen eigenen nicht fokussierten interaktiven Pi-Tab im
 Workspace des Captains und startet im isolierten Worktree. Temporaere begrenzte semantische Agents verwenden

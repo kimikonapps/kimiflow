@@ -400,57 +400,20 @@ def adopt(
     from . import runner
 
     try:
-        receipt = runner.load_receipt(root)
-    except (OSError, ValueError, runner.RunnerError) as exc:
-        raise ProjectError("project_adoption_unavailable", "Cannot inspect Fleet runner receipt: %s" % exc, 1)
-    bridge = receipt.get("bridge")
-    controller = receipt.get("controller_pid")
-    if (
-        receipt.get("status") not in {
-            "starting", "parked", "interrupted", "transport_error", "exhausted",
-        }
-        or not isinstance(bridge, dict)
-        or bridge.get("schema_version") != 1
-        or WORKER_RE.fullmatch(bridge.get("worker_id", "")) is None
-        or (
-            expected_captain_id is not None
-            and bridge.get("captain_session_id") != expected_captain_id
+        result = runner.adopt_pi_bridge(
+            root,
+            captain_session_id,
+            expected_captain_id=expected_captain_id,
+            expected_worker_id=expected_worker_id,
         )
-        or (
-            expected_worker_id is not None
-            and bridge.get("worker_id") != expected_worker_id
+    except runner.RunnerError as exc:
+        status = (
+            "project_adoption_busy"
+            if exc.status == "bridge_adoption_busy"
+            else "project_adoption_unavailable"
         )
-        or not isinstance(controller, int)
-        or isinstance(controller, bool)
-        or controller <= 1
-    ):
-        raise ProjectError("project_adoption_unavailable", "Fleet runner is not at a safe adoption boundary", 1)
-    try:
-        os.kill(controller, 0)
-    except ProcessLookupError:
-        pass
-    except PermissionError:
-        raise ProjectError("project_adoption_busy", "Fleet runner controller ownership is ambiguous", 1)
-    else:
-        raise ProjectError("project_adoption_busy", "Fleet runner controller is still alive", 1)
-    rebound = dict(receipt)
-    rebound["bridge"] = {
-        "schema_version": 1,
-        "captain_session_id": captain_session_id,
-        "worker_id": bridge["worker_id"],
-    }
-    try:
-        runner.write_receipt(root, rebound)
-    except (OSError, ValueError, runner.RunnerError) as exc:
-        raise ProjectError("project_adoption_failed", "Cannot transfer Fleet bridge: %s" % exc, 1)
-    return {
-        "schema_version": REGISTRY_SCHEMA,
-        "status": "adopted",
-        "root": root,
-        "run": rebound.get("active_run"),
-        "worker_id": bridge["worker_id"],
-        "provider_session_id": rebound.get("session_id"),
-    }
+        raise ProjectError(status, exc.message, exc.code)
+    return {**result, "schema_version": REGISTRY_SCHEMA}
 
 
 def allocate(root, request, worker_id, write=True, environ=None):

@@ -44,7 +44,10 @@ PYTHONPATH="$PWD/hooks" python3 -m kimiflow_core.render
 Der optionale Terminal-Runner ist keine zweite Engine. Sein Controller liest
 `active_run.status_json`, speichert unter `.kimiflow/session/HEADLESS_RUN.json` nur Host, Adapter, Root, Session,
 Run-Pfad, Turn-Zaehler und Status; der eingebaute Adapter setzt dieselbe Session mit `codex exec resume` fort. Die eigentliche
-Workflow-Wahrheit bleibt in `ACTIVE_RUN.json`, `STATE.md`, `ITEMS.jsonl`, den Gates und dem Memory Router. Ein
+Workflow-Wahrheit bleibt in `ACTIVE_RUN.json`, `STATE.md`, `ITEMS.jsonl`, den Gates und dem Memory Router. Der
+Runner ist die einzige Interpretationsgrenze, die diese Artefakte mit Controller-Erreichbarkeit zu
+`idle|starting|reachable|waiting|resumable|terminal|failed` normalisiert. Hosts konsumieren diese Sicht, statt
+Receipt-Status, Active Run und PIDs erneut zu kombinieren. Ein
 alternatives Harness implementiert denselben Capability- und JSON-stdio-Vertrag. Ein materieller Wait/Park wird
 an den User zurueckgegeben; technische Turns laufen bis zum harten Turn-Limit plus genau einem Recovery-Turn ohne
 Routinebestaetigung weiter. Zaehler bleiben `null`, wenn der Provider keine Usage liefert.
@@ -59,15 +62,19 @@ speichert keine Aufgaben- oder Codeinhalte.
 Vor jedem neuen schreibenden Top-Level-Auftrag reserviert die Primary-Extension im bestehenden `FLEET.json`
 einen von drei Slots. Der Runner startet erst danach im zugeordneten isolierten Worktree; Run, Worktree,
 Runner-Receipt, Pi-Sitzung und Transport-Endpunkt bleiben eine exakte Identitaetskette. Mehrere Worker werden
-parallel ueber denselben ereignisgetriebenen Captain-Watcher beaufsichtigt. Reply und Steering adressieren
-Run, Worker und Provider-Sitzung, nie Fokus oder Tab-Label. Nach einem Captain-Crash darf eine Bridge nur an
-einer fortsetzbaren Grenze und nach positivem Nachweis des toten alten Controllers uebernommen werden.
+parallel ueber denselben ereignisgetriebenen Captain-Watcher beaufsichtigt. Der Captain persistiert nur seine
+exakte Bindung, zeigt die normalisierte Runner-Sicht und leitet Befehle weiter; Lifecycle-, Attention-,
+Adoption- und Cleanup-Entscheidungen stammen aus dem Runner. Reply und Steering adressieren Run, Worker und
+Provider-Sitzung, nie Fokus oder Tab-Label. Nach einem Captain-Crash darf eine Bridge nur an einer vom Runner
+ausgewiesenen fortsetzbaren Grenze und nach positivem Nachweis des toten alten Controllers uebernommen werden.
 
 Wenn der Captain in Herdr laeuft, ist dessen Workspace nur Sichttransport. Jeder Fleet-Worker erhaelt einen
 nicht fokussierten Pi-Tab mit dem Worktree als CWD; temporaere Phase-Seats erhalten eigene begrenzte Tabs.
 Kimiflow laedt die benutzerverwaltete, marker- und digestgepruefte Herdr-Agent-State-Integration trotz
-`--no-extensions` explizit, damit Herdr die native Pi-Session meldet. Nur exakte IDs werden bereinigt; Runner,
-Active Run und Fleet-Leases bleiben die Workflow-Autoritaeten. Ohne Herdr bleibt der Prozess-Transport.
+`--no-extensions` explizit, damit Herdr die native Pi-Session meldet. Herdr verwaltet nur den exakten
+Pane-/Tab-/Session-Transport; es leitet daraus keinen Run-Erfolg oder Recovery-Zustand ab. Nur exakte IDs werden
+bereinigt; Runner, Active Run und Fleet-Leases bleiben die Workflow-Autoritaeten. Ohne Herdr bleibt der
+Prozess-Transport.
 Ein abgeloester Cleanup-Sentinel besitzt ausschliesslich das zufaellige Pi-Prozessbaum-Tag und eine lokale
 Cleanup-Lease. Nach einem harten Kill der Runner-Gruppe blockiert diese Lease einen Nachfolger, bis der
 markierte Pi-Prozessbaum beendet ist; eine verwaiste Lease wird vor der naechsten Aktivierung mit demselben

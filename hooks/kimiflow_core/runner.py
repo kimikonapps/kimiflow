@@ -1369,12 +1369,265 @@ def _resume_task(root, message=None, adapter=None):
     )
 
 
+def _process_tree_alive(pid):
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid < 2:
+        return False
+    for candidate in (pid, -pid):
+        try:
+            os.kill(candidate, 0)
+            return True
+        except ProcessLookupError:
+            continue
+        except PermissionError:
+            return True
+    return False
+
+
+def _bridge_digest(value):
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def _bridge_lifecycle(root, receipt, active):
+    """Return the one normalized lifecycle view consumed by UI hosts."""
+    raw_status = receipt.get("status") if receipt else None
+    workflow_open = active.get("present") is True and active.get("terminal") is not True
+    awaiting_user = workflow_open and active.get("awaiting_user") is True
+    receipt_run = receipt.get("active_run") if receipt else None
+    run = active.get("run") if workflow_open else receipt_run
+    controller_pid = receipt.get("controller_pid") if receipt else None
+    controller_alive = _process_tree_alive(controller_pid)
+    controller_lost = raw_status == "running" and not controller_alive
+    resumable_run = workflow_open or isinstance(receipt_run, str)
+
+    if awaiting_user:
+        state = "waiting"
+        reason = "awaiting_user"
+    elif receipt is None:
+        state = "embedded" if workflow_open else "idle"
+        reason = "active_run_without_runner" if workflow_open else "no_run"
+    elif raw_status == "starting":
+        if controller_alive:
+            state, reason = "starting", "controller_starting"
+        elif resumable_run:
+            state, reason = "resumable", "controller_lost"
+        else:
+            state, reason = "failed", "controller_lost_before_run"
+    elif raw_status == "running":
+        if controller_alive:
+            state, reason = "reachable", "controller_reachable"
+        elif resumable_run:
+            state, reason = "resumable", "controller_lost"
+        else:
+            state, reason = "failed", "controller_lost_before_run"
+    elif raw_status in RESUMABLE_WAIT_STATES:
+        state, reason = "waiting", raw_status
+    elif raw_status in {"interrupted", "transport_error", "exhausted"}:
+        if resumable_run:
+            state, reason = "resumable", raw_status
+        else:
+            state, reason = "failed", raw_status
+    elif raw_status in {"done", "failed", "aborted"}:
+        if workflow_open:
+            state, reason = "resumable", "workflow_still_open"
+        else:
+            state, reason = "terminal", raw_status
+    else:
+        state = "resumable" if workflow_open else "failed"
+        reason = raw_status or "runner_state_invalid"
+
+    bridge = receipt.get("bridge") if receipt else None
+    provider_session_id = receipt.get("session_id") if receipt else None
+    identity = None
+    if (
+        isinstance(run, str)
+        and isinstance(provider_session_id, str)
+        and isinstance(bridge, dict)
+    ):
+        identity = {
+            "run": run,
+            "provider_session_id": provider_session_id,
+            "captain_session_id": bridge["captain_session_id"],
+            "worker_id": bridge["worker_id"],
+        }
+
+    provisional_failure = (
+        state == "failed"
+        and not workflow_open
+        and not isinstance(receipt_run, str)
+        and isinstance(provider_session_id, str)
+        and isinstance(bridge, dict)
+    )
+    provisional_identity = None
+    if provisional_failure:
+        provisional_identity = {
+            "run": None,
+            "provider_session_id": provider_session_id,
+            "captain_session_id": bridge["captain_session_id"],
+            "worker_id": bridge["worker_id"],
+        }
+
+    visible_status = raw_status or ("embedded_active" if workflow_open else "idle")
+    if awaiting_user:
+        visible_status = "awaiting_user"
+    elif controller_lost:
+        visible_status = "interrupted"
+
+    transition_version = receipt.get("turns", 0) if receipt else 0
+    attention_kind = None
+    if awaiting_user:
+        attention_kind = "question"
+    elif raw_status == "done":
+        attention_kind = "completion"
+    elif (
+        state == "failed"
+        or raw_status in {"failed", "aborted", "transport_error"}
+        or controller_lost
+    ):
+        attention_kind = "failure"
+
+    attention = None
+    attention_identity = identity or provisional_identity
+    if attention_kind is not None and attention_identity is not None:
+        attention = {
+            "root": root,
+            "run": attention_identity["run"],
+            "captain_session_id": attention_identity["captain_session_id"],
+            "worker_id": attention_identity["worker_id"],
+            "provider_session_id": attention_identity["provider_session_id"],
+            "kind": attention_kind,
+            "transition_version": transition_version,
+        }
+        diagnostic = receipt.get("diagnostic_code") if receipt else None
+        if attention_kind == "failure" and isinstance(diagnostic, str):
+            attention["diagnostic_code"] = diagnostic
+        if attention_kind == "question":
+            request = active.get("awaiting_request")
+            if (
+                not isinstance(request, str)
+                or len(request.encode("utf-8")) > 64 * 1024
+                or not request.strip()
+            ):
+                request = active.get("awaiting_reason")
+            attention["question"] = (
+                request.strip()
+                if isinstance(request, str) and request.strip()
+                else "Kimiflow is waiting for a material user decision."
+            )
+        digest_identity = dict(attention)
+        if attention_kind == "question":
+            digest_identity.pop("transition_version", None)
+        attention["attention_id"] = (
+            "attention-" + _bridge_digest(digest_identity)[len("sha256:"):][:24]
+        )
+        attention["actionable"] = True
+
+    delivery_boundary = None
+    if identity is not None:
+        delivery_boundary = _bridge_digest({
+            "run": identity["run"],
+            "providerSessionId": identity["provider_session_id"],
+            "status": visible_status,
+            "transitionVersion": transition_version,
+            "awaitingUser": awaiting_user,
+        })
+
+    return {
+        "schema_version": 1,
+        "state": state,
+        "reason": reason,
+        "status": visible_status,
+        "active": state in {"starting", "reachable", "waiting", "resumable", "embedded"},
+        "reachable": state == "reachable",
+        "can_resume": state in {"waiting", "resumable"},
+        "terminal": state in {"terminal", "failed"},
+        "awaiting_user": awaiting_user,
+        "controller_pid": controller_pid,
+        "bridge": dict(bridge) if isinstance(bridge, dict) else None,
+        "run": run if isinstance(run, str) else None,
+        "provider_session_id": provider_session_id,
+        "identity": identity,
+        "provisional_identity": provisional_identity,
+        "delivery_boundary": delivery_boundary,
+        "attention": attention,
+        "cleanup_endpoint": state in {"terminal", "failed"} and attention is not None,
+    }
+
+
+def adopt_pi_bridge(
+    root,
+    captain_session_id,
+    expected_captain_id=None,
+    expected_worker_id=None,
+):
+    """Transfer one dead, resumable Pi bridge without changing run ownership."""
+    root = _resolve_project_root(root)
+    receipt = load_receipt(root)
+    lifecycle = _bridge_lifecycle(root, receipt, _active_status(root))
+    bridge = lifecycle.get("bridge")
+    if not isinstance(bridge, dict):
+        raise RunnerError(
+            "bridge_adoption_unavailable",
+            "Fleet runner has no Pi bridge identity",
+            1,
+        )
+    if (
+        expected_captain_id is not None
+        and bridge.get("captain_session_id") != expected_captain_id
+    ) or (
+        expected_worker_id is not None
+        and bridge.get("worker_id") != expected_worker_id
+    ):
+        raise RunnerError(
+            "bridge_adoption_unavailable",
+            "Fleet runner bridge identity does not match",
+            1,
+        )
+    if _process_tree_alive(lifecycle.get("controller_pid")):
+        raise RunnerError(
+            "bridge_adoption_busy",
+            "Fleet runner controller is still alive",
+            1,
+        )
+    if lifecycle.get("can_resume") is not True:
+        raise RunnerError(
+            "bridge_adoption_unavailable",
+            "Fleet runner is not at a safe adoption boundary",
+            1,
+        )
+    rebound = dict(receipt)
+    rebound["bridge"] = {
+        "schema_version": 1,
+        "captain_session_id": captain_session_id,
+        "worker_id": bridge["worker_id"],
+    }
+    write_receipt(root, rebound)
+    return {
+        "schema_version": 1,
+        "status": "adopted",
+        "root": root,
+        "run": lifecycle.get("run"),
+        "worker_id": bridge["worker_id"],
+        "provider_session_id": lifecycle.get("provider_session_id"),
+    }
+
+
 def runner_status(root):
     root = _resolve_project_root(root)
     receipt = load_receipt(root, required=False)
     active = _active_status(root)
-    status = receipt.get("status") if receipt else ("embedded_active" if active.get("present") else "idle")
-    return {"schema_version": 1, "status": status, "runner": receipt, "active_run": active}
+    lifecycle = _bridge_lifecycle(root, receipt, active)
+    return {
+        "schema_version": 1,
+        "status": lifecycle["status"],
+        "runner": receipt,
+        "active_run": active,
+        "lifecycle": lifecycle,
+    }
 
 
 def exit_code(result):
