@@ -32,6 +32,8 @@ class PiHostTests(unittest.TestCase):
                 "args=sys.argv[1:]\n"
                 "open(os.environ['PI_TEST_ARGV_LOG'],'w').write(json.dumps(args))\n"
                 "assert '\\n\\nTransport request:\\n' in args[-1]\n"
+                "assert os.environ['KIMIFLOW_HOST'] == 'codex'\n"
+                "assert os.environ['KIMIFLOW_PLUGIN_ROOT'] == os.path.dirname(os.path.dirname(os.environ['KIMIFLOW_PI_ACTIVE_RUN']))\n"
                 "session=(os.environ.get('PI_TEST_SESSION') or (args[args.index('--session')+1] if '--session' in args else 'pi-worker-0001'))\n"
                 "print(json.dumps({'type':'session','version':3,'id':session,'timestamp':'2026-07-29T00:00:00Z','cwd':os.environ.get('PI_TEST_CWD',os.getcwd())}))\n"
                 "print(json.dumps({'type':'agent_start'}))\n"
@@ -843,6 +845,12 @@ class PiHostTests(unittest.TestCase):
         self.assertIn("call kimiflow_subagent exactly once", prompt)
         self.assertIn("Phase gates require the resulting mechanical receipt", prompt)
         self.assertIn("separate visible Herdr/Pi worker", prompt)
+        context = model_adapter.workflow_context()
+        self.assertIn("plugin_root=%s" % context["plugin_root"], prompt)
+        self.assertIn("hook_root=%s" % os.path.join(context["plugin_root"], "hooks"), prompt)
+        self.assertIn("$KIMIFLOW_PLUGIN_ROOT/hooks", prompt)
+        self.assertIn("Pi already resolved KIMIFLOW_PI_VERBOSITY", prompt)
+        self.assertIn("git ls-files hooks", prompt)
         self.assertTrue(prompt.startswith("\u2063kimiflow:transport-v1\n"))
 
     def test_pi_verbosity_uses_flag_project_global_precedence(self):

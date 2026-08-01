@@ -356,16 +356,16 @@
       "sha256": "sha256:0fa9bf8578ac75f3233609182f38ca2c0e8d8dd89e7dabbe49ba9a1e05b431f5"
     },
     {
-      "bytes": 38853,
+      "bytes": 39026,
       "mode": "0644",
       "path": "hooks/kimiflow_core/pi_herdr.py",
-      "sha256": "sha256:cd2a0005cc94009b4616d9fbc4364a1851b37dedd857d6f25e43930482d54884"
+      "sha256": "sha256:f15949457c33f85c2a1467113319cd934e015184ac75f4a6e6a736e3bee2dbde"
     },
     {
-      "bytes": 52869,
+      "bytes": 53616,
       "mode": "0644",
       "path": "hooks/kimiflow_core/pi_host.py",
-      "sha256": "sha256:e0d46b43a1845bafe8e6f9c0b4442728461699dd462c821b70db5e975ca6f0b9"
+      "sha256": "sha256:8f58c39865d1cfa9335fb9c045c5e0ea3c503d5e5fcea6538551cdda8346f876"
     },
     {
       "bytes": 18600,
@@ -416,10 +416,10 @@
       "sha256": "sha256:8259f8f05f45a3239f3a54f6c5f0abe8c454ccf501a48011b365995dcf65ddff"
     },
     {
-      "bytes": 74772,
+      "bytes": 76863,
       "mode": "0644",
       "path": "hooks/kimiflow_core/runner.py",
-      "sha256": "sha256:8c5ec034b5435fdf0db8eddabf9116c2f0e6c096a2f045cbda0fda70ef780cf7"
+      "sha256": "sha256:bb92728d3be0f2491ec80a6a219a67e89f3b97f2d83b6fbe99dc339713662970"
     },
     {
       "bytes": 11255,
@@ -884,10 +884,10 @@
       "sha256": "sha256:6eb5aed1178e672a1f11e510ca26b2ccf2a5d47ba2d13aa1985ffb0a3df0a7e8"
     },
     {
-      "bytes": 40815,
+      "bytes": 43491,
       "mode": "0644",
       "path": "hosts/pi/extensions/worker.js",
-      "sha256": "sha256:2985e4cd3d0d046ba8de954a51d48653544a433da2eb0445b4d0bb57c25e34e6"
+      "sha256": "sha256:fce515701b64a88f9dd846d9591a81108c64bcd9808409e381c81631a9d2b087"
     },
     {
       "bytes": 2218,
@@ -908,10 +908,10 @@
       "sha256": "sha256:ba0b772b778c0f2b7209ceb12199b285ffa3f2b2a6a607c6125d7411670aa90b"
     },
     {
-      "bytes": 17056,
+      "bytes": 17430,
       "mode": "0644",
       "path": "phases/phase-0-setup.md",
-      "sha256": "sha256:9d5cb6194a7c45cc619e7801ae52166ed85e85f2ada50ecf9299336689fe0a80"
+      "sha256": "sha256:e9a04a55ea0d713ff21f2ef1e16e704898595a382c24ffbbb8515030fdaba346"
     },
     {
       "bytes": 5254,
@@ -1100,6 +1100,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:3dcfb4dd1f5844ff669194316a212df526c1fdc39e992f417b896619fc887304",
+  "runtime_fingerprint": "sha256:f301b7095794f9b844fbd77faf1fc008c779301aff9a5cc22fa8481096b5de1f",
   "schema_version": 1
 }

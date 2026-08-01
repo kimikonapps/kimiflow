@@ -125,6 +125,8 @@ class PiHerdrTests(unittest.TestCase):
         self.assertIn("--no-focus", tab_args)
         self.assertEqual(tab_args[tab_args.index("--workspace") + 1], "w2")
         self.assertIn("kimiflow · main", tab_args)
+        self.assertIn("KIMIFLOW_HOST=codex", tab_args)
+        self.assertIn("KIMIFLOW_PLUGIN_ROOT=/plugin", tab_args)
         self.assertEqual(start_args[:3], ["agent", "start", "kimiflow-main"])
         self.assertIn("--kind", start_args)
         self.assertIn("pi", start_args)

@@ -20,6 +20,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import {
+  basename,
   dirname,
   isAbsolute,
   resolve,
@@ -63,8 +64,6 @@ const BINDING_KEYS = [
 ];
 const READ_TOOLS = new Set(["read", "grep", "find", "glob", "ls"]);
 const WRITE_TOOLS = new Set(["write", "edit", "patch", "apply_patch"]);
-const TRUSTED_INTAKE_HOOK = /^(?:(?:bash|sh) )?(?:\.\/)?hooks\/(?:active-run|clarify-gate|intake-gate|state-gate|current-state-gate|workspace-preflight)\.sh(?: |$)/;
-const CONTROL_HOOK = /^(?:(?:bash|sh) )?(?:\.\/)?hooks\/([a-z-]+)\.sh(?: +([^ ]+))?/;
 const ACTIVE_RUN_INTAKE_COMMANDS = new Set([
   "await-user",
   "conflict-check",
@@ -73,19 +72,42 @@ const ACTIVE_RUN_INTAKE_COMMANDS = new Set([
   "phase-read-gate",
   "phase-read-status",
   "pin-intent-lock",
+  "refresh-baseline",
   "rescope",
   "start",
   "status",
 ]);
-const WORKSPACE_PREFLIGHT_INTAKE_COMMANDS = new Set(["status", "write-gate"]);
-const SAFE_CONTROL_COMMAND = /^[A-Za-z0-9._/@:=+,'"\- ]+$/;
+const PRE_INTAKE_HOOK_ACTIONS = Object.freeze({
+  "active-run": ACTIVE_RUN_INTAKE_COMMANDS,
+  "adaptive-control": new Set([
+    "classify",
+    "contract",
+    "rollover-fallback",
+    "rollover-handoff",
+  ]),
+  "clarify-gate": null,
+  "code-intelligence": null,
+  "codebase-basis": new Set(["create", "verify"]),
+  "current-state-gate": new Set(["assess", "verify"]),
+  "discovery-gate": null,
+  "frontend-quality-gate": null,
+  "intake-gate": null,
+  "launcher-status": null,
+  "memory-router": new Set(["status", "recall", "standards", "provider"]),
+  "project-map-status": new Set(["status", "coverage", "refresh", "index-symbols"]),
+  "resolve-verbosity": new Set(["get"]),
+  "state-gate": null,
+  "suggest-affected-sections": null,
+  "working-tree-gate": null,
+  "workspace-preflight": new Set(["status", "prune", "route", "write-gate"]),
+});
+const SAFE_CONTROL_COMMAND = /^[A-Za-z0-9._/@:=+,'"$\- ]+$/;
 const SAFE_READ_ONLY_GIT = new Set([
   "git rev-parse --is-inside-work-tree",
   "git status --short --branch",
   "git worktree list --porcelain",
+  "git ls-files hooks",
 ]);
-const ROOT_OPTION = /(?:^| )--root(?:=| +)(?:"([^"]+)"|'([^']+)'|([^ "'=]+))/g;
-const ROOT_MENTION = /(?:^| )--root(?:(?:=| +)|$)/g;
 const PROTECTED_RUN_ARTIFACT = /^(?:INTENT-LOCK\.json|INTAKE-RECEIPT-[12]\.json)$/;
 const BOOTSTRAP_ARTIFACT = /^(?:STATE\.md|INTENT\.md|INTAKE(?:-2)?\.md|WORKSPACE-PREFLIGHT\.json|ADAPTIVE-CLASSIFICATION\.json)$/;
 
@@ -497,41 +519,95 @@ function confinedTarget(root, cwd, supplied) {
   return target;
 }
 
-function trustedControlCommand(authority, context, command) {
+function safeControlWords(command) {
   if (
     typeof command !== "string"
+    || command.length === 0
     || command.length > 4096
     || !SAFE_CONTROL_COMMAND.test(command)
-    || !TRUSTED_INTAKE_HOOK.test(command)
-  ) {
-    return false;
+  ) return null;
+  const words = [];
+  let index = 0;
+  while (index < command.length) {
+    while (command[index] === " ") index += 1;
+    if (index >= command.length) break;
+    const quote = command[index] === "'" || command[index] === '"'
+      ? command[index]
+      : null;
+    if (quote !== null) {
+      const end = command.indexOf(quote, index + 1);
+      if (end < 0 || (end + 1 < command.length && command[end + 1] !== " ")) {
+        return null;
+      }
+      words.push(command.slice(index + 1, end));
+      index = end + 1;
+      continue;
+    }
+    let end = command.indexOf(" ", index);
+    if (end < 0) end = command.length;
+    const word = command.slice(index, end);
+    if (word.includes("'") || word.includes('"')) return null;
+    words.push(word);
+    index = end;
   }
+  return words.length > 0 ? words : null;
+}
+
+function canonicalHook(authority, cwd, supplied) {
+  try {
+    const hookRoot = realpathSync(dirname(authority.activeRun));
+    const pluginRoot = dirname(hookRoot);
+    const variablePrefix = "$KIMIFLOW_PLUGIN_ROOT/hooks/";
+    const candidate = supplied.startsWith(variablePrefix)
+      ? resolve(pluginRoot, "hooks", supplied.slice(variablePrefix.length))
+      : resolve(cwd, supplied);
+    const exact = realpathSync(candidate);
+    const filename = basename(exact);
+    if (!/^[a-z][a-z-]*\.sh$/.test(filename)) return null;
+    const expected = realpathSync(resolve(hookRoot, filename));
+    return exact === expected ? filename.slice(0, -3) : null;
+  } catch {
+    return null;
+  }
+}
+
+function trustedControlCommand(authority, state, context, command) {
+  const words = safeControlWords(command);
+  if (words === null) return false;
+  if (["bash", "sh"].includes(words[0])) words.shift();
+  if (words.length === 0) return false;
   try {
     const cwd = realpathSync(resolve(context?.cwd ?? authority.root));
     if (cwd !== authority.root) return false;
-    const hook = command.match(CONTROL_HOOK);
-    if (hook === null) return false;
-    if (
-      hook[1] === "active-run"
-      && !ACTIVE_RUN_INTAKE_COMMANDS.has(hook[2] ?? "")
-    ) {
-      return false;
+    const hookName = canonicalHook(authority, cwd, words.shift());
+    if (!Object.hasOwn(PRE_INTAKE_HOOK_ACTIONS, hookName ?? "")) return false;
+    const actions = PRE_INTAKE_HOOK_ACTIONS[hookName];
+    if (actions !== null && !actions.has(words[0] ?? "")) return false;
+    if (hookName === "memory-router" && words[0] === "provider") {
+      if (!["status", "health", "prefetch"].includes(words[1] ?? "")) return false;
     }
-    if (
-      hook[1] === "workspace-preflight"
-      && !WORKSPACE_PREFLIGHT_INTAKE_COMMANDS.has(hook[2] ?? "")
-    ) {
-      return false;
-    }
-    const roots = [...command.matchAll(ROOT_OPTION)].map(
-      (match) => match[1] ?? match[2] ?? match[3],
-    );
-    if (roots.length !== [...command.matchAll(ROOT_MENTION)].length) return false;
-    for (const supplied of roots) {
-      const target = resolve(cwd, supplied);
-      if (target !== authority.root || realpathSync(target) !== authority.root) {
-        return false;
+    if (words.some((word) => word.includes("$"))) return false;
+    for (let index = 0; index < words.length; index += 1) {
+      const word = words[index];
+      if (word === "--root") {
+        if (words[index + 1] !== authority.root) return false;
+        index += 1;
+        continue;
       }
+      if (word.startsWith("--root=")) {
+        if (word.slice(7) !== authority.root) return false;
+        continue;
+      }
+      if (word.startsWith("--root")) return false;
+      const value = word;
+      if (isAbsolute(value) && !inside(authority.root, resolve(value))) return false;
+      if (
+        value.startsWith(".kimiflow/")
+        && state.run !== null
+        && value !== state.run
+        && !value.startsWith(`${state.run}/`)
+        && !value.startsWith(".kimiflow/project/")
+      ) return false;
     }
     return true;
   } catch {
@@ -577,14 +653,14 @@ export function createPreIntakeGuard(authority, {
     if (toolName === "bash" || toolName === "shell") {
       const command = event?.input?.command ?? event?.arguments?.command;
       if (
-        trustedControlCommand(authority, context, command)
+        trustedControlCommand(authority, state, context, command)
         || trustedReadOnlyGitCommand(authority, context, command)
       ) {
         return undefined;
       }
       return {
         block: true,
-        reason: "Kimiflow intake is not confirmed. Use Pi read/find/grep/ls, one exact read-only Git command, or an exact Kimiflow intake control command.",
+        reason: "Kimiflow intake is not confirmed. Use native Pi read/find/grep/glob/ls, one documented exact Git preflight command, or a canonical Kimiflow setup/research hook.",
       };
     }
     if (WRITE_TOOLS.has(toolName)) {

@@ -224,6 +224,58 @@ test("pre-intake guard permits only reads, trusted control, and current run arti
   }
 });
 
+test("pre-intake guard accepts canonical installed Phase 0 and research hooks", async () => {
+  const value = authority();
+  const run = ".kimiflow/run-7-2-fixture";
+  const guard = createPreIntakeGuard(value, {
+    getIntakeState: () => ({ state: "intake", run }),
+  });
+  const context = { cwd: value.root };
+  const hookRoot = path.dirname(value.activeRun);
+  const command = (name, args) => `'${path.join(hookRoot, `${name}.sh`)}' ${args}`;
+  for (const current of [
+    command("resolve-verbosity", "get"),
+    command("workspace-preflight", "status --pretty"),
+    command("workspace-preflight", `route --run ${run} --write --pretty`),
+    command("adaptive-control", `classify --run ${run} --write`),
+    command("adaptive-control", `contract --run ${run} --stage plan`),
+    command("active-run", `status --root '${value.root}'`),
+    command("active-run", `refresh-baseline --run ${run} --workspace-disposition --write`),
+    command("working-tree-gate", `--root '${value.root}'`),
+    command("frontend-quality-gate", `${run} --record-start --write`),
+    command("project-map-status", "coverage --affected src/app.js"),
+    command("codebase-basis", `create --run ${run} --write`),
+    command("current-state-gate", `assess --input ${run}/INTENT.md`),
+    command("suggest-affected-sections", `--intent ${run}/INTENT.md`),
+    command("memory-router", "status --pretty"),
+    "$KIMIFLOW_PLUGIN_ROOT/hooks/resolve-verbosity.sh get",
+    "git ls-files hooks",
+  ]) {
+    assert.equal(await guard({ toolName: "bash", input: { command: current } }, context), undefined, current);
+  }
+
+  for (const blocked of [
+    command("workspace-preflight", `integrate --run ${run}`),
+    command("active-run", `abort --run ${run}`),
+    command("memory-router", "provider configure"),
+    command("codebase-basis", "create --run .kimiflow/another-run --write"),
+    "grep -n setup phases/phase-0-setup.md",
+  ]) {
+    assert.equal((await guard({ toolName: "bash", input: { command: blocked } }, context)).block, true, blocked);
+  }
+});
+
+test("every phase helper resolves from the canonical plugin hook root", () => {
+  const hookRoot = path.dirname(authority().activeRun);
+  const phaseRoot = path.join(process.cwd(), "phases");
+  for (const name of readdirSync(phaseRoot).filter((item) => item.endsWith(".md"))) {
+    const text = readFileSync(path.join(phaseRoot, name), "utf8");
+    for (const match of text.matchAll(/hooks\/([a-z0-9-]+\.sh)/g)) {
+      assert.equal(existsSync(path.join(hookRoot, match[1])), true, `${name}: ${match[1]}`);
+    }
+  }
+});
+
 test("pre-intake bootstrap is bounded and confirmed intake releases normal tools", async () => {
   const value = authority();
   const bootstrap = createPreIntakeGuard(value, {

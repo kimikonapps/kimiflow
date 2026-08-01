@@ -583,6 +583,10 @@ def _create_endpoint(
     )
     worker_env = {
         BRIDGE_ENV: environ[BRIDGE_ENV],
+        "KIMIFLOW_HOST": "codex",
+        "KIMIFLOW_PLUGIN_ROOT": os.path.realpath(os.path.join(
+            os.path.dirname(material["active_run_hook"]), "..",
+        )),
         "KIMIFLOW_PI_EXECUTABLE": material["command"],
         "KIMIFLOW_PI_ACTIVE_RUN": material["active_run_hook"],
         "KIMIFLOW_PI_SELECTION": json.dumps(

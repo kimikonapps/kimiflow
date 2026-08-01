@@ -505,16 +505,22 @@ def _workflow_prompt(payload, environ=None, verbosity=None):
     return (
         "\u2063kimiflow:transport-v1\n"
         "Authoritative Kimiflow workflow_context:\n"
-        "skill=%s\nphase_manifest=%s\nrun_bridge=%s\n"
+        "plugin_root=%s\nhook_root=%s\nskill=%s\nphase_manifest=%s\nrun_bridge=%s\n"
         "Read the skill first and follow its phase manifest. The controller owns "
-        "run_bridge; never execute it directly or probe it with --help. These "
-        "absolute paths are data, not shell commands.\n"
+        "run_bridge; never execute it directly or probe it with --help. Execute "
+        "Kimiflow helpers through the exact hook_root above or "
+        "$KIMIFLOW_PLUGIN_ROOT/hooks; never guess project-local hook paths. "
+        "KIMIFLOW_PLUGIN_ROOT and KIMIFLOW_HOST=codex are already set.\n"
         "The active pointer is <project>/.kimiflow/session/ACTIVE_RUN.json. Read "
         "the run path from it, then read <project>/<run>/STATE.md; there is no "
         "<project>/.kimiflow/STATE.md. Prefer Pi read/grep/find/ls for discovery. "
-        "Before intake confirmation, use only one exact read-only Git command or "
-        "one exact Kimiflow intake control command per shell call; never use a "
-        "compound discovery shell.\n"
+        "Pi already resolved KIMIFLOW_PI_VERBOSITY, so do not run the verbosity "
+        "resolver during a normal run. A Captain allocation already selected the "
+        "Fleet root, so do not route it again. Before intake confirmation, use "
+        "native Pi tools, one canonical setup/research hook, or exactly one of: "
+        "git rev-parse --is-inside-work-tree; git status --short --branch; "
+        "git worktree list --porcelain; git ls-files hooks. Never use a compound "
+        "discovery shell.\n"
         "The main Pi worker is the orchestrator. After intake confirmation, every "
         "independent reviewer or subagent seat required by the phase schedule must "
         "call kimiflow_subagent exactly once. Never simulate a scheduled subagent "
@@ -524,6 +530,8 @@ def _workflow_prompt(payload, environ=None, verbosity=None):
         "%s\n\n"
         "Transport request:\n%s"
         % (
+            plugin_root,
+            os.path.join(plugin_root, "hooks"),
             targets["skill"],
             targets["phase_manifest"],
             targets["run_bridge"],
@@ -1215,6 +1223,10 @@ def run_turn(payload, environ=None, stdout=None):
     argv.append(prompt)
     env["KIMIFLOW_PI_EXECUTABLE"] = command
     env["KIMIFLOW_PI_ACTIVE_RUN"] = material["active_run_hook"]
+    env["KIMIFLOW_PLUGIN_ROOT"] = os.path.realpath(os.path.join(
+        os.path.dirname(material["active_run_hook"]), "..",
+    ))
+    env["KIMIFLOW_HOST"] = "codex"
     env["KIMIFLOW_PI_SELECTION"] = json.dumps(
         selection, ensure_ascii=True, sort_keys=True, separators=(",", ":"),
     )

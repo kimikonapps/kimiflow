@@ -16,6 +16,7 @@ from .paths import RootResolutionError, resolve_root
 
 RECEIPT_RELATIVE = ".kimiflow/session/HEADLESS_RUN.json"
 MAX_RECEIPT_BYTES = 64 * 1024
+MAX_PROJECT_PLAN_BYTES = 48 * 1024
 PI_BRIDGE_ENV = "KIMIFLOW_PI_BRIDGE_BINDING"
 PI_START_CLAIM_ENV = "KIMIFLOW_PI_START_CLAIM"
 PI_START_CLAIM_NAME = "PI-BRIDGE-START-CLAIM"
@@ -385,16 +386,39 @@ def _initial_prompt(task, workflow_aware=False):
     )
 
 
-def _project_plan_for_task(root, task):
+def _run_number(task, run=None):
     match = re.search(
         r"\b(?:run|lauf)\s+([0-9]+(?:\.[0-9]+)?)\b",
         task,
         flags=re.IGNORECASE,
     )
-    if match is None:
+    if match is not None:
+        return match.group(1)
+    run_match = re.match(
+        r"^\.kimiflow/run-([0-9]+)(?:-([0-9]+))?(?:-|$)",
+        run or "",
+        flags=re.IGNORECASE,
+    )
+    if run_match is None:
         return None
-    run_number = match.group(1)
-    project = os.path.join(root, ".kimiflow", "project")
+    return run_match.group(1) + (
+        "." + run_match.group(2) if run_match.group(2) is not None else ""
+    )
+
+
+def _project_plan_for_task(root, task, run=None):
+    run_number = _run_number(task, run)
+    if run_number is None:
+        return None
+    try:
+        primary = os.path.realpath(workspace_preflight.worktree_records(root)[0]["path"])
+    except (OSError, KeyError, IndexError, workspace_preflight.WorkspaceError) as exc:
+        raise RunnerError(
+            "project_plan_unavailable",
+            "cannot resolve the primary Kimiflow project checkout: %s" % exc,
+            2,
+        )
+    project = os.path.join(primary, ".kimiflow", "project")
     try:
         names = os.listdir(project)
     except FileNotFoundError:
@@ -436,17 +460,45 @@ def _project_plan_for_task(root, task):
     return matches[0] if matches else None
 
 
-def _task_with_project_plan(root, task):
-    plan = _project_plan_for_task(root, task)
+def _project_plan_content(plan):
+    try:
+        info = os.stat(plan, follow_symlinks=False)
+        payload = security._read_regular_bytes(
+            plan, expected=info, maximum=MAX_PROJECT_PLAN_BYTES,
+        )
+        content = payload.decode("utf-8", "strict")
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise RunnerError(
+            "project_plan_unavailable",
+            "cannot read Kimiflow project plan safely: %s" % exc,
+            2,
+        )
+    if "\0" in content:
+        raise RunnerError(
+            "project_plan_unavailable",
+            "Kimiflow project plan contains invalid text",
+            2,
+        )
+    return content, "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def _task_with_project_plan(root, task, run=None):
+    if task.startswith("Authoritative existing Kimiflow project plan ("):
+        return task
+    plan = _project_plan_for_task(root, task, run=run)
     if plan is None:
         return task
+    content, digest = _project_plan_content(plan)
+    boundary = "" if content.endswith("\n") else "\n"
     return (
-        "Authoritative existing Kimiflow project plan: %s\n"
+        "Authoritative existing Kimiflow project plan (source=%s digest=%s):\n"
+        "--- BEGIN EXACT PROJECT PLAN ---\n%s%s"
+        "--- END EXACT PROJECT PLAN ---\n"
         "Treat this plan as the confirmed scope for this run. Read it before "
         "planning, do not create a generic replacement intake, and do not "
         "re-ask facts already confirmed there. Ask only if a genuinely material "
         "decision is still absent.\n\nOriginal request:\n%s"
-        % (plan, task.strip())
+        % (os.path.basename(plan), digest, content, boundary, task.strip())
     )
 
 
@@ -1321,6 +1373,12 @@ def _resume_task(root, message=None, adapter=None):
         prompt = _continuation_prompt(current)
     else:
         raise RunnerError("active_run_missing", "resumable receipt has no matching active run", 1)
+    if user_message is None:
+        prompt = _task_with_project_plan(
+            root,
+            prompt,
+            run=current.get("run") or receipt.get("active_run"),
+        )
     baseline = _outcome_fingerprints(root)
     updates = {}
     if receipt.get("status") == "exhausted":

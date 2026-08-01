@@ -307,7 +307,9 @@ class RunnerTests(unittest.TestCase):
         adapter = FakeAdapter(start_action=lambda: self.write_active(awaiting=True))
         runner.run_task(self.root, "Starte Kimiflow Run 7.", adapter=adapter)
         prompt = adapter.starts[0][1]
-        self.assertIn(os.path.realpath(run7), prompt)
+        self.assertIn("source=RUN-7-EXECUTABLE-EVIDENCE-PLAN.md", prompt)
+        self.assertIn("# Run 7\n", prompt)
+        self.assertNotIn(os.path.realpath(run7), prompt)
         self.assertNotIn(os.path.realpath(run72), prompt)
         self.assertIn("do not create a generic replacement intake", prompt)
 
@@ -326,6 +328,41 @@ class RunnerTests(unittest.TestCase):
                 handle.write("# duplicate\n")
         with self.assertRaisesRegex(runner.RunnerError, "multiple exact"):
             runner._project_plan_for_task(self.root, "Run 7")
+
+    def test_fleet_worktree_receives_the_exact_primary_project_plan(self):
+        project = os.path.join(self.root, ".kimiflow", "project")
+        os.makedirs(project)
+        plan = os.path.join(project, "RUN-7.2-MODEL-DIVERSITY-PLAN.md")
+        content = "# Confirmed Run 7.2\n\nExact product scope.\n"
+        with open(plan, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        worker = tempfile.mkdtemp(prefix="kimiflow-runner-worktree-")
+        os.rmdir(worker)
+        subprocess.run(
+            ["git", "-C", self.root, "worktree", "add", "-q", "-b", "worker-plan", worker],
+            check=True,
+        )
+        try:
+            self.assertFalse(os.path.exists(os.path.join(worker, ".kimiflow", "project")))
+            self.assertEqual(
+                runner._project_plan_for_task(worker, "setze Run 7.2 fort"),
+                os.path.realpath(plan),
+            )
+            prompt = runner._task_with_project_plan(
+                worker,
+                "Continue mechanically",
+                run=".kimiflow/run-7-2-truthful-model-diversity",
+            )
+            self.assertIn(content, prompt)
+            self.assertIn("source=RUN-7.2-MODEL-DIVERSITY-PLAN.md", prompt)
+            self.assertNotIn(os.path.realpath(plan), prompt)
+        finally:
+            subprocess.run(
+                ["git", "-C", self.root, "worktree", "remove", "--force", worker],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
     def test_pi_bridge_identity_is_persisted_and_required_for_resume(self):
         binding = {
