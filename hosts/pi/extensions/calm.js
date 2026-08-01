@@ -8,7 +8,7 @@ import {
   getKeybindings,
 } from "@earendil-works/pi-tui";
 
-const TRANSPORT_PREFIX = "\u2063kimiflow:transport-v1\n";
+const TRANSPORT_PREFIX_FAMILY = "\u2063kimiflow:transport-";
 const ASSISTANT_PATCH = Symbol.for("kimiflow:calm-assistant-layout:pi-0.83");
 const USER_PATCH = Symbol.for("kimiflow:calm-user-layout:pi-0.83");
 const TOOL_PATCH = Symbol.for("kimiflow:calm-operational-tools:pi-0.83");
@@ -60,7 +60,7 @@ function installOperationalToolLayout() {
 }
 
 export function operationalInput(text) {
-  return typeof text === "string" && text.startsWith(TRANSPORT_PREFIX);
+  return typeof text === "string" && text.startsWith(TRANSPORT_PREFIX_FAMILY);
 }
 
 function textOnly(content) {

@@ -5,19 +5,19 @@
       "bytes": 511,
       "mode": "0644",
       "path": ".claude-plugin/plugin.json",
-      "sha256": "sha256:5d05468d8211c19804fb9eea384ec0572e10c28c889b7554282fd0a6efd1862a"
+      "sha256": "sha256:e9c645bf157ff5146666eedca0e7809010a55c7427db1f70bc89d89c3ad9e258"
     },
     {
       "bytes": 3614,
       "mode": "0644",
       "path": ".codex-plugin/plugin.json",
-      "sha256": "sha256:582c0fc2342361225ee99ef2d6fd77cea8e035055d5e15c229991148cd3b371e"
+      "sha256": "sha256:407dc48dbec959a3c945d9a7feca021908e4d42cceeaf0452f1b133f12915858"
     },
     {
       "bytes": 22118,
       "mode": "0644",
       "path": "COMPATIBILITY.md",
-      "sha256": "sha256:07a2bcacf7e4717e84fb2e6f3366d084fdbd07bf274370a71058dbfa0bc41097"
+      "sha256": "sha256:b283d51af3fa9f54023b35f7607b486e87868b942859fc93af8f275876ad8d62"
     },
     {
       "bytes": 1064,
@@ -872,10 +872,10 @@
       "sha256": "sha256:69b1dd90595aecb844c9473889a41c65df9cc01a3005719e2cd8d0bb41dddba2"
     },
     {
-      "bytes": 8925,
+      "bytes": 8935,
       "mode": "0644",
       "path": "hosts/pi/extensions/calm.js",
-      "sha256": "sha256:78d34e3dd4323d65638b1fc2dc8b8ab3c436fc4281586b0603a84978dd6f9e73"
+      "sha256": "sha256:84fd3a0bbe23300cb7ee56dd56561291dacf19080288efed0d1d2ddf7b6ad894"
     },
     {
       "bytes": 56771,
@@ -884,10 +884,10 @@
       "sha256": "sha256:6eb5aed1178e672a1f11e510ca26b2ccf2a5d47ba2d13aa1985ffb0a3df0a7e8"
     },
     {
-      "bytes": 40283,
+      "bytes": 40815,
       "mode": "0644",
       "path": "hosts/pi/extensions/worker.js",
-      "sha256": "sha256:40d37e85bd2ade9383f2867286097aecc2e0410987925cbee4b90358a4fbff9b"
+      "sha256": "sha256:2985e4cd3d0d046ba8de954a51d48653544a433da2eb0445b4d0bb57c25e34e6"
     },
     {
       "bytes": 2218,
@@ -899,7 +899,7 @@
       "bytes": 407,
       "mode": "0644",
       "path": "package.json",
-      "sha256": "sha256:4c9dfb9ea7f3e48a071c9799f5d51bdb01eb25ad40fdbef9579253a3e476245e"
+      "sha256": "sha256:07a0a227fb8b28ba9b86ea9db710018fde539dc31d4482d87df7bdd1544e9f1c"
     },
     {
       "bytes": 8943,
@@ -1100,6 +1100,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:c8907937ab300a4d7c9d3959818c626dc6697269a912f9a3e21c994300caa91d",
+  "runtime_fingerprint": "sha256:3dcfb4dd1f5844ff669194316a212df526c1fdc39e992f417b896619fc887304",
   "schema_version": 1
 }

@@ -125,10 +125,12 @@ env.update({
     "KIMIFLOW_SESSION_HOST": "pi",
     "KIMIFLOW_SESSION_ID": session,
 })
+prefix = "\u2063kimiflow:transport-v1\n"
+header = "Authoritative Kimiflow workflow_context:"
 delimiter = "\n\nTransport request:\n"
-if delimiter not in args[-1]:
+if not args[-1].startswith(prefix + header) or delimiter not in args[-1]:
     raise RuntimeError("Kimiflow transport wrapper is missing")
-transport_prompt = args[-1].split(delimiter, 1)[1]
+transport_prompt = args[-1][len(prefix):].split(delimiter, 1)[1]
 
 try:
     if "--prompt" in args or "--extension" not in args or "--no-extensions" not in args:

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { spawn as spawnProcess } from "node:child_process";
+import { spawn as spawnProcess, spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import {
   existsSync,
@@ -1021,20 +1021,33 @@ test("before_agent_start forwards the exact Pi prompt to Active Run", async () =
     child.kill = () => true;
     return child;
   };
+  const userPrompt = [
+    "Use the current answer.",
+    "",
+    "Transport request:",
+    "Keep this embedded marker too.",
+  ].join("\n");
+  const generated = spawnSync("python3", [
+    "-c",
+    [
+      "import os, sys",
+      "from kimiflow_core import model_adapter, pi_host",
+      "payload = {'root': os.getcwd(), 'prompt': sys.argv[1], 'workflow_context': model_adapter.workflow_context()}",
+      "sys.stdout.write(pi_host._workflow_prompt(payload, verbosity='quiet'))",
+    ].join("; "),
+    userPrompt,
+  ], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      PYTHONPATH: path.join(process.cwd(), "hooks"),
+    },
+    encoding: "utf8",
+  });
+  assert.equal(generated.status, 0, generated.stderr);
   const result = await forwardPromptContext(
     authority(),
-    {
-      prompt: [
-        "Authoritative Kimiflow workflow_context:",
-        "skill=/plugin/SKILL.md",
-        "",
-        "Transport request:",
-        "Use the current answer.",
-        "",
-        "Transport request:",
-        "Keep this embedded marker too.",
-      ].join("\n"),
-    },
+    { prompt: generated.stdout },
     { sessionId: "pi-worker-00000001" },
     hookSpawn,
   );
@@ -1044,14 +1057,36 @@ test("before_agent_start forwards the exact Pi prompt to Active Run", async () =
   assert.deepEqual(calls[0].payload, {
     cwd: process.cwd(),
     session_id: "pi-worker-00000001",
-    prompt: [
-      "Use the current answer.",
-      "",
-      "Transport request:",
-      "Keep this embedded marker too.",
-    ].join("\n"),
+    prompt: userPrompt,
   });
   assert.equal(result.message.content, "Kimiflow intake resumed.");
+
+  await forwardPromptContext(
+    authority(),
+    { prompt: "Vertrag bestätigen" },
+    { sessionId: "pi-worker-00000001" },
+    hookSpawn,
+  );
+  assert.equal(calls[1].payload.prompt, "Vertrag bestätigen");
+});
+
+test("before_agent_start rejects malformed or unsupported Kimiflow transport envelopes", async () => {
+  const prompts = [
+    "\u2063kimiflow:transport-v2\nAuthoritative Kimiflow workflow_context:\n\nTransport request:\nconfirmed",
+    "\u2063kimiflow:transport-v1\nTransport request:\nconfirmed",
+    "\u2063kimiflow:transport-v1\nAuthoritative Kimiflow workflow_context:\nconfirmed",
+  ];
+  for (const prompt of prompts) {
+    await assert.rejects(
+      async () => forwardPromptContext(
+        authority(),
+        { prompt },
+        { sessionId: "pi-worker-00000001" },
+        () => { throw new Error("must not spawn"); },
+      ),
+      /prompt_context_transport_(?:invalid|unsupported)/,
+    );
+  }
 });
 
 test("production registration is inert without bridge authority and exposes one bounded tool with it", (t) => {

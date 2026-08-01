@@ -6,6 +6,19 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.40
+
+The Pi Captain intake-delivery reliability patch.
+
+### Fixed
+
+- Pi workers now remove the exact internal Kimiflow transport envelope before forwarding a Captain reply to
+  Active Run, so an accepted final product contract writes its durable intake receipt instead of asking again.
+- Calm mode hides every reserved Kimiflow transport-envelope version while the worker rejects unsupported or
+  malformed versions explicitly, preventing internal transport text from leaking into the visible worker UI.
+- The Pi transport tests now exercise the real Python envelope generator against the real JavaScript worker
+  parser and verify the chat-to-final-contract receipt path, closing the test-double gap that missed this bug.
+
 ## 0.2.39
 
 The single-authority Pi lifecycle simplification release.

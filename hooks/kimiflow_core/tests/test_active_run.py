@@ -219,6 +219,51 @@ class ActiveRunContractTests(unittest.TestCase):
         self.assertEqual(receipt["action"], "confirmed")
         self.assertEqual(receipt["stage"], "final")
 
+    def test_pi_chat_prompt_records_the_final_contract_receipt(self):
+        run_rel = ".kimiflow/schema2-pi-chat"
+        run_dir = os.path.join(self.root, run_rel)
+        os.makedirs(run_dir)
+        scope = self.schema2_scope()
+        final = self.schema2_final()
+        with open(os.path.join(run_dir, "INTAKE.md"), "w", encoding="utf-8") as handle:
+            handle.write(scope)
+        scope_intake = active_run.parse_intake_document(scope, 4, 1, "de")
+        with open(os.path.join(run_dir, "INTAKE-RECEIPT-1.json"), "w", encoding="utf-8") as handle:
+            json.dump({
+                "schema_version": 2,
+                "contract": 4,
+                "round": 1,
+                "stage": "scope",
+                "action": "scope_ready",
+                "request": "INTAKE.md",
+                "request_digest": "sha256:" + hashlib.sha256(scope.encode("utf-8")).hexdigest(),
+                "contract_digest": active_run.structured_intake_digest(scope_intake),
+                "user_language": "de",
+                "channel": "chat",
+                "responded_at": "2026-07-31T12:00:00Z",
+            }, handle)
+        with open(os.path.join(run_dir, "INTAKE-2.md"), "w", encoding="utf-8") as handle:
+            handle.write(final)
+        active = self.schema2_active(run_rel, 2, final)
+        active["host"] = "pi"
+        active["owner"] = {"host": "pi", "session_id": "pi-worker-00000001"}
+        active_run.write_active(self.root, active)
+
+        payload = json.dumps({
+            "cwd": self.root,
+            "session_id": "pi-worker-00000001",
+            "prompt": "Vertrag bestätigen",
+        })
+        with mock.patch.dict(os.environ, {"KIMIFLOW_HOST": "pi"}):
+            rc, _ = run_main(["prompt-context"], stdin_text=payload)
+
+        self.assertEqual(rc, 0)
+        self.assertFalse(active_run.load_active(self.root).get("awaiting_user", False))
+        with open(os.path.join(run_dir, "INTAKE-RECEIPT-2.json"), encoding="utf-8") as handle:
+            receipt = json.load(handle)
+        self.assertEqual(receipt["action"], "confirmed")
+        self.assertEqual(receipt["channel"], "chat")
+
     def test_contract4_schema2_rejects_language_drift(self):
         run_rel = ".kimiflow/schema2-language"
         run_dir = os.path.join(self.root, run_rel)

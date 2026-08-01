@@ -29,6 +29,10 @@ import { TextDecoder } from "node:util";
 const IDENTITY = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
 const WORKER = /^[A-Za-z0-9][A-Za-z0-9._-]{7,63}$/;
 const RUN = /^\.kimiflow\/(?!session(?:\/|$))(?!.*\/\.\.(?:\/|$))[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$/;
+const TRANSPORT_PREFIX = "\u2063kimiflow:transport-v1\n";
+const TRANSPORT_PREFIX_FAMILY = "\u2063kimiflow:transport-";
+const WORKFLOW_CONTEXT_HEADER = "Authoritative Kimiflow workflow_context:";
+const TRANSPORT_REQUEST_DELIMITER = "\n\nTransport request:\n";
 const INTENT_DIGEST = /^sha256:[0-9a-f]{64}$/;
 const BRIDGE_ENV = "KIMIFLOW_PI_BRIDGE_BINDING";
 const ACTIVE_RUN_ENV = "KIMIFLOW_PI_ACTIVE_RUN";
@@ -1173,14 +1177,18 @@ export function forwardPromptContext(
       ?? context?.sessionId,
     "worker_session",
   );
-  const wrapper = "Authoritative Kimiflow workflow_context:";
-  const delimiter = "\n\nTransport request:\n";
   let prompt = event?.prompt;
-  if (typeof prompt === "string" && prompt.startsWith(wrapper)) {
-    const boundary = prompt.indexOf(delimiter);
-    if (boundary >= 0) {
-      prompt = prompt.slice(boundary + delimiter.length);
+  if (typeof prompt === "string" && prompt.startsWith(TRANSPORT_PREFIX_FAMILY)) {
+    if (!prompt.startsWith(TRANSPORT_PREFIX)) {
+      throw new Error("prompt_context_transport_unsupported");
     }
+    prompt = prompt.slice(TRANSPORT_PREFIX.length);
+    if (!prompt.startsWith(WORKFLOW_CONTEXT_HEADER)) {
+      throw new Error("prompt_context_transport_invalid");
+    }
+    const boundary = prompt.indexOf(TRANSPORT_REQUEST_DELIMITER);
+    if (boundary < 0) throw new Error("prompt_context_transport_invalid");
+    prompt = prompt.slice(boundary + TRANSPORT_REQUEST_DELIMITER.length);
   }
   if (typeof prompt !== "string" || Buffer.byteLength(prompt, "utf8") > MAX_TASK_BYTES) {
     throw new Error("prompt_context_invalid");

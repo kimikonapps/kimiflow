@@ -91,6 +91,10 @@ assert.equal(
   operationalInput("\\u2063kimiflow:transport-v1\\nrequest"),
   true,
 );
+assert.equal(
+  operationalInput("\\u2063kimiflow:transport-v2\\nrequest"),
+  true,
+);
 assert.equal(operationalInput("kimiflow:transport-v1\\nrequest"), false);
 
 const tools = [];
