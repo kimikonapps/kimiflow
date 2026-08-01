@@ -4,6 +4,10 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.42
+
 The Pi/Herdr intake, calm-mode, and visible-worker stability patch.
 
 ### Fixed
