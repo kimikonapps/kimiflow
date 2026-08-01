@@ -709,6 +709,28 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(result["status"], "done")
         self.assertIn("--resume demo", parked_resume.resumes[0][2])
 
+    def test_resume_is_running_only_after_the_adapter_session_is_reachable(self):
+        first = FakeAdapter(start_action=lambda: self.write_active(awaiting=True))
+        runner.run_task(self.root, "needs a choice", adapter=first)
+        observed = []
+
+        class ReachableAdapter(FakeAdapter):
+            def resume(inner, root, thread_id, prompt, on_thread):
+                observed.append(self.read_receipt()["status"])
+                on_thread(thread_id)
+                observed.append(self.read_receipt()["status"])
+                self.write_outcome("done")
+                return runner.TurnResult(returncode=0, thread_id=thread_id)
+
+        result = runner.resume_task(
+            self.root,
+            message="choose the safe path",
+            adapter=ReachableAdapter(),
+        )
+
+        self.assertEqual(observed, ["starting", "running"])
+        self.assertEqual(result["status"], "done")
+
     def test_interrupted_resume_preserves_explicit_captain_message(self):
         first = FakeAdapter(start_action=lambda: self.write_active(awaiting=True))
         runner.run_task(self.root, "needs a choice", adapter=first)

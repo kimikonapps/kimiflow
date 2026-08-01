@@ -57,7 +57,7 @@ function context(entries = [], overrides = {}) {
   };
 }
 
-function spawnFixture() {
+function spawnFixture(onSpawn = null) {
   const calls = [];
   let pid = 3000;
   const spawn = (file, args, options) => {
@@ -66,6 +66,7 @@ function spawnFixture() {
     child.unrefCount = 0;
     child.unref = () => { child.unrefCount += 1; };
     calls.push({ file, args, options, child });
+    onSpawn?.(child, calls.at(-1));
     queueMicrotask(() => child.emit("spawn"));
     return child;
   };
@@ -490,7 +491,11 @@ test("a new Captain safely adopts and resumes a dead Fleet runner", async () => 
     workerId: "worker-existing01",
   });
   const status = statusFixture(snapshot);
-  const spawned = spawnFixture();
+  const spawned = spawnFixture((child) => status.set(activeSnapshot({
+    status: "running",
+    controllerPid: child.pid,
+    workerId: "worker-existing01",
+  })));
   const adopted = [];
   const extension = createCaptainExtension({
     root: "/pkg",
@@ -519,7 +524,11 @@ test("a restored binding does not hide a dead runner behind its live Active Run"
     workerId: "worker-existing01",
   });
   const status = statusFixture(snapshot);
-  const spawned = spawnFixture();
+  const spawned = spawnFixture((child) => status.set(activeSnapshot({
+    status: "running",
+    controllerPid: child.pid,
+    workerId: "worker-existing01",
+  })));
   const adopted = [];
   const extension = createCaptainExtension({
     root: "/pkg",
@@ -553,6 +562,35 @@ test("a restored binding does not hide a dead runner behind its live Active Run"
   assert.equal(result.status, "recovered");
   assert.equal(adopted.length, 1);
   assert.equal(spawned.calls[0].args[0], "resume");
+});
+
+test("a stale runner receipt is never reported as recovered after handoff", async () => {
+  const snapshot = activeSnapshot({
+    status: "transport_error",
+    controllerPid: 99999999,
+    workerId: "worker-existing01",
+  });
+  const status = statusFixture(snapshot);
+  const spawned = spawnFixture();
+  const extension = createCaptainExtension({
+    root: "/pkg",
+    exec: status.exec,
+    spawn: spawned.spawn,
+    startClaims: {
+      acquire() { return { token: "claim-00000000000000000000000000000001" }; },
+      accepted() { return true; },
+      release() { return true; },
+    },
+    adoptWorker: async () => ({ workerId: "worker-existing01" }),
+    runnerReceiptTimeoutMs: 20,
+    runnerReceiptPollMs: 1,
+  });
+
+  await assert.rejects(
+    extension.activate("continue exact run", context()),
+    /kimiflow_runner_receipt_timeout/,
+  );
+  assert.equal(spawned.calls.length, 1);
 });
 
 test("a restored live binding does not block activation after its runner is terminal", async () => {

@@ -179,6 +179,19 @@ class PiProjectTests(unittest.TestCase):
         self.assertEqual(adopted["provider_session_id"], "provider-session-0001")
         self.assertEqual(current["bridge"]["captain_session_id"], "captain-session-new")
         self.assertEqual(current["session_id"], "provider-session-0001")
+
+        runner.write_receipt(self.repo, {
+            **current,
+            "status": "starting",
+            "controller_pid": 99999998,
+        })
+        restarted = pi_project.adopt(
+            self.repo,
+            "captain-session-after-start",
+            expected_captain_id="captain-session-new",
+            expected_worker_id="worker-00000001",
+        )
+        self.assertEqual(restarted["status"], "adopted")
         with self.assertRaises(pi_project.ProjectError):
             pi_project.adopt(
                 self.repo,

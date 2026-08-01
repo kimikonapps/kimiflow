@@ -35,8 +35,10 @@ const MIN_ATTENTION_POLL_MS = 250;
 const MAX_ATTENTION_POLL_MS = 30000;
 const SPAWN_ACCEPTANCE_MS = 250;
 const SPAWN_HANDOFF_TIMEOUT_MS = 5000;
+const RUNNER_RECEIPT_TIMEOUT_MS = 45000;
 const STALE_REAP_TIMEOUT_MS = 5000;
 const ACTIVE_RUNNER_STATES = new Set([
+  "starting",
   "running",
   "parked",
   "interrupted",
@@ -44,6 +46,7 @@ const ACTIVE_RUNNER_STATES = new Set([
   "exhausted",
 ]);
 const RESUMABLE_STATES = new Set([
+  "starting",
   "parked",
   "interrupted",
   "transport_error",
@@ -866,6 +869,8 @@ export function createCaptainExtension({
     run: null,
   }),
   adoptWorker = null,
+  runnerReceiptTimeoutMs = RUNNER_RECEIPT_TIMEOUT_MS,
+  runnerReceiptPollMs = 10,
 } = {}) {
   const runner = path.join(root, "hooks", "kimiflow-runner.sh");
   const piHost = path.join(root, "hooks", "pi-host.sh");
@@ -875,6 +880,39 @@ export function createCaptainExtension({
 
   async function runnerStatus(cwd) {
     return exec(runner, ["status", "--root", cwd], { cwd });
+  }
+
+  async function waitForRunnerReceipt(cwd, binding, controllerPid, requireIdentity) {
+    const deadline = Date.now() + runnerReceiptTimeoutMs;
+    while (true) {
+      const snapshot = await runnerStatus(cwd);
+      const receipt = snapshot?.runner;
+      const bridge = receipt?.bridge;
+      const exactController = receipt?.controller_pid === controllerPid;
+      const exactBridge = bridge?.schema_version === 1
+        && bridge.captain_session_id === binding.captainSessionId
+        && bridge.worker_id === binding.workerId;
+      if (exactController && exactBridge) {
+        if (snapshot.status === "starting") {
+          // The runner owns the start now, but the provider worker has not
+          // acknowledged a reachable session yet.
+        } else if (
+          snapshot.status === "running"
+          || snapshot.status === "awaiting_user"
+          || snapshot.status === "parked"
+        ) {
+          if (!requireIdentity || snapshotIdentity(snapshot, binding) !== null) {
+            return snapshot;
+          }
+        } else {
+          throw new Error("kimiflow_runner_start_failed");
+        }
+      }
+      if (Date.now() >= deadline) {
+        throw new Error("kimiflow_runner_receipt_timeout");
+      }
+      await new Promise((resolve) => setTimeout(resolve, runnerReceiptPollMs));
+    }
   }
 
   async function preflightPi(cwd) {
@@ -1071,6 +1109,7 @@ export function createCaptainExtension({
 
     let preparedRequest = request.trim();
     let resumeAfterAdoption = false;
+    let verifiedSpawn = false;
     async function adoptSnapshot() {
       if (typeof adoptWorker !== "function") {
         throw new Error("kimiflow_run_active");
@@ -1137,18 +1176,32 @@ export function createCaptainExtension({
           "--model", validated.modelSelection,
           "--require-feature", "structured_events",
         );
-        await spawnRunner(
+        const controllerPid = await spawnRunner(
           runnerArgs, validated.root, validated, startClaim,
         );
+        if (startClaim !== null || resumeAfterAdoption) {
+          snapshot = await waitForRunnerReceipt(
+            validated.root,
+            provisionalBinding(validated),
+            controllerPid,
+            resumeAfterAdoption,
+          );
+          verifiedSpawn = true;
+        }
       } catch (error) {
         startClaims.release(startClaim);
         throw error;
       }
     }
     const provisional = provisionalBinding(validated);
-    active = runnerIsActive(snapshot)
+    const bound = runnerIsActive(snapshot)
       ? bindSnapshot(provisional, snapshot)
-      : provisional;
+      : null;
+    active = bound ?? (
+      !runnerIsActive(snapshot) || (verifiedSpawn && !resumeAfterAdoption)
+        ? provisional
+        : null
+    );
     if (active === null) throw new Error("kimiflow_runner_identity_invalid");
     fleet.set(active.workerId, { ...active });
     return {

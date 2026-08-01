@@ -340,20 +340,30 @@ def _endpoint_pane(state, root, environ, require_settled=True):
         or pane.get("pane_id") != state["pane_id"]
         or pane.get("agent") != "pi"
         or os.path.realpath(pane.get("cwd", "")) != root
-        or (
-            expected_path is not None
-            and (
-                not isinstance(session, dict)
-                or session.get("kind") != "path"
-                or os.path.realpath(session.get("value", "")) != expected_path
-            )
-        )
     ):
         raise HerdrError(
             "herdr_endpoint_invalid",
             "The exact Kimiflow Herdr endpoint identity is invalid",
             1,
         )
+    if expected_path is not None:
+        if session is None:
+            raise HerdrError(
+                "herdr_endpoint_busy",
+                "The exact Kimiflow Herdr endpoint session is still settling",
+                1,
+            )
+        if (
+            not isinstance(session, dict)
+            or session.get("kind") != "path"
+            or not isinstance(session.get("value"), str)
+            or os.path.realpath(session["value"]) != expected_path
+        ):
+            raise HerdrError(
+                "herdr_endpoint_invalid",
+                "The exact Kimiflow Herdr endpoint session is invalid",
+                1,
+            )
     if require_settled and status_value not in SETTLED:
         raise HerdrError(
             "herdr_endpoint_busy",

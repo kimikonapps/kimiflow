@@ -221,6 +221,41 @@ class PiHerdrTests(unittest.TestCase):
         self.assertEqual(pane["agent_status"], "idle")
         sleep.assert_called_once_with(0.05)
 
+    def test_delayed_agent_session_is_settling_not_an_invalid_endpoint(self):
+        state = {
+            "root": self.root,
+            "session_id": self.session_id,
+            "workspace_id": "w2",
+            "tab_id": "w2:t2",
+            "pane_id": "w2:p2",
+            "session_path": os.path.realpath(self.session_path),
+        }
+        pane = {
+            "workspace_id": "w2",
+            "tab_id": "w2:t2",
+            "pane_id": "w2:p2",
+            "agent": "pi",
+            "agent_status": "idle",
+            "cwd": self.root,
+        }
+        settled = {
+            **pane,
+            "agent_session": {
+                "kind": "path",
+                "value": self.session_path,
+            },
+        }
+        with mock.patch.object(
+            pi_herdr,
+            "_pane",
+            side_effect=[pane, settled],
+        ), mock.patch.object(pi_herdr.time, "sleep") as sleep:
+            result = pi_herdr._wait_for_settled_endpoint(
+                state, self.root, self.environment, timeout=1,
+            )
+        self.assertEqual(result["agent_session"]["value"], self.session_path)
+        sleep.assert_called_once_with(0.05)
+
     def test_completed_prompt_keeps_visible_worker_on_correlation_error(self):
         state = {
             "root": self.root,

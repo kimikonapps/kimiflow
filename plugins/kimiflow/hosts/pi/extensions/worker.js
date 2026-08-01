@@ -429,6 +429,9 @@ function intakeState(authority) {
     const run = typeof active?.run === "string" && RUN.test(active.run)
       ? active.run
       : null;
+    if (run !== null && active?.mode === "fix") {
+      return { state: "confirmed", run };
+    }
     if (run === null || !INTENT_DIGEST.test(active?.intent_lock_digest ?? "")) {
       return { state: "intake", run };
     }

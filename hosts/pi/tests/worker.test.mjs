@@ -251,6 +251,44 @@ test("pre-intake bootstrap is bounded and confirmed intake releases normal tools
   }, { cwd: value.root }), undefined);
 });
 
+test("fix runs do not require the feature intent lock", async (t) => {
+  const root = path.resolve(mkdtempSync(path.join(tmpdir(), "kimiflow-pi-fix-intake-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(path.join(root, ".kimiflow/session"), { recursive: true });
+  writeFileSync(
+    path.join(root, ".kimiflow/session/ACTIVE_RUN.json"),
+    JSON.stringify({
+      schema_version: 1,
+      status: "active",
+      run: ".kimiflow/fix-herdr-resume",
+      mode: "fix",
+    }),
+  );
+  const guard = createPreIntakeGuard(authority(root));
+  assert.equal(await guard({
+    toolName: "bash",
+    input: { command: "npm test" },
+  }, { cwd: root }), undefined);
+  assert.equal(await guard({
+    toolName: "write",
+    input: { path: "src/fix.js" },
+  }, { cwd: root }), undefined);
+
+  writeFileSync(
+    path.join(root, ".kimiflow/session/ACTIVE_RUN.json"),
+    JSON.stringify({
+      schema_version: 1,
+      status: "active",
+      run: ".kimiflow/feature-herdr-resume",
+      mode: "feature",
+    }),
+  );
+  assert.equal((await guard({
+    toolName: "bash",
+    input: { command: "npm test" },
+  }, { cwd: root })).block, true);
+});
+
 test("pre-intake guard rejects run-directory aliases and exact hard links", async (t) => {
   const root = path.resolve(mkdtempSync(path.join(tmpdir(), "kimiflow-pi-intake-object-")));
   t.after(() => rmSync(root, { recursive: true, force: true }));

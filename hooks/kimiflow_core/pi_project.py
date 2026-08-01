@@ -406,7 +406,9 @@ def adopt(
     bridge = receipt.get("bridge")
     controller = receipt.get("controller_pid")
     if (
-        receipt.get("status") not in {"parked", "interrupted", "transport_error", "exhausted"}
+        receipt.get("status") not in {
+            "starting", "parked", "interrupted", "transport_error", "exhausted",
+        }
         or not isinstance(bridge, dict)
         or bridge.get("schema_version") != 1
         or WORKER_RE.fullmatch(bridge.get("worker_id", "")) is None

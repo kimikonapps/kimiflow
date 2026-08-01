@@ -24,7 +24,9 @@ DEFAULT_AUTONOMOUS_TURN_LIMIT = 48
 MAX_USAGE_V2_TURNS = 256
 TERMINAL_OUTCOMES = {"done", "parked", "failed", "aborted"}
 RESUMABLE_WAIT_STATES = {"awaiting_user", "parked"}
-RESUMABLE_STATES = RESUMABLE_WAIT_STATES | {"running", "interrupted", "transport_error", "exhausted"}
+RESUMABLE_STATES = RESUMABLE_WAIT_STATES | {
+    "starting", "running", "interrupted", "transport_error", "exhausted",
+}
 RECEIPT_STATES = RESUMABLE_STATES | {
     "done", "failed", "aborted", "ownership_conflict", "no_kimiflow_run"
 }
@@ -990,7 +992,10 @@ def _prepare_context_rollover(root, status, adapter):
 
 def _resume_adapter(root, status, adapter, session_id, prompt, on_session):
     _prepare_context_rollover(root, status, adapter)
-    return adapter.resume(root, session_id, prompt, on_session)
+    turn = adapter.resume(root, session_id, prompt, on_session)
+    if turn.returncode == 0 and turn.thread_id:
+        on_session(turn.thread_id)
+    return turn
 
 
 def _final_recovery_prompt(status):
@@ -1002,7 +1007,13 @@ def _final_recovery_prompt(status):
     )
 
 
-def _drive(root, adapter, receipt, turn, baseline, workflow_aware=False):
+def _drive(
+    root, adapter, receipt, turn, baseline, workflow_aware=False,
+    on_session=None,
+):
+    session_callback = on_session or (
+        lambda value: _ensure_same_thread(value, receipt["thread_id"])
+    )
     retries = 0
     while True:
         receipt = _update_receipt(
@@ -1081,10 +1092,11 @@ def _drive(root, adapter, receipt, turn, baseline, workflow_aware=False):
                         )
                         + "otherwise choose another safe in-scope strategy and continue autonomously."
                     ),
-                    lambda value: _ensure_same_thread(value, receipt["thread_id"]),
+                    session_callback,
                 )
             except KeyboardInterrupt:
                 return _record_interruption(root, receipt)
+            receipt = load_receipt(root)
             receipt = _update_receipt(
                 root, receipt, turns=receipt["turns"] + 1,
                 usage=_merge_usage(receipt.get("usage"), turn.usage, initialize=receipt["turns"] == 0),
@@ -1122,20 +1134,22 @@ def _drive(root, adapter, receipt, turn, baseline, workflow_aware=False):
                 try:
                     turn = _resume_adapter(
                         root, status, adapter, receipt["thread_id"], _final_recovery_prompt(status),
-                        lambda value: _ensure_same_thread(value, receipt["thread_id"]),
+                        session_callback,
                     )
                 except KeyboardInterrupt:
                     return _record_interruption(root, receipt)
+                receipt = load_receipt(root)
                 continue
             try:
                 turn = _resume_adapter(
                     root, status, adapter,
                     receipt["thread_id"],
                     _continuation_prompt(status),
-                    lambda value: _ensure_same_thread(value, receipt["thread_id"]),
+                    session_callback,
                 )
             except KeyboardInterrupt:
                 return _record_interruption(root, receipt)
+            receipt = load_receipt(root)
             continue
         outcome = _read_changed_outcome(root, baseline, receipt.get("active_run"))
         if outcome:
@@ -1271,7 +1285,9 @@ def _resume_task(root, message=None, adapter=None):
         prompt = _parked_resume_prompt(
             receipt.get("active_run") or "", message, workflow_aware=workflow_aware,
         )
-    elif receipt.get("status") in {"running", "interrupted", "transport_error"}:
+    elif receipt.get("status") in {
+        "starting", "running", "interrupted", "transport_error",
+    }:
         prompt = _interrupted_resume_prompt(workflow_aware=workflow_aware)
     elif receipt.get("status") == "exhausted" and current.get("present") is True:
         prompt = _continuation_prompt(current)
@@ -1288,20 +1304,39 @@ def _resume_task(root, message=None, adapter=None):
     receipt = _update_receipt(
         root,
         receipt,
-        "running",
+        "starting",
         controller_pid=os.getpid(),
         **updates,
     )
+
+    def reachable(value):
+        _ensure_same_thread(value, receipt["thread_id"])
+        current_receipt = dict(load_receipt(root))
+        if current_receipt.get("controller_pid") != os.getpid():
+            raise RunnerError(
+                "receipt_mismatch",
+                "runner receipt belongs to another controller",
+                1,
+            )
+        current_receipt.pop("error_code", None)
+        current_receipt.pop("diagnostic_code", None)
+        _update_receipt(root, current_receipt, "running")
+
     try:
         turn = _resume_adapter(
             root, current, adapter,
             receipt["thread_id"],
             prompt,
-            lambda value: _ensure_same_thread(value, receipt["thread_id"]),
+            reachable,
         )
     except KeyboardInterrupt:
         return _record_interruption(root, receipt)
-    return _drive(root, adapter, receipt, turn, baseline, workflow_aware=workflow_aware)
+    receipt = load_receipt(root)
+    return _drive(
+        root, adapter, receipt, turn, baseline,
+        workflow_aware=workflow_aware,
+        on_session=reachable,
+    )
 
 
 def runner_status(root):
