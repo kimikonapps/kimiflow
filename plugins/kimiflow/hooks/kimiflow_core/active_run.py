@@ -3036,6 +3036,45 @@ def cmd_pin_intent_lock(args):
     json_print({"status": "intent_lock_pinned", "written": opts["--write"] is True, "run": active["run"], "digest": opts["--digest"]}, opts["--pretty"])
 
 
+def repair_adjacent_phase_overlap(run_dir, phase):
+    """Repair only the common handoff error where two adjacent phases are active."""
+    try:
+        phase_number = int(phase)
+    except (TypeError, ValueError):
+        return False
+    if phase_number <= 0 or phase_number > 7:
+        return False
+    state_path = os.path.join(run_dir, "STATE.md")
+    values = []
+    for index in range(8):
+        rows = state.state_values(state_path, "Phase %d" % index)
+        if len(rows) != 1:
+            return False
+        values.append(rows[0].strip().lower().split(" ", 1)[0])
+    if values[phase_number - 1] != "in-progress" or values[phase_number] != "in-progress":
+        return False
+    if any(value not in {"done", "skipped"} for value in values[:phase_number - 1]):
+        return False
+    if any(value != "open" for value in values[phase_number + 1:]):
+        return False
+
+    output = []
+    replaced = 0
+    with open(state_path, "r", encoding="utf-8") as handle:
+        for raw in handle:
+            line = raw.rstrip("\n")
+            plain = state.normalize_state_line(line)
+            if re.match(r"^Phase[ \t]+%d:[ \t]*" % (phase_number - 1), plain):
+                output.append("Phase %d: done" % (phase_number - 1))
+                replaced += 1
+            else:
+                output.append(line)
+    if replaced != 1:
+        return False
+    atomic_write(state_path, "\n".join(output) + "\n", mode=0o600, refuse_symlink=True)
+    return True
+
+
 def cmd_phase_read(args):
     opts = parse_options(args, "phase-read", {"--root": "", "--run": "", "--phase": "", "--file": "", "--write": False, "--pretty": False})
     need_jq()
@@ -3051,9 +3090,11 @@ def cmd_phase_read(args):
         record = phase_reads.record_read(root, run_dir, opts["--phase"], opts["--file"], iso_now(), write=opts["--write"])
     except phase_reads.PhaseReadError as exc:
         die(str(exc), 2)
+    phase_progress_repaired = False
     shadow = {"status": "preview", "authoritative": False}
     rollover = {"schema_version": 1, "status": "preview", "user_gate": False}
     if opts["--write"]:
+        phase_progress_repaired = repair_adjacent_phase_overlap(run_dir, opts["--phase"])
         active = _active_for_run(root, rel_path(root, run_dir))
         previous_shadow = phase_context.load_stored_shadow(root, run_dir, active=active)
         try:
@@ -3093,6 +3134,7 @@ def cmd_phase_read(args):
         "written": opts["--write"] is True,
         "run": rel_path(root, run_dir),
         "record": record,
+        "phase_progress_repaired": phase_progress_repaired,
         "context_shadow": shadow,
         "context_rollover": rollover,
     }, opts["--pretty"])

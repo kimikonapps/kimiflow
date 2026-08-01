@@ -491,6 +491,27 @@ else
 fi
 rm "$PLUGIN/phases/phase-2.md"
 printf 'phase 2\n' > "$PLUGIN/phases/phase-2.md"
+
+reset_repo
+write_phase_manifest
+sed -i.bak \
+  -e 's/Phase 0: done/Phase 0: in-progress/' \
+  -e 's/Phase 1: done/Phase 1: in-progress/' \
+  -e 's/Phase 2: done/Phase 2: open/' \
+  -e 's/Phase 3: done/Phase 3: open/' \
+  -e 's/Phase 4: done/Phase 4: open/' \
+  -e 's/Phase 5: in-progress/Phase 5: open/' \
+  "$REPO/.kimiflow/demo/STATE.md" && rm "$REPO/.kimiflow/demo/STATE.md.bak"
+run_active start --run .kimiflow/demo --write >/dev/null
+out="$(run_active phase-read --run .kimiflow/demo --phase 1 --file phases/phase-1.md --write)"
+assert_jq "$out" '.phase_progress_repaired == true' "phase_read_repairs_adjacent_in_progress_handoff"
+grep -q '^Phase 0: done$' "$REPO/.kimiflow/demo/STATE.md" \
+  && pass "phase_read_closes_previous_phase" \
+  || fail "phase_read_closes_previous_phase"
+
+reset_repo
+write_phase_manifest
+run_active start --run .kimiflow/demo --write >/dev/null
 if run_active finish --write >/dev/null 2>&1; then
   fail "finish_blocks_missing_phase_reads"
 else

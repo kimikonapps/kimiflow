@@ -48,6 +48,22 @@ assert_eq "$(run)" "verbose" "test_global_fallback"
 reset; set_codex_global quiet
 assert_eq "$(run_codex)" "quiet" "test_codex_global_fallback"
 
+# --- AC-3b: linked Fleet worktree inherits the primary project setting ---
+reset
+GIT_MAIN="$WORK/git-main"
+GIT_LINKED="$WORK/git-linked"
+mkdir -p "$GIT_MAIN/.kimiflow"
+( cd "$GIT_MAIN" && git init -q && git config user.email test@example.test && git config user.name Test \
+  && printf 'tracked\n' > tracked.txt && git add tracked.txt && git commit -qm init )
+printf 'quiet\n' > "$GIT_MAIN/.kimiflow/verbosity"
+git -C "$GIT_MAIN" worktree add -q -b fleet-test "$GIT_LINKED"
+linked_level="$(cd "$GIT_LINKED" && HOME="$FAKE_HOME" CODEX_HOME="$FAKE_CODEX_HOME" KIMIFLOW_HOST=codex "$SCRIPT" get)"
+assert_eq "$linked_level" "quiet" "test_linked_worktree_inherits_primary_project"
+mkdir -p "$GIT_LINKED/.kimiflow"
+printf 'verbose\n' > "$GIT_LINKED/.kimiflow/verbosity"
+linked_override="$(cd "$GIT_LINKED" && HOME="$FAKE_HOME" CODEX_HOME="$FAKE_CODEX_HOME" KIMIFLOW_HOST=codex "$SCRIPT" get)"
+assert_eq "$linked_override" "verbose" "test_linked_worktree_override_wins"
+
 # --- AC-4: default balanced (nothing) ---
 reset
 assert_eq "$(run)" "balanced" "test_default_balanced"

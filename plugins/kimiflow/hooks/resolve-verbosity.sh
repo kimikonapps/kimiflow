@@ -9,7 +9,9 @@
 #   resolve-verbosity.sh onboard-check [--flag <level>] -> echo ASK iff nothing set anywhere, else SKIP
 #   resolve-verbosity.sh set <project|global> <level> -> validate, mkdir -p, write, verify, echo path
 #
-# Precedence (get): flag > project (.kimiflow/verbosity) > global host config > balanced
+# Precedence (get): flag > current worktree project > primary worktree project
+# > global host config > balanced. Linked Fleet worktrees intentionally inherit
+# the primary project's display preference when they do not override it.
 # Self-contained rule: only a single valid level word is ever read/written — a
 # gate/cost line placed in a file is not a valid level and is ignored.
 set -u
@@ -24,6 +26,18 @@ project_file() {
   local root
   root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
   printf '%s/.kimiflow/verbosity' "$root"
+}
+
+primary_project_file() {
+  local root common
+  root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 1
+  common="$(git rev-parse --git-common-dir 2>/dev/null)" || return 1
+  case "$common" in
+    /*) ;;
+    *) common="$root/$common" ;;
+  esac
+  common="$(cd "$common" 2>/dev/null && pwd -P)" || return 1
+  printf '%s/.kimiflow/verbosity' "${common%/.git}"
 }
 
 global_file() {
@@ -100,6 +114,10 @@ if [ -n "$flag" ]; then
   src="flag"; level="$flag"
 elif level="$(read_level "$(project_file)")"; then
   src="project"
+elif primary="$(primary_project_file 2>/dev/null)" \
+  && [ "$primary" != "$(project_file)" ] \
+  && level="$(read_level "$primary")"; then
+  src="primary-project"
 elif level="$(read_level "$(global_file)")"; then
   src="global"
 else

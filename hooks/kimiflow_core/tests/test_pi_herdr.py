@@ -401,6 +401,7 @@ class PiHerdrTests(unittest.TestCase):
 
     def test_implementation_role_is_write_capable(self):
         self.assertFalse(pi_herdr.SUBAGENT_ROLES["implementation"])
+        self.assertTrue(pi_herdr.SUBAGENT_ROLES["intent_critic"])
         self.assertTrue(pi_herdr.SUBAGENT_ROLES["code_review"])
 
     def test_exact_endpoint_close_never_guesses_another_tab(self):

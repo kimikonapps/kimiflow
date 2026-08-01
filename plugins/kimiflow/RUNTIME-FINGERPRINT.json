@@ -236,10 +236,10 @@
       "sha256": "sha256:0a7f95d4ea04bd64f22a08a92f1845d79cc05d220da8612179b369b17c68080e"
     },
     {
-      "bytes": 191917,
+      "bytes": 193580,
       "mode": "0644",
       "path": "hooks/kimiflow_core/active_run.py",
-      "sha256": "sha256:02db0221dbd0a9ae5837affaed0678beab5b35fcefca2244f62d6a929c2b34e9"
+      "sha256": "sha256:62eabd30425640a70ca24170f501ace284cef2ed426bf5e7900313e0b39312e3"
     },
     {
       "bytes": 11285,
@@ -356,16 +356,16 @@
       "sha256": "sha256:0fa9bf8578ac75f3233609182f38ca2c0e8d8dd89e7dabbe49ba9a1e05b431f5"
     },
     {
-      "bytes": 39026,
+      "bytes": 39089,
       "mode": "0644",
       "path": "hooks/kimiflow_core/pi_herdr.py",
-      "sha256": "sha256:f15949457c33f85c2a1467113319cd934e015184ac75f4a6e6a736e3bee2dbde"
+      "sha256": "sha256:c54823dfa4efcb6615e6c0e01fa83ba182511191296c5fa337d569f94d36b386"
     },
     {
-      "bytes": 53616,
+      "bytes": 54023,
       "mode": "0644",
       "path": "hooks/kimiflow_core/pi_host.py",
-      "sha256": "sha256:8f58c39865d1cfa9335fb9c045c5e0ea3c503d5e5fcea6538551cdda8346f876"
+      "sha256": "sha256:931d96f54f9678212385ddf01108c382b78d6ebcb6c6f46cfc068128cbccdb08"
     },
     {
       "bytes": 18600,
@@ -788,10 +788,10 @@
       "sha256": "sha256:4e8e4e3cb163e3c66fe59be313181d064881313fff0ccf64a1c9dd26e451c78d"
     },
     {
-      "bytes": 4047,
+      "bytes": 4721,
       "mode": "0755",
       "path": "hooks/resolve-verbosity.sh",
-      "sha256": "sha256:1ba9da60333614cd57132f63dc5e436907c5d2608e9d2f7f76e80f0d5cda7225"
+      "sha256": "sha256:22aedf4ba50d2b6597b81000c0909813572d330e539a534de249de7a87509dda"
     },
     {
       "bytes": 351,
@@ -884,10 +884,10 @@
       "sha256": "sha256:6eb5aed1178e672a1f11e510ca26b2ccf2a5d47ba2d13aa1985ffb0a3df0a7e8"
     },
     {
-      "bytes": 43491,
+      "bytes": 44398,
       "mode": "0644",
       "path": "hosts/pi/extensions/worker.js",
-      "sha256": "sha256:fce515701b64a88f9dd846d9591a81108c64bcd9808409e381c81631a9d2b087"
+      "sha256": "sha256:5b28edc235dc42171a3b280bc34da25a44851b760e4caacc966e96341c4550c9"
     },
     {
       "bytes": 2218,
@@ -914,10 +914,10 @@
       "sha256": "sha256:e9a04a55ea0d713ff21f2ef1e16e704898595a382c24ffbbb8515030fdaba346"
     },
     {
-      "bytes": 5254,
+      "bytes": 5640,
       "mode": "0644",
       "path": "phases/phase-1-clarify.md",
-      "sha256": "sha256:bf227a3acbffa6da5a6a3eeb6f2d88775d2707e1900286100805538f170ca325"
+      "sha256": "sha256:ae5f7d5385fcc80f1916be7450471ee0bb7dd4e1f0b33186da7c965fc52388d4"
     },
     {
       "bytes": 19716,
@@ -956,10 +956,10 @@
       "sha256": "sha256:1a118b3eede8a524844dda28c514ec244fd52813a5320f3c0cca29b908b4667d"
     },
     {
-      "bytes": 236096,
+      "bytes": 236219,
       "mode": "0644",
       "path": "reference.md",
-      "sha256": "sha256:947ea921d18ffece946bc43762859cb70c1c60e85b39bf5812f0a36bc24ce369"
+      "sha256": "sha256:714c48588b0ca13a8984fef9c1c839429d9cc00c5c32049eab5ac3a8d7fbe0fb"
     },
     {
       "bytes": 2024,
@@ -1100,6 +1100,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:dfda55d960c048710f3d3c7176d5a10fc06f4ab35cdc51453e0b45d24b48f3b9",
+  "runtime_fingerprint": "sha256:a0138f3f56a6eb879024ca565b360a1ae908322ab4f7443676164bac4ca5abc3",
   "schema_version": 1
 }

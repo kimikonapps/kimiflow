@@ -33,6 +33,7 @@ WORKER_RE = re.compile(r"^worker-[A-Za-z0-9]{8,64}$")
 HERDR_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{2,128}$")
 SUBAGENT_SEAT_RE = re.compile(r"^[a-z][a-z0-9-]{0,47}$")
 SUBAGENT_ROLES = {
+    "intent_critic": True,
     "research": True,
     "plan_review": True,
     "implementation": False,
@@ -1112,6 +1113,7 @@ def run_subagent(payload, environ, emit):
         prompt = "Kimiflow bounded %s subagent task (phase %s, round %s, seat %s):\n%s" % (
             payload["role"],
             {
+                "intent_critic": 1,
                 "research": 2,
                 "plan_review": 4,
                 "implementation": 5,

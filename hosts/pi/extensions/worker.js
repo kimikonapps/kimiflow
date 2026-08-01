@@ -50,12 +50,14 @@ const MAX_HOOK_OUTPUT = 64 * 1024;
 const RECEIPT_DIRECTORY = "PI-SUBAGENTS";
 const RECEIPT_ID = /^[a-z][a-z0-9-]{0,47}$/;
 const SUBAGENT_ROLES = Object.freeze({
+  intent_critic: Object.freeze({ phase: 1, readOnly: true }),
   research: Object.freeze({ phase: 2, readOnly: true }),
   plan_review: Object.freeze({ phase: 4, readOnly: true }),
   implementation: Object.freeze({ phase: 5, readOnly: false }),
   verification: Object.freeze({ phase: 6, readOnly: true }),
   code_review: Object.freeze({ phase: 7, readOnly: true }),
 });
+const PRE_INTAKE_SUBAGENT_ROLES = new Set(["intent_critic", "research"]);
 const BINDING_KEYS = [
   "schema_version",
   "root",
@@ -95,13 +97,13 @@ const PRE_INTAKE_HOOK_ACTIONS = Object.freeze({
   "launcher-status": null,
   "memory-router": new Set(["status", "recall", "standards", "provider"]),
   "project-map-status": new Set(["status", "coverage", "refresh", "index-symbols"]),
+  "reference-section": null,
   "resolve-verbosity": new Set(["get"]),
   "state-gate": null,
   "suggest-affected-sections": null,
   "working-tree-gate": null,
   "workspace-preflight": new Set(["status", "prune", "route", "write-gate"]),
 });
-const SAFE_CONTROL_COMMAND = /^[A-Za-z0-9._/@:=+,'"$\- ]+$/;
 const SAFE_READ_ONLY_GIT = new Set([
   "git rev-parse --is-inside-work-tree",
   "git status --short --branch",
@@ -109,7 +111,7 @@ const SAFE_READ_ONLY_GIT = new Set([
   "git ls-files hooks",
 ]);
 const PROTECTED_RUN_ARTIFACT = /^(?:INTENT-LOCK\.json|INTAKE-RECEIPT-[12]\.json)$/;
-const BOOTSTRAP_ARTIFACT = /^(?:STATE\.md|INTENT\.md|INTAKE(?:-2)?\.md|WORKSPACE-PREFLIGHT\.json|ADAPTIVE-CLASSIFICATION\.json)$/;
+const BOOTSTRAP_ARTIFACT = /^(?:STATE\.md|INTENT\.md|RESEARCH\.md|INTAKE(?:-2)?\.md|WORKSPACE-PREFLIGHT\.json|ADAPTIVE-CLASSIFICATION\.json)$/;
 
 // Pi loads this package without project-local dependencies. This is the
 // runtime shape produced by Type.Object({ task, role, round, seat }).
@@ -455,17 +457,20 @@ function intakeState(authority) {
     const run = typeof active?.run === "string" && RUN.test(active.run)
       ? active.run
       : null;
+    const workspaceDisposition = typeof active?.workspace_wait_used_at === "string"
+      && active.workspace_wait_used_at.length > 0;
     if (run !== null && active?.mode === "fix") {
-      return { state: "confirmed", run };
+      return { state: "confirmed", run, workspaceDisposition };
     }
     if (run === null || !INTENT_DIGEST.test(active?.intent_lock_digest ?? "")) {
-      return { state: "intake", run };
+      return { state: "intake", run, workspaceDisposition };
     }
     const lock = readFileSync(resolve(authority.root, run, "INTENT-LOCK.json"));
     const digest = `sha256:${createHash("sha256").update(lock).digest("hex")}`;
     return {
       state: digest === active.intent_lock_digest ? "confirmed" : "intake",
       run,
+      workspaceDisposition,
     };
   } catch {
     return { state: "intake", run: null };
@@ -524,7 +529,7 @@ function safeControlWords(command) {
     typeof command !== "string"
     || command.length === 0
     || command.length > 4096
-    || !SAFE_CONTROL_COMMAND.test(command)
+    || /[\0\r\n]/.test(command)
   ) return null;
   const words = [];
   let index = 0;
@@ -539,14 +544,16 @@ function safeControlWords(command) {
       if (end < 0 || (end + 1 < command.length && command[end + 1] !== " ")) {
         return null;
       }
-      words.push(command.slice(index + 1, end));
+      const word = command.slice(index + 1, end);
+      if (/[$`\\\x00-\x1f\x7f]/.test(word)) return null;
+      words.push(word);
       index = end + 1;
       continue;
     }
     let end = command.indexOf(" ", index);
     if (end < 0) end = command.length;
     const word = command.slice(index, end);
-    if (word.includes("'") || word.includes('"')) return null;
+    if (!/^[A-Za-z0-9._/@:=+,$-]+$/.test(word)) return null;
     words.push(word);
     index = end;
   }
@@ -583,6 +590,12 @@ function trustedControlCommand(authority, state, context, command) {
     if (!Object.hasOwn(PRE_INTAKE_HOOK_ACTIONS, hookName ?? "")) return false;
     const actions = PRE_INTAKE_HOOK_ACTIONS[hookName];
     if (actions !== null && !actions.has(words[0] ?? "")) return false;
+    if (
+      hookName === "active-run"
+      && words[0] === "refresh-baseline"
+      && words.includes("--workspace-disposition")
+      && state.workspaceDisposition !== true
+    ) return false;
     if (hookName === "memory-router" && words[0] === "provider") {
       if (!["status", "health", "prefetch"].includes(words[1] ?? "")) return false;
     }
@@ -650,6 +663,11 @@ export function createPreIntakeGuard(authority, {
     if (state.state === "confirmed") return undefined;
     const toolName = String(event?.toolName ?? event?.name ?? "").toLowerCase();
     if (READ_TOOLS.has(toolName)) return undefined;
+    if (
+      toolName === "kimiflow_subagent"
+      && state.run !== null
+      && PRE_INTAKE_SUBAGENT_ROLES.has(event?.input?.role ?? event?.arguments?.role)
+    ) return undefined;
     if (toolName === "bash" || toolName === "shell") {
       const command = event?.input?.command ?? event?.arguments?.command;
       if (
@@ -875,7 +893,9 @@ export function createSubagentReceiptWriter(
 ) {
   return (value) => {
     const active = normalizedIntakeState(getIntakeState());
-    if (active.state !== "confirmed" || active.run === null) {
+    const allowedPreIntake = active.state === "intake"
+      && PRE_INTAKE_SUBAGENT_ROLES.has(value?.role);
+    if ((active.state !== "confirmed" && !allowedPreIntake) || active.run === null) {
       throw new Error("subagent_receipt_run_invalid");
     }
     const runDirectory = resolve(authority.root, active.run);

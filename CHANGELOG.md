@@ -4,7 +4,20 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+The Pi/Herdr intake, calm-mode, and visible-worker stability patch.
+
+### Fixed
+
+- Calm/quiet mode now follows a Fleet worker into its linked worktree, so the visible worker tabs remain quiet
+  while the Captain session stays available for conversation.
+- Pi pre-intake permits the documented canonical setup and reference helpers, including safe absolute plugin
+  paths, while keeping unrelated shell discovery and mutating commands blocked.
+- Phase 1 now separates the discussion checkpoint from the one final contract confirmation, preventing an
+  already discussed run from presenting an intermediate scope step as another approval.
+- Large Pi runs now request a visible, read-only intent-critic worker before the final contract, with intake
+  receipts limited to explicitly safe research and intent-review roles.
+- Active Run repairs the narrow legacy state where two adjacent phases were both marked in progress, avoiding
+  false Phase-0/Phase-1 confirmation loops without rewriting unrelated run history.
 
 ## 0.2.41
 

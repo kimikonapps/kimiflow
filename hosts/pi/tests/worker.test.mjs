@@ -206,11 +206,23 @@ test("pre-intake guard permits only reads, trusted control, and current run arti
     toolName: "write",
     input: { path: ".kimiflow/run-6-fixture/INTAKE-2.md" },
   }, context), undefined);
+  assert.equal(await guard({
+    toolName: "write",
+    input: { path: ".kimiflow/run-6-fixture/RESEARCH.md" },
+  }, context), undefined);
+  for (const role of ["intent_critic", "research"]) {
+    assert.equal(await guard({
+      toolName: "kimiflow_subagent",
+      input: subagentRequest("inspect the bounded intake", { role }),
+    }, context), undefined);
+  }
 
   for (const event of [
     { toolName: "bash", input: { command: "npm test" } },
     { toolName: "bash", input: { command: "git status --short --branch; env" } },
     { toolName: "bash", input: { command: "git diff" } },
+    { toolName: "bash", input: { command: "git log -5 --oneline --decorate" } },
+    { toolName: "bash", input: { command: "env | grep '^PI_'" } },
     { toolName: "bash", input: { command: `hooks/active-run.sh abort --root '${value.root}'` } },
     { toolName: "bash", input: { command: "hooks/active-run.sh abort --root /tmp/project" } },
     { toolName: "bash", input: { command: "bash hooks/workspace-preflight.sh integrate --root=/tmp/project" } },
@@ -218,7 +230,7 @@ test("pre-intake guard permits only reads, trusted control, and current run arti
     { toolName: "write", input: { path: ".kimiflow/run-6-fixture/PLAN.md" } },
     { toolName: "write", input: { path: ".kimiflow/other-run/INTAKE.md" } },
     { toolName: "write", input: { path: ".kimiflow/run-6-fixture/INTENT-LOCK.json" } },
-    { toolName: "kimiflow_subagent", input: { task: "change the product" } },
+    { toolName: "kimiflow_subagent", input: subagentRequest("change the product", { role: "implementation" }) },
   ]) {
     assert.equal((await guard(event, context)).block, true);
   }
@@ -240,13 +252,13 @@ test("pre-intake guard accepts canonical installed Phase 0 and research hooks", 
     command("adaptive-control", `classify --run ${run} --write`),
     command("adaptive-control", `contract --run ${run} --stage plan`),
     command("active-run", `status --root '${value.root}'`),
-    command("active-run", `refresh-baseline --run ${run} --workspace-disposition --write`),
     command("working-tree-gate", `--root '${value.root}'`),
     command("frontend-quality-gate", `${run} --record-start --write`),
     command("project-map-status", "coverage --affected src/app.js"),
     command("codebase-basis", `create --run ${run} --write`),
     command("current-state-gate", `assess --input ${run}/INTENT.md`),
     command("suggest-affected-sections", `--intent ${run}/INTENT.md`),
+    command("reference-section", '"Project memory & standards (Phase 2 read · Phase 7 append)"'),
     command("memory-router", "status --pretty"),
     "$KIMIFLOW_PLUGIN_ROOT/hooks/resolve-verbosity.sh get",
     "git ls-files hooks",
@@ -257,12 +269,23 @@ test("pre-intake guard accepts canonical installed Phase 0 and research hooks", 
   for (const blocked of [
     command("workspace-preflight", `integrate --run ${run}`),
     command("active-run", `abort --run ${run}`),
+    command("active-run", `refresh-baseline --run ${run} --workspace-disposition --write`),
     command("memory-router", "provider configure"),
     command("codebase-basis", "create --run .kimiflow/another-run --write"),
     "grep -n setup phases/phase-0-setup.md",
   ]) {
     assert.equal((await guard({ toolName: "bash", input: { command: blocked } }, context)).block, true, blocked);
   }
+
+  const workspaceGuard = createPreIntakeGuard(value, {
+    getIntakeState: () => ({ state: "intake", run, workspaceDisposition: true }),
+  });
+  assert.equal(await workspaceGuard({
+    toolName: "bash",
+    input: {
+      command: command("active-run", `refresh-baseline --run ${run} --workspace-disposition --write`),
+    },
+  }, context), undefined);
 });
 
 test("every phase helper resolves from the canonical plugin hook root", () => {
@@ -526,6 +549,42 @@ test("completed role-bound subagents write one private mechanical receipt", (t) 
   assert.match(receipt.receipt_id, /^sha256:[0-9a-f]{64}$/);
   assert.match(receipt.task_digest, /^sha256:[0-9a-f]{64}$/);
   assert.match(receipt.result_digest, /^sha256:[0-9a-f]{64}$/);
+});
+
+test("read-only intake subagents may persist receipts before the final contract", (t) => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "kimiflow-intake-receipt-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(path.join(root, ".kimiflow", "run-7"), { recursive: true });
+  const value = authority(root);
+  const writeReceipt = createSubagentReceiptWriter(value, () => ({
+    state: "intake",
+    run: ".kimiflow/run-7",
+  }));
+  const common = {
+    workerId: value.worker_id,
+    workerSessionId: "pi-worker-00000001",
+    subagentSessionId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+    phase: 1,
+    role: "intent_critic",
+    round: 1,
+    seat: "intent-critic-1",
+    slot: 1,
+    backend: "herdr",
+    status: "completed",
+    task: "criticize only the proposed product scope",
+    result: "COVERAGE_OK",
+  };
+  assert.match(writeReceipt(common), /PI-SUBAGENTS/);
+  assert.throws(
+    () => writeReceipt({
+      ...common,
+      subagentSessionId: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+      phase: 5,
+      role: "implementation",
+      seat: "implementation-1",
+    }),
+    /subagent_receipt_run_invalid/,
+  );
 });
 
 test("subagent completion uses the last successful Pi retry lifecycle", async () => {
