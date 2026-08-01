@@ -6,6 +6,22 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.41
+
+The Pi pre-intake and Fleet plan-handoff reliability patch.
+
+### Fixed
+
+- Pi workers now execute setup and research helpers through the canonical installed plugin root, accept the
+  documented Phase-0 commands, and keep dangerous or cross-run mutations blocked without producing false red
+  tool errors.
+- Fleet workers now receive the exact confirmed project plan from the primary checkout with a bound digest,
+  even when the ignored `.kimiflow/project` directory is absent from their isolated worktree.
+- Pi and Herdr workers now receive one explicit plugin-root/host contract, reuse the Captain-selected Fleet root
+  and resolved verbosity, and preserve exact user replies during resume instead of re-entering generic intake.
+- Regression coverage now exercises canonical absolute hooks, the complete phase-helper inventory, real
+  primary-to-worktree plan transfer, Pi host environment propagation, and the existing-Captain E2E path.
+
 ## 0.2.40
 
 The Pi Captain intake-delivery reliability patch.

@@ -1,6 +1,6 @@
 {
   "name": "@kimiflow/pi",
-  "version": "0.2.40",
+  "version": "0.2.41",
   "description": "Optional Pi host package for Kimiflow; Codex and Claude remain standalone.",
   "type": "module",
   "license": "MIT",
