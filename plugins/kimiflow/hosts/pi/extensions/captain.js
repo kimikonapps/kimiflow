@@ -634,6 +634,17 @@ function runnerIsActive(snapshot) {
     || ACTIVE_RUNNER_STATES.has(snapshot?.status);
 }
 
+function runnerControllerAlive(snapshot) {
+  const controllerPid = snapshot?.runner?.controller_pid;
+  return Number.isInteger(controllerPid)
+    && controllerPid > 1
+    && (processAlive(controllerPid) || processGroupAlive(controllerPid));
+}
+
+function runnerIsReachable(snapshot) {
+  return snapshot?.status === "running" && runnerControllerAlive(snapshot);
+}
+
 function runnerIsTerminal(snapshot) {
   return snapshot?.active_run?.present !== true
     && TERMINAL_RUNNER_STATES.has(snapshot?.status);
@@ -797,16 +808,23 @@ function transition(snapshot, binding) {
       : "Kimiflow is waiting for a material user decision."
     );
   }
-  const hash = digest(JSON.stringify(identity)).slice("sha256:".length, 24 + "sha256:".length);
+  const attentionIdentity = { ...identity };
+  if (kind === "question") delete attentionIdentity.transition_version;
+  const hash = digest(JSON.stringify(attentionIdentity)).slice(
+    "sha256:".length,
+    24 + "sha256:".length,
+  );
   return { attention_id: `attention-${hash}`, ...identity, actionable: true };
 }
 
 function attentionContent(value) {
   if (value.kind === "question") return value.question;
   const run = typeof value.run === "string" ? value.run : "Kimiflow";
-  return value.kind === "completion"
-    ? `✓ Kimiflow · ${run}`
-    : `⚠ Kimiflow · ${run}`;
+  if (value.kind === "completion") return `✓ Kimiflow · ${run}`;
+  const diagnostic = typeof value.diagnostic_code === "string"
+    ? ` · ${value.diagnostic_code}`
+    : "";
+  return `⚠ Kimiflow failed · ${run}${diagnostic}`;
 }
 
 function restoredAttentionIds(context) {
@@ -1126,8 +1144,22 @@ export function createCaptainExtension({
       resumeAfterAdoption = true;
     }
 
+    if (
+      recovering
+      && snapshot?.status === "starting"
+      && runnerControllerAlive(snapshot)
+    ) {
+      snapshot = await waitForRunnerReceipt(
+        validated.root,
+        provisionalBinding(validated),
+        snapshot.runner.controller_pid,
+        false,
+      );
+    }
+
     if (runnerIsActive(snapshot)) {
       if (!recovering) await adoptSnapshot();
+      else if (!runnerIsReachable(snapshot)) resumeAfterAdoption = true;
     } else {
       await preflightPi(validated.root);
       const prepared = await prepareWorker({
@@ -1205,7 +1237,9 @@ export function createCaptainExtension({
     if (active === null) throw new Error("kimiflow_runner_identity_invalid");
     fleet.set(active.workerId, { ...active });
     return {
-      status: recovering && runnerIsActive(snapshot) ? "recovered" : "activated",
+      status: recovering && (verifiedSpawn || runnerIsReachable(snapshot))
+        ? "recovered"
+        : "activated",
       ...active,
     };
   }

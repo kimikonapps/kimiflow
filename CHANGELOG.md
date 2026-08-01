@@ -6,6 +6,31 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.38
+
+The authoritative Herdr/Pi runner-lifecycle repair.
+
+### Changed
+
+- Resumed runners now publish `starting` first and become `running` only after Pi/Herdr has acknowledged the
+  exact reachable provider session. Captain observes that runner-owned state instead of inferring launch success.
+- An exact Captain-owned Pi run can now migrate its negotiated adapter receipt across a compatible Kimiflow/Pi
+  runtime update. Other hosts, adapter families, and unbound runs remain fail-closed.
+- Feature and fix workers now have separate intake rules: feature work still requires the confirmed intent lock,
+  while an owned fix run can diagnose, edit, test, and spawn its bounded review workers directly.
+
+### Fixed
+
+- A temporarily missing Herdr `agent_session` is now a retryable settling state. Only a present but mismatched
+  session invalidates the endpoint, so Kimiflow no longer closes a correctly starting visible worker tab.
+- Captain waits for a fresh receipt bound to the spawned controller PID, Captain session, and worker identity
+  before reporting `recovered`; a matching durable claim can no longer turn an unchanged failed receipt into
+  false success on the second activation attempt.
+- A controller that dies while `starting` remains safely adoptable, preventing the new honest intermediate state
+  from becoming another unrecoverable Fleet boundary.
+- Failure attention now includes the exact diagnostic code, and the same open user question is not announced a
+  second time merely because the worker turn settles.
+
 ## 0.2.37
 
 The restored Pi Captain activation reliability patch.
