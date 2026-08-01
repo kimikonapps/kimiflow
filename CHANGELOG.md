@@ -7,7 +7,8 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 ### Fixed
 
 - A restored Pi Captain binding no longer hides a resumable dead runner behind its still-live Active Run; exact
-  continuation now reaches identity-checked Fleet adoption instead of returning `kimiflow_run_active`.
+  continuation now reaches identity-checked Fleet adoption instead of returning `kimiflow_run_active`, while a
+  stale live binding for a terminal runner still permits the next activation.
 
 ## 0.2.36
 

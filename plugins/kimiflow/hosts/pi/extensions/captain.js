@@ -1062,6 +1062,7 @@ export function createCaptainExtension({
       active !== null
       && active.terminal !== true
       && active.root === validated.root
+      && !runnerIsTerminal(snapshot)
       && !RESUMABLE_STATES.has(snapshot?.status)
       && !(recovering && active.run === null && !runnerIsActive(snapshot))
     ) {

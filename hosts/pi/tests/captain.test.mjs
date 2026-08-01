@@ -555,6 +555,46 @@ test("a restored binding does not hide a dead runner behind its live Active Run"
   assert.equal(spawned.calls[0].args[0], "resume");
 });
 
+test("a restored live binding does not block activation after its runner is terminal", async () => {
+  const status = statusFixture(activeSnapshot({
+    status: "done",
+    workerId: "worker-finished001",
+  }));
+  const spawned = spawnFixture();
+  const extension = createCaptainExtension({
+    root: "/pkg",
+    exec: status.exec,
+    spawn: spawned.spawn,
+    adoptWorker: async () => {
+      throw new Error("terminal_runner_must_not_be_adopted");
+    },
+  });
+  const current = context([{
+    type: "custom",
+    customType: "kimiflow_pi_bridge_binding_v1",
+    data: {
+      schemaVersion: 1,
+      root: process.cwd(),
+      captainSessionId: "pi-primary-0001",
+      workerId: "worker-finished001",
+      modelSelection: "openai/gpt-5.6:high",
+      run: ".kimiflow/finished-run",
+      providerSessionId: "provider-finished001",
+      deliveryBoundary: null,
+      deliveryPending: false,
+      terminal: false,
+    },
+  }]);
+  extension.restoreForSession(current);
+
+  const result = await extension.activate("build the next task", current);
+
+  assert.equal(result.status, "activated");
+  assert.equal(spawned.calls.length, 1);
+  assert.equal(spawned.calls[0].args[0], "run");
+  assert.equal(spawned.calls[0].args[1], "build the next task");
+});
+
 test("matching durable pending claim recovers the running Pi bridge without another spawn", async () => {
   const seed = createCaptainExtension({
     root: "/pkg",
