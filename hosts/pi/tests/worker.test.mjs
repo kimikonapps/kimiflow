@@ -24,9 +24,11 @@ import registerWorkerExtension, {
   createFileSubagentReservations,
   createPreIntakeGuard,
   createSubagentReceiptWriter,
+  enforceCaptainInputBoundary,
   forwardPromptContext,
   GenerationSupervisor,
   loadWorkerAuthority,
+  lockWorkerTools,
 } from "../extensions/worker.js";
 
 function authority(root = process.cwd()) {
@@ -172,6 +174,30 @@ test("worker authority is optional, exact, and preserves colon model IDs", () =>
     })),
     /calm_extension_invalid/,
   );
+});
+
+test("the Worker accepts only Captain transport and exposes no user-input tool", () => {
+  const notifications = [];
+  const direct = enforceCaptainInputBoundary({
+    source: "interactive",
+    text: "Vertrag bestätigen",
+  }, {
+    ui: { notify(message, level) { notifications.push({ message, level }); } },
+  });
+  assert.deepEqual(direct, { action: "handled" });
+  assert.match(notifications[0].message, /Captain/);
+  assert.deepEqual(enforceCaptainInputBoundary({
+    source: "interactive",
+    text: "\u2063kimiflow:transport-v1\nAuthoritative Kimiflow workflow_context:",
+  }, {}), { action: "continue" });
+
+  let selected = ["read", "request_user_input", "AskUserQuestion", "bash"];
+  const filtered = lockWorkerTools({
+    getActiveTools() { return selected; },
+    setActiveTools(value) { selected = value; },
+  });
+  assert.deepEqual(filtered, ["read", "bash"]);
+  assert.deepEqual(selected, ["read", "bash"]);
 });
 
 test("pre-intake guard permits only reads, trusted control, and current run artifacts", async () => {
@@ -1209,9 +1235,12 @@ test("production registration is inert without bridge authority and exposes one 
 
   const handlers = new Map();
   const tools = [];
+  let activeTools = ["read", "request_user_input", "AskUserQuestion"];
   const pi = {
     on(name, handler) { handlers.set(name, handler); },
     registerTool(tool) { tools.push(tool); },
+    getActiveTools() { return activeTools; },
+    setActiveTools(value) { activeTools = value; },
   };
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "kimiflow-worker-register-")));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -1226,5 +1255,7 @@ test("production registration is inert without bridge authority and exposes one 
   assert.equal(supervisor.workerSessionId, "pi-worker-00000001");
   assert.equal(workerEnvironment.KIMIFLOW_HOST, "pi");
   assert.equal(workerEnvironment.KIMIFLOW_SESSION_ID, "pi-worker-00000001");
+  assert.deepEqual(activeTools, ["read"]);
+  assert.ok(handlers.has("input"));
   assert.ok(handlers.has("before_agent_start"));
 });

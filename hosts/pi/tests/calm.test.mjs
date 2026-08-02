@@ -69,6 +69,7 @@ import registerCalm, {
 } from "./calm.js";
 
 const expected = process.argv[2];
+const worker = process.argv[3] === "worker";
 assert.equal(calmEnabled(process.cwd()), expected === "quiet");
 assert.equal(
   calmEnabled(process.cwd(), { KIMIFLOW_PI_VERBOSITY: "quiet" }),
@@ -111,9 +112,41 @@ const pi = {
 };
 registerCalm(pi);
 
-if (expected !== "quiet") {
+if (expected !== "quiet" && !worker) {
   assert.equal(tools.length, 0);
   assert.equal(handlers.size, 0);
+  process.exit(0);
+}
+
+if (expected !== "quiet") {
+  assert.equal(worker, true);
+  assert.equal(tools.length, 0);
+  assert.deepEqual([...handlers.keys()], ["session_start"]);
+  const component = new PiCodingAgent.AssistantMessageComponent(
+    {
+      role: "assistant",
+      content: [{ type: "text", text: "question that belongs in Captain" }],
+      stopReason: "stop",
+    },
+    false,
+    undefined,
+    "",
+  );
+  assert.equal(
+    component.render(100).join("\\n").includes("question that belongs in Captain"),
+    false,
+  );
+  let hiddenThinkingLabel;
+  let workingVisible;
+  handlers.get("session_start")[0]({}, {
+    ui: {
+      setHiddenThinkingLabel(value) { hiddenThinkingLabel = value; },
+      setWorkingVisible(value) { workingVisible = value; },
+      onTerminalInput() { return () => {}; },
+    },
+  });
+  assert.equal(hiddenThinkingLabel, undefined);
+  assert.equal(workingVisible, undefined);
   process.exit(0);
 }
 
@@ -148,7 +181,7 @@ const component = new PiCodingAgent.AssistantMessageComponent(
   "",
 );
 assert.equal(component.render(100).join("\\n").includes("private reasoning"), false);
-assert.equal(component.render(100).join("\\n").includes("visible answer"), true);
+assert.equal(component.render(100).join("\\n").includes("visible answer"), !worker);
 assert.equal(original.content[0].thinking, "private reasoning");
 
 const children = [];
@@ -181,6 +214,8 @@ assert.equal(children.length, 1);
 assert.deepEqual(children[0].render(100), []);
 
 let hiddenThinkingLabel;
+let workingVisible;
+let workingIndicator;
 const start = handlers.get("session_start")[0];
 start({}, {
   ui: {
@@ -190,9 +225,18 @@ start({}, {
     onTerminalInput() {
       return () => {};
     },
+    setWorkingVisible(value) {
+      workingVisible = value;
+    },
+    setWorkingIndicator(value) {
+      workingIndicator = value;
+    },
+    setStatus() {},
   },
 });
 assert.equal(hiddenThinkingLabel, "");
+assert.equal(workingVisible, worker ? false : undefined);
+assert.deepEqual(workingIndicator, worker ? { frames: [] } : undefined);
 
 for (const name of [
   "kimiflow_activate",
@@ -211,19 +255,28 @@ for (const name of [
   return root;
 }
 
-test("quiet is a renderer-only Calm projection; balanced changes nothing", (t) => {
+test("quiet keeps the Captain readable and makes Worker views calm", (t) => {
   const modules = piModules();
   if (modules === null) {
     t.skip("the tested Pi runtime is not installed");
     return;
   }
-  for (const verbosity of ["quiet", "balanced"]) {
+  for (const [verbosity, worker] of [
+    ["quiet", false],
+    ["quiet", true],
+    ["balanced", false],
+    ["balanced", true],
+  ]) {
     const root = fixture(modules, verbosity);
     const result = spawnSync(
       process.execPath,
-      [path.join(root, "exercise.mjs"), verbosity],
+      [path.join(root, "exercise.mjs"), verbosity, worker ? "worker" : "captain"],
       {
         cwd: root,
+        env: {
+          ...process.env,
+          ...(worker ? { KIMIFLOW_PI_WORKER_VIEW: "1" } : {}),
+        },
         encoding: "utf8",
         timeout: 10000,
       },
@@ -231,7 +284,7 @@ test("quiet is a renderer-only Calm projection; balanced changes nothing", (t) =
     assert.equal(
       result.status,
       0,
-      `${verbosity} Calm contract failed:\n${result.stderr}\n${result.stdout}`,
+      `${verbosity}/${worker ? "worker" : "captain"} Calm contract failed:\n${result.stderr}\n${result.stdout}`,
     );
   }
 });

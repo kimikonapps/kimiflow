@@ -168,6 +168,10 @@ remains the responsive, read-only Captain. A private metadata-only project regis
 terminal transcripts. `/kimiflow --project <name> <request>` and the activation tool's optional `project` field
 select a registered project explicitly.
 
+The Captain is the only user conversation surface. Product questions and decisions appear there, and a reply
+is bound to the exact waiting Runner transition before the same Worker resumes. Worker and subagent tabs remain
+visible execution surfaces, but reject direct user input; in quiet mode they stay visually calm while working.
+
 Every writing top-level task is routed through the existing three-slot Fleet broker before Pi starts. Even a
 clean primary checkout receives an isolated owned Git worktree, runner receipt, Pi session, and endpoint. Up to
 three disjoint tasks can run concurrently; later tasks remain in the broker queue. While Fleet work is live the

@@ -208,6 +208,17 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(lifecycle["attention"]["question"], "choose")
         self.assertFalse(lifecycle["cleanup_endpoint"])
 
+    def test_user_wait_is_not_actionable_while_the_worker_turn_is_live(self):
+        self.write_active(awaiting=True)
+        self.write_pi_receipt("running", controller_pid=os.getpid())
+        status = runner.runner_status(self.root)
+        lifecycle = status["lifecycle"]
+        self.assertEqual(status["status"], "running")
+        self.assertEqual(lifecycle["state"], "reachable")
+        self.assertFalse(lifecycle["awaiting_user"])
+        self.assertFalse(lifecycle["can_resume"])
+        self.assertIsNone(lifecycle["attention"])
+
     def test_provisional_transport_failure_is_terminal_and_actionable(self):
         self.write_pi_receipt(
             "transport_error",

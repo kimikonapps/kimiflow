@@ -665,7 +665,7 @@ class PiHostTests(unittest.TestCase):
         self.assertNotEqual(turn.returncode, 0)
         self.assertEqual(turn.error_code, "provider_crash")
 
-    def test_actual_installed_pi_0830_help_header_and_extension_loading_contract(self):
+    def test_actual_installed_pi_0830_help_extension_and_captain_boundary_contract(self):
         executable = shutil.which("pi")
         if executable is None:
             self.skipTest("Pi is not installed")
@@ -735,7 +735,9 @@ class PiHostTests(unittest.TestCase):
             cwd=self.temp, env=environment, check=False, text=True,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10,
         )
-        self.assertNotEqual(result.returncode, 0)
+        # The Worker extension consumes direct user input at the Captain
+        # boundary, so Pi exits cleanly without contacting the offline model.
+        self.assertEqual(result.returncode, 0)
         first = json.loads(result.stdout.splitlines()[0])
         self.assertEqual(first["type"], "session")
         self.assertEqual(first["version"], 3)

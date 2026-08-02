@@ -143,6 +143,11 @@ Antworten und Terminal-Transkripte werden dort nicht gespeichert. Mit
 `/kimiflow --project <name> <auftrag>` oder dem optionalen `project`-Feld des Aktivierungs-Tools wird ein
 registriertes Projekt explizit gewaehlt.
 
+Der Captain ist die einzige Gespraechsflaeche fuer den User. Produktfragen und Entscheidungen erscheinen dort;
+eine Antwort wird an den exakten wartenden Runner-Uebergang gebunden, bevor derselbe Worker fortsetzt. Worker-
+und Subagent-Tabs bleiben sichtbare Ausfuehrungsflaechen, nehmen aber keine direkte User-Eingabe an und bleiben
+im Quiet-Modus waehrend der Arbeit visuell ruhig.
+
 Jeder schreibende Top-Level-Auftrag wird vor dem Pi-Start durch den bestehenden Fleet-Broker geroutet. Auch ein
 sauberer Primary-Checkout erhaelt einen eigenen Kimiflow-Worktree, ein Runner-Receipt, eine Pi-Sitzung und einen
 Endpunkt. Bis zu drei disjunkte Auftraege koennen parallel laufen; weitere bleiben in der Broker-Queue. Solange

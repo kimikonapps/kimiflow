@@ -40,7 +40,8 @@ Entwicklung zusaetzlich laufen, ersetzen den vollstaendigen Plan aber nicht.
   `provider/model:thinking`-Auswahl, eine unveraenderliche verifizierte Worker-Extension, Workflow-Kontext,
   Preflight sowie generationgebundene Subagents.
 - `node --test hosts/pi/tests/captain.test.mjs` prueft natuerliche modellaufrufbare Aktivierung und den
-  aequivalenten Slash-Weg ueber den vorhandenen Runner, fortgesetzte Konversation sowie deduplizierte Attention.
+  aequivalenten Slash-Weg ueber den vorhandenen Runner, den Captain-exklusiven Entscheidungsdialog, exakt
+  gebundene Worker-Fortsetzung sowie deduplizierte Attention.
 - `hooks/test-pi-kimiflow-e2e.sh` prueft einen vollstaendigen deterministischen Primary-Pi-Request bis zum
   echten `active-run finish` mit Phase-Reads, Conformance, Baseline und terminalem Kimiflow-Receipt; ein
   Pi-`agent_end` darf den Run nicht abschliessen.

@@ -4,7 +4,14 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Fixed
+
+- Pi now keeps all user-facing Kimiflow discussion and decisions in the responsive Captain while visible
+  Worker and subagent tabs remain execution-only surfaces in every verbosity mode.
+- The Captain announces a question only after the Worker turn reaches the authoritative Runner wait boundary,
+  binds each structured choice to that exact transition, and resumes the same Worker session once.
+- Captain decision dialogs no longer block Fleet polling, active Captain turns are not interrupted by Attention,
+  and malformed intake metadata degrades safely instead of breaking status delivery.
 
 ## 0.2.42
 

@@ -145,6 +145,11 @@ class ActiveRunContractTests(unittest.TestCase):
             handle.write(scope)
         active = self.schema2_active(run_rel, 1, scope)
         active_run.write_active(self.root, active)
+        status = active_run.status_json(self.root)
+        self.assertEqual(status["awaiting_actions"], [
+            {"id": "scope_ready", "label": "Umfang ist bereit"},
+            {"id": "discuss", "label": "Weiter besprechen"},
+        ])
 
         self.assertIsNone(active_run.structured_intake_action("Okay", scope, 4, 1, "de"))
         self.assertEqual(
@@ -173,6 +178,22 @@ class ActiveRunContractTests(unittest.TestCase):
         self.assertEqual(receipt["stage"], "scope")
         self.assertEqual(receipt["action"], "scope_ready")
         self.assertEqual(receipt["user_language"], "de")
+
+    def test_status_tolerates_invalid_structured_intake_metadata(self):
+        run_rel = ".kimiflow/schema2-invalid-status"
+        run_dir = os.path.join(self.root, run_rel)
+        os.makedirs(run_dir)
+        scope = self.schema2_scope()
+        with open(os.path.join(run_dir, "INTAKE.md"), "w", encoding="utf-8") as handle:
+            handle.write(scope)
+        active = self.schema2_active(run_rel, 1, scope)
+        for field in ("intake_schema", "intent_contract", "intake_round"):
+            invalid = dict(active)
+            invalid[field] = "not-a-number"
+            active_run.write_active(self.root, invalid)
+            status = active_run.status_json(self.root)
+            self.assertTrue(status["awaiting_user"])
+            self.assertNotIn("awaiting_actions", status)
 
     def test_contract4_schema2_final_correction_does_not_confirm(self):
         run_rel = ".kimiflow/schema2-final"

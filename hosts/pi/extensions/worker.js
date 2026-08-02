@@ -58,6 +58,16 @@ const SUBAGENT_ROLES = Object.freeze({
   code_review: Object.freeze({ phase: 7, readOnly: true }),
 });
 const PRE_INTAKE_SUBAGENT_ROLES = new Set(["intent_critic", "research"]);
+const USER_INTERACTION_TOOLS = new Set([
+  "AskUserQuestion",
+  "request_user_input",
+]);
+const CAPTAIN_BOUNDARY_PROMPT = [
+  "This is a Kimiflow Worker, not a user conversation surface.",
+  "All user-visible discussion and every material decision happen in the Captain session.",
+  "When active-run await-user succeeds, end the turn immediately. Do not call a user-input tool, render a question, wait for terminal input, or ask the user to answer in this Worker.",
+  "The Runner will publish the durable question to the Captain and resume this exact session with the Captain reply.",
+].join(" ");
 const BINDING_KEYS = [
   "schema_version",
   "root",
@@ -1365,6 +1375,33 @@ export function forwardPromptContext(
   });
 }
 
+export function lockWorkerTools(pi) {
+  const active = pi?.getActiveTools?.();
+  if (!Array.isArray(active) || typeof pi?.setActiveTools !== "function") {
+    return null;
+  }
+  const filtered = active.filter((name) => !USER_INTERACTION_TOOLS.has(name));
+  pi.setActiveTools(filtered);
+  return filtered;
+}
+
+export function enforceCaptainInputBoundary(event, context) {
+  if (
+    event?.source === "extension"
+    || (
+      typeof event?.text === "string"
+      && event.text.startsWith(TRANSPORT_PREFIX_FAMILY)
+    )
+  ) {
+    return { action: "continue" };
+  }
+  context?.ui?.notify?.(
+    "Dieser Kimiflow-Worker arbeitet im Hintergrund. Bitte im Captain antworten.",
+    "info",
+  );
+  return { action: "handled" };
+}
+
 export default function registerWorkerExtension(pi, options = {}) {
   const environment = options.environment ?? process.env;
   const authority = loadWorkerAuthority(environment);
@@ -1379,13 +1416,22 @@ export default function registerWorkerExtension(pi, options = {}) {
       ?? createSubagentReceiptWriter(authority),
   });
   pi.on("tool_call", createPreIntakeGuard(authority, options));
-  pi.on("before_agent_start", (event, context) => forwardPromptContext(
-    authority,
-    event,
-    context,
-    options.hookSpawn ?? nodeSpawn,
-  ));
+  pi.on("input", enforceCaptainInputBoundary);
+  pi.on("before_agent_start", async (event, context) => {
+    lockWorkerTools(pi);
+    const result = await forwardPromptContext(
+      authority,
+      event,
+      context,
+      options.hookSpawn ?? nodeSpawn,
+    );
+    return {
+      ...(result ?? {}),
+      systemPrompt: `${event.systemPrompt}\n\n${CAPTAIN_BOUNDARY_PROMPT}`,
+    };
+  });
   pi.on("session_start", (_event, context) => {
+    lockWorkerTools(pi);
     supervisor.workerSessionId = exactId(
       context?.sessionManager?.getSessionId?.()
         ?? context?.sessionId,

@@ -599,6 +599,7 @@ def _create_endpoint(
         "KIMIFLOW_PI_VERBOSITY": environ.get(
             "KIMIFLOW_PI_VERBOSITY", "balanced",
         ),
+        "KIMIFLOW_PI_WORKER_VIEW": "1",
     }
     tab_id = pane_id = None
     try:
@@ -1088,7 +1089,10 @@ def run_subagent(payload, environ, emit):
             "kimiflow · %s · %s" % (
                 payload["role"].replace("_", " "), payload["seat"],
             ),
-            {"KIMIFLOW_PI_VERBOSITY": payload["verbosity"]},
+            {
+                "KIMIFLOW_PI_VERBOSITY": payload["verbosity"],
+                "KIMIFLOW_PI_WORKER_VIEW": "1",
+            },
             environ,
         )
         _start_agent(

@@ -1454,13 +1454,23 @@ def _bridge_lifecycle(root, receipt, active):
     """Return the one normalized lifecycle view consumed by UI hosts."""
     raw_status = receipt.get("status") if receipt else None
     workflow_open = active.get("present") is True and active.get("terminal") is not True
-    awaiting_user = workflow_open and active.get("awaiting_user") is True
+    workflow_awaiting_user = (
+        workflow_open and active.get("awaiting_user") is True
+    )
     receipt_run = receipt.get("active_run") if receipt else None
     run = active.get("run") if workflow_open else receipt_run
     controller_pid = receipt.get("controller_pid") if receipt else None
     controller_alive = _process_tree_alive(controller_pid)
     controller_lost = raw_status == "running" and not controller_alive
     resumable_run = workflow_open or isinstance(receipt_run, str)
+    # The workflow may publish its durable question before the provider turn has
+    # settled. That is not yet a reply boundary: announcing it early lets the
+    # Captain race a second turn against the live worker and also leaves the
+    # native Worker UI showing the question. A dead controller remains
+    # resumable, so only a still-live starting/running controller delays it.
+    awaiting_user = workflow_awaiting_user and not (
+        raw_status in {"starting", "running"} and controller_alive
+    )
 
     if awaiting_user:
         state = "waiting"
@@ -1576,6 +1586,21 @@ def _bridge_lifecycle(root, receipt, active):
                 if isinstance(request, str) and request.strip()
                 else "Kimiflow is waiting for a material user decision."
             )
+            actions = active.get("awaiting_actions")
+            if (
+                isinstance(actions, list)
+                and 1 <= len(actions) <= 8
+                and all(
+                    isinstance(item, dict)
+                    and set(item) == {"id", "label"}
+                    and isinstance(item.get("id"), str)
+                    and re.fullmatch(r"[a-z][a-z0-9_]{0,63}", item["id"])
+                    and isinstance(item.get("label"), str)
+                    and 0 < len(item["label"].encode("utf-8")) <= 512
+                    for item in actions
+                )
+            ):
+                attention["actions"] = actions
         digest_identity = dict(attention)
         if attention_kind == "question":
             digest_identity.pop("transition_version", None)

@@ -381,7 +381,10 @@ class PiHerdrTests(unittest.TestCase):
             self.root,
             "w2",
             "kimiflow · code review · code-review-1",
-            {"KIMIFLOW_PI_VERBOSITY": "quiet"},
+            {
+                "KIMIFLOW_PI_VERBOSITY": "quiet",
+                "KIMIFLOW_PI_WORKER_VIEW": "1",
+            },
             self.environment,
         )
         start_agent.assert_called_once_with(

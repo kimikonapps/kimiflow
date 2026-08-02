@@ -524,7 +524,14 @@ def _workflow_prompt(payload, environ=None, verbosity=None):
         "The canonical reference-section hook is permitted for the manifest's "
         "named section. A workspace-disposition refresh is permitted only after "
         "ACTIVE_RUN.json records workspace_wait_used_at.\n"
-        "The main Pi worker is the orchestrator. After intake confirmation, every "
+        "The main Pi worker is the orchestrator, never a user conversation "
+        "surface. Every user-visible "
+        "question and decision is published through active-run await-user to the "
+        "Captain. After await-user succeeds, end the turn immediately: do not call "
+        "request_user_input or AskUserQuestion, do not ask in the Worker, and do "
+        "not wait for direct Worker input. The Runner resumes this exact session "
+        "with the Captain reply. "
+        "After intake confirmation, every "
         "independent reviewer or subagent seat required by the phase schedule must "
         "call kimiflow_subagent exactly once. Never simulate a scheduled subagent "
         "inside the main worker; each call is a separate visible Herdr/Pi worker. "
@@ -1185,6 +1192,7 @@ def run_turn(payload, environ=None, stdout=None):
     calm_extension_digest = material["calm_extension_digest"]
     verbosity = _resolved_verbosity(payload, env)
     env["KIMIFLOW_PI_VERBOSITY"] = verbosity
+    env["KIMIFLOW_PI_WORKER_VIEW"] = "1"
     prompt = _workflow_prompt(payload, env, verbosity)
     output = sys.stdout if stdout is None else stdout
     if pi_herdr.requested(env):

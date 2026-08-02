@@ -25,9 +25,18 @@ const MODEL_SELECTION = /^[a-z0-9][a-z0-9._-]{0,63}\/[A-Za-z0-9@][A-Za-z0-9._/@:
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const BINDING_ENTRY = "kimiflow_pi_bridge_binding_v1";
 const CLAIM_ENTRY = "kimiflow_pi_bridge_claim_v1";
+const ATTENTION_MESSAGE = "kimiflow";
+const LEGACY_ATTENTION_MESSAGE = "kimiflow_attention";
 const BRIDGE_ENV = "KIMIFLOW_PI_BRIDGE_BINDING";
 const START_CLAIM_ENV = "KIMIFLOW_PI_START_CLAIM";
 const START_CLAIM_NAME = "PI-BRIDGE-START-CLAIM";
+const CAPTAIN_DIALOG_PROMPT = [
+  "This Pi session is the responsive Kimiflow Captain; implementation work stays in visible Worker and subagent sessions.",
+  "Continue ordinary conversation normally, even while Kimiflow is waiting.",
+  "Kimiflow questions appear here as Kimiflow messages. Never treat unrelated user input as an answer.",
+  "When the user clearly answers an open Kimiflow question, call kimiflow_status and then kimiflow_reply with the exact run, worker, and provider-session identity returned by the Runner.",
+  "Never ask the user to open or answer inside a Worker tab.",
+].join(" ");
 const CLEANUP_LEASES_NAME = "PI-CLEANUP-LEASES-v1";
 const STATUS_LIMIT = 320;
 const DEFAULT_ATTENTION_POLL_MS = 1000;
@@ -403,6 +412,13 @@ const deliveryParameters = typeBoxSchema("Object", {
   },
 });
 
+const statusParameters = typeBoxSchema("Object", {
+  type: "object",
+  required: [],
+  additionalProperties: false,
+  properties: {},
+});
+
 function packageRoot() {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 }
@@ -689,7 +705,11 @@ function transition(snapshot, binding) {
 }
 
 function attentionContent(value) {
-  if (value.kind === "question") return value.question;
+  if (value.kind === "question") {
+    return value.question
+      .replace(/^<!-- kimiflow:intake [^\n]+ -->\r?\n?/, "")
+      .trim();
+  }
   const run = typeof value.run === "string" ? value.run : "Kimiflow";
   if (value.kind === "completion") return `✓ Kimiflow · ${run}`;
   const diagnostic = typeof value.diagnostic_code === "string"
@@ -705,7 +725,8 @@ function restoredAttentionIds(context) {
   for (const entry of branch) {
     if (
       entry?.type !== "custom_message"
-      || entry?.customType !== "kimiflow_attention"
+      || ![ATTENTION_MESSAGE, LEGACY_ATTENTION_MESSAGE].includes(entry?.customType)
+      || entry?.details?.kind === "reply"
     ) {
       continue;
     }
@@ -1270,17 +1291,21 @@ export function createCaptainExtension({
     }
   }
 
-  async function pollActiveAttention(pi) {
-    if (active === null) return { status: "inactive", announced: 0 };
+  async function pollActiveAttention(pi, canAnnounce = true) {
+    if (active === null) {
+      return { status: "inactive", announced: 0, announcements: [] };
+    }
     if (active.terminal === true) {
-      return { status: "terminal", announced: 0 };
+      return { status: "terminal", announced: 0, announcements: [] };
     }
     const snapshot = await runnerStatus(active.root);
     if (active.run === null) {
       const bound = bindSnapshot(active, snapshot);
       if (bound === null) {
         if (provisionalTransportFailure(snapshot, active) === null) {
-          return { status: "attention", announced: 0, snapshot };
+          return {
+            status: "attention", announced: 0, announcements: [], snapshot,
+          };
         }
       } else {
         pi.appendEntry?.(BINDING_ENTRY, bound);
@@ -1292,7 +1317,9 @@ export function createCaptainExtension({
         identity?.run !== active.run
         || identity?.providerSessionId !== active.providerSessionId
       ) {
-        return { status: "attention", announced: 0, snapshot };
+        return {
+          status: "attention", announced: 0, announcements: [], snapshot,
+        };
       }
     }
     if (active.deliveryPending) {
@@ -1306,16 +1333,22 @@ export function createCaptainExtension({
     const observed = snapshot;
     const value = transition(snapshot, active);
     let announced = 0;
-    if (value !== null && !seenAttention.has(value.attention_id)) {
+    const announcements = [];
+    if (
+      canAnnounce
+      && value !== null
+      && !seenAttention.has(value.attention_id)
+    ) {
       if (typeof pi.sendMessage === "function") {
         pi.sendMessage({
-          customType: "kimiflow_attention",
+          customType: ATTENTION_MESSAGE,
           content: attentionContent(value),
           details: value,
           display: true,
         });
         seenAttention.add(value.attention_id);
         announced = 1;
+        announcements.push(value);
       }
     }
     if (
@@ -1346,7 +1379,12 @@ export function createCaptainExtension({
       pi.appendEntry?.(BINDING_ENTRY, terminal);
       active = terminal;
     }
-    return { status: "attention", announced, snapshot: observed };
+    return {
+      status: "attention",
+      announced,
+      announcements,
+      snapshot: observed,
+    };
   }
 
   function selectedFleetBinding(preferred = null) {
@@ -1390,21 +1428,23 @@ export function createCaptainExtension({
     }
   }
 
-  async function pollAttention(pi) {
+  async function pollAttention(pi, canAnnounce = true) {
     const bindings = [...fleet.values()];
     if (bindings.length <= 1) {
-      const result = await pollActiveAttention(pi);
+      const result = await pollActiveAttention(pi, canAnnounce);
       if (active !== null) fleet.set(active.workerId, { ...active });
       return result;
     }
     const selected = active?.workerId;
     const workers = [];
     let announced = 0;
+    const announcements = [];
     for (const binding of bindings) {
       active = { ...binding };
       try {
-        const result = await pollActiveAttention(pi);
+        const result = await pollActiveAttention(pi, canAnnounce);
         announced += result?.announced ?? 0;
+        announcements.push(...(result?.announcements ?? []));
         workers.push({ worker_id: binding.workerId, status: result?.status ?? "unknown" });
       } catch (error) {
         workers.push({ worker_id: binding.workerId, status: "attention_error", error: error?.message });
@@ -1412,7 +1452,7 @@ export function createCaptainExtension({
       fleet.set(binding.workerId, { ...active });
     }
     active = selectedFleetBinding(selected);
-    return { status: "fleet", announced, workers };
+    return { status: "fleet", announced, announcements, workers };
   }
 
   return {
@@ -1610,6 +1650,10 @@ export default function registerCaptainExtension(pi, options) {
   let watcherEpoch = 0;
   let attentionPoll = null;
   let captainTools = null;
+  let captainContext = null;
+  let presentationActive = false;
+  let presentationEpoch = 0;
+  const pendingPresentations = new Map();
 
   function liveBindings() {
     return extension.bindings().filter((binding) => binding.terminal !== true);
@@ -1623,7 +1667,8 @@ export default function registerCaptainExtension(pi, options) {
     if (typeof pi.setActiveTools === "function" && Array.isArray(captainTools)) {
       const allowed = new Set([
         "read", "grep", "find", "ls",
-        "kimiflow_activate", "kimiflow_project", "kimiflow_reply", "kimiflow_steer",
+        "kimiflow_activate", "kimiflow_project", "kimiflow_status",
+        "kimiflow_reply", "kimiflow_steer",
       ]);
       pi.setActiveTools(captainTools.filter((name) => allowed.has(name)));
     }
@@ -1636,11 +1681,98 @@ export default function registerCaptainExtension(pi, options) {
     captainTools = null;
   }
 
+  function persistBinding(binding) {
+    pi.appendEntry?.(BINDING_ENTRY, binding);
+  }
+
+  function showCaptainReply(message, attentionId) {
+    pi.sendMessage?.({
+      customType: ATTENTION_MESSAGE,
+      content: `→ ${message}`,
+      details: { kind: "reply", attention_id: attentionId },
+      display: true,
+    });
+  }
+
+  async function drainPresentations() {
+    if (presentationActive) return;
+    const context = captainContext;
+    const epoch = presentationEpoch;
+    if (
+      context === null
+      || typeof context.ui?.select !== "function"
+      || context.isIdle?.() === false
+    ) {
+      return;
+    }
+    presentationActive = true;
+    try {
+      while (
+        context === captainContext
+        && epoch === presentationEpoch
+        && context.isIdle?.() !== false
+        && pendingPresentations.size > 0
+      ) {
+        const [attentionId, attention] = pendingPresentations.entries().next().value;
+        pendingPresentations.delete(attentionId);
+        const labels = attention.actions.map((item) => item.label);
+        const selected = await context.ui.select(
+          "Kimiflow – Entscheidung",
+          labels,
+        );
+        if (context !== captainContext || epoch !== presentationEpoch) return;
+        if (typeof selected !== "string" || !labels.includes(selected)) continue;
+        try {
+          await extension.deliver("reply", {
+            workerId: attention.worker_id,
+            providerSessionId: attention.provider_session_id,
+            run: attention.run,
+            message: selected,
+          }, context, persistBinding);
+          showCaptainReply(selected, attention.attention_id);
+        } catch (error) {
+          context.ui.notify?.(
+            `Kimiflow-Antwort konnte nicht übergeben werden: ${error?.message ?? error}`,
+            "warning",
+          );
+        }
+      }
+    } catch (error) {
+      if (context === captainContext && epoch === presentationEpoch) {
+        context.ui.notify?.(
+          `Kimiflow-Entscheidung konnte nicht angezeigt werden: ${error?.message ?? error}`,
+          "warning",
+        );
+      }
+    } finally {
+      presentationActive = false;
+    }
+  }
+
+  function queuePresentations(result) {
+    for (const attention of result?.announcements ?? []) {
+      if (
+        attention?.kind !== "question"
+        || attention.actionable !== true
+        || !Array.isArray(attention.actions)
+        || attention.actions.length === 0
+      ) {
+        continue;
+      }
+      pendingPresentations.set(attention.attention_id, attention);
+    }
+    void drainPresentations();
+  }
+
   function pollAttention() {
     if (attentionPoll !== null) return attentionPoll;
-    attentionPoll = Promise.resolve(extension.pollAttention(pi)).then((result) => {
+    const canAnnounce = captainContext?.isIdle?.() !== false;
+    attentionPoll = Promise.resolve(
+      extension.pollAttention(pi, canAnnounce),
+    ).then((result) => {
       if (liveBindings().length === 0) unlockCaptainTools();
       else lockCaptainTools();
+      queuePresentations(result);
       return result;
     }).finally(() => {
       attentionPoll = null;
@@ -1694,6 +1826,7 @@ export default function registerCaptainExtension(pi, options) {
     if (typeof pi.appendEntry !== "function") {
       throw new Error("pi_session_persistence_unavailable");
     }
+    captainContext = context;
     const resolved = await (options?.resolveProject
       ? options.resolveProject(projectSelector, context)
       : projectOperation("resolve", { selector: projectSelector }, context));
@@ -1768,6 +1901,15 @@ export default function registerCaptainExtension(pi, options) {
       context?.ui?.notify?.(boundedStatus(await extension.status()), "info");
     },
   });
+  pi.registerTool?.({
+    name: "kimiflow_status",
+    label: "Kimiflow Status",
+    description: "Read the authoritative Runner status for the active Kimiflow worker.",
+    parameters: statusParameters,
+    async execute() {
+      return textResult(await extension.status());
+    },
+  });
   for (const kind of ["reply", "steer"]) {
     pi.registerTool?.({
       name: `kimiflow_${kind}`,
@@ -1799,8 +1941,15 @@ export default function registerCaptainExtension(pi, options) {
     }
     return undefined;
   });
+  pi.on?.("before_agent_start", (event) => {
+    if (liveBindings().length === 0) return undefined;
+    return {
+      systemPrompt: `${event.systemPrompt}\n\n${CAPTAIN_DIALOG_PROMPT}`,
+    };
+  });
   pi.on?.("agent_settled", () => pollAttention());
   pi.on?.("session_start", async (_event, context) => {
+    captainContext = context;
     stopWatcher();
     extension.restoreForSession(context);
     await pollAttention();
@@ -1808,6 +1957,9 @@ export default function registerCaptainExtension(pi, options) {
     restartWatcher();
   });
   pi.on?.("session_shutdown", () => {
+    presentationEpoch += 1;
+    pendingPresentations.clear();
+    captainContext = null;
     stopWatcher();
     unlockCaptainTools();
     extension.clearMemory();

@@ -439,7 +439,11 @@ assert.equal(question.captain_session_id, "pi-primary-e2e");
 assert.equal(question.worker_id, activated.workerId);
 assert.equal(question.run, ".kimiflow/pi-bridge-e2e");
 assert.match(question.question, /concrete Pi-to-Kimiflow product flow/i);
-assert.equal(messages.at(-1).content, question.question);
+assert.doesNotMatch(messages.at(-1).content, /kimiflow:intake/);
+assert.equal(
+  messages.at(-1).content,
+  question.question.replace(/^<!-- kimiflow:intake [^\n]+ -->\r?\n?/, "").trim(),
+);
 const intakeText = fs.readFileSync(
   path.join(context.cwd, ".kimiflow/pi-bridge-e2e/INTAKE.md"),
   "utf8",

@@ -29,7 +29,9 @@ function withLifecycle(snapshot, { controllerLost = false } = {}) {
   const receipt = snapshot.runner;
   const active = snapshot.active_run ?? { present: false };
   const rawStatus = snapshot.status;
-  const awaiting = active.present === true && active.awaiting_user === true;
+  const workflowAwaiting = active.present === true && active.awaiting_user === true;
+  const awaiting = workflowAwaiting
+    && (!["starting", "running"].includes(snapshot.status) || controllerLost);
   const run = active.present === true ? active.run : receipt?.active_run;
   const bridge = receipt?.bridge ?? null;
   const providerSessionId = receipt?.session_id ?? null;
@@ -108,6 +110,9 @@ function withLifecycle(snapshot, { controllerLost = false } = {}) {
             question: active.awaiting_request
               ?? active.awaiting_reason
               ?? "Kimiflow is waiting for a material user decision.",
+            ...(Array.isArray(active.awaiting_actions)
+              ? { actions: active.awaiting_actions }
+              : {}),
           }
         : {}),
     };
@@ -224,6 +229,7 @@ function production({
   const commands = new Map();
   const handlers = new Map();
   const messages = [];
+  const messageCalls = [];
   const notifications = [];
   const tools = new Map();
   const pi = {
@@ -235,7 +241,10 @@ function production({
     on(name, handler) { handlers.set(name, handler); },
     registerCommand(name, value) { commands.set(name, value); },
     registerTool(value) { tools.set(value.name, value); },
-    sendMessage(value) { messages.push(value); },
+    sendMessage(value, options) {
+      messages.push(value);
+      messageCalls.push({ value, options });
+    },
   };
   const extension = registerCaptainExtension(pi, {
     root: "/pkg",
@@ -264,6 +273,7 @@ function production({
     entries,
     extension,
     handlers,
+    messageCalls,
     messages,
     notifications,
     pi,
@@ -277,6 +287,7 @@ function activeSnapshot({
   status = "running",
   awaiting = false,
   awaitingRequest = null,
+  awaitingActions = null,
   turns = 1,
   run = ".kimiflow/feature-x",
   providerSessionId = "pi-worker-00000001",
@@ -311,6 +322,9 @@ function activeSnapshot({
       awaiting_kind: awaiting ? "intake" : null,
       ...(awaitingRequest === null ? {} : {
         awaiting_request: awaitingRequest,
+      }),
+      ...(awaitingActions === null ? {} : {
+        awaiting_actions: awaitingActions,
       }),
     },
   }, { controllerLost });
@@ -1916,7 +1930,8 @@ test("the same open user question is not repeated when the worker turn settles",
     appendEntry() {},
     sendMessage(value) { messages.push(value); },
   };
-  assert.equal((await extension.pollAttention(pi)).announced, 1);
+  assert.equal((await extension.pollAttention(pi)).announced, 0);
+  assert.equal(messages.length, 0);
 
   status.set(activeSnapshot({
     status: "awaiting_user",
@@ -1925,8 +1940,150 @@ test("the same open user question is not repeated when the worker turn settles",
     turns: 6,
     workerId,
   }));
-  assert.equal((await extension.pollAttention(pi)).announced, 0);
+  assert.equal((await extension.pollAttention(pi)).announced, 1);
   assert.equal(messages.length, 1);
+});
+
+test("the Captain renders structured actions and resumes the Worker directly", async () => {
+  const timers = fakeTimers();
+  const wiring = production({ timers });
+  const choices = [];
+  wiring.context.ui.select = async (title, options) => {
+    choices.push({ title, options });
+    return options[0];
+  };
+  await wiring.tools.get("kimiflow_activate").execute(
+    "tool-call-0001",
+    { request: "build feature-x" },
+    undefined,
+    undefined,
+    wiring.context,
+  );
+  const binding = wiring.extension.binding();
+  wiring.status.set(activeSnapshot({
+    status: "awaiting_user",
+    awaiting: true,
+    awaitingRequest: [
+      "<!-- kimiflow:intake contract=4 schema=2 stage=scope -->",
+      "Problem: Keep discussion in the Captain.",
+      "Action scope_ready: Umfang weiterführen",
+      "Action discuss: Umfang weiter besprechen",
+    ].join("\n"),
+    awaitingActions: [
+      { id: "scope_ready", label: "Umfang weiterführen" },
+      { id: "discuss", label: "Umfang weiter besprechen" },
+    ],
+    turns: 2,
+    workerId: binding.workerId,
+  }));
+
+  await timers.runNext();
+  for (let attempt = 0; attempt < 100 && wiring.messages.length < 2; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.deepEqual(choices, [{
+    title: "Kimiflow – Entscheidung",
+    options: ["Umfang weiterführen", "Umfang weiter besprechen"],
+  }]);
+  assert.equal(wiring.messages[0].customType, "kimiflow");
+  assert.doesNotMatch(wiring.messages[0].content, /kimiflow:intake/);
+  assert.equal(wiring.messages.at(-1).content, "→ Umfang weiterführen");
+  assert.equal(wiring.messageCalls.at(-1).options, undefined);
+  const resume = wiring.spawned.calls.at(-1).args;
+  assert.equal(resume[0], "resume");
+  assert.equal(resume[resume.indexOf("--message") + 1], "Umfang weiterführen");
+});
+
+test("a pending Captain selector never blocks Fleet polling", async () => {
+  const timers = fakeTimers();
+  const wiring = production({ timers });
+  let resolveSelection;
+  wiring.context.isIdle = () => true;
+  wiring.context.ui.select = () => new Promise((resolve) => {
+    resolveSelection = resolve;
+  });
+  await wiring.tools.get("kimiflow_activate").execute(
+    "tool-call-0001",
+    { request: "build feature-x" },
+    undefined,
+    undefined,
+    wiring.context,
+  );
+  const binding = wiring.extension.binding();
+  wiring.status.set(activeSnapshot({
+    status: "awaiting_user",
+    awaiting: true,
+    awaitingActions: [{ id: "scope_ready", label: "Umfang weiterführen" }],
+    turns: 2,
+    workerId: binding.workerId,
+  }));
+
+  await timers.runNext();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(typeof resolveSelection, "function");
+  assert.equal(timers.count(), 1);
+  resolveSelection(undefined);
+  await new Promise((resolve) => setImmediate(resolve));
+});
+
+test("a busy Captain defers Attention instead of steering its active turn", async () => {
+  const timers = fakeTimers();
+  const wiring = production({ timers });
+  let idle = false;
+  wiring.context.isIdle = () => idle;
+  wiring.context.ui.select = async () => undefined;
+  await wiring.tools.get("kimiflow_activate").execute(
+    "tool-call-0001",
+    { request: "build feature-x" },
+    undefined,
+    undefined,
+    wiring.context,
+  );
+  const binding = wiring.extension.binding();
+  wiring.status.set(activeSnapshot({
+    status: "awaiting_user",
+    awaiting: true,
+    awaitingActions: [{ id: "scope_ready", label: "Umfang weiterführen" }],
+    turns: 2,
+    workerId: binding.workerId,
+  }));
+
+  await timers.runNext();
+  assert.equal(wiring.messages.length, 0);
+  assert.equal(timers.count(), 1);
+
+  idle = true;
+  await timers.runNext();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(wiring.messages.length, 1);
+  assert.equal(wiring.messageCalls[0].options, undefined);
+});
+
+test("an open Attention keeps ordinary conversation in the responsive Captain", async () => {
+  const wiring = production();
+  await wiring.tools.get("kimiflow_activate").execute(
+    "tool-call-0001",
+    { request: "build feature-x" },
+    undefined,
+    undefined,
+    wiring.context,
+  );
+  const binding = wiring.extension.binding();
+  wiring.status.set(activeSnapshot({
+    status: "awaiting_user",
+    awaiting: true,
+    awaitingRequest: "Welche Variante soll gelten?",
+    turns: 3,
+    workerId: binding.workerId,
+  }));
+  await wiring.extension.pollAttention(wiring.pi);
+  assert.equal(wiring.handlers.has("input"), false);
+  const result = await wiring.handlers.get("before_agent_start")({
+    systemPrompt: "base Captain prompt",
+  }, wiring.context);
+  assert.match(result.systemPrompt, /Continue ordinary conversation normally/);
+  assert.match(result.systemPrompt, /call kimiflow_status and then kimiflow_reply/);
+  assert.equal(wiring.spawned.calls.length, 1);
 });
 
 test("a provisional Captain announces an exact fast terminal receipt", async () => {
@@ -2262,10 +2419,12 @@ test("Pi tools expose bounded dependency-free schemas", () => {
   assert.deepEqual([...wiring.tools.keys()], [
     "kimiflow_activate",
     "kimiflow_project",
+    "kimiflow_status",
     "kimiflow_reply",
     "kimiflow_steer",
   ]);
   assert.equal(wiring.tools.get("kimiflow_activate").parameters["~kind"], "Object");
+  assert.deepEqual(wiring.tools.get("kimiflow_status").parameters.required, []);
   for (const name of ["kimiflow_reply", "kimiflow_steer"]) {
     const schema = wiring.tools.get(name).parameters;
     assert.equal(schema.additionalProperties, false);

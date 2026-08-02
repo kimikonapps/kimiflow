@@ -9,7 +9,7 @@ argument-hint: [full|grill|plan|build|quick|review|audit|fix|release] [<feature-
 
 Orchestrates the full loop for: **$ARGUMENTS**
 
-You are the **orchestrator**. Run the phases as a state machine, keep only essentials in context, and load phase details from `phases/` on entry.
+You are the **orchestrator**. Run phases as a state machine; load each phase from `phases/` on entry.
 
 ## Modes (invocation)
 
@@ -61,7 +61,8 @@ You are the **orchestrator**. Run the phases as a state machine, keep only essen
 - **Adaptive Execution Contract.** New non-trivial schema-5 `feature|fix` writes declare `Execution contract: 1`; schema 4 remains compatible. A Stop boundary counts one work unit unless already observed. Two unchanged units select phase-local recovery; churn/replays are not progress. Profile and strategy stay independent. Budget pressure prunes only optional breadth. Explicit graph events win; `status`/`next-action` read only, and `observe` records only new decisive artifacts.
 - **Risk-shaped Convergence.** Schema-5 writes pin Contract 1: 1–8 AC-mapped slices; only risky work adds 1–5 failure classes. Audit/release parents stay lean; each code-changing slice/repair uses one contracted child. Findings need meaningful typed digest-pinned reproduction and matching negative evidence. Reviews bind affected-path bytes; targeted checks precede whole-intent conformance; no extra phase, agent, or user gate.
 - **Stop criteria:** success ends; technical failures/findings/caps/repeated root classes change strategy and continue. Schema 4+ awaits only missing input/authority, workspace ambiguity, external access, paid/privacy, material scope/risk, or irreversibility; preview/commit waits are invalid. Never bypass a gate or repeat a failed strategy.
-- **Subagents lack your context.** Pass objective, output format, boundaries, and relevant state paths. For reference content, pass `${CLAUDE_SKILL_DIR}/reference.md` plus exact section names, not its text (except snippets under ~15 lines). Results go to named paths.
+- **Pi boundary:** only the Captain talks to users. Workers persist `await-user`, end the turn, and resume only from its reply.
+- **Subagents lack context.** Pass objective, format, boundaries, state paths, and reference file plus exact sections. Results go to named paths.
 
 ## Phase Files (on-demand)
 

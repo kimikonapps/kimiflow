@@ -545,6 +545,26 @@ def status_json(root, event=""):
     awaiting_request = visible_intake_request(root, active)
     if awaiting_request is not None:
         result["awaiting_request"] = awaiting_request
+        if active.get("awaiting_kind") == "intake":
+            intake = None
+            try:
+                intake_schema = int(active.get("intake_schema") or 1)
+                intent_contract = int(active.get("intent_contract") or 0)
+                intake_round = int(active.get("intake_round") or 0)
+                if intake_schema == 2:
+                    intake = parse_intake_document(
+                        awaiting_request,
+                        intent_contract,
+                        intake_round,
+                        expected_language=str(active.get("interaction_language") or ""),
+                    )
+            except (ActiveError, TypeError, ValueError):
+                pass
+            if intake is not None and intake.get("schema") == 2:
+                result["awaiting_actions"] = [
+                    {"id": action, "label": label}
+                    for action, label in intake["actions"].items()
+                ]
     if transition.get("graph_status") != "legacy":
         result["transition"] = transition
     if execution is not None:
@@ -1016,7 +1036,7 @@ def visible_intake_request(root, active):
                 or not intake_run_name_matches(pinned)
             ):
                 return None
-    except (ActiveError, OSError, UnicodeError):
+    except (ActiveError, OSError, TypeError, UnicodeError, ValueError):
         return None
     return value if 0 < len(value.encode("utf-8")) <= INTAKE_REQUEST_LIMIT else None
 

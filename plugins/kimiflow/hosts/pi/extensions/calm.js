@@ -20,6 +20,8 @@ const KIMIFLOW_OPERATIONAL_TOOLS = new Set([
 ]);
 
 let exportRendering = false;
+let workerView = false;
+let quietView = false;
 
 function configuredLevel(pathname) {
   try {
@@ -84,12 +86,12 @@ function installAssistantLayout() {
     throw new Error("Pi AssistantMessageComponent.updateContent is unavailable");
   }
   Component.prototype.updateContent = function updateContent(message) {
-    const hideThinking = this.hiddenThinkingLabel === "" && this.hideThinkingBlock;
-    const presented = hideThinking
-      ? {
-          ...message,
-          content: message.content.filter((block) => block.type !== "thinking"),
-        }
+    const filtered = message.content.filter((block) => (
+      (!quietView || block.type !== "thinking")
+      && (!workerView || exportRendering || block.type !== "text")
+    ));
+    const presented = filtered.length !== message.content.length
+      ? { ...message, content: filtered }
       : message;
     original.call(this, presented);
     if (presented !== message) this.lastMessage = message;
@@ -209,43 +211,60 @@ function registerBuiltIn(pi, factory) {
 }
 
 export default function registerCalmExtension(pi) {
-  if (!calmEnabled(process.cwd())) return;
-  for (const install of [
-    installAssistantLayout,
-    installOperationalUserLayout,
-    installOperationalToolLayout,
-  ]) {
-    try {
-      install();
-    } catch (error) {
-      console.error(
-        `Kimiflow Calm presentation adapter unavailable: ${error?.message ?? error}`,
-      );
+  workerView = process.env.KIMIFLOW_PI_WORKER_VIEW === "1";
+  quietView = calmEnabled(process.cwd());
+  if (!quietView && !workerView) return;
+  try {
+    installAssistantLayout();
+  } catch (error) {
+    console.error(
+      `Kimiflow Calm presentation adapter unavailable: ${error?.message ?? error}`,
+    );
+  }
+  if (quietView) {
+    for (const install of [
+      installOperationalUserLayout,
+      installOperationalToolLayout,
+    ]) {
+      try {
+        install();
+      } catch (error) {
+        console.error(
+          `Kimiflow Calm presentation adapter unavailable: ${error?.message ?? error}`,
+        );
+      }
     }
   }
-  for (const factory of [
-    PiCodingAgent.createReadToolDefinition,
-    PiCodingAgent.createBashToolDefinition,
-    PiCodingAgent.createEditToolDefinition,
-    PiCodingAgent.createWriteToolDefinition,
-    PiCodingAgent.createGrepToolDefinition,
-    PiCodingAgent.createFindToolDefinition,
-    PiCodingAgent.createLsToolDefinition,
-  ]) {
-    try {
-      if (typeof factory !== "function") {
-        throw new Error("a required Pi built-in tool factory is unavailable");
+  if (quietView) {
+    for (const factory of [
+      PiCodingAgent.createReadToolDefinition,
+      PiCodingAgent.createBashToolDefinition,
+      PiCodingAgent.createEditToolDefinition,
+      PiCodingAgent.createWriteToolDefinition,
+      PiCodingAgent.createGrepToolDefinition,
+      PiCodingAgent.createFindToolDefinition,
+      PiCodingAgent.createLsToolDefinition,
+    ]) {
+      try {
+        if (typeof factory !== "function") {
+          throw new Error("a required Pi built-in tool factory is unavailable");
+        }
+        registerBuiltIn(pi, factory);
+      } catch (error) {
+        console.error(
+          `Kimiflow Calm tool adapter unavailable: ${error?.message ?? error}`,
+        );
       }
-      registerBuiltIn(pi, factory);
-    } catch (error) {
-      console.error(
-        `Kimiflow Calm tool adapter unavailable: ${error?.message ?? error}`,
-      );
     }
   }
   pi.on("session_start", (_event, context) => {
     exportRendering = false;
-    context.ui.setHiddenThinkingLabel?.("");
+    if (quietView) context.ui.setHiddenThinkingLabel?.("");
+    if (quietView && workerView) {
+      context.ui.setWorkingVisible?.(false);
+      context.ui.setWorkingIndicator?.({ frames: [] });
+      context.ui.setStatus?.("kimiflow", "Working in Captain");
+    }
     const removeInputHandler = context.ui.onTerminalInput?.((data) => {
       if (!getKeybindings().matches(data, "tui.input.submit")) return;
       const input = context.ui.getEditorText?.().trim() ?? "";

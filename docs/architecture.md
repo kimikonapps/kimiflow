@@ -67,6 +67,10 @@ exakte Bindung, zeigt die normalisierte Runner-Sicht und leitet Befehle weiter; 
 Adoption- und Cleanup-Entscheidungen stammen aus dem Runner. Reply und Steering adressieren Run, Worker und
 Provider-Sitzung, nie Fokus oder Tab-Label. Nach einem Captain-Crash darf eine Bridge nur an einer vom Runner
 ausgewiesenen fortsetzbaren Grenze und nach positivem Nachweis des toten alten Controllers uebernommen werden.
+Der Captain ist die einzige User-Gespraechsflaeche: Erst wenn der Worker-Turn geendet und der Runner einen
+wartenden Uebergang veroeffentlicht hat, zeigt der Captain dessen strukturierte Aktionen an. Die Captain-Antwort
+adressiert genau diesen Uebergang und setzt denselben Worker einmal fort. Worker- und Subagent-Tabs bleiben
+sichtbare Ausfuehrungsflaechen, besitzen aber keine User-Input-Tools und weisen direkte Eingaben zurueck.
 
 Wenn der Captain in Herdr laeuft, ist dessen Workspace nur Sichttransport. Jeder Fleet-Worker erhaelt einen
 nicht fokussierten Pi-Tab mit dem Worktree als CWD; temporaere Phase-Seats erhalten eigene begrenzte Tabs.
