@@ -4,6 +4,12 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.44
+
+The stock-FirstMate orchestration reset.
+
 ### Changed
 
 - Pi packaging is now skill-only. Kimiflow no longer ships a Captain, worker, Calm, Herdr, session, or
