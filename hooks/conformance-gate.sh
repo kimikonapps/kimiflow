@@ -848,26 +848,6 @@ if mode not in ("feature", "fix"):
     errors.append("conformance_mode_invalid")
 if scope not in ("small", "large"):
     errors.append("conformance_scope_invalid")
-if not plan_only and (
-    os.environ.get("KIMIFLOW_SESSION_HOST") or os.environ.get("KIMIFLOW_HOST")
-) == "pi":
-    gate = os.path.join(os.environ.get("KIMIFLOW_SCRIPT_DIR", ""), "pi-subagent-gate.sh")
-    required_receipts = [(5, "implementation", 1)]
-    if scope == "large":
-        required_receipts.append((6, "verification", 1))
-    for receipt_phase, receipt_role, receipt_min in required_receipts:
-        receipt = run([
-            gate,
-            run_dir,
-            "--phase", str(receipt_phase),
-            "--role", receipt_role,
-            "--round", "1",
-            "--min", str(receipt_min),
-        ])
-        fields = os.fsdecode(receipt.stdout).strip().split("\t")
-        if receipt.returncode != 0 or len(fields) < 4 or fields[1] != "OPEN":
-            reason = fields[3].removeprefix("reason=") if len(fields) >= 4 else "invalid"
-            errors.append("pi_%s_receipt_%s" % (receipt_role, reason))
 if architecture_state not in ("", "active", "off"):
     errors.append("architecture_deliberation_unresolved")
 if build_risk not in ("", "none", "required"):

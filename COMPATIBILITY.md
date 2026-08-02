@@ -12,57 +12,33 @@ kimiflow concretely uses, what breaks if it changes, and a smoke checklist to ru
 > across Claude Code or Codex minor versions until a version is explicitly pinned — keep the README's
 > pre-1.0 warning and re-run the smoke checklist below on every host upgrade.
 
-## Optional Pi host
+## Pi and FirstMate boundary
 
-The additive Pi package targets the tested Pi 0.82.x and 0.83.x JSON/session protocol. It loads
-`hosts/pi/extensions/captain.js`, `hosts/pi/extensions/worker.js`, and `hosts/pi/skills/kimiflow/`; it does not
-install or launch Pi, Herdr, or a provider. A natural user request to build with Kimiflow calls
-`kimiflow_activate`; `/kimiflow <request>` is an equivalent convenience path. Both bind the already-running Pi
-session as Captain and forward its `provider/model:thinking` selection through `hooks/pi-host.sh`. The transport requires
-Pi's exact version-3 `type: "session"` header, balanced `agent_start`/`agent_end` lifecycles, and a clean process
-exit after Pi has handled any automatic retry, compaction, or queued continuation in the process fallback. The last completed lifecycle
-controls provider-turn success. Pi lifecycle is never Kimiflow completion evidence; only the matching terminal
-Kimiflow runner receipt is authoritative. The primary Pi extension starts that existing runner in the
-background and derives status, questions, replies, and completion from runner/Active-Run state. Its private
-`kimiflow-projects-v1.json` registry stores only project id, name, exact Git root, and registration time; the
-existing per-project `FLEET.json` remains the worktree/lease authority. Up to three top-level Pi workers use
-separate Fleet worktrees and bridge identities. Missing Pi, incompatible version, capability drift, or an
-invalid project/session/lifecycle event fails closed. An uninstalled or
-unused Pi package is absent from execution, so embedded Claude Code and Codex remain independent. A detached,
-single-purpose cleanup sentinel owns only the transient Pi process-tree tag and a local cleanup lease. It keeps
-successor activation closed after a hard runner-group kill until tagged Pi descendants are gone; it has no Run,
-feature, delivery, or Herdr state. The portable cleanup boundary is the inherited process group plus processes
-that retain the unforgeable per-turn tag. A process that deliberately removes that tag and leaves the inherited
-process group is outside Kimiflow's cleanup authority; stronger containment requires a provider sandbox or
-container.
+The Kimiflow Pi package is skill-only: `package.json` declares
+`hosts/pi/skills/kimiflow/SKILL.md` and no extension. It does not own Pi sessions, worker processes, worktrees,
+Herdr endpoints, transport identity, status forwarding, recovery, cleanup, or Calm rendering. Install a trusted
+checkout with `pi install /absolute/path/to/kimiflow` (or `-l` for project-local scope).
 
-Install a trusted checkout or verified extracted runtime package with
-`pi install /absolute/path/to/kimiflow` (or add `-l` for project-local scope). This uses Pi's package registry
-and the declared `package.json` resources; ad-hoc `-e` loading is not the supported installation contract.
+The one-conversation, visible-crew experience is supplied by an independently installed, unmodified
+[FirstMate](https://github.com/kunchenguid/firstmate). FirstMate owns the primary conversation, Ship/Scout
+briefs, visible crewmates, worktrees, backend lifecycle, normal status files, recovery and `/calm`. Kimiflow
+owns only the product/workflow semantics executed by the primary and crewmates. Before a Kimiflow Ship starts,
+the project must resolve from FirstMate's persistent registry as `local-only` or explicitly `direct-PR`;
+`no-mistakes` is rejected because it would introduce a second review/fix owner.
 
-The Pi package executes local model and shell processes with the same operating-system identity as the user.
-Accordingly, the Pi 0.82.x and 0.83.x runtime profile advertises `workflow_context` and `structured_events`, but
-deliberately does not advertise `root_confinement`; Pi has no host-enforced project sandbox for its shell/file
-tools. Install only package artifacts you trust, review their extensions before activation, and apply any
-provider sandboxing separately. Kimiflow's custom Pi bridge entries persist only opaque bridge identity, a
-request digest, and the exact non-secret `provider/model:thinking` selector required for resume—not prompts,
-answers, transcripts, credentials, or hidden reasoning. Pi controls persistence of the ordinary Captain
-conversation separately and may store its user and assistant messages in the Pi session transcript.
+The pinned FirstMate baseline is commit `cd73e75e02a1c1e74811b00c5ee08ffae8a59e1e` with Pi `0.82.0`. A real
+stock-Primary dispatch through a visible Pi/Herdr Ship passed on 2026-08-02. The unchanged stock Calm suite,
+however, produced one timing-sensitive duplicate-answer failure and then passed on an immediate rerun. Calm is
+therefore an explicit upstream reliability risk rather than a fully green Kimiflow acceptance claim. FirstMate's
+Herdr backend is experimental, so a spawn or lifecycle failure is surfaced as a FirstMate failure. Kimiflow
+provides no hidden process fallback and must not synthesize `recovered`. A version bump requires the stock
+FirstMate tests plus a real FirstMate Pi/Herdr Ship using the skill-only Kimiflow package; skipped tests and a
+retry-only pass are not clean acceptance evidence.
 
-When Captain already runs inside verified Herdr 0.7.5 protocol 17 context, Kimiflow uses Herdr as a visible
-UI transport: each top-level Fleet worker receives one unfocused interactive Pi tab rooted at its isolated
-worktree; temporary tabs host at most three concurrent role-bound phase agents. The Phase-5 implementation role
-receives bounded write tools; research, plan-review, verification, and code-review roles remain read-only.
-Kimiflow requires Herdr's user-managed `herdr-agent-state.ts`, validates its integration markers and digest,
-copies it into the endpoint's private state directory, and explicitly passes it to Pi with `--extension` after
-`--no-extensions`. Main and phase workers therefore report the native v3 session path required by exact resume.
-Captain retains focus. Kimiflow owns only the exact tab IDs it created; runner and Active Run remain the sole
-workflow authority. Outside Herdr, the existing process transport is unchanged.
-
-For resolved `quiet` (one-off flag, project, then Codex-global precedence), the main Pi worker and visible Herdr
-leaves load a renderer-only Calm adapter verified against Pi 0.83.0. It suppresses only supported built-in and
-Kimiflow operational transcript rows on screen; execution, messages, model context, native session history, and
-export/share content remain authoritative and unchanged.
+Standalone Pi remains supported as a normal skill in the current session, without FirstMate orchestration or
+a promise of background workers. Legacy receipts from the removed custom Kimiflow Pi/Herdr bridge remain
+readable for diagnosis, but they are not resumable. Claude Code, Codex and the optional terminal runner are
+independent of both FirstMate and Herdr.
 
 ## Claude Code primitives used
 

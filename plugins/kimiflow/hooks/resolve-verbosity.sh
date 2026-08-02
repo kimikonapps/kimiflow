@@ -45,6 +45,9 @@ global_file() {
     codex)
       printf '%s/kimiflow/verbosity' "${CODEX_HOME:-$HOME/.codex}"
       ;;
+    pi)
+      printf '%s/kimiflow/verbosity' "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
+      ;;
     *)
       printf '%s/kimiflow/verbosity' "${CLAUDE_HOME:-$HOME/.claude}"
       ;;

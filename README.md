@@ -143,60 +143,45 @@ kimiflow run --adapter claude --model claude-opus-5 "implement the requested fea
 kimiflow status --pretty
 ```
 
-### Optional Pi Captain
+### Pi with stock FirstMate
 
-The repository also ships an installable Pi package for Pi 0.82.x and 0.83.x. Once the Kimiflow package is
-loaded in an already-running Pi session, you can naturally ask Pi to build a feature with Kimiflow:
+Kimiflow's Pi package is intentionally skill-only. It adds Kimiflow's product and engineering workflow to Pi,
+but it does not create a Captain, spawn workers, manage worktrees, control Herdr, or implement Calm. Install a
+trusted Kimiflow checkout with:
 
 ```bash
 pi install /absolute/path/to/kimiflow
 ```
 
-The path may be this trusted checkout or the `kimiflow/` directory extracted from a verified runtime ZIP.
-Use `pi install -l /absolute/path/to/kimiflow` for a project-local installation. Pi records the package and
-loads its declared extensions and skill; a temporary `pi -e` flag is not the supported package installation.
+Use `pi install -l /absolute/path/to/kimiflow` for project-local scope. Pi loads only
+`hosts/pi/skills/kimiflow/SKILL.md`; Kimiflow declares no Pi extension.
 
 ```text
 Build the requested feature with Kimiflow.
-/kimiflow implement the requested feature
-/kimiflow-status
 ```
 
-The natural request and optional slash command use the same durable activation transaction. That Pi session
-remains the responsive, read-only Captain. A private metadata-only project registry (`/kimiflow-project` or the
-`kimiflow_project` tool) resolves project names to exact Git roots; it never stores prompts, code, answers, or
-terminal transcripts. `/kimiflow --project <name> <request>` and the activation tool's optional `project` field
-select a registered project explicitly.
+For the one-conversation, visible-worker experience, install and launch
+[stock FirstMate](https://github.com/kunchenguid/firstmate) separately. Run Pi from the FirstMate checkout and
+configure the project as `local-only` (or explicitly `direct-PR`) before dispatch. Do not use FirstMate's
+`no-mistakes` mode for Kimiflow work: it would add a second review/fix owner on top of Kimiflow's own gates.
+The current test baseline pins FirstMate at `cd73e75e02a1c1e74811b00c5ee08ffae8a59e1e` and Pi at `0.82.0`;
+either upgrade is unverified until the stock tests and a real Pi/Herdr Ship pass again. The final integrated
+stock-Primary, visible-worker, status-return, and Calm run passed on 2026-08-02. An earlier unchanged Calm test
+flaked once for a duplicate answer and passed on immediate rerun, so Calm remains an upstream reliability risk
+rather than a Kimiflow-owned guarantee.
+The FirstMate primary is the only user conversation. It inspects the current codebase and current authoritative
+sources, discusses the feature and adjacent options in the user's language, confirms the final contract, and
+then dispatches an ordinary visible FirstMate Ship or Scout. Crewmates report through normal FirstMate status;
+they do not open a second product conversation. FirstMate alone owns worker lifecycle, worktrees, recovery,
+cleanup, its `/calm` UI, and the selected backend.
 
-The Captain is the only user conversation surface. Product questions and decisions appear there, and a reply
-is bound to the exact waiting Runner transition before the same Worker resumes. Worker and subagent tabs remain
-visible execution surfaces, but reject direct user input; in quiet mode they stay visually calm while working.
+FirstMate's Herdr backend is experimental. A failed Herdr spawn must remain an explicit FirstMate failure; there
+is no hidden Kimiflow process fallback or false `recovered` state. Old sessions created by Kimiflow's removed
+custom Pi/Herdr bridge remain diagnostic history but are not resumable by this architecture.
 
-Every writing top-level task is routed through the existing three-slot Fleet broker before Pi starts. Even a
-clean primary checkout receives an isolated owned Git worktree, runner receipt, Pi session, and endpoint. Up to
-three disjoint tasks can run concurrently; later tasks remain in the broker queue. While Fleet work is live the
-Captain exposes only read/search and Kimiflow control tools. A dead resumable runner can transfer its bridge to
-a replacement Captain only after its old controller is positively absent; provider-session and Run ownership
-do not change.
-
-The Pi adapter inherits the session's provider-neutral `provider/model:thinking` selection. Active Run, Fleet
-leases, gates, and terminal receipts remain the durable workflow authorities; the Runner alone combines them
-with controller reachability into one normalized lifecycle view for hosts. The Captain renders that view and
-forwards commands without interpreting raw receipt states or process IDs. Replies and steering target an exact
-run/worker/provider-session boundary; Pi or Herdr lifecycle text never proves completion.
-
-If the Captain runs in Herdr, each Fleet worker gets its own unfocused interactive Pi tab in the Captain's
-workspace, rooted at that worker's isolated worktree. Temporary bounded semantic agents use separate tabs. The
-user-managed Herdr Pi agent-state integration is copied by digest and loaded explicitly alongside Kimiflow's
-extensions even under `--no-extensions`, so native `agent_session` identity survives resume. Kimiflow owns only
-its exact tab IDs. Outside Herdr, the process transport is unchanged; Kimiflow installs none of Pi, Herdr, or a
-model provider.
-
-A request that names an existing numbered plan (for example `Run 7`) selects only that exact project plan;
-it cannot silently fall through to `Run 7.2` or replace confirmed plan facts with generic intake.
-
-This package is additive. If it is not installed or activated in Pi, the embedded `$kimiflow`
-Codex and `/kimiflow` Claude Code paths, their hooks, and the optional terminal runner behave exactly as before.
+Without FirstMate, Kimiflow still works directly in Pi as a normal skill in the current session. In that mode it
+does not promise a background Captain/crew UI. Codex, Claude Code, and the optional terminal runner remain
+independent and unchanged.
 
 An existing local or remote coding-agent harness can use the same lifecycle through the versioned JSON-stdio
 adapter contract. This path is additive: normal Kimiflow users do not need KimiTalk or another app host.

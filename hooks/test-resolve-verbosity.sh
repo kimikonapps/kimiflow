@@ -11,6 +11,7 @@ WORK="$(mktemp -d)"
 PROJ="$WORK/proj"          # cwd for project-file resolution (non-git → gitroot falls back to pwd)
 FAKE_HOME="$WORK/home"
 FAKE_CODEX_HOME="$WORK/codex-home"
+FAKE_PI_HOME="$WORK/pi-agent"
 PROJ_FILE_REL=".kimiflow/verbosity"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -18,10 +19,11 @@ FAILS=0
 pass() { printf 'PASS: %s\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1"; FAILS=$((FAILS + 1)); }
 
-reset() { rm -rf "$PROJ" "$FAKE_HOME" "$FAKE_CODEX_HOME"; mkdir -p "$PROJ" "$FAKE_HOME" "$FAKE_CODEX_HOME"; }
+reset() { rm -rf "$PROJ" "$FAKE_HOME" "$FAKE_CODEX_HOME" "$FAKE_PI_HOME"; mkdir -p "$PROJ" "$FAKE_HOME" "$FAKE_CODEX_HOME" "$FAKE_PI_HOME"; }
 set_project() { mkdir -p "$PROJ/.kimiflow"; printf '%s\n' "$1" > "$PROJ/.kimiflow/verbosity"; }
 set_global()  { mkdir -p "$FAKE_HOME/.claude/kimiflow"; printf '%s\n' "$1" > "$FAKE_HOME/.claude/kimiflow/verbosity"; }
 set_codex_global() { mkdir -p "$FAKE_CODEX_HOME/kimiflow"; printf '%s\n' "$1" > "$FAKE_CODEX_HOME/kimiflow/verbosity"; }
+set_pi_global() { mkdir -p "$FAKE_PI_HOME/kimiflow"; printf '%s\n' "$1" > "$FAKE_PI_HOME/kimiflow/verbosity"; }
 run() {
   (
     cd "$PROJ" \
@@ -32,6 +34,7 @@ run() {
   )
 }
 run_codex() { ( cd "$PROJ" && HOME="$FAKE_HOME" CODEX_HOME="$FAKE_CODEX_HOME" KIMIFLOW_HOST=codex "$SCRIPT" "$@" ); }
+run_pi() { ( cd "$PROJ" && HOME="$FAKE_HOME" PI_CODING_AGENT_DIR="$FAKE_PI_HOME" KIMIFLOW_HOST=pi "$SCRIPT" "$@" ); }
 assert_eq() { if [ "$1" = "$2" ]; then pass "$3"; else fail "$3 (got '$1' want '$2')"; fi; }
 
 # --- AC-1: flag overrides project/global ---
@@ -47,6 +50,8 @@ reset; set_global verbose
 assert_eq "$(run)" "verbose" "test_global_fallback"
 reset; set_codex_global quiet
 assert_eq "$(run_codex)" "quiet" "test_codex_global_fallback"
+reset; set_pi_global verbose
+assert_eq "$(run_pi)" "verbose" "test_pi_global_fallback"
 
 # --- AC-3b: linked Fleet worktree inherits the primary project setting ---
 reset
@@ -81,6 +86,11 @@ reset
 out="$(run_codex set global verbose)"
 if [ -f "$FAKE_CODEX_HOME/kimiflow/verbosity" ]; then pass "test_set_codex_global_creates_file"; else fail "test_set_codex_global_creates_file"; fi
 assert_eq "$(run_codex)" "verbose" "test_set_codex_global_roundtrip"
+reset
+out="$(run_pi set global quiet)"
+if [ -f "$FAKE_PI_HOME/kimiflow/verbosity" ]; then pass "test_set_pi_global_creates_file"; else fail "test_set_pi_global_creates_file"; fi
+assert_eq "$(run_pi)" "quiet" "test_set_pi_global_roundtrip"
+if [ -e "$FAKE_HOME/.claude/kimiflow/verbosity" ]; then fail "test_pi_global_does_not_touch_claude"; else pass "test_pi_global_does_not_touch_claude"; fi
 reset
 run set project quiet >/dev/null
 if [ -f "$PROJ/.kimiflow/verbosity" ]; then pass "test_set_project_creates_file"; else fail "test_set_project_creates_file"; fi

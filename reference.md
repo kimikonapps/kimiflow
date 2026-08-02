@@ -643,7 +643,7 @@ Goal, visible behavior, and success require `user_explicit|user_confirmed|projec
 
 **Selective elicitation:** rank product candidates by **Impact x Uncertainty**. Ask only the highest-value product facts in **one compact batch**: `quick` ≤2, `small` ≤3, `large`/critical ≤5. When coverage is already complete, use the batch to confirm the compact Goal/Included/Excluded/Done contract instead of asking filler. Order dependencies first, use everyday language, one thought per item, and offer a recommended product default/choices. "I don't know" selects the smallest safe reversible default; paid/privacy/irreversible behavior defaults to excluded rather than silently accepted. A second compact batch is legal only when the first response itself creates a new material product conflict; mark it `cause=first_response_conflict`. Never ask sequential technical questions.
 
-**Bounded Intent Critic:** `large`/critical runs use one fresh-context critic inside the existing agent budget. Packet: request + compact coverage draft, ≤900 words. Output: only `COVERAGE_OK` or ≤5 missing **user-owned** product facts; no research, code, or HOW. Pi uses the visible read-only `kimiflow_subagent` role `intent_critic` at seat `intent-critic-1`, including before the final contract. A clean result records `critic=passed`. `small|quick` folds the same adversarial scan into the top orchestrator and records `critic=folded`. Only when the subagent tool is genuinely unavailable on a large run may the top orchestrator process the identical isolated packet and record the routing fallback; availability never becomes a user wait.
+**Bounded Intent Critic:** `large`/critical runs use one fresh-context critic inside the existing agent budget. Packet: request + compact coverage draft, ≤900 words. Output: only `COVERAGE_OK` or ≤5 missing **user-owned** product facts; no research, code, or HOW. A FirstMate primary may use one ordinary visible Scout; a FirstMate crewmate or standalone Pi folds the identical isolated packet locally because Kimiflow owns no Pi worker tool. Other hosts use their native verified subagent path when available. A clean independent result records `critic=passed`; a local pass records `critic=folded`. Availability never becomes a user wait.
 
 **Fresh Contract-4 schema 2 — deliberate, research, confirm:** Phase 0 records one `Interaction language` from the user's opening request; all visible labels remain in that language while internal action tokens stay stable. `INTAKE.md` uses `contract=4 schema=2 stage=scope round=1 confirmation=scope_deliberation user_language=<tag>` and exactly one `Problem`, `Observable success`, `Boundary`, `Included`, `Later`, `Excluded`, `Counter perspective`, `Completeness check`, 2–5 ordered distinct `Option N`, plus localized `Action scope_ready` and `Action discuss` labels. Options include useful adjacent functions and the strongest smaller/counter approach, but remain inside the proposed scope. `discuss` replaces the current draft without a receipt; only the exact localized `scope_ready` label writes a content-free stage/action/request/contract/language-bound receipt.
 
@@ -2193,24 +2193,29 @@ VERIFICATION, negative original reproduction, regression, legitimate-behavior, b
 re-scan evidence. Caller assertions cannot replace that evidence. None of these commands pushes, releases or
 publishes security data.
 
-## Optional Pi conversational Captain
+## Pi and FirstMate orchestration boundary
 
-The installable Pi package adds a thin bridge over the existing terminal runner. A natural request calls
-`kimiflow_activate`; `/kimiflow <request>` uses the same transaction. The already-running Pi conversation stays
-available while the extension spawns one `kimiflow run` process in the background with the session's exact
-`provider/model:thinking` selection.
+Kimiflow is a skill-only Pi package. It owns product clarification, current-code inspection, current primary-
+source research, planning, implementation, verification and review. It does not implement a Pi Captain,
+workers, worktrees, Herdr endpoints, lifecycle receipts, reply transport, recovery, cleanup or Calm rendering.
 
-The extension persists only an opaque session/root/worker binding, a request digest, and the exact non-secret
-`provider/model:thinking` selector required for resume. Runner status plus Active Run supply the run, material
-question, provider session, and terminal state. Replies and
-steering require those exact identities and start `kimiflow resume --message` only at a resumable boundary.
-There is no Captain CLI, second worker registry, task spool, completion state, or Herdr authority. Herdr may
-host Pi but is outside Kimiflow's process and state model.
+When Pi runs as the primary inside stock FirstMate, only that primary speaks with the user. Before dispatch it
+preserves the user's language, inspects current code and relevant current authoritative sources, discusses the
+feature even when a numbered plan already exists, proposes adjacent functions without silently adding them,
+shows a simple flow, and obtains one explicit final contract confirmation. It then uses an ordinary visible
+FirstMate Ship or Scout. Folded work has no fake agent. Every real delegation is a FirstMate crewmate.
 
-The Pi worker extension protects product mutation until the intent lock confirms intake, then exposes at most
-three fresh bounded Pi subagents using the exact inherited model selection. Subagents receive no bridge binding
-and cannot recursively act as Captain. A Pi lifecycle event never completes Kimiflow; only the runner's
-terminal receipt does.
+Before a Kimiflow Ship, read FirstMate's persistent project-mode registry and require `local-only` or explicitly
+approved `direct-PR`; refuse `no-mistakes`, which would create a second review/fix owner. A crewmate treats the
+confirmed brief and plan as completed product intake and planning. If the brief leaves a material decision
+unresolved, it reports `needs-decision` through the normal FirstMate status file and stops. The primary discusses
+the decision and steers the same worker through FirstMate's normal reply path. The crewmate never opens a
+parallel user conversation, creates another Kimiflow Active Run, or fabricates intake receipts.
+
+FirstMate alone owns spawn, worktrees, Pi/Herdr lifecycle, status/replies, resume/recovery/cleanup and `/calm`.
+Herdr is an experimental FirstMate backend: failures stay explicit, with no Kimiflow fallback and no synthetic
+`recovered`. Standalone Pi runs the same Kimiflow workflow in its current session without promising FirstMate
+crew behavior. Old custom Kimiflow Pi/Herdr bridge receipts are diagnostic-only and not resumable.
 
 ---
 

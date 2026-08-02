@@ -41,10 +41,6 @@ HOST_PROFILES = {
         "structured_events",
         "workflow_context",
     ],
-    "pi": [
-        "structured_events",
-        "workflow_context",
-    ],
 }
 ADVERTISED_FEATURES = sorted(
     {feature for features in HOST_PROFILES.values() for feature in features}
@@ -54,17 +50,9 @@ RUNTIME_REQUIRED_FILES = {
     ".codex-plugin/plugin.json",
     "SKILL.md",
     "package.json",
-    "hosts/pi/extensions/calm.js",
-    "hosts/pi/extensions/captain.js",
-    "hosts/pi/extensions/worker.js",
     "hosts/pi/skills/kimiflow/SKILL.md",
     "hooks/active-run.sh",
     "hooks/hooks.json",
-    "hooks/pi-host.sh",
-    "hooks/pi-subagent-gate.sh",
-    "hooks/kimiflow_core/pi_herdr.py",
-    "hooks/kimiflow_core/pi_host.py",
-    "hooks/kimiflow_core/pi_project.py",
     "hooks/kimiflow_core/worktree_broker.py",
     "phases/PHASES.json",
     "reference.md",
@@ -72,11 +60,6 @@ RUNTIME_REQUIRED_FILES = {
 PI_PACKAGE = {
     "name": "@kimiflow/pi",
     "type": "module",
-    "extensions": [
-        "./hosts/pi/extensions/calm.js",
-        "./hosts/pi/extensions/captain.js",
-        "./hosts/pi/extensions/worker.js",
-    ],
     "skills": ["./hosts/pi/skills/kimiflow"],
 }
 
@@ -139,7 +122,7 @@ def _validate_pi_package(value, version, label):
         or value.get("version") != version
         or value.get("type") != PI_PACKAGE["type"]
         or not isinstance(pi, dict)
-        or pi.get("extensions") != PI_PACKAGE["extensions"]
+        or set(pi) != {"skills"}
         or pi.get("skills") != PI_PACKAGE["skills"]
     ):
         raise ReleaseError("%s is invalid or version-misaligned" % label)

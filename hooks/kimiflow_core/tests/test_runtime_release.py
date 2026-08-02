@@ -28,25 +28,12 @@ def make_candidate(root):
             "version": "1.2.3",
             "type": "module",
             "pi": {
-                "extensions": [
-                    "./hosts/pi/extensions/calm.js",
-                    "./hosts/pi/extensions/captain.js",
-                    "./hosts/pi/extensions/worker.js",
-                ],
                 "skills": ["./hosts/pi/skills/kimiflow"],
             },
         })),
-        "hosts/pi/extensions/calm.js": (0o644, b"export default function calm() {}\n"),
-        "hosts/pi/extensions/captain.js": (0o644, b"export default function captain() {}\n"),
-        "hosts/pi/extensions/worker.js": (0o644, b"export class Worker {}\n"),
         "hosts/pi/skills/kimiflow/SKILL.md": (0o644, b"# Kimiflow for Pi\n"),
         "hooks/active-run.sh": (0o755, b"#!/usr/bin/env bash\nexit 0\n"),
         "hooks/hooks.json": (0o644, b"{}\n"),
-        "hooks/pi-host.sh": (0o755, b"#!/usr/bin/env bash\nexit 0\n"),
-        "hooks/pi-subagent-gate.sh": (0o755, b"#!/usr/bin/env bash\nexit 0\n"),
-        "hooks/kimiflow_core/pi_herdr.py": (0o644, b'"""Herdr transport."""\n'),
-        "hooks/kimiflow_core/pi_host.py": (0o644, b'"""Pi host."""\n'),
-        "hooks/kimiflow_core/pi_project.py": (0o644, b'"""Pi projects."""\n'),
         "hooks/kimiflow_core/worktree_broker.py": (0o644, b'"""Fleet broker."""\n'),
         "hooks/run.sh": (0o755, b"#!/usr/bin/env bash\nexit 0\n"),
         "phases/PHASES.json": (0o644, b"{}\n"),
@@ -232,8 +219,6 @@ class RuntimeReleaseTests(unittest.TestCase):
                 elif info.filename.endswith((
                     "hooks/run.sh",
                     "hooks/active-run.sh",
-                    "hooks/pi-host.sh",
-                    "hooks/pi-subagent-gate.sh",
                 )):
                     self.assertEqual(mode, 0o755)
                 else:
@@ -259,11 +244,7 @@ class RuntimeReleaseTests(unittest.TestCase):
             manifest["contracts"]["host_profiles"]["app_host"]["required_features"],
             runtime_release.HOST_PROFILES["app_host"],
         )
-        self.assertEqual(
-            manifest["contracts"]["host_profiles"]["pi"]["required_features"],
-            runtime_release.HOST_PROFILES["pi"],
-        )
-        self.assertNotIn("root_confinement", runtime_release.HOST_PROFILES["pi"])
+        self.assertNotIn("pi", manifest["contracts"]["host_profiles"])
         with open(archive, "rb") as handle:
             archive_payload = handle.read()
         self.assertEqual(manifest["artifact"]["bytes"], len(archive_payload))
@@ -275,7 +256,6 @@ class RuntimeReleaseTests(unittest.TestCase):
         for profile, features in (
             ("embedded", []),
             ("app_host", runtime_release.HOST_PROFILES["app_host"]),
-            ("pi", runtime_release.HOST_PROFILES["pi"]),
         ):
             status, verified, compatibility = runtime_release.verify_artifact(
                 manifest_path,
@@ -363,30 +343,17 @@ class RuntimeReleaseTests(unittest.TestCase):
             manifest["contracts"]["adapter_protocol"]["max"],
         )
 
-    def test_optional_pi_package_release_and_embedded_host_parity(self):
+    def test_skill_only_pi_package_release_and_embedded_host_parity(self):
         manifest, manifest_path, archive = self.build()
         with zipfile.ZipFile(archive) as bundle:
             package = json.loads(bundle.read("kimiflow/package.json"))
             names = set(bundle.namelist())
         self.assertEqual(package["version"], manifest["version"])
         self.assertEqual(package["name"], "@kimiflow/pi")
-        self.assertTrue({
-            "kimiflow/hosts/pi/extensions/calm.js",
-            "kimiflow/hosts/pi/extensions/captain.js",
-            "kimiflow/hosts/pi/extensions/worker.js",
-            "kimiflow/hosts/pi/skills/kimiflow/SKILL.md",
-            "kimiflow/hooks/pi-host.sh",
-            "kimiflow/hooks/pi-subagent-gate.sh",
-        }.issubset(names))
-        status, _, compatibility = runtime_release.verify_artifact(
-            manifest_path,
-            archive,
-            host_profile="pi",
-            supported_protocol=model_adapter.PROTOCOL_VERSION,
-            host_features=runtime_release.HOST_PROFILES["pi"],
-        )
-        self.assertEqual(status, "artifact_verified")
-        self.assertTrue(compatibility["compatible"])
+        self.assertEqual(package["pi"], {"skills": ["./hosts/pi/skills/kimiflow"]})
+        self.assertIn("kimiflow/hosts/pi/skills/kimiflow/SKILL.md", names)
+        self.assertFalse(any(name.startswith("kimiflow/hosts/pi/extensions/") for name in names))
+        self.assertFalse(any(name.startswith("kimiflow/hooks/kimiflow_core/pi_") for name in names))
         embedded_status, _, embedded = runtime_release.verify_artifact(
             manifest_path,
             archive,

@@ -84,15 +84,7 @@ tracked_paths = {
 }
 required_additive = {
     "package.json",
-    "hosts/pi/extensions/calm.js",
-    "hosts/pi/extensions/captain.js",
-    "hosts/pi/extensions/worker.js",
     "hosts/pi/skills/kimiflow/SKILL.md",
-    "hooks/pi-host.sh",
-    "hooks/pi-subagent-gate.sh",
-    "hooks/kimiflow_core/pi_herdr.py",
-    "hooks/kimiflow_core/pi_host.py",
-    "hooks/kimiflow_core/pi_project.py",
     "hooks/kimiflow_core/worktree_broker.py",
 }
 missing_additive = sorted(
@@ -101,13 +93,13 @@ missing_additive = sorted(
 )
 if missing_additive:
     raise SystemExit(
-        "build-plugin-candidate: required Pi runtime file missing: %s"
+        "build-plugin-candidate: required runtime file missing: %s"
         % missing_additive[0]
     )
 untracked_additive = sorted(required_additive - tracked_paths)
 if untracked_additive:
     raise SystemExit(
-        "build-plugin-candidate: required Pi runtime file is not tracked: %s"
+        "build-plugin-candidate: required runtime file is not tracked: %s"
         % untracked_additive[0]
     )
 paths = sorted({

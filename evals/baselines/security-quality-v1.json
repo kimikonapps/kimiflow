@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "contract_fingerprint": "sha256:33f0a591358f2eac1ce1a76ac01164a33c9efbb1deb057a794f2d824de076038",
+  "contract_fingerprint": "sha256:458959c28cf6311ee21cf0d1ad17b93d01250734ffb6e94211f6b7988285903e",
   "minimum_samples": {
     "threat_model_coverage": 8,
     "finding_precision": 1,
@@ -19,6 +19,6 @@
     "false_clean_prevention": 1.0
   },
   "max_token_cost": 16,
-  "fixture_digest": "sha256:311be5ae67fb18554fda5593aa6f4cc21d944295c2adb6be2955a0201a096df0",
-  "seal": "sha256:a2cda3704aab075eae781ea46ed9d0e6d2aeef75c60c8d14cd9a59e19d9ddcf9"
+  "fixture_digest": "sha256:e78a42891799a229eea9d0114c7feec6be41ad7ee71219da05b798dd298deeec",
+  "seal": "sha256:6ab0e07616926b72793efb2dc2962ad8427b2e1648481e4a2d4ac4d906afb1e8"
 }

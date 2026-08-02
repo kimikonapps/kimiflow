@@ -571,12 +571,6 @@ def _bounded_binary_lines(stream):
 
 
 def _signal_process_group(process, value):
-    if getattr(process, "kimiflow_shared_runner_group", False):
-        try:
-            process.send_signal(value)
-        except OSError:
-            pass
-        return
     if hasattr(os, "killpg"):
         try:
             os.killpg(process.pid, value)
@@ -1509,17 +1503,11 @@ class CommandAgentAdapter:
         def expire_turn():
             if proc is not None:
                 timed_out.set()
-                if getattr(proc, "kimiflow_shared_runner_group", False):
-                    _signal_process_group(proc, signal.SIGTERM)
-                else:
-                    _signal_process_group(proc, signal.SIGKILL)
+                _signal_process_group(proc, signal.SIGKILL)
 
         try:
             env = self._environment(info["host"], session_id)
             env["KIMIFLOW_RUNNER_CONTROLLER"] = "1"
-            shared_runner_group = (
-                env.get("KIMIFLOW_PI_BRIDGE_BINDING") is not None
-            )
             proc = subprocess.Popen(
                 argv, cwd=root, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=(
@@ -1527,9 +1515,8 @@ class CommandAgentAdapter:
                     if sealed
                     else None
                 ),
-                bufsize=0, start_new_session=not shared_runner_group,
+                bufsize=0, start_new_session=True,
             )
-            proc.kimiflow_shared_runner_group = shared_runner_group
             with self._process_lock:
                 self._process = proc
             timer = threading.Timer(self.turn_timeout_seconds, expire_turn)

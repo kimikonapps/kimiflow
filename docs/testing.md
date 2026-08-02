@@ -36,15 +36,13 @@ Entwicklung zusaetzlich laufen, ersetzen den vollstaendigen Plan aber nicht.
   autonomes Same-Thread-Resume, materieller Wait und fehlende Kimiflow-Aktivierung.
 - `hooks/test-install-kimiflow-cli.sh` prueft verwaltete Installation/`--check` und verhindert das
   Ueberschreiben eines fremden Executables.
-- `hooks/test-pi-host.sh` prueft den Pi-0.82.x-JSON-/Session-Vertrag, providerneutrale
-  `provider/model:thinking`-Auswahl, eine unveraenderliche verifizierte Worker-Extension, Workflow-Kontext,
-  Preflight sowie generationgebundene Subagents.
-- `node --test hosts/pi/tests/captain.test.mjs` prueft natuerliche modellaufrufbare Aktivierung und den
-  aequivalenten Slash-Weg ueber den vorhandenen Runner, den Captain-exklusiven Entscheidungsdialog, exakt
-  gebundene Worker-Fortsetzung sowie deduplizierte Attention.
-- `hooks/test-pi-kimiflow-e2e.sh` prueft einen vollstaendigen deterministischen Primary-Pi-Request bis zum
-  echten `active-run finish` mit Phase-Reads, Conformance, Baseline und terminalem Kimiflow-Receipt; ein
-  Pi-`agent_end` darf den Run nicht abschliessen.
+- `hooks/test-firstmate-integration.sh --static` prueft, dass das Pi-Paket nur den Kimiflow-Skill ausliefert,
+  keine eigene Pi-/Herdr-Orchestrierung mehr existiert und die FirstMate-Grenze dokumentiert ist.
+- `hooks/test-firstmate-integration.sh --live` fuehrt zuerst die unveraenderten Stock-FirstMate-Tests fuer
+  Pi-Primary und Herdr ohne erlaubte Skips aus. Danach laesst es einen echten Stock-FirstMate-Primary den
+  sichtbaren Pi/Herdr-Ship selbst starten, einen eventuellen Pi-Trust-Dialog ueber FirstMates normalen
+  Steuerweg bearbeiten und das Ergebnis in derselben Primary-Sitzung empfangen. Erst danach laeuft der
+  unveraenderte Stock-Calm-Test. Ein Retry-only-Pass wird berichtet, gilt aber nicht als saubere Acceptance.
 - Der Acceptance-Selector-Audit verlangt, dass alle in `ACCEPTANCE.md` benannten Tests als echte Harnesses
   existieren und ausfuehrbar sind.
 

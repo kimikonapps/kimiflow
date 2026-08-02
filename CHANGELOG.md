@@ -4,7 +4,23 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Changed
+
+- Pi packaging is now skill-only. Kimiflow no longer ships a Captain, worker, Calm, Herdr, session, or
+  lifecycle extension; stock FirstMate owns those concerns when a visible crew is wanted.
+- The FirstMate primary confirms the product contract before an ordinary Ship or Scout, while crewmates use
+  normal FirstMate status and never start a second user conversation.
+- Existing custom Pi/Herdr bridge receipts remain readable for diagnosis but are explicitly not resumable.
+
+### Removed
+
+- Removed Kimiflow's custom Pi/Herdr bridge, project registry, lifecycle correlation, worker/Captain extensions,
+  Calm renderer, and their integration-specific gates and tests.
+
+### Verification
+
+- Added a static ownership-boundary check and a real stock FirstMate Pi/Herdr Ship test. The live test requires
+  an exact visible crewmate, local commit, proof file, normal status completion, and no skipped stock checks.
 
 ## 0.2.43
 

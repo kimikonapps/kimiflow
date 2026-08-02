@@ -119,132 +119,16 @@ class RunnerTests(unittest.TestCase):
         with open(runner.receipt_path(self.root), encoding="utf-8") as handle:
             return json.load(handle)
 
-    def write_pi_start_claim(self, binding, token):
-        claim_path = os.path.join(
-            self.root,
-            ".kimiflow",
-            "session",
-            runner.PI_START_CLAIM_NAME,
-        )
-        os.makedirs(claim_path, mode=0o700, exist_ok=False)
-        with open(os.path.join(claim_path, "owner.json"), "w", encoding="utf-8") as handle:
-            json.dump({
-                "schemaVersion": 1,
-                "token": token,
-                "pid": os.getpid(),
-                "root": binding["root"],
-                "captainSessionId": binding["captain_session_id"],
-                "workerId": binding["worker_id"],
-            }, handle)
-        return claim_path
-
-    def write_pi_receipt(
-        self,
-        status,
-        *,
-        controller_pid=None,
-        active_run=".kimiflow/demo",
-        diagnostic_code=None,
-    ):
-        value = {
-            "schema_version": 1,
-            "host": "pi",
-            "adapter": "pi-fixture00000001",
-            "root": self.root,
-            "session_id": "provider-session-0001",
-            "thread_id": "provider-session-0001",
-            "status": status,
-            "started_at": "2026-01-01T00:00:00Z",
-            "updated_at": "2026-01-01T00:00:00Z",
-            "turns": 3,
-            "controller_pid": os.getpid() if controller_pid is None else controller_pid,
-            "active_run": active_run,
-            "bridge": {
-                "schema_version": 1,
-                "captain_session_id": "captain-session-0001",
-                "worker_id": "worker-00000001",
-            },
-        }
-        if diagnostic_code is not None:
-            value["diagnostic_code"] = diagnostic_code
-        runner.write_receipt(self.root, value)
-
-    def test_runner_status_is_the_normalized_pi_lifecycle_authority(self):
+    def test_runner_status_reports_host_neutral_runner_and_active_state(self):
         idle = runner.runner_status(self.root)
         self.assertEqual(idle["status"], "idle")
-        self.assertEqual(idle["lifecycle"]["state"], "idle")
-        self.assertFalse(idle["lifecycle"]["active"])
+        self.assertIsNone(idle["runner"])
+        self.assertNotIn("lifecycle", idle)
 
         self.write_active()
-        self.write_pi_receipt("running")
-        reachable = runner.runner_status(self.root)
-        self.assertEqual(reachable["lifecycle"]["state"], "reachable")
-        self.assertTrue(reachable["lifecycle"]["reachable"])
-        self.assertEqual(
-            reachable["lifecycle"]["identity"]["worker_id"],
-            "worker-00000001",
-        )
-
-        self.write_pi_receipt("running", controller_pid=99999999)
-        interrupted = runner.runner_status(self.root)
-        self.assertEqual(interrupted["status"], "interrupted")
-        self.assertEqual(interrupted["lifecycle"]["state"], "resumable")
-        self.assertTrue(interrupted["lifecycle"]["can_resume"])
-        self.assertEqual(interrupted["lifecycle"]["attention"]["kind"], "failure")
-        self.assertFalse(interrupted["lifecycle"]["cleanup_endpoint"])
-
-    def test_user_wait_outranks_transport_failure_in_normalized_lifecycle(self):
-        self.write_active(awaiting=True)
-        self.write_pi_receipt(
-            "transport_error",
-            controller_pid=99999999,
-            diagnostic_code="herdr_turn_invalid",
-        )
-        status = runner.runner_status(self.root)
-        lifecycle = status["lifecycle"]
-        self.assertEqual(status["status"], "awaiting_user")
-        self.assertEqual(lifecycle["state"], "waiting")
-        self.assertEqual(lifecycle["attention"]["kind"], "question")
-        self.assertEqual(lifecycle["attention"]["question"], "choose")
-        self.assertFalse(lifecycle["cleanup_endpoint"])
-
-    def test_user_wait_is_not_actionable_while_the_worker_turn_is_live(self):
-        self.write_active(awaiting=True)
-        self.write_pi_receipt("running", controller_pid=os.getpid())
-        status = runner.runner_status(self.root)
-        lifecycle = status["lifecycle"]
-        self.assertEqual(status["status"], "running")
-        self.assertEqual(lifecycle["state"], "reachable")
-        self.assertFalse(lifecycle["awaiting_user"])
-        self.assertFalse(lifecycle["can_resume"])
-        self.assertIsNone(lifecycle["attention"])
-
-    def test_provisional_transport_failure_is_terminal_and_actionable(self):
-        self.write_pi_receipt(
-            "transport_error",
-            controller_pid=99999999,
-            active_run=None,
-            diagnostic_code="herdr_turn_invalid",
-        )
-        lifecycle = runner.runner_status(self.root)["lifecycle"]
-        self.assertEqual(lifecycle["state"], "failed")
-        self.assertTrue(lifecycle["terminal"])
-        self.assertIsNone(lifecycle["provisional_identity"]["run"])
-        self.assertEqual(lifecycle["attention"]["kind"], "failure")
-        self.assertTrue(lifecycle["cleanup_endpoint"])
-
-    def test_pre_run_workflow_failure_is_terminal_and_actionable(self):
-        self.write_pi_receipt(
-            "no_kimiflow_run",
-            controller_pid=99999999,
-            active_run=None,
-        )
-        lifecycle = runner.runner_status(self.root)["lifecycle"]
-        self.assertEqual(lifecycle["state"], "failed")
-        self.assertEqual(lifecycle["reason"], "no_kimiflow_run")
-        self.assertIsNone(lifecycle["provisional_identity"]["run"])
-        self.assertEqual(lifecycle["attention"]["kind"], "failure")
-        self.assertTrue(lifecycle["cleanup_endpoint"])
+        active = runner.runner_status(self.root)
+        self.assertEqual(active["status"], "embedded_active")
+        self.assertTrue(active["active_run"]["present"])
 
     def test_run_starts_codex_safely_and_writes_minimal_receipt(self):
         nested = os.path.join(self.root, "nested")
@@ -375,168 +259,6 @@ class RunnerTests(unittest.TestCase):
                 stderr=subprocess.DEVNULL,
             )
 
-    def test_pi_bridge_identity_is_persisted_and_required_for_resume(self):
-        binding = {
-            "schema_version": 1,
-            "root": os.path.realpath(self.root),
-            "captain_session_id": "pi-primary-0001",
-            "worker_id": "worker-00000001",
-        }
-        adapter = FakeAdapter(start_action=lambda: self.write_active(awaiting=True))
-        with mock.patch.dict(
-            os.environ,
-            {runner.PI_BRIDGE_ENV: json.dumps(binding)},
-        ):
-            result = runner.run_task(self.root, "bridge fixture", adapter=adapter)
-        self.assertEqual(result["status"], "awaiting_user")
-        self.assertEqual(self.read_receipt()["bridge"], {
-            "schema_version": 1,
-            "captain_session_id": "pi-primary-0001",
-            "worker_id": "worker-00000001",
-        })
-
-        unrelated = {
-            **binding,
-            "worker_id": "worker-unrelated01",
-        }
-        with mock.patch.dict(
-            os.environ,
-            {runner.PI_BRIDGE_ENV: json.dumps(unrelated)},
-        ), self.assertRaisesRegex(
-            runner.RunnerError,
-            "same Pi bridge identity",
-        ):
-            runner.resume_task(self.root, "do not deliver", adapter=adapter)
-
-    def test_pi_start_claim_is_released_after_exact_initial_receipt(self):
-        binding = {
-            "schema_version": 1,
-            "root": os.path.realpath(self.root),
-            "captain_session_id": "pi-primary-0001",
-            "worker_id": "worker-00000001",
-        }
-        token = "claim-" + "a" * 32
-        claim_path = self.write_pi_start_claim(binding, token)
-        handed_off = []
-
-        def inspect_handoff():
-            with open(os.path.join(claim_path, "owner.json"), encoding="utf-8") as handle:
-                handed_off.append(json.load(handle)["pid"])
-
-        def start_action():
-            self.write_active(awaiting=True)
-
-        adapter = FakeAdapter(
-            start_action=start_action,
-            pre_thread_action=inspect_handoff,
-        )
-        with mock.patch.dict(os.environ, {
-            runner.PI_BRIDGE_ENV: json.dumps(binding),
-            runner.PI_START_CLAIM_ENV: token,
-        }):
-            result = runner.run_task(self.root, "bridge fixture", adapter=adapter)
-
-        self.assertEqual(result["status"], "awaiting_user")
-        self.assertEqual(handed_off, [os.getpid()])
-        self.assertFalse(os.path.exists(claim_path))
-        self.assertEqual(self.read_receipt()["bridge"]["worker_id"], binding["worker_id"])
-
-    def test_pi_start_claim_is_released_when_existing_run_blocks_start(self):
-        binding = {
-            "schema_version": 1,
-            "root": os.path.realpath(self.root),
-            "captain_session_id": "pi-primary-0001",
-            "worker_id": "worker-00000001",
-        }
-        token = "claim-" + "b" * 32
-        claim_path = self.write_pi_start_claim(binding, token)
-        self.write_active()
-        with mock.patch.dict(os.environ, {
-            runner.PI_BRIDGE_ENV: json.dumps(binding),
-            runner.PI_START_CLAIM_ENV: token,
-        }), self.assertRaisesRegex(runner.RunnerError, "active Kimiflow run"):
-            runner.run_task(self.root, "bridge fixture", adapter=FakeAdapter())
-
-        self.assertFalse(os.path.exists(claim_path))
-
-    def test_pi_start_claim_serializes_resume_until_runner_settles(self):
-        binding = {
-            "schema_version": 1,
-            "root": os.path.realpath(self.root),
-            "captain_session_id": "pi-primary-0001",
-            "worker_id": "worker-00000001",
-        }
-        adapter = FakeAdapter(
-            start_action=lambda: self.write_active(awaiting=True),
-            resume_actions=[lambda: self.write_active(awaiting=True)],
-        )
-        with mock.patch.dict(
-            os.environ,
-            {runner.PI_BRIDGE_ENV: json.dumps(binding)},
-        ):
-            runner.run_task(self.root, "bridge fixture", adapter=adapter)
-
-        token = "claim-" + "e" * 32
-        claim_path = self.write_pi_start_claim(binding, token)
-        handed_off = []
-
-        def inspect_resume_handoff():
-            with open(os.path.join(claim_path, "owner.json"), encoding="utf-8") as handle:
-                handed_off.append(json.load(handle)["pid"])
-            self.write_active(awaiting=True)
-
-        adapter.resume_actions = [inspect_resume_handoff]
-        with mock.patch.dict(os.environ, {
-            runner.PI_BRIDGE_ENV: json.dumps(binding),
-            runner.PI_START_CLAIM_ENV: token,
-        }):
-            result = runner.resume_task(self.root, "accepted", adapter=adapter)
-
-        self.assertEqual(result["status"], "awaiting_user")
-        self.assertEqual(handed_off, [os.getpid()])
-        self.assertFalse(os.path.exists(claim_path))
-
-    def test_pi_start_claim_rejects_mismatched_owner_without_deleting_it(self):
-        binding = {
-            "schema_version": 1,
-            "root": os.path.realpath(self.root),
-            "captain_session_id": "pi-primary-0001",
-            "worker_id": "worker-00000001",
-        }
-        claim_path = self.write_pi_start_claim(binding, "claim-" + "c" * 32)
-        with mock.patch.dict(os.environ, {
-            runner.PI_BRIDGE_ENV: json.dumps(binding),
-            runner.PI_START_CLAIM_ENV: "claim-" + "d" * 32,
-        }), self.assertRaisesRegex(runner.RunnerError, "start claim owner is invalid"):
-            runner.run_task(self.root, "bridge fixture", adapter=FakeAdapter())
-
-        self.assertTrue(os.path.isdir(claim_path))
-
-    def test_pi_start_claim_handoff_never_truncates_the_published_owner(self):
-        binding = {
-            "schema_version": 1,
-            "root": os.path.realpath(self.root),
-            "captain_session_id": "pi-primary-0001",
-            "worker_id": "worker-00000001",
-        }
-        token = "claim-" + "b" * 32
-        claim_path = self.write_pi_start_claim(binding, token)
-        with mock.patch.dict(os.environ, {
-            runner.PI_BRIDGE_ENV: json.dumps(binding),
-            runner.PI_START_CLAIM_ENV: token,
-        }), mock.patch.object(
-            runner.os,
-            "rename",
-            side_effect=OSError("injected handoff interruption"),
-        ), self.assertRaises(runner.RunnerError):
-            runner._read_pi_start_claim(self.root)
-
-        with open(os.path.join(claim_path, "owner.json"), encoding="utf-8") as handle:
-            owner = json.load(handle)
-        self.assertEqual(owner["token"], token)
-        self.assertEqual(owner["pid"], os.getpid())
-        self.assertEqual(os.listdir(claim_path), ["owner.json"])
-
     def test_runner_selects_claude_and_pins_resume_identity(self):
         args = runner._parser().parse_args([
             "run", "build it", "--adapter", "claude", "--model", "fable",
@@ -569,62 +291,99 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(drift.exception.status, "adapter_mismatch")
         self.assertEqual(drift.exception.code, 2)
 
-    def test_pi_resume_migrates_a_compatible_runtime_contract(self):
-        class PiAdapter(FakeAdapter):
-            def info(self):
-                return {
-                    "schema_version": 1,
-                    "name": "pi-bbbbbbbbbbbbbbbb",
-                    "host": "pi",
-                    "capabilities": {
-                        key: True for key in runner.model_adapter.CAPABILITY_KEYS
-                    },
-                    "features": {
-                        "workflow_context": True,
-                        "structured_events": True,
-                        "root_confinement": False,
-                    },
-                }
-
-            def contract_fingerprint(self):
-                return "sha256:" + "b" * 64
-
-        self.write_active(host="pi")
-        bridge = {
-            "schema_version": 1,
-            "captain_session_id": "captain-session-0001",
-            "worker_id": "worker-session-0001",
-        }
-        runner.write_receipt(self.root, {
+    def test_legacy_pi_bridge_receipt_is_explicitly_not_resumable(self):
+        legacy = {
             "schema_version": 1,
             "host": "pi",
             "adapter": "pi-aaaaaaaaaaaaaaaa",
             "adapter_contract": "sha256:" + "a" * 64,
-            "bridge": bridge,
+            "bridge": {
+                "schema_version": 1,
+                "captain_session_id": "captain-session-0001",
+                "worker_id": "worker-session-0001",
+            },
             "root": self.root,
             "session_id": THREAD,
             "thread_id": THREAD,
-            "status": "transport_error",
+            "status": "running",
             "controller_pid": 99999999,
             "turns": 1,
             "active_run": ".kimiflow/demo",
             "started_at": "2026-07-27T00:00:00Z",
             "updated_at": "2026-07-27T00:00:00Z",
-        })
-        adapter = PiAdapter(resume_actions=[lambda: self.write_outcome("done")])
+        }
+        runner.write_receipt(self.root, legacy)
+        receipt_path = runner.receipt_path(self.root)
+        with open(receipt_path, "rb") as handle:
+            before = handle.read()
 
-        with mock.patch.dict(os.environ, {
-            runner.PI_BRIDGE_ENV: json.dumps({
-                **bridge,
-                "root": self.root,
-            }),
-        }, clear=False):
-            result = runner.resume_task(self.root, adapter=adapter)
+        status = runner.runner_status(self.root)
+        self.assertEqual(status["status"], "legacy_pi_bridge_not_resumable")
+        self.assertEqual(
+            status["diagnostic_code"],
+            "legacy_pi_bridge_not_resumable",
+        )
 
-        self.assertEqual(result["status"], "done")
-        receipt = self.read_receipt()
-        self.assertEqual(receipt["adapter"], "pi-bbbbbbbbbbbbbbbb")
-        self.assertEqual(receipt["adapter_contract"], "sha256:" + "b" * 64)
+        with self.assertRaises(runner.RunnerError) as context:
+            runner.resume_task(self.root, adapter=FakeAdapter())
+
+        self.assertEqual(
+            context.exception.status,
+            "legacy_pi_bridge_not_resumable",
+        )
+        self.assertEqual(context.exception.code, 2)
+        with open(receipt_path, "rb") as handle:
+            self.assertEqual(handle.read(), before)
+        self.assertEqual(runner.load_receipt(self.root)["bridge"], legacy["bridge"])
+
+    def test_runner_status_marks_a_dead_controller_interrupted(self):
+        receipt = runner._new_receipt(
+            self.root,
+            THREAD,
+            {"host": "codex", "name": "codex-exec"},
+            "sha256:" + "a" * 64,
+        )
+        receipt["controller_pid"] = 99999999
+        runner.write_receipt(self.root, receipt)
+
+        status = runner.runner_status(self.root)
+
+        self.assertEqual(status["status"], "interrupted")
+        self.assertEqual(status["diagnostic_code"], "controller_not_running")
+        self.assertEqual(status["runner"]["status"], "running")
+
+    def test_runner_status_user_wait_outranks_a_dead_controller(self):
+        self.write_active(awaiting=True)
+        receipt = runner._new_receipt(
+            self.root,
+            THREAD,
+            {"host": "codex", "name": "codex-exec"},
+            "sha256:" + "a" * 64,
+        )
+        receipt["controller_pid"] = 99999999
+        receipt["active_run"] = ".kimiflow/demo"
+        runner.write_receipt(self.root, receipt)
+
+        status = runner.runner_status(self.root)
+
+        self.assertEqual(status["status"], "awaiting_user")
+        self.assertNotIn("diagnostic_code", status)
+
+    def test_runner_status_live_controller_outranks_a_persisted_user_wait(self):
+        self.write_active(awaiting=True)
+        receipt = runner._new_receipt(
+            self.root,
+            THREAD,
+            {"host": "codex", "name": "codex-exec"},
+            "sha256:" + "a" * 64,
+        )
+        receipt["active_run"] = ".kimiflow/demo"
+        runner.write_receipt(self.root, receipt)
+
+        status = runner.runner_status(self.root)
+
+        self.assertEqual(status["status"], "running")
+        self.assertNotIn("diagnostic_code", status)
 
     def test_run_continues_same_thread_until_terminal_outcome(self):
         adapter = FakeAdapter(

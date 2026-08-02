@@ -159,6 +159,25 @@ print(json.dumps(completion))
             "input_tokens": 20, "output_tokens": 10,
         })
 
+    def test_command_adapter_process_isolation_is_host_neutral(self):
+        adapter = model_adapter.CommandAgentAdapter(
+            self.write_harness(),
+            environ={
+                "PATH": os.environ.get("PATH", ""),
+                "KIMIFLOW_PI_BRIDGE_BINDING": "legacy-unused-value",
+            },
+        )
+        original_popen = subprocess.Popen
+        with mock.patch.object(
+            model_adapter.subprocess,
+            "Popen",
+            wraps=original_popen,
+        ) as popen:
+            result = adapter.start(self.root, "isolated", lambda _session: None)
+
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+
     def test_legacy_command_adapter_contract_stays_unchanged(self):
         payload_log = os.path.join(self.tmp.name, "legacy-payloads.jsonl")
         adapter = model_adapter.CommandAgentAdapter(

@@ -54,44 +54,27 @@ Routinebestaetigung weiter. Zaehler bleiben `null`, wenn der Provider keine Usag
 `codex app-server` bleibt eine moegliche spaetere Transport-Alternative fuer einen echten Rich Client, ist aber
 keine Abhaengigkeit des schlanken CLI-Wegs.
 
-Der optionale Pi-Host setzt die FirstMate-artige Trennung zwischen Captain, Projekt und Fleet-Worker um. Die
-laufende Pi-Sitzung bleibt ansprechbarer, nur lesender Captain. Eine private Metadaten-Registry unter Pis
-Config-Root ordnet Projekt-ID und -Name einem exakten Git-Primary zu, wird aber nie Workflow-Autoritaet und
-speichert keine Aufgaben- oder Codeinhalte.
+Die Pi-Integration ist absichtlich ein reiner Skill. `package.json` deklariert keine Kimiflow-Extension; damit
+besitzt Kimiflow weder eine Captain-Sitzung noch Worker-Prozesse, Herdr-Endpunkte, Transport-Receipts, Recovery,
+Cleanup oder eine eigene Calm-Darstellung. Standalone Pi fuehrt Kimiflow in der aktuellen Sitzung aus.
 
-Vor jedem neuen schreibenden Top-Level-Auftrag reserviert die Primary-Extension im bestehenden `FLEET.json`
-einen von drei Slots. Der Runner startet erst danach im zugeordneten isolierten Worktree; Run, Worktree,
-Runner-Receipt, Pi-Sitzung und Transport-Endpunkt bleiben eine exakte Identitaetskette. Mehrere Worker werden
-parallel ueber denselben ereignisgetriebenen Captain-Watcher beaufsichtigt. Der Captain persistiert nur seine
-exakte Bindung, zeigt die normalisierte Runner-Sicht und leitet Befehle weiter; Lifecycle-, Attention-,
-Adoption- und Cleanup-Entscheidungen stammen aus dem Runner. Reply und Steering adressieren Run, Worker und
-Provider-Sitzung, nie Fokus oder Tab-Label. Nach einem Captain-Crash darf eine Bridge nur an einer vom Runner
-ausgewiesenen fortsetzbaren Grenze und nach positivem Nachweis des toten alten Controllers uebernommen werden.
-Der Captain ist die einzige User-Gespraechsflaeche: Erst wenn der Worker-Turn geendet und der Runner einen
-wartenden Uebergang veroeffentlicht hat, zeigt der Captain dessen strukturierte Aktionen an. Die Captain-Antwort
-adressiert genau diesen Uebergang und setzt denselben Worker einmal fort. Worker- und Subagent-Tabs bleiben
-sichtbare Ausfuehrungsflaechen, besitzen aber keine User-Input-Tools und weisen direkte Eingaben zurueck.
+Fuer die Ein-Gespraech-/sichtbare-Crew-Oberflaeche wird unveraendertes FirstMate als eigene Distribution
+installiert. FirstMate besitzt Primary-Gespraech, Ship-/Scout-Briefs, sichtbare Crewmates, Worktrees, normalen
+Status, Backend-Lifecycle, Recovery, Cleanup und `/calm`. Kimiflow besitzt nur den fachlichen Ablauf innerhalb
+dieser Rollen. Der Primary prueft vor dem Dispatch die aktuelle Codebasis und aktuelle autoritative Quellen,
+bespricht das Feature in der Sprache des Users, bestaetigt den finalen Vertrag und erzeugt danach einen
+normalen FirstMate-Brief. Der Crewmate behandelt diesen Brief als bestaetigten Intake; eine fehlende materielle
+Entscheidung meldet er als `needs-decision` an den Primary, statt ein zweites User-Gespraech zu beginnen.
 
-Wenn der Captain in Herdr laeuft, ist dessen Workspace nur Sichttransport. Jeder Fleet-Worker erhaelt einen
-nicht fokussierten Pi-Tab mit dem Worktree als CWD; temporaere Phase-Seats erhalten eigene begrenzte Tabs.
-Kimiflow laedt die benutzerverwaltete, marker- und digestgepruefte Herdr-Agent-State-Integration trotz
-`--no-extensions` explizit, damit Herdr die native Pi-Session meldet. Herdr verwaltet nur den exakten
-Pane-/Tab-/Session-Transport; es leitet daraus keinen Run-Erfolg oder Recovery-Zustand ab. Nur exakte IDs werden
-bereinigt; Runner, Active Run und Fleet-Leases bleiben die Workflow-Autoritaeten. Ohne Herdr bleibt der
-Prozess-Transport.
-Ein abgeloester Cleanup-Sentinel besitzt ausschliesslich das zufaellige Pi-Prozessbaum-Tag und eine lokale
-Cleanup-Lease. Nach einem harten Kill der Runner-Gruppe blockiert diese Lease einen Nachfolger, bis der
-markierte Pi-Prozessbaum beendet ist; eine verwaiste Lease wird vor der naechsten Aktivierung mit demselben
-Besitz-Token bereinigt. Die portable Cleanup-Grenze umfasst die geerbte Prozessgruppe und Prozesse, die das
-zufaellige Turn-Tag behalten. Ein Prozess, der das Tag absichtlich entfernt und zugleich die Prozessgruppe
-verlaesst, benoetigt fuer staerkere Isolation eine Provider-Sandbox oder einen Container. Der Sentinel kennt
-weder Feature noch Run, Delivery oder Herdr.
+Jede echte Delegation ist ein sichtbarer FirstMate Ship oder Scout; interne, nicht delegierte Arbeit wird nicht
+als Agent vorgetaeuscht. Vor einem Kimiflow-Ship muss die persistente FirstMate-Projekt-Registry `local-only`
+oder bewusst `direct-PR` liefern. `no-mistakes` ist fuer Kimiflow unzulaessig, weil es einen zweiten Review-/
+Fix-Owner neben Kimiflows Gates einfuehren wuerde.
 
-Der Pi-Worker laedt eine verifizierte schreibgeschuetzte Extension, blockiert Produktmutationen bis zum
-bestaetigten Intent-Lock und kann danach bis zu drei frische begrenzte, nur lesende Pi-Subagents mit derselben
-`provider/model:thinking`-Auswahl starten. Subagents erhalten keine Captain-Bindung. Ein Pi-`agent_end`
-veraendert keinen Kimiflow-Status; nur das exakte terminale Receipt des vorhandenen Runners darf den Run
-abschliessen.
+Herdr bleibt ein experimentelles FirstMate-Backend. Ein fehlgeschlagener Spawn oder Lifecycle bleibt ein
+ausdruecklicher FirstMate-Fehler; Kimiflow besitzt keinen versteckten Prozess-Fallback und synthetisiert kein
+`recovered`. Alte Receipts der entfernten Kimiflow-Pi/Herdr-Bridge bleiben fuer Diagnose lesbar, koennen aber
+nicht fortgesetzt werden.
 
 Adaptive Entscheidungen bleiben Teil dieser einen Engine. Der Scope-/Intent-Classifier darf Scope nur erhoehen
 und offene Produktentscheidungen nur zurueck an Intake routen. Kontext-Rollover braucht eine ausgehandelte
@@ -106,8 +89,7 @@ transient die kanonischen Skill-/Phasen-/Bridge-Pfade; `model_roles` transportie
 der Host die konkreten Modell-IDs besitzt. `structured_events` werden vor JSON-Parsing groessenbegrenzt, auf
 oeffentliche Felder normalisiert und nicht im Receipt gespeichert. Ein SHA-256-Fingerprint bindet Features,
 Anforderungen und Rollen an Resume, ohne Modell-IDs zu persistieren. `root_confinement` bleibt eine vom Host
-durchzusetzende und von Kimiflow vorab pruefbare Vertrauensgrenze. Pi 0.82.x setzt diese Grenze fuer Shell- und
-Dateitools nicht hostseitig durch und bewirbt das Feature deshalb nicht. Der Vertrag liegt unter
+durchzusetzende und von Kimiflow vorab pruefbare Vertrauensgrenze. Der Vertrag liegt unter
 `references/adapter-protocol.md`; KimiTalk, Providerclients oder ein Netzwerkdienst sind keine Abhaengigkeiten.
 
 `hooks/build-plugin-candidate.sh` erzeugt den Marketplace-Inhalt aus einer engen Source-Allowlist und schreibt

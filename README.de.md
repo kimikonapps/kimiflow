@@ -115,67 +115,48 @@ kimiflow run "setze das gewünschte Feature um"
 kimiflow status --pretty
 ```
 
-### Optionaler Pi-Captain
+### Pi mit unveraendertem FirstMate
 
-Das Repository liefert zusaetzlich ein installierbares Pi-Paket fuer Pi 0.82.x und 0.83.x. Sobald das
-Kimiflow-Paket in einer laufenden Pi-Sitzung geladen ist, kannst du Pi natuerlich mit einem Feature
-„mit Kimiflow“ beauftragen:
+Das Pi-Paket von Kimiflow ist absichtlich nur ein Skill. Es ergaenzt in Pi den Produkt- und Engineering-
+Workflow, erzeugt aber keinen Captain, startet keine Worker, verwaltet keine Worktrees, steuert Herdr nicht und
+implementiert keinen Calm-Modus. Installiere einen vertrauenswuerdigen Kimiflow-Checkout mit:
 
 ```bash
 pi install /absoluter/pfad/zu/kimiflow
 ```
 
-Der Pfad kann dieser vertrauenswuerdige Checkout oder das aus einem verifizierten Runtime-ZIP entpackte
-`kimiflow/`-Verzeichnis sein. Mit `pi install -l /absoluter/pfad/zu/kimiflow` wird es nur fuer das aktuelle
-Projekt installiert. Pi registriert damit das Paket und laedt seine deklarierten Extensions und den Skill;
-ein temporaeres `pi -e` ist kein unterstuetzter Paket-Installationsweg.
+Mit `pi install -l /absoluter/pfad/zu/kimiflow` gilt die Installation nur fuer das aktuelle Projekt. Pi laedt
+ausschliesslich `hosts/pi/skills/kimiflow/SKILL.md`; Kimiflow deklariert keine Pi-Extension.
 
 ```text
 Baue das gewuenschte Feature mit Kimiflow.
-/kimiflow setze das gewuenschte Feature um
-/kimiflow-status
 ```
 
-Der natuerliche Auftrag und der optionale Slash-Befehl verwenden dieselbe dauerhafte Aktivierung. Diese
-Pi-Sitzung bleibt der ansprechbare, nur lesende Captain. Eine private reine Metadaten-Registry
-(`/kimiflow-project` oder Tool `kimiflow_project`) ordnet Projektnamen exakten Git-Roots zu; Prompts, Code,
-Antworten und Terminal-Transkripte werden dort nicht gespeichert. Mit
-`/kimiflow --project <name> <auftrag>` oder dem optionalen `project`-Feld des Aktivierungs-Tools wird ein
-registriertes Projekt explizit gewaehlt.
+Fuer eine einzige Gespraechsflaeche mit sichtbaren Workern installierst und startest du
+[Stock FirstMate](https://github.com/kunchenguid/firstmate) separat. Pi wird im FirstMate-Checkout gestartet;
+das Projekt muss vor dem Dispatch dauerhaft auf `local-only` (oder bewusst `direct-PR`) stehen. FirstMates
+`no-mistakes` darf fuer Kimiflow-Auftraege nicht verwendet werden, weil sonst ein zweiter Review-/Fix-Owner
+neben Kimiflows eigenen Gates entsteht.
+Die aktuelle Testbasis fixiert FirstMate auf `cd73e75e02a1c1e74811b00c5ee08ffae8a59e1e` und Pi auf `0.82.0`;
+ein Upgrade gilt erst nach erneut bestandenen Stock-Tests und einem echten Pi/Herdr-Ship als kompatibel. Der finale
+integrierte Lauf aus Stock-Primary, sichtbarem Worker, Statusrueckgabe und Calm bestand am 2026-08-02. Ein frueherer
+unveraenderter Calm-Test flakte einmal mit einer doppelten Antwort und bestand beim unmittelbaren Wiederholen. Calm
+bleibt damit ein Upstream-Zuverlaessigkeitsrisiko und keine von Kimiflow garantierte Funktion.
 
-Der Captain ist die einzige Gespraechsflaeche fuer den User. Produktfragen und Entscheidungen erscheinen dort;
-eine Antwort wird an den exakten wartenden Runner-Uebergang gebunden, bevor derselbe Worker fortsetzt. Worker-
-und Subagent-Tabs bleiben sichtbare Ausfuehrungsflaechen, nehmen aber keine direkte User-Eingabe an und bleiben
-im Quiet-Modus waehrend der Arbeit visuell ruhig.
+Nur der FirstMate-Primary spricht mit dir. Er prueft die aktuelle Codebasis und aktuelle autoritative Quellen,
+bespricht das Feature samt passenden Optionen in deiner Sprache, bestaetigt den finalen Vertrag und startet
+danach einen normalen sichtbaren FirstMate Ship oder Scout. Crewmates melden ueber den normalen FirstMate-
+Status und beginnen kein zweites Produktgespraech. Ausschliesslich FirstMate besitzt Worker-Lifecycle,
+Worktrees, Recovery, Cleanup, `/calm` und das gewaehlte Backend.
 
-Jeder schreibende Top-Level-Auftrag wird vor dem Pi-Start durch den bestehenden Fleet-Broker geroutet. Auch ein
-sauberer Primary-Checkout erhaelt einen eigenen Kimiflow-Worktree, ein Runner-Receipt, eine Pi-Sitzung und einen
-Endpunkt. Bis zu drei disjunkte Auftraege koennen parallel laufen; weitere bleiben in der Broker-Queue. Solange
-Fleet-Arbeit laeuft, bietet der Captain nur Lese-/Such- und Kimiflow-Control-Tools an. Ein toter fortsetzbarer
-Runner darf seine Bridge erst nach positivem Nachweis des beendeten Controllers an einen neuen Captain
-uebergeben; Provider-Sitzung und Run-Besitz bleiben unveraendert.
+FirstMates Herdr-Backend ist experimentell. Ein fehlgeschlagener Herdr-Start bleibt ein ausdruecklicher
+FirstMate-Fehler; es gibt keinen versteckten Kimiflow-Prozess-Fallback und keinen vorgetaeuschten `recovered`-
+Status. Alte Sitzungen der entfernten Kimiflow-Pi/Herdr-Bridge bleiben Diagnosehistorie, sind mit dieser
+Architektur aber nicht fortsetzbar.
 
-Der Pi-Adapter uebernimmt die providerneutrale Auswahl `provider/model:thinking`. Active Run, Fleet-Leases,
-Gates und terminale Receipts bleiben die dauerhaften Workflow-Autoritaeten; nur der Runner verbindet sie mit
-der Controller-Erreichbarkeit zu einer normalisierten Lifecycle-Sicht fuer Hosts. Der Captain zeigt diese Sicht
-an und leitet Befehle weiter, ohne rohe Receipt-Status oder Prozess-IDs selbst zu interpretieren. Reply und
-Steering adressieren die exakte Run-/Worker-/Provider-Sitzungs-Grenze; Pi- oder Herdr-Lifecycle-Text beweist nie
-den Abschluss.
-
-Laeuft der Captain in Herdr, erhaelt jeder Fleet-Worker einen eigenen nicht fokussierten interaktiven Pi-Tab im
-Workspace des Captains und startet im isolierten Worktree. Temporaere begrenzte semantische Agents verwenden
-eigene Tabs. Kimiflow kopiert die benutzerverwaltete Herdr-Pi-Agent-State-Integration digestgebunden und laedt
-sie auch mit `--no-extensions` explizit; dadurch bleibt die native `agent_session`-Identitaet beim Resume
-sichtbar. Kimiflow besitzt nur seine exakten Tab-IDs. Ausserhalb von Herdr bleibt der Prozess-Transport
-unveraendert; Kimiflow installiert weder Pi noch Herdr oder einen Modell-Provider.
-
-Eine Anfrage mit einem bestehenden nummerierten Plan (zum Beispiel `Run 7`) waehlt nur diesen exakten
-Projektplan; sie kann weder versehentlich `Run 7.2` verwenden noch bestaetigte Fakten durch generische Intake-
-Fragen ersetzen.
-
-Dieses Paket ist additiv. Ohne Installation oder Aktivierung in Pi bleiben die
-eingebetteten `$kimiflow`-Codex- und `/kimiflow`-Claude-Code-Wege, ihre Hooks und der optionale Terminal-Runner
-unveraendert.
+Ohne FirstMate funktioniert Kimiflow weiterhin direkt als normaler Skill in der aktuellen Pi-Sitzung. Dann
+verspricht es keine Captain-/Crew-Oberflaeche im Hintergrund. Codex, Claude Code und der optionale Terminal-
+Runner bleiben unabhaengig und unveraendert.
 
 Codex ist der eingebaute Adapter. Ein vorhandenes lokales oder entferntes Coding-Agent-Harness kann denselben
 Lebenszyklus über den versionierten JSON-stdio-Vertrag ausführen:

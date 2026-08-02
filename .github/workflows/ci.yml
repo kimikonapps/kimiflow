@@ -32,15 +32,6 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      - uses: actions/setup-node@v6
-        if: matrix.lane == 'full'
-        with:
-          node-version: "22.19.0"
-
-      - name: Install tested Pi runtime — hard gate
-        if: matrix.lane == 'full'
-        run: npm install --global --ignore-scripts --no-audit --no-fund @earendil-works/pi-coding-agent@0.83.0
-
       - name: Shell syntax (bash -n) — hard gate
         run: |
           for f in hooks/*.sh; do

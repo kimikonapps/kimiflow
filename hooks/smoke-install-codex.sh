@@ -430,18 +430,15 @@ PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import runner; assert ru
   && ok "shared-core runner module imports" || bad "shared-core runner module unavailable"
 if jq -e --arg version "$cv" '
     .name == "@kimiflow/pi" and .version == $version and .type == "module"
-    and .pi.extensions == ["./hosts/pi/extensions/calm.js","./hosts/pi/extensions/captain.js","./hosts/pi/extensions/worker.js"]
     and .pi.skills == ["./hosts/pi/skills/kimiflow"]
+    and (.pi | has("extensions") | not)
   ' "$ROOT/package.json" >/dev/null 2>&1 \
-  && [ -f "$ROOT/hosts/pi/extensions/calm.js" ] \
-  && [ -f "$ROOT/hosts/pi/extensions/captain.js" ] \
-  && [ -f "$ROOT/hosts/pi/extensions/worker.js" ] \
   && [ -f "$ROOT/hosts/pi/skills/kimiflow/SKILL.md" ] \
-  && [ -x "$ROOT/hooks/pi-host.sh" ] \
-  && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import pi_host; assert pi_host.PI_VERSION_RE.fullmatch("0.82.1"); assert pi_host.PI_VERSION_RE.fullmatch("0.83.0"); assert not pi_host.PI_VERSION_RE.fullmatch("0.84.0")' 2>/dev/null; then
-  ok "Codex remains standalone with optional version-aligned Pi package"
+  && [ ! -e "$ROOT/hosts/pi/extensions/captain.js" ] \
+  && [ ! -e "$ROOT/hooks/pi-host.sh" ]; then
+  ok "Codex remains standalone with optional version-aligned Pi skill package"
 else
-  bad "optional Pi package inventory or version is incomplete"
+  bad "optional Pi skill package inventory or version is incomplete"
 fi
 if [ -x "$ROOT/hooks/secret-content-scan.sh" ] \
   && bash -n "$ROOT/hooks/secret-content-scan.sh" \
