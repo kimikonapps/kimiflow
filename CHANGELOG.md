@@ -4,6 +4,12 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.43
+
+The Pi Captain-only interaction reliability patch.
+
 ### Fixed
 
 - Pi now keeps all user-facing Kimiflow discussion and decisions in the responsive Captain while visible
