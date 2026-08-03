@@ -1,66 +1,60 @@
 ---
 name: kimiflow
-description: Run Kimiflow in the current Pi project session, with optional visible FirstMate workers in Herdr.
+description: Run Kimiflow from a conversational Pi Captain, with a visible FirstMate Main and Main-owned crew in Herdr.
 ---
 
 # Kimiflow for Pi
 
-The Pi conversation in which the user invokes Kimiflow is always **Kimiflow Main**. It owns the product discussion and is the only session that talks with the user. Kimiflow may use stock FirstMate internally for visible workers, but it never creates a second captain, a Kimiflow worker registry, a Herdr bridge, or its own recovery truth.
+Read `KIMIFLOW_CREW_ROLE`; absent means `captain`. Tool authority is mechanically role-gated. Shell and filesystem behavior is constrained by bounded FirstMate packets plus Kimiflow's integration/final evidence gates; it is not represented as an OS sandbox:
 
-## Start in the current project
+- `captain` is the original Pi conversation and the only session that talks with the user.
+- `main` is one visible FirstMate Ship that owns the complete Kimiflow workflow and its crew.
+- `worker` is a bounded Main-owned Ship or Scout and cannot activate or delegate.
 
-When the user says, for example, “Beginne mit Kimiflow Run 7.2”:
+Stock FirstMate alone owns briefs, worktrees, Herdr/Pi endpoints, status, wake, recovery, delivery and teardown. Kimiflow adds no Herdr bridge, session broker, headless fallback or parallel worker truth.
 
-1. Preserve the user's language from the first request.
-2. Inspect the current Git project, current codebase and relevant recent commits. Research current authoritative sources when technology, APIs, models or external behavior may have changed.
-3. Discuss the feature here even when a numbered plan already exists. In simple language show the problem, intended user flow, visible success, boundaries, risks and useful adjacent functions. Challenge weak assumptions and invite corrections.
-4. After the user marks the scope ready, use independent evidence before the final contract. If research is required and this Pi session runs inside Herdr, call `kimiflow_crew` with `action=activate` and `verbosity` equal to this run's already-resolved Kimiflow display level. Spawn at least one visible FirstMate Scout with `stage=research`; use two only for genuinely independent research lanes. Main remains a separate perspective and synthesizes the reports. If crew activation is unavailable, record that explicit fallback and research in Main.
-5. Show one compact non-technical flow sketch informed by current code and research, then obtain one explicit final confirmation of the complete product contract. Only after that confirmation may a Ship or a `stage=confirmed` review Scout start. `quiet` applies to Main and every newly started visible worker.
+## Captain
 
-The extension is dormant until `activate`. If FirstMate is absent or incompatible, say so plainly and continue ordinary Kimiflow in this Pi session. Never imply that a worker exists when activation or endpoint verification failed.
+When the user says, for example, “Starte Run 7.2 mit Kimiflow”:
 
-## Main and visible crew
+1. Preserve the user's language and resolve Kimiflow verbosity.
+2. Read the request verbatim. If the user names an existing plan, locate and read it without changing it. This request plus optional plan is the immutable launch-input snapshot; it is not automatically a confirmed contract.
+3. Call `kimiflow_crew` with `action=activate`, then `action=start_main`, a stable run task, the exact user text in `request`, the optional existing plan in `plan`, and the resolved `verbosity`.
+4. Treat Main as started only when the tool returns `main_reachable`. A failed or unverified endpoint stays failed. Do not run Kimiflow phases or spawn research/implementation/review workers in Captain.
+5. After verified start, remain available for ordinary conversation. Routine progress stays quiet.
 
-Main owns:
+On a FirstMate wake, drain once and read Main's status. A `needs-decision` status must include one bounded artifact pointer owned by Main. Read only that payload, explain the decision simply in the user's language, discuss it here, and return the answer with `action=send`. Do not ask the user to type in Main or a worker tab. On verified completion, report Main's result; use safe teardown only with exact task confirmation.
 
-- all user questions and confirmations;
-- current-code inspection, research, contract, plan and delegation decisions;
-- worker status, steering, review decisions, integration and final verification.
+If FirstMate or Herdr is unavailable, report that visible crew is unavailable. Ordinary host-independent Kimiflow remains usable in the current Pi session, but do not pretend the Captain→Main topology exists.
 
-Use a visible FirstMate **Ship** only for an independent implementation packet and a visible **Scout** only for independent read-only investigation or verification. Do not create workers for internal reasoning, sequential steps or overlapping writes. Fold those into Main.
+## Main
 
-Several implementation Ships may be active only when their packets are self-contained and their writes cannot overlap. Worker count is an outcome of the dependency graph, not a target: one Ship is correct for a tightly coupled build. Independent perspectives are different: whenever Kimiflow performs substantive delegated research, plan review or code review with an active crew, use visible Scouts rather than asking the implementing Ship to review itself. Review Scouts are read-only and may run in parallel by axis.
+Main receives `KIMIFLOW_CREW_ROLE=main`, `KIMIFLOW_SUPERVISED_PROJECT`, its stable task identity and the immutable launch-input snapshot in its normal FirstMate brief.
 
-For every new worker:
+1. Activate its own project/run-scoped FirstMate Home without choosing a new verbosity. The Captain's process-local presentation value is authoritative and must be inherited unchanged.
+2. As the first workflow action, initialize a fresh standard Kimiflow Active Run in this durable control worktree, or resume the one existing run in this exact worktree. Do this before emitting a decision/status or activating the Main crew; `action=activate` fails closed until the run's `STATE.md` exists. The launch snapshot is input, not proof that intake is complete.
+3. Inspect the current supervised codebase and recent commits. Perform intake, current research, feature discussion, contract confirmation, planning, implementation, verification and review exactly once. Route every product question as one concise `needs-decision` payload to Captain and stop until Captain replies.
+4. Use visible `stage=research` Scouts for genuinely independent pre-contract evidence. After confirmation, use visible Ships for independent implementation packets and visible Scouts for independent review axes. One tightly coupled Ship is correct; parallel Ships require non-overlapping writes.
+5. Never edit product bytes or existing run/plan artifacts in the original project. The only original-project state write Main may make is the exact stock FirstMate status file named in its brief; every product write belongs to a child Ship against `KIMIFLOW_SUPERVISED_PROJECT`. Integrate a verified local Ship only through `action=integrate`, which calls stock FirstMate's fail-closed merge helper.
+6. Return only material decisions and the final verified outcome to Captain through FirstMate status. Never open a second user conversation.
+7. Before reporting final completion, safely tear down every exact child Ship/Scout after its evidence has been consumed or integrated. Captain will refuse to tear down Main while child metadata remains.
 
-1. Create a stable lowercase task id.
-2. Pass the self-contained work packet to `kimiflow_crew` with `action=spawn`, `task`, `kind`, `stage` and `brief`. Use `stage=research` only for pre-contract read-only Scouts; all Ships and review Scouts use `stage=confirmed`.
-3. Treat the worker as active only when the tool returns `worker_reachable`. `spawn_failed` and `spawn_unverified` are failures, never recovery.
-4. After `worker_reachable`, do not poll or narrate progress. End the turn quietly and let FirstMate's watcher return the next actionable wake to this same Main session.
-5. On a wake, use `action=drain` once, then `action=status` for current truth. For a completed Scout, use `action=report` once to read its FirstMate-owned report. Use `action=send` only for a decision or steering message.
-6. Use `action=teardown` only after safe completion, with `confirmation` exactly equal to the task id. The adapter never forces cleanup.
+For each child, call `action=spawn` with a stable task id, `kind`, `stage` and self-contained `brief`. `stage=research` is Scout-only. A child is active only after `worker_reachable`. Then end the turn and rely on the automatic FirstMate wake; never poll status or use sleep loops. On wake, drain once, inspect status, read a completed Scout through `action=report`, and steer through `action=send`. Teardown is exact-confirmation and never forced.
 
-An implementation Ship stops at a locally committed, mechanically verified `paused` review-ready checkpoint. Main then starts the scheduled code-review Scouts against that exact branch/commit. Main verifies their evidence and sends either the bounded findings or finalization clearance back to the same Ship. The Ship never serves as its own independent reviewer.
+An implementation Ship stops at a locally committed, mechanically verified `paused` review-ready checkpoint. Main sends the frozen commit to the scheduled independent review Scouts, verifies their evidence, and sends either bounded findings or finalization clearance back to the same Ship. The implementing Ship is never its own independent reviewer.
 
-FirstMate alone owns each delegated worker's brief, isolated worktree, Herdr/Pi endpoint, status, wake, recovery and cleanup. Kimiflow stores no parallel worker truth. When Main is `quiet`, the adapter starts each new worker with the same Kimiflow output level and FirstMate's stock Calm extension; it does not reproduce Calm itself. An already running worker must be restarted to change its loaded presentation extensions.
+When verbosity is `quiet`, Main and every new child receive the process-local quiet value and load stock FirstMate Calm. Quiet means the worker pane stays calm while work proceeds; it does not hide decisions, failures or final results.
 
-If `action=activate` returns `startupWakes`, FirstMate already drained those durable records while acquiring authority. Handle their named tasks with `action=status` before dispatching new work; do not discard them or call `drain` for the already consumed rows.
+## Worker
 
-## Worker boundary
+A Worker obeys only its normal FirstMate packet:
 
-A Pi worker receives a normal FirstMate brief. A Ship or review Scout receives the confirmed Kimiflow contract; a pre-contract research Scout receives an explicitly bounded read-only research packet. It must:
+- a research Scout collects bounded read-only evidence without deciding scope;
+- an implementation Ship changes only its assigned paths and stops at the review checkpoint;
+- a review Scout inspects only its assigned immutable evidence axis;
+- no Worker starts another crew, creates a competing Active Run or talks to the user;
+- decisions, blockers and results return only through FirstMate status.
 
-- obey its packet stage: research Scouts collect evidence without deciding scope, while confirmed workers treat product intake as complete;
-- work autonomously in its isolated FirstMate worktree;
-- never open a second user conversation or ask the user in the worker tab;
-- never spawn another crew;
-- return `needs-decision`, blockers and results only through the brief's FirstMate status protocol;
-- use the installed Kimiflow skill only for its assigned implementation, research or review boundary, without creating a second Active Run for the same task.
+## Host boundary
 
-When a crew wake arrives in Main, call `kimiflow_crew` with `action=drain`, inspect the named worker with `action=status`, and read a completed Scout with `action=report`. Discuss any real decision with the user here, then reply to a Ship with `action=send` when steering is required.
-
-## Standalone behavior
-
-Kimiflow remains fully usable without FirstMate or Herdr. Run the same product workflow in the current Pi conversation and repository. Do not promise visible workers, invent an owner identity, or pretend mechanical gates ran when the host does not expose them.
-
-Direct Codex and Claude Kimiflow flows remain independent of FirstMate.
+Direct Codex and Claude Kimiflow flows remain independent of FirstMate. A missing Pi crew capability never changes their behavior.

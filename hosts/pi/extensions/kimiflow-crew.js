@@ -18,7 +18,7 @@ export const REQUIRED_FIRSTMATE_CALM_FILES = [
   ".pi/extensions/lib/fm-operational-input.ts",
 ];
 
-export const CREW_ACTIONS = ["activate", "spawn", "status", "report", "send", "drain", "teardown"];
+export const CREW_ACTIONS = ["role", "activate", "start_main", "spawn", "status", "report", "send", "drain", "teardown", "integrate"];
 export const REQUIRED_FIRSTMATE_SCRIPTS = [
   "fm-session-start.sh",
   "fm-brief.sh",
@@ -30,7 +30,15 @@ export const REQUIRED_FIRSTMATE_SCRIPTS = [
   "fm-watch-arm.sh",
   "fm-teardown.sh",
   "fm-project-mode.sh",
+  "fm-merge-local.sh",
 ];
+
+const CREW_ROLES = new Set(["captain", "main", "worker"]);
+const ROLE_ACTIONS = {
+  captain: new Set(["role", "activate", "start_main", "status", "send", "drain", "teardown"]),
+  main: new Set(["role", "activate", "spawn", "status", "report", "send", "drain", "teardown", "integrate"]),
+  worker: new Set(["role"]),
+};
 
 const PARAMETERS = {
   type: "object",
@@ -39,6 +47,8 @@ const PARAMETERS = {
     task: { type: "string", description: "Stable FirstMate task id." },
     kind: { type: "string", enum: ["ship", "scout"], default: "ship" },
     brief: { type: "string", description: "Self-contained Kimiflow work packet for a new worker." },
+    request: { type: "string", description: "Exact user request frozen into a new Kimiflow Main launch." },
+    plan: { type: "string", description: "Optional already-agreed plan frozen into a new Kimiflow Main launch." },
     stage: { type: "string", enum: ["research", "confirmed"], default: "confirmed", description: "Research is read-only and Scout-only; confirmed packets may implement or review." },
     message: { type: "string", description: "Text sent to an existing worker." },
     key: { type: "string", enum: ["Enter", "Escape", "C-c"], description: "Optional control key for send." },
@@ -152,7 +162,10 @@ export async function locateFirstMateRoot({ cwd = process.cwd(), env = process.e
   const add = (candidate) => {
     if (candidate && !candidates.includes(path.resolve(candidate))) candidates.push(path.resolve(candidate));
   };
+  add(env.FM_ROOT_OVERRIDE);
   add(env.KIMIFLOW_FIRSTMATE_ROOT);
+  // Backward compatibility only: an old installation may still point FM_HOME
+  // at the checkout. A normal runtime home will fail isFirstMateRoot().
   add(env.FM_HOME);
 
   const config = path.join(env.HOME || os.homedir(), ".config", "kimiflow", "firstmate-root");
@@ -190,30 +203,63 @@ export class FirstMateAdapter {
     this.spawn = spawn;
     this.sleep = sleep;
     this.root = null;
+    this.controlRoot = null;
     this.projectRoot = null;
+    this.runtimeHome = null;
+    this.role = null;
+    this.mainTask = null;
+    this.modeCapability = null;
     this.watcher = null;
     this.stopping = false;
     this.pendingWakeTasks = new Set();
     this.terminalTasks = new Set();
-    this.workerCalm = false;
+    this.workerVerbosity = null;
   }
 
-  async execute(params, signal) {
+  async execute(params, signal, context) {
+    const role = this.resolveRole();
+    if (!role.ok) return role;
+    if (!ROLE_ACTIONS[role.role].has(params.action)) {
+      return fail("role_action_forbidden", `Kimiflow crew role ${role.role} cannot perform action=${params.action}.`, {
+        role: role.role,
+        action: params.action,
+      });
+    }
     switch (params.action) {
+      case "role": return ok("crew_role", { role: role.role });
       case "activate": return this.activate(params, signal);
-      case "spawn": return this.spawnWorker(params, signal);
+      case "start_main": return this.startMain(params, signal, context);
+      case "spawn": return this.spawnWorker(params, signal, context);
       case "status": return this.status(params, signal);
       case "report": return this.report(params, signal);
       case "send": return this.send(params, signal);
       case "drain": return this.drain(signal);
       case "teardown": return this.teardown(params, signal);
+      case "integrate": return this.integrate(params, signal);
       default: return fail("invalid_action", "Unknown crew action.");
     }
   }
 
+  resolveRole() {
+    const role = this.role ?? cleanText(this.env.KIMIFLOW_CREW_ROLE || "captain", 32).toLowerCase();
+    if (!CREW_ROLES.has(role)) {
+      return fail("crew_role_invalid", "KIMIFLOW_CREW_ROLE must be captain, main, or worker.");
+    }
+    this.role = role;
+    return ok("crew_role", { role });
+  }
+
   async activate(params = {}, signal) {
-    if (this.root && this.projectRoot && this.watcher) {
-      return ok("already_active", { projectRoot: this.projectRoot, firstMateRoot: this.root });
+    const role = this.resolveRole();
+    if (!role.ok) return role;
+    if (role.role === "worker") return fail("role_action_forbidden", "A Kimiflow Worker cannot activate or own a FirstMate crew.");
+    if (this.root && this.projectRoot && this.runtimeHome && this.watcher) {
+      return ok("already_active", {
+        role: role.role,
+        projectRoot: this.projectRoot,
+        firstMateRoot: this.root,
+        firstMateHome: this.runtimeHome,
+      });
     }
     const root = await locateFirstMateRoot({ cwd: this.cwd, env: this.env });
     if (!root) {
@@ -226,9 +272,32 @@ export class FirstMateAdapter {
     const git = await this.run("git", ["-C", this.cwd, "rev-parse", "--show-toplevel"], {
       cwd: this.cwd, env: this.env, signal, timeout: 15_000,
     });
-    const projectRoot = cleanText(git.stdout, 4_096);
-    if (git.code !== 0 || !path.isAbsolute(projectRoot)) {
+    const controlRoot = cleanText(git.stdout, 4_096);
+    if (git.code !== 0 || !path.isAbsolute(controlRoot)) {
       return fail("project_git_root_unavailable", "Kimiflow crew requires Pi to run inside a Git project.", { detail: cleanText(git.stderr) });
+    }
+    let projectRoot = path.resolve(controlRoot);
+    if (role.role === "main") {
+      const supervised = cleanText(this.env.KIMIFLOW_SUPERVISED_PROJECT, 4_096);
+      if (!path.isAbsolute(supervised)) {
+        return fail("supervised_project_unavailable", "Kimiflow Main requires an absolute KIMIFLOW_SUPERVISED_PROJECT.");
+      }
+      const verified = await this.run("git", ["-C", supervised, "rev-parse", "--show-toplevel"], {
+        cwd: controlRoot, env: this.env, signal, timeout: 15_000,
+      });
+      const verifiedRoot = cleanText(verified.stdout, 4_096);
+      if (verified.code !== 0 || path.resolve(verifiedRoot) !== path.resolve(supervised)) {
+        return fail("supervised_project_unavailable", "KIMIFLOW_SUPERVISED_PROJECT is not an exact Git root.", {
+          detail: cleanText(`${verified.stdout}\n${verified.stderr}`),
+        });
+      }
+      projectRoot = path.resolve(supervised);
+      const mainTask = cleanText(this.env.KIMIFLOW_MAIN_TASK, 128);
+      const invalidMainTask = this.validateTask(mainTask);
+      if (invalidMainTask) return fail("main_task_unavailable", "Kimiflow Main requires a stable KIMIFLOW_MAIN_TASK.");
+      this.mainTask = mainTask;
+      const activeRun = await this.verifyMainActiveRun(controlRoot);
+      if (!activeRun.ok) return activeRun;
     }
     for (const tool of ["herdr", "jq", "treehouse", "pi"]) {
       const check = await this.run("which", [tool], {
@@ -237,43 +306,291 @@ export class FirstMateAdapter {
       if (check.code !== 0) return fail("firstmate_capability_missing", `Required FirstMate/Herdr capability is unavailable: ${tool}.`);
     }
 
-    const presentation = await this.resolveWorkerPresentation(root, path.resolve(projectRoot), signal, params.verbosity);
-    if (!presentation.ok) return presentation;
+    const capability = await this.probeFirstMateCapabilities(root, signal);
+    if (!capability.ok) return capability;
 
-    if (presentation.calm) {
-      const preference = await this.enableFirstMateCalm(root);
-      if (!preference.ok) return preference;
+    if (role.role === "captain") {
+      const prepared = await this.prepareCaptainProject(projectRoot, signal);
+      if (!prepared.ok) return prepared;
     }
 
-    const commandEnv = this.commandEnv(root);
+    const runtimeHome = this.resolveRuntimeHome(role.role, projectRoot, controlRoot);
+    const homeReady = await this.initializeRuntimeHome(runtimeHome, role.role === "main" ? controlRoot : projectRoot);
+    if (!homeReady.ok) return homeReady;
+
+    this.root = root;
+    this.controlRoot = path.resolve(controlRoot);
+    this.projectRoot = path.resolve(projectRoot);
+    this.runtimeHome = runtimeHome;
+    this.modeCapability = capability.capability;
+
+    const recovered = await this.recoverCaptainMainTask();
+    if (!recovered.ok) {
+      this.resetActivation();
+      return recovered;
+    }
+
+    const presentation = await this.resolveWorkerPresentation(root, this.projectRoot, signal, params.verbosity);
+    if (!presentation.ok) {
+      this.resetActivation();
+      return presentation;
+    }
+
+    if (presentation.calm) {
+      const preference = await this.enableFirstMateCalm(runtimeHome);
+      if (!preference.ok) {
+        this.resetActivation();
+        return preference;
+      }
+    }
+
+    const commandEnv = this.commandEnv();
     const session = await this.run(path.join(root, "bin", "fm-session-start.sh"), [], {
       cwd: root, env: commandEnv, signal, timeout: 180_000,
     });
     const sessionOutput = `${session.stdout}\n${session.stderr}`;
     if (session.code !== 0 || !/lock acquired: harness pid \d+/.test(sessionOutput) || /READ-ONLY SESSION/.test(sessionOutput)) {
+      this.resetActivation();
       return fail("firstmate_lock_unavailable", "FirstMate did not grant verified fleet ownership; no worker operation was attempted.", {
         detail: cleanText(sessionOutput),
       });
     }
 
-    this.root = root;
-    this.projectRoot = path.resolve(projectRoot);
-    this.workerCalm = presentation.calm;
+    this.workerVerbosity = presentation.verbosity;
     const startupWakes = startupWakeSection(sessionOutput);
     const watched = await this.startWatcher(true);
     if (!watched.ok) {
-      this.root = null;
-      this.projectRoot = null;
-      this.workerCalm = false;
+      this.resetActivation();
       return startupWakes ? { ...watched, startupWakes } : watched;
     }
     return ok("activated", {
       projectRoot: this.projectRoot,
       firstMateRoot: this.root,
+      firstMateHome: this.runtimeHome,
+      role: role.role,
+      cli: this.modeCapability,
       watcher: watched.watcher,
-      presentation: this.workerCalm ? "quiet+firstmate-calm" : presentation.verbosity,
+      presentation: this.workerVerbosity === "quiet" ? "quiet+firstmate-calm" : this.workerVerbosity,
       ...(startupWakes ? { startupWakes } : {}),
     });
+  }
+
+  resetActivation() {
+    this.root = null;
+    this.controlRoot = null;
+    this.projectRoot = null;
+    this.runtimeHome = null;
+    this.modeCapability = null;
+    this.workerVerbosity = null;
+  }
+
+  resolveRuntimeHome(role, projectRoot, controlRoot) {
+    if (role === "main") {
+      return path.join(controlRoot, ".kimiflow", "session", "FIRSTMATE-MAIN-v1", this.mainTask);
+    }
+    return path.join(projectRoot, ".kimiflow", "session", "FIRSTMATE-CAPTAIN-v1");
+  }
+
+  async recoverCaptainMainTask() {
+    if (this.role !== "captain") return ok("captain_main_not_applicable");
+    const stateDirectory = path.join(this.runtimeHome, "state");
+    let entries;
+    try {
+      entries = await fs.readdir(stateDirectory, { withFileTypes: true });
+    } catch (error) {
+      return fail("captain_main_state_unavailable", "Captain could not inspect FirstMate's own task metadata.", { detail: error.message });
+    }
+    const tasks = [];
+    for (const entry of entries) {
+      if (!entry.name.endsWith(".meta")) continue;
+      if (!entry.isFile() || entry.isSymbolicLink()) {
+        return fail("captain_main_state_invalid", "Captain found non-regular FirstMate task metadata and refused to infer ownership.", { entry: entry.name });
+      }
+      const task = entry.name.slice(0, -5);
+      if (this.validateTask(task)) {
+        return fail("captain_main_state_invalid", "Captain found invalid FirstMate task metadata and refused to infer ownership.", { entry: entry.name });
+      }
+      const launchPath = path.join(this.runtimeHome, "data", task, "launch-input.json");
+      let launch;
+      try {
+        const info = await fs.lstat(launchPath);
+        if (!info.isFile() || info.isSymbolicLink() || info.size > 200_000) throw new Error("launch input is not a bounded regular file");
+        launch = JSON.parse(await fs.readFile(launchPath, "utf8"));
+      } catch (error) {
+        return fail("captain_main_state_invalid", "FirstMate task metadata lacks a valid immutable Kimiflow launch input.", {
+          task,
+          detail: error.message,
+        });
+      }
+      if (launch?.schemaVersion !== 1 || launch?.task !== task || typeof launch?.supervisedProject !== "string"
+        || !path.isAbsolute(launch.supervisedProject) || path.resolve(launch.supervisedProject) !== this.projectRoot) {
+        return fail("captain_main_state_invalid", "FirstMate task metadata and the immutable Kimiflow launch input disagree.", { task });
+      }
+      tasks.push(task);
+    }
+    if (tasks.length > 1) {
+      return fail("captain_main_state_ambiguous", "Captain found more than one FirstMate Main in its isolated project home and refused to choose.", {
+        tasks: tasks.sort(),
+      });
+    }
+    this.mainTask = tasks[0] ?? null;
+    return ok(this.mainTask ? "captain_main_recovered" : "captain_main_absent", this.mainTask ? { task: this.mainTask } : {});
+  }
+
+  async initializeRuntimeHome(runtimeHome, boundaryRoot) {
+    try {
+      const boundary = path.resolve(boundaryRoot);
+      const target = path.resolve(runtimeHome);
+      const relative = path.relative(boundary, target);
+      if (relative.startsWith("..") || path.isAbsolute(relative)) throw new Error("runtime home escapes its project/control boundary");
+      let cursor = boundary;
+      for (const segment of relative.split(path.sep).filter(Boolean)) {
+        cursor = path.join(cursor, segment);
+        try {
+          const info = await fs.lstat(cursor);
+          if (info.isSymbolicLink() || !info.isDirectory()) throw new Error(`${cursor} is not a real directory`);
+        } catch (error) {
+          if (error.code !== "ENOENT") throw error;
+        }
+      }
+      await fs.mkdir(runtimeHome, { recursive: true, mode: 0o700 });
+      const homeInfo = await fs.lstat(runtimeHome);
+      if (!homeInfo.isDirectory() || homeInfo.isSymbolicLink()) throw new Error("runtime home is not a real directory");
+      const [realBoundary, realTarget] = await Promise.all([fs.realpath(boundary), fs.realpath(runtimeHome)]);
+      const realRelative = path.relative(realBoundary, realTarget);
+      if (realRelative.startsWith("..") || path.isAbsolute(realRelative)) throw new Error("runtime home resolves outside its project/control boundary");
+      for (const name of ["config", "data", "state"]) {
+        const target = path.join(runtimeHome, name);
+        await fs.mkdir(target, { recursive: true, mode: 0o700 });
+        const info = await fs.lstat(target);
+        if (!info.isDirectory() || info.isSymbolicLink()) throw new Error(`${name} is not a real directory`);
+      }
+      return ok("firstmate_home_ready", { firstMateHome: runtimeHome });
+    } catch (error) {
+      return fail("firstmate_home_unavailable", "The isolated FirstMate runtime home could not be initialized inside its exact project/control boundary.", { detail: error.message });
+    }
+  }
+
+  async verifyMainActiveRun(controlRoot) {
+    const kimiflowDirectory = path.join(controlRoot, ".kimiflow");
+    const runs = [];
+    try {
+      const entries = await fs.readdir(kimiflowDirectory, { withFileTypes: true });
+      for (const entry of entries) {
+        if (["project", "session"].includes(entry.name)) continue;
+        if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+        const statePath = path.join(kimiflowDirectory, entry.name, "STATE.md");
+        try {
+          const info = await fs.lstat(statePath);
+          if (info.isFile() && !info.isSymbolicLink()) runs.push(statePath);
+        } catch (error) {
+          if (error.code !== "ENOENT") throw error;
+        }
+      }
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        return fail("main_active_run_unavailable", "Kimiflow Main could not inspect its control-worktree run state.", { detail: error.message });
+      }
+    }
+    if (runs.length === 0) {
+      return fail("main_active_run_required", "Initialize one standard Kimiflow Active Run in this control worktree before activating Main's FirstMate crew, then retry action=activate.");
+    }
+    if (runs.length > 1) {
+      return fail("main_active_run_ambiguous", "Kimiflow Main found more than one Active Run in its control worktree and refused to choose.", { runs });
+    }
+    return ok("main_active_run_ready", { state: runs[0] });
+  }
+
+  async probeFirstMateCapabilities(root, signal) {
+    let spawnSource;
+    try {
+      spawnSource = await fs.readFile(path.join(root, "bin", "fm-spawn.sh"), "utf8");
+    } catch (error) {
+      return fail("firstmate_harness_capability_mismatch", "FirstMate's raw harness contract could not be inspected.", { detail: error.message });
+    }
+    const harnessTokens = ["__MODELFLAG__", "__EFFORTFLAG__", "__PIEXT__", "__OPINPUT__", "__BRIEF__"];
+    const missingHarnessTokens = harnessTokens.filter((token) => !spawnSource.includes(token));
+    if (missingHarnessTokens.length > 0) {
+      return fail("firstmate_harness_capability_mismatch", "FirstMate does not expose the complete raw Pi harness contract Kimiflow consumes.", {
+        missing: missingHarnessTokens,
+      });
+    }
+    const brief = await this.run(path.join(root, "bin", "fm-brief.sh"), ["--help"], {
+      cwd: root, env: { ...this.env, FM_ROOT_OVERRIDE: root }, signal, timeout: 15_000,
+    });
+    const spawn = await this.run(path.join(root, "bin", "fm-spawn.sh"), ["--help"], {
+      cwd: root, env: { ...this.env, FM_ROOT_OVERRIDE: root }, signal, timeout: 15_000,
+    });
+    if (brief.code !== 0 || spawn.code !== 0) {
+      return fail("firstmate_capability_probe_failed", "FirstMate CLI help could not be read without side effects.", {
+        detail: cleanText(`${brief.stdout}\n${brief.stderr}\n${spawn.stdout}\n${spawn.stderr}`),
+      });
+    }
+    const briefMode = /(?:^|\s)--mode(?:\s|[=<]|$)/m.test(`${brief.stdout}\n${brief.stderr}`);
+    const spawnText = `${spawn.stdout}\n${spawn.stderr}`;
+    const spawnMode = /(?:^|\s)--mode(?:\s|[=<]|$)/m.test(spawnText);
+    const spawnYolo = /(?:^|\s)--yolo(?:\s|[=<]|$)/m.test(spawnText);
+    if (!briefMode && !spawnMode && !spawnYolo) return ok("firstmate_capability_ready", { capability: "legacy" });
+    if (briefMode && spawnMode && spawnYolo) return ok("firstmate_capability_ready", { capability: "current" });
+    return fail("firstmate_mode_capability_mismatch", "FirstMate exposes a partial delivery-mode CLI; Kimiflow refuses to guess argument semantics.", {
+      briefMode,
+      spawnMode,
+      spawnYolo,
+    });
+  }
+
+  async prepareCaptainProject(projectRoot, signal) {
+    const tracked = await this.run("git", ["-C", projectRoot, "ls-files", "--", ".kimiflow"], {
+      cwd: projectRoot, env: this.env, signal, timeout: 15_000,
+    });
+    if (tracked.code !== 0) {
+      return fail("tracked_kimiflow_check_failed", "Kimiflow could not verify whether its runtime store is tracked.", { detail: cleanText(tracked.stderr) });
+    }
+    if (cleanText(tracked.stdout)) {
+      return fail("tracked_kimiflow_forbidden", "The project tracks .kimiflow; Captain runtime state must never enter product history.", {
+        detail: cleanText(tracked.stdout),
+      });
+    }
+    const common = await this.run("git", ["-C", projectRoot, "rev-parse", "--git-common-dir"], {
+      cwd: projectRoot, env: this.env, signal, timeout: 15_000,
+    });
+    const commonValue = cleanText(common.stdout, 4_096);
+    if (common.code !== 0 || !commonValue) {
+      return fail("git_exclude_unavailable", "Kimiflow could not locate the repository-local Git exclude file.", { detail: cleanText(common.stderr) });
+    }
+    const commonDir = path.resolve(projectRoot, commonValue);
+    const infoDir = path.join(commonDir, "info");
+    const exclude = path.join(infoDir, "exclude");
+    try {
+      await fs.mkdir(infoDir, { recursive: true, mode: 0o700 });
+      const info = await fs.lstat(infoDir);
+      if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("Git info directory is not a real directory");
+      let text = "";
+      try {
+        const excludeInfo = await fs.lstat(exclude);
+        if (!excludeInfo.isFile() || excludeInfo.isSymbolicLink()) throw new Error("Git exclude is not a regular file");
+        text = await fs.readFile(exclude, "utf8");
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+      if (!text.split(/\r?\n/).includes("/.kimiflow/")) {
+        const rendered = `${text}${text && !text.endsWith("\n") ? "\n" : ""}/.kimiflow/\n`;
+        const temporary = `${exclude}.kimiflow-${process.pid}-${randomBytes(4).toString("hex")}`;
+        try {
+          await fs.writeFile(temporary, rendered, { flag: "wx", mode: 0o600 });
+          await fs.rename(temporary, exclude);
+        } finally {
+          await fs.rm(temporary, { force: true });
+        }
+      }
+    } catch (error) {
+      return fail("git_exclude_unavailable", "Kimiflow could not establish the repository-local .kimiflow exclusion.", { detail: error.message });
+    }
+    const ignored = await this.run("git", ["-C", projectRoot, "check-ignore", "--no-index", "-q", ".kimiflow/session/FIRSTMATE-CAPTAIN-v1"], {
+      cwd: projectRoot, env: this.env, signal, timeout: 15_000,
+    });
+    if (ignored.code !== 0) return fail("git_exclude_unverified", "Git did not verify the repository-local .kimiflow exclusion.");
+    return ok("captain_project_ready");
   }
 
   async resolveWorkerPresentation(root, projectRoot, signal, explicitVerbosity) {
@@ -281,8 +598,14 @@ export class FirstMateAdapter {
     if (!(await isExecutableFile(helper))) {
       return fail("kimiflow_verbosity_unavailable", "Kimiflow could not resolve Main verbosity; refusing to start a noisy worker.");
     }
+    const inheritedVerbosity = cleanText(this.env.KIMIFLOW_WORKER_VERBOSITY, 64);
     const resolveArgs = ["get"];
-    if (explicitVerbosity) resolveArgs.push("--flag", explicitVerbosity);
+    // Captain resolves presentation once. A Main must inherit that process-local
+    // value instead of allowing a model-selected activate argument to make its
+    // children noisier than the Captain requested.
+    if (explicitVerbosity && !(this.role === "main" && inheritedVerbosity)) {
+      resolveArgs.push("--flag", explicitVerbosity);
+    }
     const resolved = await this.run(helper, resolveArgs, {
       cwd: projectRoot,
       env: { ...this.env, KIMIFLOW_HOST: "pi", KIMIFLOW_PLUGIN_ROOT: KIMIFLOW_ROOT },
@@ -315,8 +638,8 @@ export class FirstMateAdapter {
     });
   }
 
-  async enableFirstMateCalm(root) {
-    const directory = path.join(root, "config");
+  async enableFirstMateCalm(runtimeHome) {
+    const directory = path.join(runtimeHome, "config");
     const preference = path.join(directory, "calm");
     try {
       await fs.mkdir(directory, { recursive: true });
@@ -347,17 +670,88 @@ export class FirstMateAdapter {
     }
   }
 
-  commandEnv(root = this.root) {
+  async createPiLauncher({ role, task = null, mainHome = null }) {
+    let directory;
+    try {
+      const temporaryRoot = await fs.realpath("/tmp");
+      if (!/^[A-Za-z0-9_./-]+$/.test(temporaryRoot)) {
+        throw new Error("the system temporary path is not safe for FirstMate harness detection");
+      }
+      directory = await fs.mkdtemp(path.join(temporaryRoot, "kimiflow-pi-launch-"));
+      await fs.chmod(directory, 0o700);
+      const launcher = path.join(directory, "pi");
+      const lines = [
+        "#!/bin/sh",
+        "set -eu",
+        "umask 077",
+        `export KIMIFLOW_CREW_ROLE=${shellQuote(role)}`,
+        `export KIMIFLOW_SUPERVISED_PROJECT=${shellQuote(this.projectRoot)}`,
+        `export KIMIFLOW_FIRSTMATE_ROOT=${shellQuote(this.root)}`,
+        `export FM_ROOT_OVERRIDE=${shellQuote(this.root)}`,
+        `export KIMIFLOW_WORKER_VERBOSITY=${shellQuote(this.workerVerbosity)}`,
+      ];
+      const piAgentDirectory = cleanText(this.env.PI_CODING_AGENT_DIR, 4_096);
+      if (piAgentDirectory) lines.push(`export PI_CODING_AGENT_DIR=${shellQuote(piAgentDirectory)}`);
+      if (role === "main") {
+        lines.push(`export KIMIFLOW_MAIN_TASK=${shellQuote(task)}`);
+        lines.push(`export FM_HOME="$PWD/${mainHome}"`);
+      } else {
+        lines.push(`export FM_HOME=${shellQuote(this.runtimeHome)}`);
+      }
+      if (this.workerVerbosity === "quiet") {
+        lines.push('mkdir -p "$FM_HOME/config"');
+        lines.push("printf 'on\\n' > \"$FM_HOME/config/calm\"");
+      }
+      lines.push('exec pi "$@"', "");
+      await fs.writeFile(launcher, lines.join("\n"), { flag: "wx", mode: 0o700 });
+      const info = await fs.lstat(launcher);
+      if (!info.isFile() || info.isSymbolicLink()) throw new Error("launcher is not a regular file");
+      return ok("pi_launcher_ready", { launcher, directory });
+    } catch (error) {
+      if (directory) {
+        await fs.rm(path.join(directory, "pi"), { force: true }).catch(() => {});
+        await fs.rmdir(directory).catch(() => {});
+      }
+      return fail("pi_launcher_unavailable", "Kimiflow could not create a bounded Pi launcher for FirstMate.", { detail: error.message });
+    }
+  }
+
+  async removePiLauncher(launcher) {
+    if (!launcher?.directory || !launcher?.launcher) return;
+    await fs.rm(launcher.launcher, { force: true }).catch(() => {});
+    await fs.rmdir(launcher.directory).catch(() => {});
+  }
+
+  commandEnv() {
     return {
       ...this.env,
-      FM_HOME: root,
-      FM_ROOT_OVERRIDE: root,
+      FM_HOME: this.runtimeHome,
+      FM_ROOT_OVERRIDE: this.root,
       FM_BACKEND: "herdr",
     };
   }
 
+  inheritedPiModel(context) {
+    const contextModel = cleanText(context?.model?.id, 512);
+    if (contextModel) {
+      const contextProvider = cleanText(context?.model?.provider, 256);
+      return contextProvider && !contextModel.includes("/") ? `${contextProvider}/${contextModel}` : contextModel;
+    }
+    const model = cleanText(this.env.PI_MODEL, 512);
+    if (!model) return "";
+    const provider = cleanText(this.env.PI_PROVIDER, 256);
+    return provider && !model.includes("/") ? `${provider}/${model}` : model;
+  }
+
+  inheritedPiEffort(context) {
+    const contextEffort = cleanText(context?.thinkingLevel, 32);
+    if (["low", "medium", "high", "xhigh", "max"].includes(contextEffort)) return contextEffort;
+    const effort = cleanText(this.env.PI_REASONING_LEVEL, 32);
+    return ["low", "medium", "high", "xhigh", "max"].includes(effort) ? effort : "";
+  }
+
   requireActive() {
-    if (!this.root || !this.projectRoot || !this.watcher) {
+    if (!this.root || !this.projectRoot || !this.runtimeHome || !this.watcher) {
       return fail("crew_not_active", "Call kimiflow_crew with action=activate first.");
     }
     return null;
@@ -368,10 +762,24 @@ export class FirstMateAdapter {
     return null;
   }
 
+  validateTaskAuthority(task) {
+    if (this.role !== "captain") return null;
+    if (!this.mainTask || task !== this.mainTask) {
+      return fail("captain_task_forbidden", "Captain may address only its exact Kimiflow Main task.", {
+        mainTask: this.mainTask,
+        task,
+      });
+    }
+    return null;
+  }
+
   async ensureProjectMode(signal) {
+    if (this.modeCapability === "current") {
+      return ok("project_mode_ready", { project: path.basename(this.projectRoot), mode: "local-only" });
+    }
     const name = path.basename(this.projectRoot);
     if (!PROJECT_NAME.test(name)) return fail("invalid_project_name", "FirstMate requires a simple project-directory name.");
-    const registry = path.join(this.root, "data", "projects.md");
+    const registry = path.join(this.runtimeHome, "data", "projects.md");
     let text;
     try {
       text = await fs.readFile(registry, "utf8");
@@ -394,7 +802,7 @@ export class FirstMateAdapter {
       cwd: this.root, env: this.commandEnv(), signal, timeout: 15_000,
     });
     let mode = cleanText(current.stdout, 256).split(/\s+/, 1)[0];
-    if (mode !== "local-only" && mode !== "direct-PR") {
+    if (mode !== "local-only") {
       const date = new Date().toISOString().slice(0, 10);
       if (index >= 0) {
         const suffix = lines[index].slice(`- ${name}`.length).replace(/^ \[[^\]]+\]/, "");
@@ -411,13 +819,294 @@ export class FirstMateAdapter {
       });
       mode = cleanText(verified.stdout, 256).split(/\s+/, 1)[0];
     }
-    if (mode !== "local-only" && mode !== "direct-PR") {
-      return fail("project_mode_unverified", "FirstMate project delivery mode is neither local-only nor direct-PR.");
+    if (mode !== "local-only") {
+      return fail("project_mode_unverified", "The isolated Kimiflow FirstMate home did not verify local-only delivery.");
     }
     return ok("project_mode_ready", { project: name, mode });
   }
 
-  async spawnWorker(params, signal) {
+  async ensureDefaultBranchMarker(signal) {
+    const symbolic = await this.run("git", ["-C", this.projectRoot, "symbolic-ref", "refs/remotes/origin/HEAD"], {
+      cwd: this.projectRoot, env: this.env, signal, timeout: 15_000,
+    });
+    if (symbolic.code === 0) return ok("default_branch_ready", { marker: "existing", target: cleanText(symbolic.stdout, 512) });
+
+    const occupied = await this.run("git", ["-C", this.projectRoot, "show-ref", "--verify", "--quiet", "refs/remotes/origin/HEAD"], {
+      cwd: this.projectRoot, env: this.env, signal, timeout: 15_000,
+    });
+    if (occupied.code === 0) {
+      return fail("default_branch_marker_occupied", "refs/remotes/origin/HEAD exists but is not symbolic; Kimiflow will not overwrite it.");
+    }
+    for (const branch of ["main", "master"]) {
+      const local = await this.run("git", ["-C", this.projectRoot, "show-ref", "--verify", "--quiet", `refs/heads/${branch}`], {
+        cwd: this.projectRoot, env: this.env, signal, timeout: 15_000,
+      });
+      if (local.code === 0) return ok("default_branch_ready", { marker: "unneeded", branch });
+    }
+
+    const currentResult = await this.run("git", ["-C", this.projectRoot, "symbolic-ref", "--short", "HEAD"], {
+      cwd: this.projectRoot, env: this.env, signal, timeout: 15_000,
+    });
+    const branch = cleanText(currentResult.stdout, 512);
+    if (currentResult.code !== 0 || !branch || branch.startsWith("-") || branch.includes("..")) {
+      return fail("default_branch_unverified", "The project has no standard default branch and its current local branch is not provable.");
+    }
+    const currentExists = await this.run("git", ["-C", this.projectRoot, "show-ref", "--verify", "--quiet", `refs/heads/${branch}`], {
+      cwd: this.projectRoot, env: this.env, signal, timeout: 15_000,
+    });
+    if (currentExists.code !== 0) return fail("default_branch_unverified", "The current branch ref could not be verified.");
+
+    const remotesResult = await this.run("git", ["-C", this.projectRoot, "remote"], {
+      cwd: this.projectRoot, env: this.env, signal, timeout: 15_000,
+    });
+    if (remotesResult.code !== 0) return fail("default_branch_unverified", "Git remotes could not be inspected.");
+    const remotes = remotesResult.stdout.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+    let authority = "local";
+    if (remotes.length > 0) {
+      const remote = remotes.includes("origin") ? "origin" : remotes.length === 1 ? remotes[0] : null;
+      if (!remote) return fail("default_branch_remote_ambiguous", "Multiple remotes exist without origin; no authoritative default can be inferred.");
+      const remoteHead = await this.run("git", ["-C", this.projectRoot, "ls-remote", "--symref", remote, "HEAD"], {
+        cwd: this.projectRoot, env: this.env, signal, timeout: 30_000,
+      });
+      const remoteBranch = remoteHead.stdout.match(/^ref:\s+refs\/heads\/([^\s]+)\s+HEAD$/m)?.[1];
+      if (remoteHead.code !== 0 || !remoteBranch) {
+        return fail("default_branch_remote_unverified", "The authoritative remote did not expose a symbolic HEAD.", { detail: cleanText(`${remoteHead.stdout}\n${remoteHead.stderr}`) });
+      }
+      if (remoteBranch !== branch) {
+        return fail("default_branch_remote_mismatch", "The authoritative remote default differs from the current local branch.", {
+          local: branch,
+          remote: remoteBranch,
+        });
+      }
+      authority = remote;
+    }
+
+    // A symbolic remote-HEAD may legally point at the verified local branch.
+    // This keeps no-remote repositories non-dangling while `symbolic-ref
+    // --short refs/remotes/origin/HEAD` still yields the branch name expected
+    // by stock fm-merge-local.sh.
+    const target = `refs/heads/${branch}`;
+    const create = await this.run("git", ["-C", this.projectRoot, "symbolic-ref", "refs/remotes/origin/HEAD", target], {
+      cwd: this.projectRoot, env: this.env, signal, timeout: 15_000,
+    });
+    if (create.code !== 0) return fail("default_branch_marker_failed", "The verified reversible origin/HEAD marker could not be created.", { detail: cleanText(create.stderr) });
+    const verify = await this.run("git", ["-C", this.projectRoot, "symbolic-ref", "refs/remotes/origin/HEAD"], {
+      cwd: this.projectRoot, env: this.env, signal, timeout: 15_000,
+    });
+    if (verify.code !== 0 || cleanText(verify.stdout, 512) !== target) {
+      return fail("default_branch_marker_failed", "The reversible origin/HEAD marker could not be verified.");
+    }
+    const owner = path.join(this.runtimeHome, "state", "kimiflow-origin-head-owner.json");
+    const record = `${JSON.stringify({ schemaVersion: 1, projectRoot: this.projectRoot, ref: "refs/remotes/origin/HEAD", target, authority })}\n`;
+    try {
+      await fs.writeFile(owner, record, { flag: "wx", mode: 0o600 });
+    } catch (error) {
+      await this.run("git", ["-C", this.projectRoot, "symbolic-ref", "--delete", "refs/remotes/origin/HEAD"], {
+        cwd: this.projectRoot, env: this.env, signal, timeout: 15_000,
+      });
+      return fail("default_branch_marker_owner_failed", "Kimiflow could not record ownership of its reversible origin/HEAD marker.", { detail: error.message });
+    }
+    return ok("default_branch_ready", { marker: "owned", branch, target, authority });
+  }
+
+  async cleanupOwnedDefaultBranchMarker(signal) {
+    const owner = path.join(this.runtimeHome, "state", "kimiflow-origin-head-owner.json");
+    let record;
+    try {
+      const info = await fs.lstat(owner);
+      if (!info.isFile() || info.isSymbolicLink()) throw new Error("owner record is not a regular file");
+      record = JSON.parse(await fs.readFile(owner, "utf8"));
+    } catch (error) {
+      if (error.code === "ENOENT") return ok("default_branch_marker_absent");
+      return fail("default_branch_marker_cleanup_refused", "The origin/HEAD ownership record is invalid; no ref was changed.", { detail: error.message });
+    }
+    if (record.projectRoot !== this.projectRoot || record.ref !== "refs/remotes/origin/HEAD" || !String(record.target).startsWith("refs/heads/")) {
+      return fail("default_branch_marker_cleanup_refused", "The origin/HEAD ownership record does not match this project; no ref was changed.");
+    }
+    const current = await this.run("git", ["-C", this.projectRoot, "symbolic-ref", record.ref], {
+      cwd: this.projectRoot, env: this.env, signal, timeout: 15_000,
+    });
+    if (current.code !== 0 || cleanText(current.stdout, 512) !== record.target) {
+      return fail("default_branch_marker_cleanup_refused", "The owned origin/HEAD marker changed after creation; no ref was changed.");
+    }
+    const removed = await this.run("git", ["-C", this.projectRoot, "symbolic-ref", "--delete", record.ref], {
+      cwd: this.projectRoot, env: this.env, signal, timeout: 15_000,
+    });
+    if (removed.code !== 0) return fail("default_branch_marker_cleanup_refused", "Git refused removal of the exact owned origin/HEAD marker.", { detail: cleanText(removed.stderr) });
+    await fs.rm(owner, { force: true });
+    return ok("default_branch_marker_removed");
+  }
+
+  async startMain(params, signal, context) {
+    const inactive = this.requireActive();
+    if (inactive) return inactive;
+    const invalid = this.validateTask(params.task);
+    if (invalid) return invalid;
+    const request = cleanText(params.request, 50_000);
+    const plan = cleanText(params.plan, 100_000);
+    if (!request) return fail("main_request_required", "A new Kimiflow Main requires the exact user request.");
+    if (this.mainTask && this.mainTask !== params.task) {
+      return fail("captain_main_conflict", "This Captain already owns a different Kimiflow Main task.", { task: this.mainTask });
+    }
+    const snapshot = `${JSON.stringify({
+      schemaVersion: 1,
+      task: params.task,
+      supervisedProject: this.projectRoot,
+      request,
+      plan,
+    }, null, 2)}\n`;
+    const snapshotPath = path.join(this.runtimeHome, "data", params.task, "launch-input.json");
+    try {
+      await fs.mkdir(path.dirname(snapshotPath), { recursive: true, mode: 0o700 });
+      try {
+        await fs.writeFile(snapshotPath, snapshot, { flag: "wx", mode: 0o600 });
+      } catch (error) {
+        if (error.code !== "EEXIST") throw error;
+        const current = await fs.readFile(snapshotPath, "utf8");
+        if (current !== snapshot) return fail("main_launch_input_conflict", "This Main task already owns a different immutable launch input. Use a new task id.");
+      }
+      const info = await fs.lstat(snapshotPath);
+      if (!info.isFile() || info.isSymbolicLink()) throw new Error("launch snapshot is not a regular file");
+    } catch (error) {
+      if (error?.ok === false) return error;
+      return fail("main_launch_input_unavailable", "Kimiflow could not establish the immutable Main launch input.", { detail: error.message });
+    }
+
+    const projectMode = await this.ensureProjectMode(signal);
+    if (!projectMode.ok) return projectMode;
+    const briefPath = path.join(this.runtimeHome, "data", params.task, "brief.md");
+    let existingBrief = false;
+    try {
+      const info = await fs.lstat(briefPath);
+      existingBrief = info.isFile() && !info.isSymbolicLink();
+    } catch {
+      existingBrief = false;
+    }
+    if (!existingBrief) {
+      const briefArgs = [params.task, this.modeCapability === "current" ? this.projectRoot : path.basename(this.projectRoot)];
+      if (this.modeCapability === "current") briefArgs.push("--mode", "local-only");
+      const scaffold = await this.run(path.join(this.root, "bin", "fm-brief.sh"), briefArgs, {
+        cwd: this.root, env: this.commandEnv(), signal, timeout: 30_000,
+      });
+      if (scaffold.code !== 0) return fail("main_brief_scaffold_failed", "FirstMate could not create the normal Main brief.", { detail: cleanText(`${scaffold.stdout}\n${scaffold.stderr}`) });
+      const template = await fs.readFile(briefPath, "utf8");
+      const taskMarker = "# Task\n{TASK}";
+      if (template.split(taskMarker).length !== 2) return fail("brief_contract_invalid", "FirstMate Main brief did not contain exactly one canonical task section.");
+      const mainContract = [
+        "Kimiflow control Main:",
+        "- This outer FirstMate worktree is a durable control container only. Do not write product implementation bytes here and do not deliver or merge its branch as product code.",
+        `- Supervise the read-only product checkout at ${this.projectRoot}. Never write product bytes or existing run/plan artifacts there; the exact stock FirstMate status file named below is the sole control-state exception.`,
+        "- Your first workflow action is to initialize or resume exactly one standard Kimiflow Active Run inside this current control worktree from the immutable launch input below. Do this before emitting a decision/status or activating your FirstMate crew.",
+        "- All product changes must be delegated to visible child FirstMate Ships through kimiflow_crew. Research and review use visible Scouts.",
+        "- Return decisions, blockers and bounded artifact pointers through the stock FirstMate status protocol. Do not open a separate user conversation.",
+        "- The Captain owns only this Main; this Main owns the child crew.",
+        "",
+        "Immutable launch input:",
+        "```json",
+        snapshot.trimEnd(),
+        "```",
+      ].join("\n");
+      const withTask = template.replace(taskMarker, `# Task\n${mainContract}`).replaceAll("{TASK}", "the control task description");
+      const setupMarker = "\n# Setup\n";
+      if (withTask.split(setupMarker).length !== 2) {
+        return fail("brief_contract_invalid", "FirstMate Main brief did not contain exactly one canonical setup section.");
+      }
+      const statusPath = path.join(this.runtimeHome, "state", `${params.task}.status`);
+      const controlTail = [
+        "",
+        "# Setup",
+        "You are in an isolated FirstMate worktree used only as the durable Kimiflow control store.",
+        "Verify `pwd -P` and `git rev-parse --show-toplevel` resolve to this worktree and never to the supervised product checkout named above. Do not create, switch, merge, or deliver an outer product branch.",
+        "",
+        "# Rules",
+        "1. Stay inside this control worktree. The supervised product checkout and its existing `.kimiflow` run/plan artifacts are read-only; only the exact stock FirstMate status file named below may receive control-state lines.",
+        "2. Before any decision/status or crew activation, initialize or resume exactly one standard Kimiflow Active Run here from the immutable launch input. Main crew activation fails closed until its STATE.md exists. Do not invent a second orchestration state machine.",
+        "3. Delegate every product write to a visible FirstMate Ship and every independent research/review axis to a visible Scout via `kimiflow_crew`.",
+        "4. Use stock FirstMate lifecycle actions for status, steering, local integration and safe teardown. No custom merge or delivery fallback is allowed.",
+        `5. Report only bounded supervisor-relevant changes by appending one line to ${shellQuote(statusPath)}: \`working: ...\`, \`needs-decision: ...\`, \`blocked: ...\`, \`done: ...\`, or \`failed: ...\`.`,
+        "6. Do not speak to the user from this Main. Captain owns the user conversation and receives decisions through FirstMate status.",
+        "7. After appending `needs-decision:` or `blocked:`, end the turn immediately. Do not activate a crew, spawn a child, inspect further, or continue until Captain's exact reply arrives through FirstMate.",
+        "8. After a child returns `worker_reachable`, end the turn and wait for the automatic FirstMate wake. Never poll status and never use sleep loops.",
+        "9. Before final completion, safely tear down every exact child after its report or integrated result has been consumed. Never force teardown.",
+        "",
+        "# Definition of done",
+        "Delivery contract: mode=local-only",
+        "This records the stock FirstMate contract for child Ships; it does not authorize delivery of this outer control branch.",
+        "The confirmed Kimiflow run is complete only when its required child work is mechanically verified, independently reviewed, integrated through stock `fm-merge-local.sh`, and the durable run evidence is complete.",
+        `Append \`done: Kimiflow run complete\` to ${shellQuote(statusPath)} and stop.`,
+        "",
+      ].join("\n");
+      const rendered = `${withTask.slice(0, withTask.indexOf(setupMarker))}${controlTail}`;
+      await fs.writeFile(briefPath, rendered, { mode: 0o600 });
+    } else {
+      const current = await fs.readFile(briefPath, "utf8");
+      if (!current.includes(snapshot.trimEnd()) || !current.includes("Kimiflow control Main")) {
+        return fail("main_brief_conflict", "This Main task already has a different or non-control FirstMate brief. Use a new task id.");
+      }
+    }
+
+    const marker = await this.ensureDefaultBranchMarker(signal);
+    if (!marker.ok) return marker;
+    const calmExtension = path.join(this.root, REQUIRED_FIRSTMATE_CALM_FILES[0]);
+    const mainHome = `.kimiflow/session/FIRSTMATE-MAIN-v1/${params.task}`;
+    const launcher = await this.createPiLauncher({ role: "main", task: params.task, mainHome });
+    if (!launcher.ok) {
+      const markerRollback = marker.marker === "owned" ? await this.cleanupOwnedDefaultBranchMarker(signal) : null;
+      return markerRollback ? { ...launcher, markerRollback } : launcher;
+    }
+    const harness = this.workerVerbosity === "quiet"
+      ? `${launcher.launcher} __MODELFLAG____EFFORTFLAG__-e ${shellQuote(calmExtension)} -e __PIEXT__ "\$(__OPINPUT__ encode launch-brief < __BRIEF__)"`
+      : `${launcher.launcher} __MODELFLAG____EFFORTFLAG__-e __PIEXT__ "\$(__OPINPUT__ encode launch-brief < __BRIEF__)"`;
+    const spawnArgs = [params.task, this.projectRoot, "--harness", harness, "--backend", "herdr"];
+    if (this.modeCapability === "current") spawnArgs.push("--mode", "local-only", "--yolo", "off");
+    const model = cleanText(params.model, 512) || this.inheritedPiModel(context);
+    const effort = params.effort || this.inheritedPiEffort(context);
+    if (model) spawnArgs.push("--model", model);
+    if (effort) spawnArgs.push("--effort", effort);
+    try {
+      const spawned = await this.run(path.join(this.root, "bin", "fm-spawn.sh"), spawnArgs, {
+        cwd: this.root, env: this.commandEnv(), signal, timeout: 240_000,
+      });
+      const ownership = await this.recoverCaptainMainTask();
+      if (!ownership.ok) return ownership;
+      if (spawned.code !== 0) {
+        let markerRollback = null;
+        if (marker.marker === "owned" && this.mainTask !== params.task) markerRollback = await this.cleanupOwnedDefaultBranchMarker(signal);
+        return fail("main_spawn_failed", "FirstMate did not create the Kimiflow Main.", {
+          task: params.task,
+          owned: this.mainTask === params.task,
+          ...(markerRollback ? { markerRollback } : {}),
+          detail: cleanText(`${spawned.stdout}\n${spawned.stderr}`),
+        });
+      }
+      if (this.mainTask !== params.task) {
+        const markerRollback = marker.marker === "owned" ? await this.cleanupOwnedDefaultBranchMarker(signal) : null;
+        return fail("main_spawn_untracked", "FirstMate returned from Main spawn without exact task metadata; Captain refuses to claim or control it.", {
+          task: params.task,
+          ...(markerRollback ? { markerRollback } : {}),
+        });
+      }
+      const endpoint = await this.verifyEndpoint(params.task, signal);
+      if (!endpoint.ok) return fail("main_spawn_unverified", "FirstMate returned from Main spawn, but the exact endpoint and Pi lifecycle were not both verified.", { detail: endpoint.detail });
+      const identifiers = await this.readTaskIdentifiers(params.task);
+      this.pendingWakeTasks.delete(params.task);
+      this.terminalTasks.delete(params.task);
+      return ok("main_reachable", {
+        task: params.task,
+        endpoint: "verified",
+        launchInput: "immutable",
+        controlOnly: true,
+        ...identifiers,
+        mode: projectMode.mode,
+        presentation: this.workerVerbosity === "quiet" ? "quiet+firstmate-calm" : this.workerVerbosity,
+        spawnReceipt: cleanText(spawned.stdout, 4_000),
+      });
+    } finally {
+      await this.removePiLauncher(launcher);
+    }
+  }
+
+  async spawnWorker(params, signal, context) {
     const inactive = this.requireActive();
     if (inactive) return inactive;
     const invalid = this.validateTask(params.task);
@@ -427,7 +1116,7 @@ export class FirstMateAdapter {
     if (stage === "research" && kind !== "scout") {
       return fail("research_ship_forbidden", "A pre-contract research packet must use a read-only FirstMate Scout.");
     }
-    const briefPath = path.join(this.root, "data", params.task, "brief.md");
+    const briefPath = path.join(this.runtimeHome, "data", params.task, "brief.md");
     const confirmedBrief = cleanText(params.brief, 50_000);
     let existingBrief = false;
     try {
@@ -456,8 +1145,9 @@ export class FirstMateAdapter {
     if (!projectMode.ok) return projectMode;
 
     if (!existingBrief) {
-      const briefArgs = [params.task, path.basename(this.projectRoot)];
+      const briefArgs = [params.task, this.modeCapability === "current" ? this.projectRoot : path.basename(this.projectRoot)];
       if (kind === "scout") briefArgs.push("--scout");
+      else if (this.modeCapability === "current") briefArgs.push("--mode", "local-only");
       const scaffold = await this.run(path.join(this.root, "bin", "fm-brief.sh"), briefArgs, {
         cwd: this.root, env: this.commandEnv(), signal, timeout: 30_000,
       });
@@ -502,68 +1192,99 @@ export class FirstMateAdapter {
     }
 
     const calmExtension = path.join(this.root, REQUIRED_FIRSTMATE_CALM_FILES[0]);
-    const harness = this.workerCalm
-      ? `KIMIFLOW_WORKER_VERBOSITY=quiet pi __MODELFLAG____EFFORTFLAG__-e ${shellQuote(calmExtension)} -e __PIEXT__ "\$(__OPINPUT__ encode launch-brief < __BRIEF__)"`
-      : "pi";
+    const launcher = await this.createPiLauncher({ role: "worker" });
+    if (!launcher.ok) return launcher;
+    const harness = this.workerVerbosity === "quiet"
+      ? `${launcher.launcher} __MODELFLAG____EFFORTFLAG__-e ${shellQuote(calmExtension)} -e __PIEXT__ "\$(__OPINPUT__ encode launch-brief < __BRIEF__)"`
+      : `${launcher.launcher} __MODELFLAG____EFFORTFLAG__-e __PIEXT__ "\$(__OPINPUT__ encode launch-brief < __BRIEF__)"`;
     const spawnArgs = [params.task, this.projectRoot, "--harness", harness, "--backend", "herdr"];
-    if (params.model) spawnArgs.push("--model", params.model);
-    if (params.effort) spawnArgs.push("--effort", params.effort);
+    if (this.modeCapability === "current" && kind === "ship") spawnArgs.push("--mode", "local-only", "--yolo", "off");
+    const model = cleanText(params.model, 512) || this.inheritedPiModel(context);
+    const effort = params.effort || this.inheritedPiEffort(context);
+    if (model) spawnArgs.push("--model", model);
+    if (effort) spawnArgs.push("--effort", effort);
     if (kind === "scout") spawnArgs.push("--scout");
-    const spawned = await this.run(path.join(this.root, "bin", "fm-spawn.sh"), spawnArgs, {
-      cwd: this.root, env: this.commandEnv(), signal, timeout: 240_000,
-    });
-    if (spawned.code !== 0) {
-      return fail("spawn_failed", "FirstMate did not create the requested worker.", { detail: cleanText(`${spawned.stdout}\n${spawned.stderr}`) });
+    try {
+      const spawned = await this.run(path.join(this.root, "bin", "fm-spawn.sh"), spawnArgs, {
+        cwd: this.root, env: this.commandEnv(), signal, timeout: 240_000,
+      });
+      if (spawned.code !== 0) {
+        return fail("spawn_failed", "FirstMate did not create the requested worker.", { detail: cleanText(`${spawned.stdout}\n${spawned.stderr}`) });
+      }
+      const endpoint = await this.verifyEndpoint(params.task, signal);
+      if (!endpoint.ok) {
+        return fail("spawn_unverified", "FirstMate returned from spawn, but the exact endpoint and Pi lifecycle were not both verified.", {
+          detail: endpoint.detail,
+        });
+      }
+      this.pendingWakeTasks.delete(params.task);
+      this.terminalTasks.delete(params.task);
+      return ok("worker_reachable", {
+        task: params.task,
+        kind,
+        stage,
+        mode: projectMode.mode,
+        endpoint: "verified",
+        presentation: this.workerVerbosity === "quiet" ? "quiet+firstmate-calm" : this.workerVerbosity,
+        spawnReceipt: cleanText(spawned.stdout, 4_000),
+      });
+    } finally {
+      await this.removePiLauncher(launcher);
     }
+  }
+
+  async verifyEndpoint(task, signal) {
     let peek = { code: 1, stdout: "", stderr: "endpoint did not settle" };
     let lifecycle = { code: 1, stdout: "", stderr: "Pi lifecycle did not settle" };
-    let ready = false;
     let trustAccepted = false;
     for (let attempt = 0; attempt < 60; attempt += 1) {
       if (attempt > 0) await this.sleep(250);
-      peek = await this.run(path.join(this.root, "bin", "fm-peek.sh"), [params.task, "40"], {
+      peek = await this.run(path.join(this.root, "bin", "fm-peek.sh"), [task, "40"], {
         cwd: this.root, env: this.commandEnv(), signal, timeout: 30_000,
       });
       if (peek.code !== 0) continue;
       if (/Trust project folder\?/i.test(peek.stdout)) {
         if (trustAccepted) continue;
-        const trust = await this.run(path.join(this.root, "bin", "fm-send.sh"), [params.task, "--key", "Enter"], {
+        const trust = await this.run(path.join(this.root, "bin", "fm-send.sh"), [task, "--key", "Enter"], {
           cwd: this.root, env: this.commandEnv(), signal, timeout: 30_000,
         });
         if (trust.code !== 0) {
-          return fail("worker_trust_failed", "The visible Pi worker is reachable, but FirstMate could not accept its project-worktree trust gate.", {
+          return fail("worker_trust_failed", "The visible Pi endpoint is reachable, but FirstMate could not accept its project-worktree trust gate.", {
             detail: cleanText(`${trust.stdout}\n${trust.stderr}`),
           });
         }
         trustAccepted = true;
         continue;
       }
-      if (PI_WORKER_READY.test(peek.stdout)) {
-        lifecycle = await this.run(path.join(this.root, "bin", "fm-crew-state.sh"), [params.task], {
-          cwd: this.root, env: this.commandEnv(), signal, timeout: 30_000,
-        });
-        if (lifecycle.code === 0 && PI_LIFECYCLE_READY.test(lifecycle.stdout)) {
-          ready = true;
-          break;
-        }
+      if (!PI_WORKER_READY.test(peek.stdout)) continue;
+      lifecycle = await this.run(path.join(this.root, "bin", "fm-crew-state.sh"), [task], {
+        cwd: this.root, env: this.commandEnv(), signal, timeout: 30_000,
+      });
+      if (lifecycle.code === 0 && PI_LIFECYCLE_READY.test(lifecycle.stdout)) {
+        return ok("endpoint_verified", { peek: cleanText(peek.stdout), lifecycle: cleanText(lifecycle.stdout) });
       }
     }
-    if (!ready) {
-      return fail("spawn_unverified", "FirstMate returned from spawn, but the exact endpoint and Pi lifecycle were not both verified.", {
-        detail: cleanText(`${peek.stdout}\n${peek.stderr}\n${lifecycle.stdout}\n${lifecycle.stderr}`),
-      });
-    }
-    this.pendingWakeTasks.delete(params.task);
-    this.terminalTasks.delete(params.task);
-    return ok("worker_reachable", {
-      task: params.task,
-      kind,
-      stage,
-      mode: projectMode.mode,
-      endpoint: "verified",
-      presentation: this.workerCalm ? "quiet+firstmate-calm" : "inherited",
-      spawnReceipt: cleanText(spawned.stdout, 4_000),
+    return fail("endpoint_unverified", "The exact endpoint and Pi lifecycle were not both verified.", {
+      detail: cleanText(`${peek.stdout}\n${peek.stderr}\n${lifecycle.stdout}\n${lifecycle.stderr}`),
     });
+  }
+
+  async readTaskIdentifiers(task) {
+    const metaPath = path.join(this.runtimeHome, "state", `${task}.meta`);
+    try {
+      const info = await fs.lstat(metaPath);
+      if (!info.isFile() || info.isSymbolicLink() || info.size > 100_000) return {};
+      const lines = (await fs.readFile(metaPath, "utf8")).split(/\r?\n/);
+      const value = (key) => cleanText(lines.find((line) => line.startsWith(`${key}=`))?.slice(key.length + 1), 4_096);
+      const mainWorktree = value("worktree");
+      const mainWindow = value("window");
+      return {
+        ...(mainWorktree ? { mainWorktree } : {}),
+        ...(mainWindow ? { mainWindow } : {}),
+      };
+    } catch {
+      return {};
+    }
   }
 
   async status(params, signal) {
@@ -571,6 +1292,8 @@ export class FirstMateAdapter {
     if (inactive) return inactive;
     const invalid = this.validateTask(params.task);
     if (invalid) return invalid;
+    const forbidden = this.validateTaskAuthority(params.task);
+    if (forbidden) return forbidden;
     const result = await this.run(path.join(this.root, "bin", "fm-crew-state.sh"), [params.task], {
       cwd: this.root, env: this.commandEnv(), signal, timeout: 30_000,
     });
@@ -594,8 +1317,8 @@ export class FirstMateAdapter {
         detail: cleanText(`${stateResult.stdout}\n${stateResult.stderr}`),
       });
     }
-    const metaPath = path.join(this.root, "state", `${params.task}.meta`);
-    const reportPath = path.join(this.root, "data", params.task, "report.md");
+    const metaPath = path.join(this.runtimeHome, "state", `${params.task}.meta`);
+    const reportPath = path.join(this.runtimeHome, "data", params.task, "report.md");
     try {
       for (const candidate of [metaPath, reportPath]) {
         const info = await fs.lstat(candidate);
@@ -621,6 +1344,8 @@ export class FirstMateAdapter {
     if (inactive) return inactive;
     const invalid = this.validateTask(params.task);
     if (invalid) return invalid;
+    const forbidden = this.validateTaskAuthority(params.task);
+    if (forbidden) return forbidden;
     if (Boolean(params.key) === Boolean(cleanText(params.message))) {
       return fail("send_payload_invalid", "Provide exactly one of message or key.");
     }
@@ -644,21 +1369,94 @@ export class FirstMateAdapter {
     return ok("drained", { wakes: cleanText(result.stdout) });
   }
 
+  async verifyMainChildrenClosed(task, signal) {
+    const mainState = await this.run(path.join(this.root, "bin", "fm-crew-state.sh"), [task], {
+      cwd: this.root, env: this.commandEnv(), signal, timeout: 30_000,
+    });
+    if (mainState.code !== 0 || !/^state: (?:done|failed|blocked|parked)\b/m.test(cleanText(mainState.stdout))) {
+      return fail("main_not_quiescent", "Captain refuses to tear down Main until FirstMate reports a non-working terminal or parked state.", {
+        detail: cleanText(`${mainState.stdout}\n${mainState.stderr}`),
+      });
+    }
+    const identifiers = await this.readTaskIdentifiers(task);
+    const worktree = identifiers.mainWorktree;
+    if (!path.isAbsolute(worktree ?? "")) {
+      return fail("main_worktree_unavailable", "Captain cannot verify nested child cleanup because FirstMate did not expose the Main worktree.");
+    }
+    try {
+      const worktreeInfo = await fs.lstat(worktree);
+      if (!worktreeInfo.isDirectory() || worktreeInfo.isSymbolicLink()) throw new Error("Main worktree is not a real directory");
+      const stateDirectory = path.join(worktree, ".kimiflow", "session", "FIRSTMATE-MAIN-v1", task, "state");
+      let entries;
+      try {
+        const stateInfo = await fs.lstat(stateDirectory);
+        if (!stateInfo.isDirectory() || stateInfo.isSymbolicLink()) throw new Error("nested FirstMate state is not a real directory");
+        entries = await fs.readdir(stateDirectory, { withFileTypes: true });
+      } catch (error) {
+        if (error.code === "ENOENT") return ok("main_children_absent");
+        throw error;
+      }
+      const children = entries.filter((entry) => entry.name.endsWith(".meta")).map((entry) => entry.name.slice(0, -5)).sort();
+      if (children.length > 0) {
+        return fail("main_children_not_torn_down", "Captain refuses to tear down Main while Main-owned FirstMate children still have lifecycle metadata.", { children });
+      }
+      return ok("main_children_closed");
+    } catch (error) {
+      return fail("main_children_unverified", "Captain could not verify that Main-owned FirstMate children are closed.", { detail: error.message });
+    }
+  }
+
   async teardown(params, signal) {
     const inactive = this.requireActive();
     if (inactive) return inactive;
     const invalid = this.validateTask(params.task);
     if (invalid) return invalid;
+    const forbidden = this.validateTaskAuthority(params.task);
+    if (forbidden) return forbidden;
     if (params.confirmation !== params.task) {
       return fail("teardown_confirmation_required", "Teardown confirmation must exactly equal the task id.");
+    }
+    if (this.role === "captain") {
+      const children = await this.verifyMainChildrenClosed(params.task, signal);
+      if (!children.ok) return children;
     }
     const result = await this.run(path.join(this.root, "bin", "fm-teardown.sh"), [params.task], {
       cwd: this.root, env: this.commandEnv(), signal, timeout: 180_000,
     });
     if (result.code !== 0) return fail("teardown_refused", "FirstMate refused safe teardown; no force fallback was used.", { detail: cleanText(`${result.stdout}\n${result.stderr}`) });
+    let marker = null;
+    if (this.role === "captain") {
+      this.mainTask = null;
+      this.pendingWakeTasks.delete(params.task);
+      this.terminalTasks.delete(params.task);
+      marker = await this.cleanupOwnedDefaultBranchMarker(signal);
+      if (!marker.ok) {
+        return fail("main_torn_down_marker_cleanup_failed", "FirstMate tore down Main, but cleanup of Kimiflow's reversible Git marker failed. Main is no longer active; marker cleanup remains retryable on the next exact lifecycle operation.", {
+          task: params.task,
+          mainTornDown: true,
+          markerFailure: marker,
+        });
+      }
+    }
     this.pendingWakeTasks.delete(params.task);
     this.terminalTasks.delete(params.task);
-    return ok("torn_down", { task: params.task, receipt: cleanText(result.stdout) });
+    return ok("torn_down", { task: params.task, receipt: cleanText(result.stdout), ...(marker ? { defaultBranchMarker: marker.code } : {}) });
+  }
+
+  async integrate(params, signal) {
+    const inactive = this.requireActive();
+    if (inactive) return inactive;
+    const invalid = this.validateTask(params.task);
+    if (invalid) return invalid;
+    const result = await this.run(path.join(this.root, "bin", "fm-merge-local.sh"), [params.task], {
+      cwd: this.root, env: this.commandEnv(), signal, timeout: 180_000,
+    });
+    if (result.code !== 0) {
+      return fail("local_integration_refused", "Stock FirstMate refused local integration; Kimiflow used no custom merge fallback.", {
+        detail: cleanText(`${result.stdout}\n${result.stderr}`),
+      });
+    }
+    return ok("local_integrated", { task: params.task, receipt: cleanText(result.stdout) });
   }
 
   async startWatcher(restart) {
@@ -728,7 +1526,7 @@ export class FirstMateAdapter {
     const target = output.match(/^stale:\s+(\S+)\s*$/m)?.[1];
     if (!target || !this.root) return null;
     try {
-      const state = path.join(this.root, "state");
+      const state = path.join(this.runtimeHome, "state");
       const entries = await fs.readdir(state, { withFileTypes: true });
       for (const entry of entries) {
         if (!entry.isFile() || !entry.name.endsWith(".meta")) continue;
@@ -746,23 +1544,27 @@ export class FirstMateAdapter {
     this.watcher = null;
     const rawOutput = cleanText(`${result.stdout}\n${result.stderr}`);
     const actionable = WAKE_LINE.test(rawOutput) && !WATCH_FAILED.test(rawOutput);
-    const output = watcherPresentation(rawOutput, this.workerCalm);
+    const output = watcherPresentation(rawOutput, this.workerVerbosity === "quiet");
     if (actionable) {
       const rearmed = await this.restoreWatcher();
       const task = await this.taskFromWake(output);
       if (task && (this.terminalTasks.has(task) || this.pendingWakeTasks.has(task))) return;
       if (task) this.pendingWakeTasks.add(task);
       const suffix = rearmed.ok ? "" : `\nWatcher re-arm failed: ${rearmed.code}.`;
+      const instruction = this.role === "captain"
+        ? "Use kimiflow_crew action=drain, then action=status for the Kimiflow Main. Keep all user discussion in this Captain session."
+        : "Use kimiflow_crew action=drain, then action=status for the named child task. Return only bounded decisions or artifact pointers to Captain through FirstMate status.";
       this.pi?.sendUserMessage?.(
-        `KIMIFLOW CREW WAKE\n${output}${suffix}\nUse kimiflow_crew action=drain, then action=status for the named task. Keep all user discussion in this Main session.`,
+        `KIMIFLOW CREW WAKE\n${output}${suffix}\n${instruction}`,
         { deliverAs: "followUp" },
       );
       return;
     }
     const restored = await this.restoreWatcher();
     if (!restored.ok) {
+      const owner = this.role === "captain" ? "CAPTAIN" : "MAIN";
       this.pi?.sendUserMessage?.(
-        `KIMIFLOW CREW FAILURE\nFirstMate watcher could not be restored after three bounded attempts. No recovery is claimed.\n${output}`,
+        `KIMIFLOW ${owner} CREW FAILURE\nFirstMate watcher could not be restored after three bounded attempts. No recovery is claimed.\n${output}`,
         { deliverAs: "followUp" },
       );
     }
@@ -783,10 +1585,10 @@ export default function kimiflowCrewExtension(pi) {
   pi.registerTool({
     name: "kimiflow_crew",
     label: "Kimiflow crew",
-    description: "Optionally delegate confirmed, genuinely independent Kimiflow work to visible FirstMate Pi workers in Herdr. The current Pi session remains Main. Activate first; a failed operation stays failed.",
+    description: "Role-gated Kimiflow crew control for visible FirstMate Pi sessions in Herdr: Captain owns one control-only Main; Main owns child Ships and Scouts; Workers cannot delegate. Activate first; a failed operation stays failed.",
     parameters: PARAMETERS,
-    async execute(_toolCallId, params, signal) {
-      return toolResult(await adapter.execute(params, signal));
+    async execute(_toolCallId, params, signal, _onUpdate, context) {
+      return toolResult(await adapter.execute(params, signal, context));
     },
   });
   pi.on?.("session_shutdown", () => adapter.shutdown());

@@ -20,25 +20,35 @@ model explicitly selects visible delegation from the current project session. In
 `pi install /absolute/path/to/kimiflow` (or `-l` for project-local scope).
 
 The one-conversation, visible-crew experience is supplied by an independently installed, unmodified
-[FirstMate](https://github.com/kunchenguid/firstmate). The invoking Pi session remains Kimiflow Main and the only
-user conversation. The adapter capability-checks FirstMate and then invokes only its stock session-lock, brief,
-spawn, endpoint-peek, state, send, wake and teardown commands. FirstMate alone owns visible crewmates, worktrees,
-backend lifecycle, normal status files, recovery and `/calm`; Kimiflow keeps no parallel worker state. Before a
-Ship starts, the project resolves as `local-only` or an already explicit `direct-PR`; `no-mistakes` is rejected
-because it would introduce a second review/fix owner.
+[FirstMate](https://github.com/kunchenguid/firstmate). The invoking Pi session is the conversational Captain and
+starts one visible Kimiflow Main. Captain owns only Main; Main owns the full workflow and visible Scouts/Ships;
+Workers cannot delegate. The adapter capability-checks FirstMate and invokes its stock session-lock, brief,
+spawn, endpoint-peek, state, send, wake, local-merge and teardown commands. FirstMate alone owns visible
+process/worktree lifecycle and `/calm`; Kimiflow keeps no parallel worker state.
 
-The adapter passes Main's resolved Kimiflow verbosity into every new worker. `quiet` uses a process-local
+Role action authority is mechanically enforced by the adapter. Pi shell/filesystem behavior is not OS-sandboxed;
+self-contained briefs plus Kimiflow integration/final Git and evidence gates enforce the product-write boundary.
+
+`FM_ROOT_OVERRIDE` always names the stock checkout while `FM_HOME` is isolated per project and, for Main, per
+run. Tracked `.kimiflow` state is rejected under Kimiflow's existing local-artifact contract; normal untracked
+runtime state is excluded repository-locally. For non-main/master defaults, one owned reversible local
+`origin/HEAD` marker is created only after local or authoritative remote proof. It never replaces the stock
+`fm-merge-local.sh` delivery gate.
+
+The adapter passes Captain's resolved Kimiflow verbosity into Main and every new worker. `quiet` uses a process-local
 Kimiflow override and loads FirstMate's own Calm extension; no Calm renderer is copied into Kimiflow. The
 required Calm files are capability-checked before spawn, and an existing worker is not claimed to have changed
 presentation because Pi cannot load those extensions retroactively.
 
-Read-only research Scouts may start after `scope_ready`; implementation Ships and review Scouts require the
-final confirmed contract. A Ship pauses at an exact implementation checkpoint and Main owns subsequent visible
-review Scouts and candidate verification. The adapter supports several concurrent task ids but creates no
-scheduler or duplicate lifecycle database; FirstMate remains the only worker authority.
+Main may start read-only research Scouts before final confirmation; implementation Ships and review Scouts
+require the final contract. A Ship pauses at an exact implementation checkpoint and Main owns subsequent
+visible review Scouts and candidate verification. Decisions travel Main→Captain→user and back through stock
+status/send. The adapter creates no scheduler or duplicate lifecycle database.
 
-Compatibility is capability-based rather than tied to an exact FirstMate commit. A candidate must pass the stock
-FirstMate tests plus a real current-project Pi → FirstMate → Herdr Ship smoke. FirstMate's Herdr backend remains
+Compatibility is capability-based rather than tied to an exact FirstMate commit. The adapter validates the
+mode flags and canonical brief shape it consumes and fails closed on drift. A candidate must pass the stock
+FirstMate tests plus a real Pi Captain → visible Main → Main-owned Crew Herdr smoke, including one
+needs-decision/reply/resume. FirstMate's Herdr backend remains
 experimental, so a spawn or lifecycle failure is surfaced as a FirstMate failure. Kimiflow provides no hidden
 process fallback and must not synthesize `recovered`; spawn is successful only after the exact endpoint is
 readable. Skipped tests and a retry-only pass are not clean acceptance evidence.

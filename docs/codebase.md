@@ -26,8 +26,10 @@ Verbesserungs-Backlogs liegen lokal unter `.kimiflow/project/` und werden nicht 
   `skills/kimiflow/agents/openai.yaml`, `hooks/install-codex-hooks.sh`.
 - Shared runtime: `hooks/commit-secret-gate.sh`, `hooks/state-gate.sh`, `hooks/test-gate.sh`,
   `hooks/resolve-review-gate.sh`, `hooks/project-map-status.sh`, `hooks/memory-router.sh`.
-- Optional Pi skill: root `package.json` and `hosts/pi/skills/kimiflow/SKILL.md`. Stock FirstMate is a separate,
-  unmodified installation and owns crew/worktree/Herdr/Calm orchestration. The release mirror under
+- Optional Pi boundary: root `package.json`, `hosts/pi/skills/kimiflow/SKILL.md` and the dormant
+  `hosts/pi/extensions/kimiflow-crew.js`. Stock FirstMate is a separate, unmodified installation and owns
+  Captain/Main/Crew worktrees, Herdr endpoints, status, recovery, delivery and Calm. Kimiflow only enforces the
+  role/action boundary and isolated Homes. The release mirror under
   `plugins/kimiflow/` is generated, not edited independently.
 
 ## Wo Aenderungen typischerweise landen
@@ -40,7 +42,7 @@ Verbesserungs-Backlogs liegen lokal unter `.kimiflow/project/` und werden nicht 
 | Codex-Plugin-Darstellung verbessern | `.codex-plugin/plugin.json`, `skills/kimiflow/agents/openai.yaml`, README-Codex-Abschnitt |
 | Claude-Plugin-Darstellung verbessern | `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, README-Claude-Abschnitt |
 | Hook-Verhalten aendern | Passendes `hooks/*.sh`, passendes `hooks/test-*.sh`, Smoke-Tests |
-| Pi-/FirstMate-Grenze aendern | `hosts/pi/skills/kimiflow/SKILL.md`, `package.json`, `hooks/test-firstmate-integration.sh`, README und COMPATIBILITY |
+| Pi-/FirstMate-Grenze aendern | `hosts/pi/extensions/kimiflow-crew.js`, `hosts/pi/skills/kimiflow/SKILL.md`, `hosts/pi/tests/kimiflow-crew.test.mjs`, `hooks/test-firstmate-integration.sh`, README und COMPATIBILITY |
 | Release-Doku aktualisieren | `CHANGELOG.md`, `COMPATIBILITY.md`, `README.md` |
 
 ## Lokale Artefakte

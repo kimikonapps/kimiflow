@@ -46,30 +46,42 @@ run_static() {
     assert_absent "$rel"
   done
 
-  assert_contains "$skill" "always **Kimiflow Main**"
+  assert_contains "$skill" "conversational Pi Captain"
   assert_contains "$skill" "only session that talks with the user"
+  assert_contains "$skill" 'KIMIFLOW_CREW_ROLE=main'
+  assert_contains "$skill" "Do not run Kimiflow phases or spawn research/implementation/review workers in Captain"
+  assert_contains "$skill" "owns the complete Kimiflow workflow"
   assert_contains "$skill" "kimiflow_crew"
+  assert_contains "$skill" "main_reachable"
   assert_contains "$skill" "worker_reachable"
-  assert_contains "$skill" "confirmed workers treat product intake as complete"
-  assert_contains "$skill" "FirstMate alone owns"
+  assert_contains "$skill" "Stock FirstMate alone owns"
   assert_contains "$skill" "stage=research"
-  assert_contains "$skill" "visible Scouts"
-  assert_contains "$skill" "stock Calm extension"
-  assert_contains "$skill" "Standalone behavior"
-  for action in activate spawn status report send drain teardown; do
+  assert_contains "$skill" "visible FirstMate"
+  assert_contains "$skill" "stock FirstMate Calm"
+  assert_contains "$skill" "without choosing a new verbosity"
+  assert_contains "$skill" "never poll status or use sleep loops"
+  assert_contains "$skill" "Host boundary"
+  for action in activate start_main spawn status report send drain integrate teardown; do
     assert_contains "$extension" "\"$action\""
   done
-  for command in fm-session-start.sh fm-brief.sh fm-spawn.sh fm-peek.sh fm-crew-state.sh fm-send.sh fm-wake-drain.sh fm-watch-arm.sh fm-teardown.sh; do
+  for command in fm-session-start.sh fm-brief.sh fm-spawn.sh fm-peek.sh fm-crew-state.sh fm-send.sh fm-wake-drain.sh fm-watch-arm.sh fm-merge-local.sh fm-teardown.sh; do
     assert_contains "$extension" "$command"
   done
   assert_contains "$extension" "spawn_unverified"
   assert_contains "$extension" "HERDR_ENV"
-  assert_contains "$extension" "KIMIFLOW_WORKER_VERBOSITY=quiet"
+  assert_contains "$extension" "KIMIFLOW_WORKER_VERBOSITY="
+  assert_contains "$extension" "KIMIFLOW_CREW_ROLE"
+  assert_contains "$extension" "FM_ROOT_OVERRIDE"
+  assert_contains "$extension" "FM_HOME"
   assert_contains "$extension" "fm-calm.ts"
   assert_contains "$extension" "research_ship_forbidden"
   node --check "$extension" >/dev/null || fail "kimiflow crew adapter does not parse"
-  node --test "$ROOT/hosts/pi/tests/kimiflow-crew.test.mjs" >/dev/null \
-    || fail "kimiflow crew adapter unit tests failed"
+  unit_output="$(node --test "$ROOT/hosts/pi/tests/kimiflow-crew.test.mjs")" \
+    || { printf '%s\n' "$unit_output" >&2; fail "kimiflow crew adapter unit tests failed"; }
+  if [ "${KIMIFLOW_REQUIRE_NO_SKIPS:-0}" = 1 ] && printf '%s\n' "$unit_output" | grep -Fq '# SKIP'; then
+    printf '%s\n' "$unit_output" >&2
+    fail "kimiflow crew adapter unit tests skipped required stock evidence"
+  fi
 
   assert_contains "$ROOT/phases/phase-0-setup.md" "<loaded-kimiflow-package-root>/hooks/resolve-verbosity.sh"
   assert_contains "$ROOT/phases/phase-0-setup.md" "KIMIFLOW_HOST=pi"
@@ -88,57 +100,13 @@ run_static() {
 }
 
 verify_firstmate_capabilities() {
-  for script in fm-session-start.sh fm-brief.sh fm-spawn.sh fm-peek.sh fm-crew-state.sh fm-send.sh fm-wake-drain.sh fm-watch-arm.sh fm-teardown.sh fm-project-mode.sh; do
+  for script in fm-session-start.sh fm-brief.sh fm-spawn.sh fm-peek.sh fm-crew-state.sh fm-send.sh fm-wake-drain.sh fm-watch-arm.sh fm-teardown.sh fm-project-mode.sh fm-merge-local.sh; do
     [ -x "$firstmate/bin/$script" ] || fail "FirstMate capability is missing: bin/$script"
   done
 }
 
-verify_main_transcript() {
-  session_file="$(find "$session_dir" -type f -name '*.jsonl' -print 2>/dev/null | sort | tail -1)"
-  [ -n "$session_file" ] || fail "Pi Main session was not persisted"
-  python3 - "$session_file" <<'PY'
-import json
-import re
-import sys
-
-calls = []
-markers = []
-for line_no, line in enumerate(open(sys.argv[1], encoding="utf-8"), 1):
-    entry = json.loads(line)
-    message = entry.get("message")
-    if not isinstance(message, dict):
-        continue
-    for item in message.get("content") or []:
-        if not isinstance(item, dict):
-            continue
-        if item.get("type") == "toolCall":
-            calls.append((line_no, item.get("name"), item.get("arguments") or {}))
-        if message.get("role") == "assistant" and item.get("type") == "text":
-            markers.extend([line_no] * item.get("text", "").count("KIMIFLOW_PROJECT_MAIN_HANDLED"))
-
-crew = [(line, args) for line, name, args in calls if name == "kimiflow_crew"]
-actions = [args.get("action") for _, args in crew]
-for required in ("activate", "spawn", "drain", "status", "report", "send"):
-    if required not in actions:
-        raise SystemExit(f"Pi Main did not call kimiflow_crew action={required}")
-if actions.index("activate") > actions.index("spawn"):
-    raise SystemExit("Pi Main spawned before crew activation")
-if actions.count("spawn") < 2:
-    raise SystemExit("Pi Main did not dispatch both the implementation Ship and independent review Scout")
-if len(markers) != 1:
-    raise SystemExit("Pi Main completion marker is missing or duplicated")
-for _, name, args in calls:
-    if name != "bash":
-        continue
-    command = args.get("command", "")
-    if re.search(r"(?:^|[;&|]\s*)(?:herdr|.*bin/fm-(?:spawn|send|peek|watch|teardown))\b", command):
-        raise SystemExit("Pi Main bypassed the kimiflow_crew boundary")
-PY
-}
-
 run_live() {
-  run_static
-  for command in git herdr jq pi python3 rg tmux treehouse; do require_command "$command"; done
+  for command in git herdr jq pi python3 rg treehouse; do require_command "$command"; done
 
   firstmate=${KIMIFLOW_FIRSTMATE_ROOT:-"$ROOT/../firstmate"}
   firstmate="$(CDPATH= cd -- "$firstmate" 2>/dev/null && pwd -P)" \
@@ -146,6 +114,9 @@ run_live() {
   verify_firstmate_capabilities
   [ -z "$(git -C "$firstmate" status --porcelain --untracked-files=no)" ] \
     || fail "FirstMate checkout has tracked changes"
+  export KIMIFLOW_TEST_FIRSTMATE_ROOT="$firstmate"
+  export KIMIFLOW_REQUIRE_NO_SKIPS=1
+  run_static
   user_pi_agent=${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}
   [ -f "$user_pi_agent/auth.json" ] || fail "an authenticated Pi credential store is required"
 
@@ -157,97 +128,227 @@ run_live() {
   grep -Fq 'skip:' "$stock_log" && { cat "$stock_log" >&2; fail "a required stock FirstMate check skipped"; }
 
   work="$(mktemp -d "${TMPDIR:-/tmp}/kimiflow-firstmate-live.XXXXXX")"
-  fm_home="$work/firstmate"
+  fm_root="$work/firstmate-root"
   project="$work/fixture"
   pi_agent="$work/pi-agent"
-  session_dir="$work/main-sessions"
-  task=kimiflow-project-live
-  review_task=kimiflow-project-live-review
-  socket="kimiflow-project-main-$$"
-  lab="$("$firstmate/bin/fm-herdr-lab.sh" name kimiflow-project-main)"
+  main_task=kimiflow-live-main
+  scout_task=kimiflow-live-research
+  lab="$("$firstmate/bin/fm-herdr-lab.sh" name kimiflow-nested-main)"
+  main_worktree=
+  main_home=
   cleanup() {
     if [ "${KIMIFLOW_KEEP_LIVE:-0}" = 1 ]; then
-      printf 'firstmate integration: preserved live fixture at %s (tmux socket %s, Herdr lab %s)\n' "$work" "$socket" "$lab" >&2
+      printf 'firstmate integration: preserved live fixture at %s (Herdr lab %s)\n' "$work" "$lab" >&2
       return
     fi
-    tmux -L "$socket" kill-server >/dev/null 2>&1 || true
-    FM_HOME="$fm_home" FM_ROOT_OVERRIDE="$fm_home" "$fm_home/bin/fm-teardown.sh" "$review_task" --force >/dev/null 2>&1 || true
-    FM_HOME="$fm_home" FM_ROOT_OVERRIDE="$fm_home" "$fm_home/bin/fm-teardown.sh" "$task" --force >/dev/null 2>&1 || true
-    "$fm_home/bin/fm-herdr-lab.sh" teardown "$lab" >/dev/null 2>&1 || true
+    if [ -n "$main_home" ]; then
+      FM_HOME="$main_home" FM_ROOT_OVERRIDE="$fm_root" "$fm_root/bin/fm-teardown.sh" "$scout_task" --force >/dev/null 2>&1 || true
+    fi
+    captain_home="$project/.kimiflow/session/FIRSTMATE-CAPTAIN-v1"
+    if [ -d "$captain_home" ]; then
+      FM_HOME="$captain_home" FM_ROOT_OVERRIDE="$fm_root" "$fm_root/bin/fm-teardown.sh" "$main_task" --force >/dev/null 2>&1 || true
+    fi
+    "$fm_root/bin/fm-herdr-lab.sh" teardown "$lab" >/dev/null 2>&1 || true
     rm -rf -- "$work"
     rm -f -- "$stock_log"
   }
   trap cleanup EXIT INT TERM
 
-  git clone -q --no-hardlinks "$firstmate" "$fm_home"
-  mkdir -p "$project" "$pi_agent" "$session_dir"
+  git clone -q --no-hardlinks "$firstmate" "$fm_root"
+  mkdir -p "$project" "$pi_agent"
   cp "$user_pi_agent/auth.json" "$pi_agent/auth.json"
   chmod 600 "$pi_agent/auth.json"
 
-  git init -q "$project"
-  git -C "$project" config user.name 'Kimiflow Project Main E2E'
-  git -C "$project" config user.email 'kimiflow-project-main@invalid.example'
-  printf 'fixture\n' > "$project/README.md"
-  mkdir -p "$project/.kimiflow"
+  git init -q -b trunk "$project"
+  git -C "$project" config user.name 'Kimiflow Nested Main E2E'
+  git -C "$project" config user.email 'kimiflow-nested-main@invalid.example'
+  printf 'NESTED_SCOUT_PASS\n' > "$project/README.md"
+  mkdir -p "$project/.kimiflow/project"
   printf 'quiet\n' > "$project/.kimiflow/verbosity"
+  printf 'immutable run plan sentinel\n' > "$project/.kimiflow/project/RUN-LIVE.md"
+  plan_before="$(shasum -a 256 "$project/.kimiflow/project/RUN-LIVE.md" | awk '{print $1}')"
+  kimiflow_state_manifest() {
+    python3 - "$project" <<'PY'
+import hashlib
+import os
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1]) / ".kimiflow"
+excluded = "session/FIRSTMATE-CAPTAIN-v1"
+for candidate in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
+    relative = candidate.relative_to(root).as_posix()
+    if relative == "session":
+        continue
+    if relative == excluded or relative.startswith(excluded + "/"):
+        continue
+    stat = candidate.lstat()
+    if candidate.is_symlink():
+        payload = "link:" + os.readlink(candidate)
+    elif candidate.is_file():
+        payload = "sha256:" + hashlib.sha256(candidate.read_bytes()).hexdigest()
+    else:
+        payload = "directory"
+    print(f"{relative}\t{stat.st_mode}\t{payload}")
+PY
+  }
+  state_before="$(kimiflow_state_manifest)"
   (cd "$project" && PI_CODING_AGENT_DIR="$pi_agent" pi install "$ROOT" -l --approve >/dev/null)
   grep -Fq "$ROOT" "$project/.pi/settings.json" || fail "fixture does not pin the current Kimiflow checkout"
   git -C "$project" add README.md .pi/settings.json
   git -C "$project" commit -qm 'fixture: initialize'
   base_head="$(git -C "$project" rev-parse HEAD)"
 
-  "$fm_home/bin/fm-herdr-lab.sh" provision "$lab"
-  model=${KIMIFLOW_LIVE_MODEL:-openai-codex/gpt-5.6-sol}
-  tmux -L "$socket" new-session -d -s main -x 180 -y 42 -c "$project" \
-    "env HERDR_ENV=1 HERDR_SESSION='$lab' KIMIFLOW_FIRSTMATE_ROOT='$fm_home' PI_CODING_AGENT_DIR='$pi_agent' FM_POLL=1 FM_SIGNAL_GRACE=0 FM_HEARTBEAT=600 pi --approve --session-dir '$session_dir' --name kimiflow-project-main --model '$model' --thinking low; sleep 30"
-
-  attempts=0
-  while [ "$attempts" -lt 120 ]; do
-    pane="$(tmux -L "$socket" capture-pane -p -t main -S -160 2>/dev/null || true)"
-    printf '%s\n' "$pane" | grep -Fq 'kimiflow' && break
+  "$fm_root/bin/fm-herdr-lab.sh" provision "$lab"
+  lab_run() { "$fm_root/bin/fm-herdr-lab.sh" run "$lab" "$@"; }
+  submit_prompt() {
+    lab_run pane send-text "$1" "$2" >/dev/null || return 1
     sleep 0.5
-    attempts=$((attempts + 1))
-  done
-  [ "$attempts" -lt 120 ] || fail "project Pi Main did not become ready"
+    lab_run pane send-keys "$1" Enter >/dev/null
+  }
+  wait_for_shell() {
+    wait_attempts=0
+    while [ "$wait_attempts" -lt 80 ]; do
+      process_json="$(lab_run pane process-info --pane "$captain_pane" 2>/dev/null || true)"
+      if printf '%s' "$process_json" | jq -e '
+        (.result.process_info.foreground_processes | length) == 1
+        and (.result.process_info.foreground_processes[0].name | test("^(?:ba|z|fi)?sh$"))
+      ' >/dev/null 2>&1; then
+        return 0
+      fi
+      sleep 0.25
+      wait_attempts=$((wait_attempts + 1))
+    done
+    return 1
+  }
+  workspace_json="$(lab_run workspace create --cwd "$project" --label kimiflow-live --no-focus)" \
+    || fail "isolated Herdr workspace could not be created"
+  captain_pane="$(printf '%s' "$workspace_json" | jq -r '.result.root_pane.pane_id // empty')"
+  [ -n "$captain_pane" ] || fail "isolated Herdr workspace did not return a Captain pane"
+  wait_for_shell || fail "isolated Herdr Captain pane did not settle at its shell"
 
-  prompt="Beginne diesen bestaetigten Kimiflow-Live-Run in dieser Main-Sitzung. Verwende ausschliesslich das Tool kimiflow_crew. Aktiviere die Crew mit verbosity=quiet und starte den sichtbaren stage=confirmed Ship $task. Brief: Erstelle nur kimiflow-live-proof.txt mit exakt stock-firstmate-kimiflow-ok, verifiziere Inhalt und git diff --check, committe lokal und melde danach paused review-ready mit dem exakten Commit. Wiederhole kein Produkt-Intake. Nach worker_reachable: nicht pollen oder Fortschritt melden, sondern ruhig auf den automatischen FirstMate-Wake warten. Nach dem review-ready Wake: einmal drain und status, dann starte den sichtbaren stage=confirmed Scout $review_task. Sein Brief: Pruefe den exakten Branch fm/$task ab Basis $base_head read-only gegen die Anforderung und git diff --check; schreibe einen eigenstaendigen FirstMate-Report mit erster Zeile REVIEW_RESULT: NONE und danach Evidenz, wenn alles stimmt, sonst REVIEW_RESULT: CANDIDATE plus Evidenz. Warte wieder ohne Polling auf den Wake, nutze drain, status und report. Bei REVIEW_RESULT: NONE sende dem Ship $task die Nachricht, dass der unabhaengige Review sauber ist und er jetzt done ready in branch melden soll. Warte auf dessen Wake, nutze drain und status und antworte erst bei done exakt KIMIFLOW_PROJECT_MAIN_HANDLED. Verwende keine direkten FirstMate- oder Herdr-Shellbefehle."
-  tmux -L "$socket" send-keys -t main -l "$prompt"
-  tmux -L "$socket" send-keys -t main Enter
-
+  root_q="$(printf '%q' "$fm_root")"
+  agent_q="$(printf '%q' "$pi_agent")"
+  lab_run pane run "$captain_pane" "export KIMIFLOW_FIRSTMATE_ROOT=$root_q PI_CODING_AGENT_DIR=$agent_q" >/dev/null \
+    || fail "Captain environment could not be prepared"
+  wait_for_shell || fail "Captain shell did not settle after environment setup"
+  model=${KIMIFLOW_LIVE_MODEL:-openai-codex/gpt-5.6-sol}
+  model_q="$(printf '%q' "$model")"
+  lab_run pane run "$captain_pane" "pi --approve --name kimiflow-live-captain --model $model_q --thinking low" >/dev/null \
+    || fail "Pi Captain command could not be launched in the isolated Herdr pane"
   attempts=0
-  while [ "$attempts" -lt 900 ]; do
-    pane="$(tmux -L "$socket" capture-pane -p -t main -S -320 2>/dev/null || true)"
-    if [ -f "$fm_home/state/$task.status" ] \
-      && grep -Eq '^done:' "$fm_home/state/$task.status" \
-      && [ "$(printf '%s\n' "$pane" | grep -Fc 'KIMIFLOW_PROJECT_MAIN_HANDLED' || true)" -ge 2 ]; then
+  while [ "$attempts" -lt 240 ]; do
+    captain_agent="$(lab_run agent get "$captain_pane" 2>/dev/null || true)"
+    captain_startup="$(lab_run pane read "$captain_pane" --source recent-unwrapped --lines 160 2>/dev/null || true)"
+    if printf '%s' "$captain_agent" | jq -e '
+      .result.agent.agent == "pi" and .result.agent.agent_status == "idle"
+    ' >/dev/null 2>&1 \
+      && printf '%s\n' "$captain_startup" | grep -Fq '[Skills]' \
+      && printf '%s\n' "$captain_startup" | grep -Fq '[Extensions]'; then
       break
     fi
-    if [ -f "$fm_home/state/$task.status" ] && grep -Eq '^(failed|blocked|needs-decision):' "$fm_home/state/$task.status"; then
-      cat "$fm_home/state/$task.status" >&2
-      fail "visible FirstMate worker did not complete"
+    sleep 0.5
+    attempts=$((attempts + 1))
+  done
+  [ "$attempts" -lt 240 ] || fail "Pi Captain did not become ready in the isolated Herdr pane"
+
+  captain_prompt="Use the installed Kimiflow skill as the conversational Captain. Activate kimiflow_crew with verbosity=quiet. Start exactly one Main named $main_task. Freeze this exact user request: Perform a read-only nested-orchestration proof. The Main must first report needs-decision with the exact question PROCEED_WITH_SCOUT?. Only after the Captain forwards the answer PROCEED_WITH_SCOUT may Main activate its own crew, spawn the visible research Scout $scout_task with stage=research, wait for its completed report, and finish. The Scout must inspect README.md read-only and report first line NESTED_SCOUT_PASS. No project product bytes may change. Freeze this plan too: Captain owns only Main; Main owns the Scout; all user dialogue stays here. After main_reachable print exactly KIMIFLOW_CAPTAIN_FREE and stay available. Do not answer the Main's question yourself. When it arrives, show it here and print exactly KIMIFLOW_DECISION_NEEDED."
+  submit_prompt "$captain_pane" "$captain_prompt" \
+    || fail "Captain prompt could not be submitted"
+
+  captain_home="$project/.kimiflow/session/FIRSTMATE-CAPTAIN-v1"
+  main_meta="$captain_home/state/$main_task.meta"
+  attempts=0
+  while [ "$attempts" -lt 240 ]; do
+    captain_view="$(lab_run pane read "$captain_pane" --source recent-unwrapped --lines 240 2>/dev/null || true)"
+    if [ -f "$main_meta" ] \
+      && [ "$(printf '%s\n' "$captain_view" | grep -Fc KIMIFLOW_CAPTAIN_FREE || true)" -ge 2 ]; then
+      break
     fi
     sleep 0.5
     attempts=$((attempts + 1))
   done
-  [ "$attempts" -lt 900 ] || fail "worker result did not return to project Pi Main"
+  [ "$attempts" -lt 240 ] || fail "Captain did not return after creating Main"
+  grep -Fxq 'backend=herdr' "$main_meta" || fail "Main is not a visible Herdr endpoint"
+  grep -Fxq "model=$model" "$main_meta" || fail "Main did not inherit the Captain's active Pi model"
+  grep -Fxq 'effort=low' "$main_meta" || fail "Main did not inherit the Captain's active Pi thinking level"
+  main_worktree="$(sed -n 's/^worktree=//p' "$main_meta" | tail -1)"
+  [ -n "$main_worktree" ] && [ -d "$main_worktree" ] || fail "Main control worktree is missing"
+  main_home="$main_worktree/.kimiflow/session/FIRSTMATE-MAIN-v1/$main_task"
 
-  meta="$fm_home/state/$task.meta"
-  [ -f "$meta" ] || fail "FirstMate task metadata is missing"
-  grep -Fxq 'backend=herdr' "$meta" || fail "worker is not a Herdr endpoint"
-  [ "$(cat "$fm_home/config/calm")" = on ] || fail "FirstMate Calm preference was not enabled"
-  review_meta="$fm_home/state/$review_task.meta"
-  [ -f "$review_meta" ] || fail "independent review Scout metadata is missing"
-  grep -Fxq 'kind=scout' "$review_meta" || fail "independent reviewer is not a FirstMate Scout"
-  grep -Fxq 'REVIEW_RESULT: NONE' "$fm_home/data/$review_task/report.md" || fail "independent review Scout did not return the expected report"
-  worktree="$(sed -n 's/^worktree=//p' "$meta" | tail -1)"
-  [ -n "$worktree" ] && [ -d "$worktree" ] || fail "worker worktree is missing"
-  [ "$(cat "$worktree/kimiflow-live-proof.txt")" = 'stock-firstmate-kimiflow-ok' ] \
-    || fail "worker proof is incorrect"
-  git -C "$worktree" diff --check
-  [ -z "$(git -C "$worktree" status --porcelain)" ] || fail "worker worktree is dirty"
-  [ "$(git -C "$worktree" rev-parse HEAD)" != "$base_head" ] || fail "worker did not commit"
-  verify_main_transcript
-  printf 'firstmate integration: project Pi Main and visible FirstMate Herdr worker passed\n'
+  submit_prompt "$captain_pane" "Antworte exakt KIMIFLOW_CAPTAIN_RESPONSIVE und fuehre keine Crew-Aktion aus." \
+    || fail "Captain responsiveness prompt could not be submitted"
+  attempts=0
+  while [ "$attempts" -lt 240 ]; do
+    captain_view="$(lab_run pane read "$captain_pane" --source recent-unwrapped --lines 260 2>/dev/null || true)"
+    [ "$(printf '%s\n' "$captain_view" | grep -Fc KIMIFLOW_CAPTAIN_RESPONSIVE || true)" -ge 2 ] && break
+    sleep 0.5
+    attempts=$((attempts + 1))
+  done
+  [ "$attempts" -lt 240 ] || fail "Captain was not conversationally available while Main was running"
+
+  attempts=0
+  while [ "$attempts" -lt 600 ]; do
+    captain_view="$(lab_run pane read "$captain_pane" --source recent-unwrapped --lines 360 2>/dev/null || true)"
+    if [ "$(printf '%s\n' "$captain_view" | grep -Fc KIMIFLOW_DECISION_NEEDED || true)" -ge 2 ] \
+      && [ "$(printf '%s\n' "$captain_view" | grep -Fc 'PROCEED_WITH_SCOUT?' || true)" -ge 2 ]; then
+      break
+    fi
+    sleep 0.5
+    attempts=$((attempts + 1))
+  done
+  [ "$attempts" -lt 600 ] || fail "Main decision did not surface in the Captain"
+
+  reply="PROCEED_WITH_SCOUT. Forward this exact answer to $main_task through kimiflow_crew, then stay available until Main finishes."
+  submit_prompt "$captain_pane" "$reply" \
+    || fail "Captain decision could not be submitted"
+
+  scout_meta="$main_home/state/$scout_task.meta"
+  scout_report="$main_home/data/$scout_task/report.md"
+  main_status="$captain_home/state/$main_task.status"
+  scout_endpoint_seen=0
+  attempts=0
+  while [ "$attempts" -lt 900 ]; do
+    if [ -f "$scout_meta" ] \
+      && grep -Fxq 'kind=scout' "$scout_meta" \
+      && grep -Fxq 'backend=herdr' "$scout_meta" \
+      && grep -Fxq "model=$model" "$scout_meta" \
+      && grep -Fxq 'effort=low' "$scout_meta"; then
+      scout_endpoint_seen=1
+    fi
+    if [ -f "$main_status" ] && grep -Eq '^done:' "$main_status" \
+      && [ -f "$scout_report" ] && grep -Fq 'NESTED_SCOUT_PASS' "$scout_report"; then
+      break
+    fi
+    if [ -f "$main_status" ] && grep -Eq '^(failed|blocked):' "$main_status"; then
+      cat "$main_status" >&2
+      fail "Kimiflow Main terminated before its nested Scout proof completed"
+    fi
+    sleep 0.5
+    attempts=$((attempts + 1))
+  done
+  [ "$attempts" -lt 900 ] || fail "nested Main/Scout result did not return to Captain"
+
+  [ "$scout_endpoint_seen" = 1 ] || fail "Main-owned visible FirstMate Scout with inherited Pi model was never observed"
+  grep -Fq NESTED_SCOUT_PASS "$scout_report" || fail "Main-owned Scout report omitted the evidence marker"
+  [ -z "$(find "$main_home/state" -maxdepth 1 -type f -name '*.meta' -print 2>/dev/null)" ] \
+    || fail "Main finished while Main-owned FirstMate child metadata was still present"
+  run_state="$(find "$main_worktree/.kimiflow" -mindepth 2 -maxdepth 2 -type f -name STATE.md -print 2>/dev/null | head -1)"
+  [ -n "$run_state" ] || fail "Main did not initialize a standard Kimiflow Active Run in its control worktree"
+  [ "$(cat "$captain_home/config/calm")" = on ] || fail "Captain FirstMate home did not enable Calm"
+  [ "$(cat "$main_home/config/calm")" = on ] || fail "Main FirstMate home did not enable Calm for children"
+  [ "$(git -C "$project" rev-parse HEAD)" = "$base_head" ] || fail "control orchestration changed the project commit"
+  [ "$(shasum -a 256 "$project/.kimiflow/project/RUN-LIVE.md" | awk '{print $1}')" = "$plan_before" ] \
+    || fail "control orchestration changed the existing Kimiflow plan"
+  state_after="$(kimiflow_state_manifest)"
+  if [ "$state_after" != "$state_before" ]; then
+    printf 'firstmate integration: original Kimiflow state before:\n%s\n' "$state_before" >&2
+    printf 'firstmate integration: original Kimiflow state after:\n%s\n' "$state_after" >&2
+    fail "control orchestration changed original Kimiflow state outside the exact Captain runtime home"
+  fi
+  [ -z "$(git -C "$project" status --porcelain --untracked-files=all)" ] \
+    || fail "control orchestration changed tracked project bytes"
+  printf 'firstmate integration: Captain -> separate Main -> visible Main-owned Scout passed\n'
 }
 
 case "$MODE" in

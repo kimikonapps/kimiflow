@@ -36,13 +36,17 @@ Entwicklung zusaetzlich laufen, ersetzen den vollstaendigen Plan aber nicht.
   autonomes Same-Thread-Resume, materieller Wait und fehlende Kimiflow-Aktivierung.
 - `hooks/test-install-kimiflow-cli.sh` prueft verwaltete Installation/`--check` und verhindert das
   Ueberschreiben eines fremden Executables.
-- `hooks/test-firstmate-integration.sh --static` prueft, dass das Pi-Paket nur den Kimiflow-Skill ausliefert,
-  keine eigene Pi-/Herdr-Orchestrierung mehr existiert und die FirstMate-Grenze dokumentiert ist.
+- `hooks/test-firstmate-integration.sh --static` prueft, dass das Pi-Paket genau einen Skill plus eine ruhende
+  Rollen-Extension ausliefert, keine eigene Pi-/Herdr-Bridge enthaelt und die FirstMate-Grenze dokumentiert ist.
 - `hooks/test-firstmate-integration.sh --live` fuehrt zuerst die unveraenderten Stock-FirstMate-Tests fuer
   Pi-Primary und Herdr ohne erlaubte Skips aus. Danach laesst es einen echten Stock-FirstMate-Primary den
-  sichtbaren Pi/Herdr-Ship selbst starten, einen eventuellen Pi-Trust-Dialog ueber FirstMates normalen
-  Steuerweg bearbeiten und das Ergebnis in derselben Primary-Sitzung empfangen. Erst danach laeuft der
-  unveraenderte Stock-Calm-Test. Ein Retry-only-Pass wird berichtet, gilt aber nicht als saubere Acceptance.
+  sichtbaren Pi/Herdr-Main starten, Main einen sichtbaren Research-Scout starten, einen Pi-Trust-Dialog ueber
+  FirstMates normalen Steuerweg bearbeiten und einen echten needs-decision→Captain-Antwort→Main-Resume-Pfad
+  belegen. Captain- und Main-Homes/Endpoints muessen verschieden sein; der bestehende Plan und alle Produktbytes
+  im Originalprojekt bleiben unveraendert, waehrend der erwartete lokale Captain-Runtime-State entstehen darf.
+  Der Live-Test exportiert denselben geprueften FirstMate-Checkout an die Unit-Suite; ein Skip des echten
+  `fm-merge-local.sh`-Tests macht Live-Acceptance rot. Unit-/Stock-Tests decken ausserdem Ship-Mode und Calm ab.
+  Ein Retry-only-Pass wird berichtet, gilt aber nicht als saubere Acceptance.
 - Der Acceptance-Selector-Audit verlangt, dass alle in `ACCEPTANCE.md` benannten Tests als echte Harnesses
   existieren und ausfuehrbar sind.
 

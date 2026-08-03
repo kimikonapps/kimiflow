@@ -4,7 +4,7 @@
 
 Run each check, prove the goal, and persist full evidence in the run artifacts — full checklist (incl. the ✓/⚠/✗ marking scheme, cold-start trigger list, LSP tool selection): → reference.md "Verification". If resolved verbosity is `quiet`, chat shows only pass/fail + command/path for decisive checks; full output stays in files.
 
-- **Pi visible-Ship handoff.** After every required mechanical check is green, a FirstMate implementation Ship follows Phase 5's bounded review-checkpoint rule, reports `paused` with the exact commit, and stops. Kimiflow Main—not the Ship—then dispatches the scheduled visible review Scouts. A failed check loops to Phase 5 before any review handoff.
+- **Pi visible-Ship handoff.** After every required mechanical check is green, a FirstMate implementation Ship follows Phase 5's bounded review-checkpoint rule, reports `paused` with the exact commit, and stops. Kimiflow Main—not Captain or the Ship—then dispatches the scheduled visible review Scouts. A failed check loops to Phase 5 before any review handoff.
 
 - **Run each criterion's method** and show the command + the decisive result line(s) — not full logs. At `quiet`, show only the command label/status and artifact path unless a failure needs the decisive error line.
 - If the decisive method requires a clean tree, enter only through Phase 5's named local verification checkpoint and run it immediately; its failure loops to Phase 5 without user interaction.

@@ -453,7 +453,7 @@ Kimiflow routes by four capability tiers so the workflow stays portable across C
 - **`top`:** orchestrator, Discovery Assessment/Research Brief, source evaluation/synthesis/Decision Triage, planner(s), plan/code reviewers, independent semantic verifiers, and risky diagnosis. A cross-family seat may replace a `top` review/verification/diagnosis seat only with `cross_family_top`.
 - **`balanced`:** normal implementer and bounded evidence normalization/comparison under a top-authored brief. It never selects architecture or product scope. Promote for named risk, tight coupling, architecture shaping, or repeated failure.
 - **`cheap`:** deterministic gather/map/log, source/date/version extraction, narrow file/source lookup, deduplication, or mechanical tests. It never defines its search space, expands scope, orchestrates, plans, evaluates decisive sources, interprets security, diagnoses risk, or issues verdicts.
-- **Discovery worker budget:** `none` spawns no research worker. Outside an active Pi/FirstMate crew, `pulse` normally stays in the orchestrator and `focused` normally uses one `cheap|balanced` worker, with at most two in parallel for explicitly independent lanes. With an active Pi/FirstMate crew, every `pulse|focused` research pass uses at least one visible read-only `stage=research` Scout so Main has an independent evidence perspective; use exactly two only for genuinely separate lanes. A selective `top|cross_family_top` countercheck may replace one quality seat for security/privacy/auth/payment/public-contract/migration/lock-in/high-cost/immature-tech decisions; it tries to refute the chosen option rather than repeating broad research.
+- **Discovery worker budget:** `none` spawns no research worker. Outside an active Pi/FirstMate crew, `pulse` normally stays in the orchestrator and `focused` normally uses one `cheap|balanced` worker, with at most two in parallel for explicitly independent lanes. With an active Pi/FirstMate crew, Kimiflow Main—not Captain—uses at least one visible read-only `stage=research` Scout for every `pulse|focused` pass so Main has an independent evidence perspective; use exactly two only for genuinely separate lanes. A selective `top|cross_family_top` countercheck may replace one quality seat for security/privacy/auth/payment/public-contract/migration/lock-in/high-cost/immature-tech decisions; it tries to refute the chosen option rather than repeating broad research.
 - **Current Codex mapping:** `top=gpt-5.6-sol`, `balanced=gpt-5.6-terra`, `cheap=gpt-5.6-luna`; a pinned strongest available Claude model fills `cross_family_top`. Do not use Codex `ultra` inside Kimiflow: it adds automatic delegation under an already-orchestrated workflow; use deliberate `high`/`xhigh` seats instead.
 - **Opus-pinned implementation leaves — Claude Code host + Fable-family session only:** when the session model is the Fable family (Fable 5 + Mythos 5) and the host supports per-subagent model selection, spawn normal **implementer and bounded synthesizer** leaves at per-spawn `model: opus` — the next non-Fable Anthropic value tier — while reserving Fable for orchestration, planning, Phase-2 synthesis, same-family review, and independent semantic verification. A cross-family seat's same-family fallback uses the `top` session model for quality-verdict roles; implementation fallbacks may use Opus. The `failure-security` exception below may still use a strong non-Fable model to avoid a Fable-family refusal. Advisory, **never a gate**; a **No-Op** outside a Fable-family session.
 - **Cross-family CLI (different family, when available):** one Phase-4 plan-review lens (`small` → the single reviewer; `large` → lens B) · one Phase-7 code-review axis whenever the resolved topology schedules independent review (default `spec-correctness`) · the Phase-5 escalation diagnosis call · when the material-fork dual-plan triggers, one of its two planners · at `large`, the same evidence-routed Phase-6/7 independent verifier when scheduled (read-only). An eval-proven `embedded` routine route does not spawn that reviewer except for its deterministic audit sample. On a Claude Code host every scheduled cross-family seat is filled by an **ordered read-only chain** (default Codex → Gemini via `agy` → same-family; configurable → "Opt-out & order"). The scheduled large Phase-6 verifier starts at Gemini when available, then follows the configured fallback order. Implementation remains one sequential path in the current worktree.
@@ -546,7 +546,7 @@ worktree, or user approval.
   policy drift, repeated failure, a regression signal, or an audit finding revokes embedded review. Critical
   security/data/migration/public-contract work uses `ensemble`. Thus self-verification removes routine duplicate
   semantic calls, never mechanical tests/diff/scope/secret/evidence gates.
-- **Pi/FirstMate review topology:** an active visible crew overrides `embedded` for semantic code review. The implementation Ship pauses at an exact committed review-ready checkpoint; Main sends the frozen packet to one Scout for `quick`, two axis Scouts for `small`, and three axis Scouts for `large`/release-critical. Main verifies their candidates and steers the same Ship. Only unavailable crew capability permits a recorded folded fallback.
+- **Pi/FirstMate review topology:** an active visible crew overrides `embedded` for semantic code review. The implementation Ship pauses at an exact committed review-ready checkpoint; Kimiflow Main—not Captain—sends the frozen packet to one Scout for `quick`, two axis Scouts for `small`, and three axis Scouts for `large`/release-critical. Main verifies their candidates and steers the same Ship. Only unavailable Main crew capability permits a recorded folded fallback.
 - **Repair-delta review:** the first review round always saturates every scheduled axis. Every later round on
   the same PLAN reviews only the exact repair delta: always spec-correctness plus every axis required by its
   changed paths; unchanged axes are carried with their bound evidence. This needs no model-specific calibration,
@@ -644,7 +644,7 @@ Goal, visible behavior, and success require `user_explicit|user_confirmed|projec
 
 **Selective elicitation:** rank product candidates by **Impact x Uncertainty**. Ask only the highest-value product facts in **one compact batch**: `quick` ≤2, `small` ≤3, `large`/critical ≤5. When coverage is already complete, use the batch to confirm the compact Goal/Included/Excluded/Done contract instead of asking filler. Order dependencies first, use everyday language, one thought per item, and offer a recommended product default/choices. "I don't know" selects the smallest safe reversible default; paid/privacy/irreversible behavior defaults to excluded rather than silently accepted. A second compact batch is legal only when the first response itself creates a new material product conflict; mark it `cause=first_response_conflict`. Never ask sequential technical questions.
 
-**Bounded Intent Critic:** `large`/critical runs use one fresh-context critic inside the existing agent budget. Packet: request + compact coverage draft, ≤900 words. Output: only `COVERAGE_OK` or ≤5 missing **user-owned** product facts; no research, code, or HOW. Pi Main may use one ordinary visible FirstMate Scout through an active `kimiflow_crew`; a crewmate or Pi without active crew folds the identical isolated packet locally. Other hosts use their native verified subagent path when available. A clean independent result records `critic=passed`; a local pass records `critic=folded`. Availability never becomes a user wait.
+**Bounded Intent Critic:** `large`/critical runs use one fresh-context critic inside the existing agent budget. Packet: request + compact coverage draft, ≤900 words. Output: only `COVERAGE_OK` or ≤5 missing **user-owned** product facts; no research, code, or HOW. Pi Kimiflow Main may use one ordinary visible FirstMate Scout through its active crew; Captain never runs the critic, and a child or Pi without active crew folds the identical isolated packet locally. Other hosts use their native verified subagent path when available. A clean independent result records `critic=passed`; a local pass records `critic=folded`. Availability never becomes a user wait.
 
 **Fresh Contract-4 schema 2 — deliberate, research, confirm:** Phase 0 records one `Interaction language` from the user's opening request; all visible labels remain in that language while internal action tokens stay stable. `INTAKE.md` uses `contract=4 schema=2 stage=scope round=1 confirmation=scope_deliberation user_language=<tag>` and exactly one `Problem`, `Observable success`, `Boundary`, `Included`, `Later`, `Excluded`, `Counter perspective`, `Completeness check`, 2–5 ordered distinct `Option N`, plus localized `Action scope_ready` and `Action discuss` labels. Options include useful adjacent functions and the strongest smaller/counter approach, but remain inside the proposed scope. `discuss` replaces the current draft without a receipt; only the exact localized `scope_ready` label writes a content-free stage/action/request/contract/language-bound receipt.
 
@@ -2196,38 +2196,46 @@ publishes security data.
 
 ## Pi and FirstMate orchestration boundary
 
-The Pi session in which the user invokes Kimiflow is always Kimiflow Main. It owns product clarification,
-current-code inspection, current primary-source research, planning, delegation decisions, verification, review
-and every user conversation. The package declares one dormant `kimiflow_crew` tool; it performs no FirstMate,
-Herdr, process or project-registry work until Main explicitly activates it for genuinely independent work.
+The Pi session in which the user invokes Kimiflow is the conversational FirstMate Captain and the only user
+interface. It capability-checks a separately installed, unchanged stock FirstMate checkout, resolves a
+project-scoped Captain Home, and starts exactly one visible normal FirstMate Ship as Kimiflow Main for the named
+run. The start packet is an immutable snapshot of the user request plus an optional existing plan; it is not a
+confirmed-contract claim. A start is green only when FirstMate's exact Main endpoint and Pi lifecycle are both
+readable. Partial spawn output never becomes synthetic `started` or `recovered`.
 
-Activation capability-checks a separately installed stock FirstMate checkout and the current Herdr/Git project,
-then acquires FirstMate's existing session lock. After `scope_ready`, Main may dispatch a normal visible Pi Scout
-with a bounded read-only `stage=research` packet. A Ship or confirmed review Scout remains closed until Main has
-obtained the one explicit final product-contract confirmation. Folded work has no fake agent. A start is green
-only when FirstMate's exact task endpoint is readable; a partial spawn stays a typed failure and never becomes
-synthetic `recovered`.
+Kimiflow Main has its own run-scoped FirstMate Home and standard Kimiflow Active Run inside its durable control
+worktree. It owns current-code inspection, intake, research, product discussion, contract, plan, build,
+verification and review. Main may start visible read-only `stage=research` Scouts before confirmation, then
+implementation Ships and review Scouts after confirmation. Captain never spawns domain workers and Main never
+writes supervised product bytes or existing run/plan artifacts in the original project. The exact stock FirstMate
+status file named in Main's brief is the sole original-project control-state exception. Product writes and local
+fast-forward delivery remain stock FirstMate child-Ship operations.
 
-The adapter defaults the exact current project to `local-only`, while preserving a previously explicit
-`direct-PR`; `no-mistakes` is not used because it would create a second review/fix owner. A research Scout treats
-scope as provisional and returns evidence only; a confirmed crewmate treats the brief and plan as completed
-intake. Neither creates another Active Run or talks to the user. An implementation Ship reports a committed,
-mechanically verified `paused` review-ready checkpoint. Main dispatches visible review Scouts against that exact
-branch/commit, verifies their candidates, and steers the same Ship to repair or finalize. FirstMate wake records
-trigger a follow-up in the same Main session; Main drains them, inspects status, discusses any real product
-choice with the user, and sends the resulting decision through the adapter.
+The adapter separates `FM_ROOT_OVERRIDE` from per-project/per-run `FM_HOME`, so projects do not share a fleet
+lock. Before Main launch it rejects tracked `.kimiflow` paths under Kimiflow's existing local-artifact standard,
+then establishes repository-local exclusion for untracked runtime state. If unchanged stock FirstMate cannot
+name a non-main/master default branch, the adapter creates one owned reversible local `origin/HEAD` marker only
+after proving the current branch locally (no remote) or from the authoritative `git ls-remote --symref` remote
+HEAD. Existing, ambiguous, unreachable or mismatched markers/defaults are never overwritten or guessed.
 
-FirstMate alone owns delegated briefs, worktrees, Pi/Herdr endpoints, status/replies, wake, recovery and cleanup.
-Kimiflow stores no parallel lifecycle truth and never implements Calm. Pi Main passes its already-resolved
-display level to crew activation. `quiet` is handed to the new worker process and loads stock FirstMate Calm;
-the adapter verifies those stock files and never claims a live worker changed presentation retroactively.
-Missing or incompatible FirstMate leaves
-ordinary Pi/Kimiflow fully usable in Main without visible workers. Old custom Kimiflow Pi/Herdr bridge receipts
-are diagnostic-only and not resumable.
+An implementation Ship reports a committed, mechanically verified `paused` review-ready checkpoint. Main
+dispatches visible review Scouts against that exact branch/commit, verifies their candidates, steers the same
+Ship, and integrates through stock `fm-merge-local.sh` only. A real product decision becomes one bounded
+`needs-decision` artifact pointer in Main status. Captain reads it, discusses it with the user, and sends the
+answer back through stock `fm-send`; Main and children never open another user conversation.
 
-`fm-session-start.sh` may drain durable wake records while acquiring the FirstMate lock. The adapter returns any
-such rows as `startupWakes`; Main resolves their named tasks through FirstMate status before new dispatch and does
-not drain those already consumed rows again.
+FirstMate alone owns briefs, worktrees, Pi/Herdr endpoints, status/replies, wake, recovery, delivery and cleanup.
+Kimiflow stores no parallel lifecycle truth and never implements Calm. Captain passes its resolved display level
+to Main and Main passes it to every child. `quiet` loads stock FirstMate Calm in each new visible process; an
+already running process is never claimed to have changed presentation retroactively. Missing or incompatible
+FirstMate capability fails closed. Role action authority is tool-mechanical; Pi's shell is not OS-sandboxed, so
+bounded briefs plus Kimiflow integration/final Git and evidence gates enforce the product-write boundary.
+FirstMate leaves ordinary Pi/Kimiflow usable without a visible crew claim. Old custom Kimiflow Pi/Herdr bridge
+receipts are diagnostic-only and not resumable.
+
+`fm-session-start.sh` may drain durable wake records while acquiring either role's FirstMate Home. The adapter
+returns those rows as `startupWakes`; the owning Captain or Main resolves named tasks through stock status before
+new dispatch and does not drain already consumed rows again.
 
 ---
 

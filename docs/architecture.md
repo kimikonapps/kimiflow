@@ -54,22 +54,27 @@ Routinebestaetigung weiter. Zaehler bleiben `null`, wenn der Provider keine Usag
 `codex app-server` bleibt eine moegliche spaetere Transport-Alternative fuer einen echten Rich Client, ist aber
 keine Abhaengigkeit des schlanken CLI-Wegs.
 
-Die Pi-Integration ist absichtlich ein reiner Skill. `package.json` deklariert keine Kimiflow-Extension; damit
-besitzt Kimiflow weder eine Captain-Sitzung noch Worker-Prozesse, Herdr-Endpunkte, Transport-Receipts, Recovery,
-Cleanup oder eine eigene Calm-Darstellung. Standalone Pi fuehrt Kimiflow in der aktuellen Sitzung aus.
+Die Pi-Integration besteht aus dem Workflow-Skill und genau einer ruhenden `kimiflow_crew`-Extension. Sie wird
+nur auf expliziten Kimiflow-Aufruf aktiv und besitzt keine eigene Herdr-Bridge, keinen Prozess-Broker, keine
+Transport-Receipts, keine parallele Recovery-Wahrheit und keine eigene Calm-Darstellung. Standalone Pi fuehrt
+Kimiflow weiterhin in der aktuellen Sitzung aus.
 
 Fuer die Ein-Gespraech-/sichtbare-Crew-Oberflaeche wird unveraendertes FirstMate als eigene Distribution
-installiert. FirstMate besitzt Primary-Gespraech, Ship-/Scout-Briefs, sichtbare Crewmates, Worktrees, normalen
-Status, Backend-Lifecycle, Recovery, Cleanup und `/calm`. Kimiflow besitzt nur den fachlichen Ablauf innerhalb
-dieser Rollen. Der Primary prueft vor dem Dispatch die aktuelle Codebasis und aktuelle autoritative Quellen,
-bespricht das Feature in der Sprache des Users, bestaetigt den finalen Vertrag und erzeugt danach einen
-normalen FirstMate-Brief. Der Crewmate behandelt diesen Brief als bestaetigten Intake; eine fehlende materielle
-Entscheidung meldet er als `needs-decision` an den Primary, statt ein zweites User-Gespraech zu beginnen.
+installiert. Die urspruengliche Pi-Sitzung ist der frei ansprechbare Captain und startet einen sichtbaren normalen
+FirstMate-Ship als Kimiflow Main. Main besitzt den kompletten Kimiflow-Ablauf und seine Scouts/Ships; Worker
+duerfen keine weitere Crew starten. FirstMate besitzt Briefs, sichtbare Endpoints, Worktrees, Status,
+Backend-Lifecycle, Recovery, Delivery, Cleanup und `/calm`. Fragen laufen Main→Captain→User und zurueck, nie als
+zweites User-Gespraech im Main- oder Worker-Tab.
 
-Jede echte Delegation ist ein sichtbarer FirstMate Ship oder Scout; interne, nicht delegierte Arbeit wird nicht
-als Agent vorgetaeuscht. Vor einem Kimiflow-Ship muss die persistente FirstMate-Projekt-Registry `local-only`
-oder bewusst `direct-PR` liefern. `no-mistakes` ist fuer Kimiflow unzulaessig, weil es einen zweiten Review-/
-Fix-Owner neben Kimiflows Gates einfuehren wuerde.
+Die Rollenmatrix sperrt Crew-Tools mechanisch; sie ist keine Betriebssystem-Sandbox fuer Pis Shell. Enge Briefs
+und Kimiflows Git-/Evidence-Gates bei Integration und Abschluss machen unerlaubte Produktwrites sichtbar.
+
+Captain- und Main-Homes sind getrennt und projekt-/run-spezifisch; deshalb blockieren parallele Projekte einander
+nicht. Main lebt in einem langlebigen Control-Worktree, schreibt dort seinen Run-State und delegiert alle
+Produktwrites an sichtbare FirstMate Ships gegen das urspruengliche Projekt. Research und Review verwenden
+sichtbare Scouts. Runtime-Git-Metadaten werden eng begrenzt vorbereitet: keine getrackte `.kimiflow`, lokaler
+Exclude fuer ungetrackten State und nur ein belegter, eigener reversibler Default-Branch-Marker. Integration
+bleibt Stock `fm-merge-local.sh` ohne Kimiflow-Fallback.
 
 Herdr bleibt ein experimentelles FirstMate-Backend. Ein fehlgeschlagener Spawn oder Lifecycle bleibt ein
 ausdruecklicher FirstMate-Fehler; Kimiflow besitzt keinen versteckten Prozess-Fallback und synthetisiert kein
