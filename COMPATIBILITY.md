@@ -27,6 +27,16 @@ backend lifecycle, normal status files, recovery and `/calm`; Kimiflow keeps no 
 Ship starts, the project resolves as `local-only` or an already explicit `direct-PR`; `no-mistakes` is rejected
 because it would introduce a second review/fix owner.
 
+The adapter passes Main's resolved Kimiflow verbosity into every new worker. `quiet` uses a process-local
+Kimiflow override and loads FirstMate's own Calm extension; no Calm renderer is copied into Kimiflow. The
+required Calm files are capability-checked before spawn, and an existing worker is not claimed to have changed
+presentation because Pi cannot load those extensions retroactively.
+
+Read-only research Scouts may start after `scope_ready`; implementation Ships and review Scouts require the
+final confirmed contract. A Ship pauses at an exact implementation checkpoint and Main owns subsequent visible
+review Scouts and candidate verification. The adapter supports several concurrent task ids but creates no
+scheduler or duplicate lifecycle database; FirstMate remains the only worker authority.
+
 Compatibility is capability-based rather than tied to an exact FirstMate commit. A candidate must pass the stock
 FirstMate tests plus a real current-project Pi → FirstMate → Herdr Ship smoke. FirstMate's Herdr backend remains
 experimental, so a spawn or lifecycle failure is surfaced as a FirstMate failure. Kimiflow provides no hidden

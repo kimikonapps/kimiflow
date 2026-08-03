@@ -146,15 +146,24 @@ Beginne mit Kimiflow Run 7.2.
 
 Es gibt keinen separaten FirstMate-Befehl und Pi muss nicht im FirstMate-Ordner laufen. Main prueft den aktuellen
 Code, recherchiert bei Bedarf aktuelle Quellen, bespricht das vollstaendige Feature in deiner Sprache, zeigt den
-Ablauf einfach und holt genau eine finale Produktvertrags-Bestaetigung ein. Erst danach darf Kimiflow FirstMate
-intern aktivieren und einen normalen sichtbaren Pi Ship oder Scout starten. Das aktuelle Projekt wird
+Ablauf einfach und holt genau eine finale Produktvertrags-Bestaetigung ein. Nachdem der User den Umfang als
+bereit markiert hat, darf Main FirstMate intern aktivieren und nur-lesbare Research-Scouts fuer unabhaengige
+Evidenz starten. Normale sichtbare Pi Ships und Review-Scouts bleiben bis zur finalen Bestaetigung geschlossen. Das aktuelle Projekt wird
 standardmaessig `local-only`; ein bereits bewusst gesetztes `direct-PR` bleibt bestehen. `no-mistakes` wird nicht
 verwendet, weil sonst ein zweiter Review-/Fix-Owner entstuende.
 
 Alle Gespraeche mit dir bleiben in Main. Worker erhalten den bestaetigten Brief, wiederholen kein Produkt-Intake
 und melden Entscheidungen und Ergebnisse ueber FirstMate-Status zurueck. Ein Worker gilt erst als gestartet,
 wenn sein exakter Herdr/Pi-Endpoint lesbar ist. Nur FirstMate besitzt Briefs, Worktrees, Endpoints, Wake, Recovery
-und sicheren Cleanup; Kimiflow fuehrt keinen konkurrierenden Worker-State und baut Calm nicht nach.
+und sicheren Cleanup; Kimiflow fuehrt keinen konkurrierenden Worker-State und baut Calm nicht nach. Main startet
+mehrere Ships nur fuer getrennte, eigenstaendige Schreibpakete. Ein eng gekoppelter Build verwendet bewusst
+einen Ship. Unabhaengige Recherche und semantische Reviews verwenden eigene sichtbare Scouts; ein `small`-
+Code-Review nutzt zwei Review-Achsen und `large`/release-critical drei, wenn die FirstMate-Crew verfuegbar ist.
+
+Neue Worker erben die Kimiflow-Ausgabestufe. Bei `quiet` erhalten sie die prozesslokale Kimiflow-Quiet-Stufe
+und laden FirstMates unveraenderte Calm-Extension, damit Main und Worker ruhig bleiben. Das betrifft nur die
+Darstellung. Ein bereits laufender Worker muss neu gestartet werden, weil Pi Presentation-Extensions nicht
+nachtraeglich laden kann.
 
 FirstMates Herdr-Backend ist experimentell. Ein fehlgeschlagener Herdr-Start bleibt ein ausdruecklicher
 FirstMate-Fehler; es gibt keinen versteckten Kimiflow-Prozess-Fallback und keinen vorgetaeuschten `recovered`-

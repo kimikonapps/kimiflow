@@ -3,11 +3,22 @@ import { randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const execFile = promisify(execFileCallback);
+const KIMIFLOW_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
-export const CREW_ACTIONS = ["activate", "spawn", "status", "send", "drain", "teardown"];
+export const REQUIRED_FIRSTMATE_CALM_FILES = [
+  ".pi/extensions/fm-calm.ts",
+  ".pi/extensions/lib/fm-calm-assistant-layout.ts",
+  ".pi/extensions/lib/fm-calm-operational-user-layout.ts",
+  ".pi/extensions/lib/fm-calm-working-ship.ts",
+  ".pi/extensions/lib/fm-calm-visibility.ts",
+  ".pi/extensions/lib/fm-operational-input.ts",
+];
+
+export const CREW_ACTIONS = ["activate", "spawn", "status", "report", "send", "drain", "teardown"];
 export const REQUIRED_FIRSTMATE_SCRIPTS = [
   "fm-session-start.sh",
   "fm-brief.sh",
@@ -27,11 +38,13 @@ const PARAMETERS = {
     action: { type: "string", enum: CREW_ACTIONS },
     task: { type: "string", description: "Stable FirstMate task id." },
     kind: { type: "string", enum: ["ship", "scout"], default: "ship" },
-    brief: { type: "string", description: "Confirmed Kimiflow work packet for a new worker." },
+    brief: { type: "string", description: "Self-contained Kimiflow work packet for a new worker." },
+    stage: { type: "string", enum: ["research", "confirmed"], default: "confirmed", description: "Research is read-only and Scout-only; confirmed packets may implement or review." },
     message: { type: "string", description: "Text sent to an existing worker." },
     key: { type: "string", enum: ["Enter", "Escape", "C-c"], description: "Optional control key for send." },
     model: { type: "string", description: "Optional Pi model passed through to FirstMate." },
     effort: { type: "string", enum: ["low", "medium", "high", "xhigh", "max"] },
+    verbosity: { type: "string", enum: ["quiet", "balanced", "verbose"], description: "Main's already-resolved Kimiflow presentation level, passed on activate." },
     confirmation: { type: "string", description: "For teardown, must exactly equal task." },
   },
   required: ["action"],
@@ -58,8 +71,19 @@ function appendOutput(current, chunk, limit = 24_000) {
 
 function startupWakeSection(output) {
   const match = String(output ?? "").match(/(?:^|\n)WAKE QUEUE\r?\n-+\r?\n([\s\S]*?)\r?\n=+\r?\nCONTEXT\r?\n=+/);
-  const wakes = cleanText(match?.[1] ?? "");
-  return wakes && wakes !== "(no queued wakes)" ? wakes : "";
+  return String(match?.[1] ?? "")
+    .split(/\r?\n/)
+    .filter((line) => /^\d+\t(?:signal|stale|check|heartbeat)\t/.test(line))
+    .join("\n");
+}
+
+function watcherPresentation(output, quiet) {
+  if (!quiet) return output;
+  return output
+    .split(/\r?\n/)
+    .filter((line) => !WATCH_READY.test(line) && !/herdr\.sh: line \d+: printf: write error: Broken pipe$/.test(line))
+    .join("\n")
+    .trim();
 }
 
 function ok(code, values = {}) {
@@ -79,6 +103,10 @@ function toolResult(result) {
 
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", `'\\''`)}'`;
 }
 
 async function defaultRun(file, args, options = {}) {
@@ -167,13 +195,15 @@ export class FirstMateAdapter {
     this.stopping = false;
     this.pendingWakeTasks = new Set();
     this.terminalTasks = new Set();
+    this.workerCalm = false;
   }
 
   async execute(params, signal) {
     switch (params.action) {
-      case "activate": return this.activate(signal);
+      case "activate": return this.activate(params, signal);
       case "spawn": return this.spawnWorker(params, signal);
       case "status": return this.status(params, signal);
+      case "report": return this.report(params, signal);
       case "send": return this.send(params, signal);
       case "drain": return this.drain(signal);
       case "teardown": return this.teardown(params, signal);
@@ -181,7 +211,7 @@ export class FirstMateAdapter {
     }
   }
 
-  async activate(signal) {
+  async activate(params = {}, signal) {
     if (this.root && this.projectRoot && this.watcher) {
       return ok("already_active", { projectRoot: this.projectRoot, firstMateRoot: this.root });
     }
@@ -207,6 +237,14 @@ export class FirstMateAdapter {
       if (check.code !== 0) return fail("firstmate_capability_missing", `Required FirstMate/Herdr capability is unavailable: ${tool}.`);
     }
 
+    const presentation = await this.resolveWorkerPresentation(root, path.resolve(projectRoot), signal, params.verbosity);
+    if (!presentation.ok) return presentation;
+
+    if (presentation.calm) {
+      const preference = await this.enableFirstMateCalm(root);
+      if (!preference.ok) return preference;
+    }
+
     const commandEnv = this.commandEnv(root);
     const session = await this.run(path.join(root, "bin", "fm-session-start.sh"), [], {
       cwd: root, env: commandEnv, signal, timeout: 180_000,
@@ -220,19 +258,93 @@ export class FirstMateAdapter {
 
     this.root = root;
     this.projectRoot = path.resolve(projectRoot);
+    this.workerCalm = presentation.calm;
     const startupWakes = startupWakeSection(sessionOutput);
     const watched = await this.startWatcher(true);
     if (!watched.ok) {
       this.root = null;
       this.projectRoot = null;
+      this.workerCalm = false;
       return startupWakes ? { ...watched, startupWakes } : watched;
     }
     return ok("activated", {
       projectRoot: this.projectRoot,
       firstMateRoot: this.root,
       watcher: watched.watcher,
+      presentation: this.workerCalm ? "quiet+firstmate-calm" : presentation.verbosity,
       ...(startupWakes ? { startupWakes } : {}),
     });
+  }
+
+  async resolveWorkerPresentation(root, projectRoot, signal, explicitVerbosity) {
+    const helper = path.join(KIMIFLOW_ROOT, "hooks", "resolve-verbosity.sh");
+    if (!(await isExecutableFile(helper))) {
+      return fail("kimiflow_verbosity_unavailable", "Kimiflow could not resolve Main verbosity; refusing to start a noisy worker.");
+    }
+    const resolveArgs = ["get"];
+    if (explicitVerbosity) resolveArgs.push("--flag", explicitVerbosity);
+    const resolved = await this.run(helper, resolveArgs, {
+      cwd: projectRoot,
+      env: { ...this.env, KIMIFLOW_HOST: "pi", KIMIFLOW_PLUGIN_ROOT: KIMIFLOW_ROOT },
+      signal,
+      timeout: 15_000,
+    });
+    const verbosity = cleanText(resolved.stdout, 64).split(/\s+/, 1)[0];
+    if (resolved.code !== 0 || !["quiet", "balanced", "verbose"].includes(verbosity)) {
+      return fail("kimiflow_verbosity_unavailable", "Kimiflow could not resolve Main verbosity; refusing to start a worker with an unverified presentation level.", {
+        detail: cleanText(`${resolved.stdout}\n${resolved.stderr}`),
+      });
+    }
+    if (verbosity !== "quiet") return ok("worker_presentation_ready", { verbosity, calm: false });
+
+    for (const relative of REQUIRED_FIRSTMATE_CALM_FILES) {
+      const candidate = path.join(root, relative);
+      try {
+        const info = await fs.lstat(candidate);
+        if (!info.isFile() || info.isSymbolicLink()) throw new Error("not a regular file");
+      } catch (error) {
+        return fail("firstmate_calm_unavailable", "Kimiflow Main is quiet, but this FirstMate checkout cannot provide its Calm worker presentation.", {
+          detail: `${relative}: ${error.message}`,
+        });
+      }
+    }
+    return ok("worker_presentation_ready", {
+      verbosity,
+      calm: true,
+      extension: path.join(root, REQUIRED_FIRSTMATE_CALM_FILES[0]),
+    });
+  }
+
+  async enableFirstMateCalm(root) {
+    const directory = path.join(root, "config");
+    const preference = path.join(directory, "calm");
+    try {
+      await fs.mkdir(directory, { recursive: true });
+      try {
+        const info = await fs.lstat(preference);
+        if (!info.isFile() || info.isSymbolicLink()) {
+          return fail("firstmate_calm_preference_invalid", "FirstMate Calm preference is not a regular file.");
+        }
+        if ((await fs.readFile(preference, "utf8")).trim() === "on") {
+          return ok("firstmate_calm_ready");
+        }
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+      const temporary = `${preference}.kimiflow-${process.pid}-${randomBytes(4).toString("hex")}`;
+      try {
+        await fs.writeFile(temporary, "on\n", { flag: "wx", mode: 0o600 });
+        await fs.rename(temporary, preference);
+      } finally {
+        await fs.rm(temporary, { force: true });
+      }
+      if ((await fs.readFile(preference, "utf8")).trim() !== "on") throw new Error("write verification failed");
+      return ok("firstmate_calm_ready");
+    } catch (error) {
+      return fail("firstmate_calm_preference_unavailable", "Kimiflow Main is quiet, but FirstMate Calm could not be enabled before worker start.", {
+        detail: error.message,
+      });
+    }
   }
 
   commandEnv(root = this.root) {
@@ -311,6 +423,10 @@ export class FirstMateAdapter {
     const invalid = this.validateTask(params.task);
     if (invalid) return invalid;
     const kind = params.kind ?? "ship";
+    const stage = params.stage ?? "confirmed";
+    if (stage === "research" && kind !== "scout") {
+      return fail("research_ship_forbidden", "A pre-contract research packet must use a read-only FirstMate Scout.");
+    }
     const briefPath = path.join(this.root, "data", params.task, "brief.md");
     const confirmedBrief = cleanText(params.brief, 50_000);
     let existingBrief = false;
@@ -321,7 +437,7 @@ export class FirstMateAdapter {
       existingBrief = false;
     }
     if (!existingBrief && !confirmedBrief) {
-      return fail("brief_required", "A new visible worker requires the already confirmed Kimiflow work packet.");
+      return fail("brief_required", "A new visible worker requires a self-contained Kimiflow work packet.");
     }
     if (existingBrief && confirmedBrief) {
       let currentBrief;
@@ -330,9 +446,10 @@ export class FirstMateAdapter {
       } catch (error) {
         return fail("brief_unavailable", "The existing FirstMate work packet could not be read.", { detail: error.message });
       }
-      const expectedPacket = `Confirmed Kimiflow work packet:\n${confirmedBrief}\n\nKimiflow worker boundary:`;
+      const packetLabel = stage === "research" ? "Bounded Kimiflow research packet (product contract not final):" : "Confirmed Kimiflow work packet:";
+      const expectedPacket = `${packetLabel}\n${confirmedBrief}\n\nKimiflow worker boundary:`;
       if (!currentBrief.includes(expectedPacket)) {
-        return fail("brief_conflict", "This FirstMate task already has a different confirmed work packet. Use a new task id.");
+        return fail("brief_conflict", "This FirstMate task already has a different Kimiflow work packet or stage. Use a new task id.");
       }
     }
     const projectMode = await this.ensureProjectMode(signal);
@@ -352,15 +469,31 @@ export class FirstMateAdapter {
       if (template.split(taskMarker).length !== 2) {
         return fail("brief_contract_invalid", "FirstMate brief did not contain exactly one canonical task section.");
       }
+      const packetLabel = stage === "research" ? "Bounded Kimiflow research packet (product contract not final):" : "Confirmed Kimiflow work packet:";
+      const stageBoundary = stage === "research"
+        ? [
+            "- This is bounded read-only research before the final product contract. Collect independent evidence only; do not implement, choose product scope or ask the user.",
+            "- Write the required FirstMate Scout report and return it through the status protocol for synthesis by Kimiflow Main.",
+          ]
+        : kind === "ship"
+          ? [
+              "- This product contract is already confirmed. Do not repeat product intake or ask the user to confirm it again.",
+              "- Implement and run mechanical verification, but do not replace independent semantic review with self-review.",
+              "- When the implementation checkpoint is ready, report a paused review-ready status with its exact commit and stop. Kimiflow Main will dispatch visible review Scouts and then send either verified findings or finalization clearance.",
+            ]
+          : [
+              "- This product contract is already confirmed. Review only the assigned evidence axis; do not implement or ask the user.",
+              "- Write the required FirstMate Scout report and return it through the status protocol for verification by Kimiflow Main.",
+            ];
       const workerContract = [
-        "Confirmed Kimiflow work packet:",
+        packetLabel,
         confirmedBrief,
         "",
         "Kimiflow worker boundary:",
-        "- This product contract is already confirmed. Do not repeat product intake or ask the user to confirm it again.",
+        ...stageBoundary,
         "- Work autonomously in this isolated FirstMate worktree. Do not open a second user conversation.",
         "- Do not spawn another crew. Return decisions, blockers and results only through this brief's FirstMate status protocol.",
-        "- Use the installed Kimiflow skill for implementation, verification and bounded review.",
+        "- Use the installed Kimiflow skill only for the phase and evidence boundary assigned above; do not create a second Active Run for this task.",
       ].join("\n");
       const rendered = template
         .replace(taskMarker, `# Task\n${workerContract}`)
@@ -368,7 +501,11 @@ export class FirstMateAdapter {
       await fs.writeFile(briefPath, rendered, { mode: 0o600 });
     }
 
-    const spawnArgs = [params.task, this.projectRoot, "--harness", "pi", "--backend", "herdr"];
+    const calmExtension = path.join(this.root, REQUIRED_FIRSTMATE_CALM_FILES[0]);
+    const harness = this.workerCalm
+      ? `KIMIFLOW_WORKER_VERBOSITY=quiet pi __MODELFLAG____EFFORTFLAG__-e ${shellQuote(calmExtension)} -e __PIEXT__ "\$(__OPINPUT__ encode launch-brief < __BRIEF__)"`
+      : "pi";
+    const spawnArgs = [params.task, this.projectRoot, "--harness", harness, "--backend", "herdr"];
     if (params.model) spawnArgs.push("--model", params.model);
     if (params.effort) spawnArgs.push("--effort", params.effort);
     if (kind === "scout") spawnArgs.push("--scout");
@@ -421,8 +558,10 @@ export class FirstMateAdapter {
     return ok("worker_reachable", {
       task: params.task,
       kind,
+      stage,
       mode: projectMode.mode,
-      endpoint: cleanText(peek.stdout),
+      endpoint: "verified",
+      presentation: this.workerCalm ? "quiet+firstmate-calm" : "inherited",
       spawnReceipt: cleanText(spawned.stdout, 4_000),
     });
   }
@@ -440,6 +579,41 @@ export class FirstMateAdapter {
     this.pendingWakeTasks.delete(params.task);
     if (/^state: (?:done|failed)\b/m.test(state)) this.terminalTasks.add(params.task);
     return ok("status", { task: params.task, state });
+  }
+
+  async report(params, signal) {
+    const inactive = this.requireActive();
+    if (inactive) return inactive;
+    const invalid = this.validateTask(params.task);
+    if (invalid) return invalid;
+    const stateResult = await this.run(path.join(this.root, "bin", "fm-crew-state.sh"), [params.task], {
+      cwd: this.root, env: this.commandEnv(), signal, timeout: 30_000,
+    });
+    if (stateResult.code !== 0 || !/^state: done\b/m.test(cleanText(stateResult.stdout))) {
+      return fail("scout_report_not_ready", "The FirstMate Scout report is readable only after the task reaches done.", {
+        detail: cleanText(`${stateResult.stdout}\n${stateResult.stderr}`),
+      });
+    }
+    const metaPath = path.join(this.root, "state", `${params.task}.meta`);
+    const reportPath = path.join(this.root, "data", params.task, "report.md");
+    try {
+      for (const candidate of [metaPath, reportPath]) {
+        const info = await fs.lstat(candidate);
+        if (!info.isFile() || info.isSymbolicLink()) throw new Error(`${path.basename(candidate)} is not a regular file`);
+        if (info.size > 100_000) throw new Error(`${path.basename(candidate)} exceeds 100000 bytes`);
+      }
+      const meta = await fs.readFile(metaPath, "utf8");
+      if (!meta.split(/\r?\n/).includes("kind=scout")) {
+        return fail("scout_report_forbidden", "Only a FirstMate Scout owns a read-only report.");
+      }
+      const report = cleanText(await fs.readFile(reportPath, "utf8"), 100_000);
+      if (!report) return fail("scout_report_empty", "The completed FirstMate Scout report is empty.");
+      this.pendingWakeTasks.delete(params.task);
+      this.terminalTasks.add(params.task);
+      return ok("scout_report", { task: params.task, report });
+    } catch (error) {
+      return fail("scout_report_unavailable", "FirstMate did not expose a valid completed Scout report.", { detail: error.message });
+    }
   }
 
   async send(params, signal) {
@@ -570,8 +744,9 @@ export class FirstMateAdapter {
   async handleWatcherClose(child, result) {
     if (this.stopping || this.watcher !== child) return;
     this.watcher = null;
-    const output = cleanText(`${result.stdout}\n${result.stderr}`);
-    const actionable = WAKE_LINE.test(output) && !WATCH_FAILED.test(output);
+    const rawOutput = cleanText(`${result.stdout}\n${result.stderr}`);
+    const actionable = WAKE_LINE.test(rawOutput) && !WATCH_FAILED.test(rawOutput);
+    const output = watcherPresentation(rawOutput, this.workerCalm);
     if (actionable) {
       const rearmed = await this.restoreWatcher();
       const task = await this.taskFromWake(output);

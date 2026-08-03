@@ -35,11 +35,23 @@ run() {
 }
 run_codex() { ( cd "$PROJ" && HOME="$FAKE_HOME" CODEX_HOME="$FAKE_CODEX_HOME" KIMIFLOW_HOST=codex "$SCRIPT" "$@" ); }
 run_pi() { ( cd "$PROJ" && HOME="$FAKE_HOME" PI_CODING_AGENT_DIR="$FAKE_PI_HOME" KIMIFLOW_HOST=pi "$SCRIPT" "$@" ); }
+run_worker() { ( cd "$PROJ" && HOME="$FAKE_HOME" CLAUDE_HOME="$FAKE_HOME/.claude" KIMIFLOW_HOST=claude KIMIFLOW_WORKER_VERBOSITY="$1" "$SCRIPT" "${@:2}" ); }
 assert_eq() { if [ "$1" = "$2" ]; then pass "$3"; else fail "$3 (got '$1' want '$2')"; fi; }
 
 # --- AC-1: flag overrides project/global ---
 reset; set_project quiet
 assert_eq "$(run --flag verbose)" "verbose" "test_flag_wins"
+
+# --- AC-1b: internal worker handoff is below an explicit flag, above files, and read-only ---
+reset; set_project verbose; set_global verbose
+assert_eq "$(run_worker quiet get)" "quiet" "test_worker_handoff_over_files"
+assert_eq "$(run_worker quiet get --flag verbose)" "verbose" "test_flag_over_worker_handoff"
+assert_eq "$(run_worker nonsense get)" "verbose" "test_invalid_worker_handoff_skipped"
+if [ "$(cat "$PROJ/.kimiflow/verbosity")" = "verbose" ] && [ "$(cat "$FAKE_HOME/.claude/kimiflow/verbosity")" = "verbose" ]; then
+  pass "test_worker_handoff_no_persist"
+else
+  fail "test_worker_handoff_no_persist"
+fi
 
 # --- AC-2: project over global ---
 reset; set_project quiet; set_global verbose

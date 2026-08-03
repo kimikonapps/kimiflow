@@ -174,14 +174,23 @@ Start Kimiflow Run 7.2.
 
 There is no separate FirstMate command and Pi does not need to run from the FirstMate checkout. Main inspects
 the current code, researches current sources when needed, discusses the full feature in the user's language,
-shows a simple flow and obtains one final product-contract confirmation. Only then may it activate FirstMate
-internally and dispatch a normal visible Pi Ship or Scout. The exact project defaults to `local-only`; an already
+shows a simple flow and obtains one final product-contract confirmation. After the user marks the scope ready,
+Main may activate FirstMate internally and dispatch read-only research Scouts for independent evidence. Normal
+visible Pi Ships and review Scouts remain closed until final confirmation. The exact project defaults to `local-only`; an already
 explicit `direct-PR` mode is preserved. `no-mistakes` is not used because it would add a second review/fix owner.
 
 All user discussion remains in Main. Workers receive the confirmed brief, never repeat product intake, and
 return decisions and results through FirstMate status. A worker is reported as started only after its exact
 Herdr/Pi endpoint is readable. FirstMate alone owns worker briefs, worktrees, endpoints, wake, recovery and safe
-cleanup; Kimiflow stores no competing worker state and does not reimplement Calm.
+cleanup; Kimiflow stores no competing worker state and does not reimplement Calm. Main may run several Ships
+only for disjoint, self-contained write packets. A tightly coupled build intentionally starts one Ship.
+Independent research and semantic review use separate visible Scouts; `small` code review uses two review axes
+and `large`/release-critical review uses three when the FirstMate crew is available.
+
+Kimiflow display verbosity is inherited by newly started workers. In particular, `quiet` supplies the worker's
+process-local Kimiflow quiet level and loads FirstMate's stock Calm extension, so both Main and worker stay calm.
+This changes presentation only. An already running worker must be restarted because Pi cannot add presentation
+extensions retroactively.
 
 FirstMate's Herdr backend is experimental. A failed Herdr spawn must remain an explicit FirstMate failure; there
 is no hidden Kimiflow process fallback or false `recovered` state. Old sessions created by Kimiflow's removed

@@ -9,9 +9,12 @@
 #   resolve-verbosity.sh onboard-check [--flag <level>] -> echo ASK iff nothing set anywhere, else SKIP
 #   resolve-verbosity.sh set <project|global> <level> -> validate, mkdir -p, write, verify, echo path
 #
-# Precedence (get): flag > current worktree project > primary worktree project
-# > global host config > balanced. Linked Fleet worktrees intentionally inherit
-# the primary project's display preference when they do not override it.
+# Precedence (get): flag > internal worker handoff > current worktree project >
+# primary worktree project > global host config > balanced. The worker handoff
+# is process-local and never persisted; it lets a delegated worker inherit its
+# Main session's already-resolved presentation even in an isolated worktree.
+# Linked Fleet worktrees otherwise inherit the primary project's display
+# preference when they do not override it.
 # Self-contained rule: only a single valid level word is ever read/written — a
 # gate/cost line placed in a file is not a valid level and is ignored.
 set -u
@@ -115,6 +118,8 @@ done
 
 if [ -n "$flag" ]; then
   src="flag"; level="$flag"
+elif is_valid_level "${KIMIFLOW_WORKER_VERBOSITY:-}"; then
+  src="worker"; level="$KIMIFLOW_WORKER_VERBOSITY"
 elif level="$(read_level "$(project_file)")"; then
   src="project"
 elif primary="$(primary_project_file 2>/dev/null)" \

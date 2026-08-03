@@ -5,7 +5,12 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import extension, { FirstMateAdapter, REQUIRED_FIRSTMATE_SCRIPTS, locateFirstMateRoot } from "../extensions/kimiflow-crew.js";
+import extension, {
+  FirstMateAdapter,
+  REQUIRED_FIRSTMATE_CALM_FILES,
+  REQUIRED_FIRSTMATE_SCRIPTS,
+  locateFirstMateRoot,
+} from "../extensions/kimiflow-crew.js";
 
 async function fixture() {
   const base = await mkdtemp(path.join(os.tmpdir(), "kimiflow-crew-"));
@@ -14,6 +19,11 @@ async function fixture() {
   await Promise.all([mkdir(path.join(root, "bin"), { recursive: true }), mkdir(path.join(root, "data"), { recursive: true }), mkdir(project)]);
   for (const script of REQUIRED_FIRSTMATE_SCRIPTS) {
     await writeFile(path.join(root, "bin", script), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  }
+  for (const relative of REQUIRED_FIRSTMATE_CALM_FILES) {
+    const target = path.join(root, relative);
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, "// stock FirstMate Calm fixture\n", "utf8");
   }
   await writeFile(path.join(root, "data", "projects.md"), "", "utf8");
   return { base, root, project };
@@ -64,6 +74,7 @@ test("activation refuses an unverified FirstMate lock", async (t) => {
   const run = async (file) => {
     if (file === "git") return { code: 0, stdout: `${f.project}\n`, stderr: "" };
     if (file === "sh") return { code: 0, stdout: "", stderr: "" };
+    if (file.endsWith("resolve-verbosity.sh")) return { code: 0, stdout: "balanced\n", stderr: "" };
     return { code: 0, stdout: "READ-ONLY SESSION\n", stderr: "" };
   };
   const adapter = new FirstMateAdapter({ cwd: f.project, env: { HOME: f.base, HERDR_ENV: "1", KIMIFLOW_FIRSTMATE_ROOT: f.root }, run });
@@ -75,6 +86,7 @@ test("activation preserves wake records drained by FirstMate session start", asy
   t.after(() => rm(f.base, { recursive: true, force: true }));
   const run = async (file) => {
     if (file === "git") return { code: 0, stdout: `${f.project}\n`, stderr: "" };
+    if (file.endsWith("resolve-verbosity.sh")) return { code: 0, stdout: "balanced\n", stderr: "" };
     if (file.endsWith("fm-session-start.sh")) {
       return {
         code: 0,
@@ -101,6 +113,7 @@ test("activation failure still returns wake records already drained by FirstMate
   t.after(() => rm(f.base, { recursive: true, force: true }));
   const run = async (file) => {
     if (file === "git") return { code: 0, stdout: `${f.project}\n`, stderr: "" };
+    if (file.endsWith("resolve-verbosity.sh")) return { code: 0, stdout: "balanced\n", stderr: "" };
     if (file.endsWith("fm-session-start.sh")) {
       return {
         code: 0,
@@ -129,7 +142,12 @@ test("spawn is green only after the exact endpoint is readable", async (t) => {
     calls.push([path.basename(file), args]);
     if (file === "git") return { code: 0, stdout: `${f.project}\n`, stderr: "" };
     if (file === "sh") return { code: 0, stdout: "", stderr: "" };
-    if (file.endsWith("fm-session-start.sh")) return { code: 0, stdout: "lock acquired: harness pid 7\n", stderr: "" };
+    if (file.endsWith("resolve-verbosity.sh")) return { code: 0, stdout: "balanced\n", stderr: "" };
+    if (file.endsWith("fm-session-start.sh")) return {
+      code: 0,
+      stdout: "lock acquired: harness pid 7\nWAKE QUEUE\n--------------------------------\n(no queued wakes)\nPI_WATCH_EXTENSION: setup detail\n================================\nCONTEXT\n================================\n",
+      stderr: "",
+    };
     if (file.endsWith("fm-project-mode.sh")) return { code: 0, stdout: "local-only off\n", stderr: "" };
     if (file.endsWith("fm-brief.sh")) {
       const brief = path.join(f.root, "data", args[0], "brief.md");
@@ -159,6 +177,71 @@ test("spawn is green only after the exact endpoint is readable", async (t) => {
   adapter.shutdown();
 });
 
+test("quiet Main launches a quiet worker with stock FirstMate Calm", async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.base, { recursive: true, force: true }));
+  const calls = [];
+  const run = async (file, args = []) => {
+    calls.push([file, args]);
+    if (file === "git") return { code: 0, stdout: `${f.project}\n`, stderr: "" };
+    if (file.endsWith("resolve-verbosity.sh")) return { code: 0, stdout: "quiet\n", stderr: "" };
+    if (file.endsWith("fm-session-start.sh")) return { code: 0, stdout: "lock acquired: harness pid 7\n", stderr: "" };
+    if (file.endsWith("fm-project-mode.sh")) return { code: 0, stdout: "local-only off\n", stderr: "" };
+    if (file.endsWith("fm-brief.sh")) {
+      const brief = path.join(f.root, "data", args[0], "brief.md");
+      await mkdir(path.dirname(brief), { recursive: true });
+      await writeFile(brief, "# Task\n{TASK}\n\nReplace `{TASK}` after scaffolding.\n", "utf8");
+      return { code: 0, stdout: "scaffolded\n", stderr: "" };
+    }
+    if (file.endsWith("fm-spawn.sh")) return { code: 0, stdout: "spawned\n", stderr: "" };
+    if (file.endsWith("fm-peek.sh")) return { code: 0, stdout: "pi v0.83.0\n", stderr: "" };
+    if (file.endsWith("fm-crew-state.sh")) return { code: 0, stdout: "state: working · source: pane · harness busy (busy pi-ext)\n", stderr: "" };
+    return { code: 0, stdout: "/usr/bin/tool\n", stderr: "" };
+  };
+  const adapter = new FirstMateAdapter({
+    cwd: f.project,
+    env: { HOME: f.base, HERDR_ENV: "1", KIMIFLOW_FIRSTMATE_ROOT: f.root },
+    run,
+    spawn: () => fakeWatcher(),
+    sleep: async () => {},
+  });
+  const activated = await adapter.activate({ verbosity: "quiet" });
+  assert.equal(activated.code, "activated");
+  assert.equal(activated.presentation, "quiet+firstmate-calm");
+  assert.equal("startupWakes" in activated, false);
+  assert.equal(await readFile(path.join(f.root, "config", "calm"), "utf8"), "on\n");
+  assert.equal((await adapter.spawnWorker({ task: "quiet-worker", brief: "Build quietly." })).code, "worker_reachable");
+  const spawnCall = calls.find(([file]) => file.endsWith("fm-spawn.sh"));
+  const resolveCall = calls.find(([file]) => file.endsWith("resolve-verbosity.sh"));
+  assert.deepEqual(resolveCall[1], ["get", "--flag", "quiet"]);
+  const harness = spawnCall[1][spawnCall[1].indexOf("--harness") + 1];
+  assert.match(harness, /^KIMIFLOW_WORKER_VERBOSITY=quiet pi /);
+  assert.match(harness, new RegExp(path.join(f.root, REQUIRED_FIRSTMATE_CALM_FILES[0]).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(harness, /-e __PIEXT__/);
+  assert.match(harness, /"\$\(__OPINPUT__ encode launch-brief < __BRIEF__\)"$/);
+  adapter.shutdown();
+});
+
+test("quiet activation fails before spawning when stock FirstMate Calm is incomplete", async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.base, { recursive: true, force: true }));
+  await rm(path.join(f.root, REQUIRED_FIRSTMATE_CALM_FILES.at(-1)));
+  let sessionStarted = false;
+  const run = async (file) => {
+    if (file === "git") return { code: 0, stdout: `${f.project}\n`, stderr: "" };
+    if (file.endsWith("resolve-verbosity.sh")) return { code: 0, stdout: "quiet\n", stderr: "" };
+    if (file.endsWith("fm-session-start.sh")) sessionStarted = true;
+    return { code: 0, stdout: "/usr/bin/tool\n", stderr: "" };
+  };
+  const adapter = new FirstMateAdapter({
+    cwd: f.project,
+    env: { HOME: f.base, HERDR_ENV: "1", KIMIFLOW_FIRSTMATE_ROOT: f.root },
+    run,
+  });
+  assert.equal((await adapter.activate()).code, "firstmate_calm_unavailable");
+  assert.equal(sessionStarted, false);
+});
+
 test("a fresh FirstMate home gets its first local-only project entry", async (t) => {
   const f = await fixture();
   t.after(() => rm(f.base, { recursive: true, force: true }));
@@ -176,6 +259,61 @@ test("a fresh FirstMate home gets its first local-only project entry", async (t)
   const result = await adapter.ensureProjectMode();
   assert.equal(result.code, "project_mode_ready");
   assert.match(await readFile(path.join(f.root, "data", "projects.md"), "utf8"), /- project \[local-only\]/);
+});
+
+test("pre-contract research is accepted only as a visible read-only Scout", async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.base, { recursive: true, force: true }));
+  const calls = [];
+  const run = async (file, args = []) => {
+    calls.push([file, args]);
+    if (file.endsWith("fm-project-mode.sh")) return { code: 0, stdout: "local-only off\n", stderr: "" };
+    if (file.endsWith("fm-brief.sh")) {
+      const brief = path.join(f.root, "data", args[0], "brief.md");
+      await mkdir(path.dirname(brief), { recursive: true });
+      await writeFile(brief, "# Task\n{TASK}\n\nReplace `{TASK}` after scaffolding.\n", "utf8");
+      return { code: 0, stdout: "scaffolded\n", stderr: "" };
+    }
+    if (file.endsWith("fm-spawn.sh")) return { code: 0, stdout: "spawned\n", stderr: "" };
+    if (file.endsWith("fm-peek.sh")) return { code: 0, stdout: "pi v0.83.0\n", stderr: "" };
+    if (file.endsWith("fm-crew-state.sh")) return { code: 0, stdout: "state: working · source: pane · harness busy (busy pi-ext)\n", stderr: "" };
+    return { code: 0, stdout: "", stderr: "" };
+  };
+  const adapter = new FirstMateAdapter({ cwd: f.project, env: {}, run, sleep: async () => {} });
+  adapter.root = f.root;
+  adapter.projectRoot = f.project;
+  adapter.watcher = fakeWatcher();
+  assert.equal((await adapter.spawnWorker({ task: "invalid-research-ship", stage: "research", kind: "ship", brief: "Research." })).code, "research_ship_forbidden");
+  const result = await adapter.spawnWorker({ task: "research-scout", stage: "research", kind: "scout", brief: "Compare two current primary sources." });
+  assert.equal(result.code, "worker_reachable");
+  assert.equal(result.stage, "research");
+  const rendered = await readFile(path.join(f.root, "data", "research-scout", "brief.md"), "utf8");
+  assert.match(rendered, /product contract not final/);
+  assert.match(rendered, /do not implement, choose product scope or ask the user/);
+  const spawnCall = calls.find(([file]) => file.endsWith("fm-spawn.sh"));
+  assert(spawnCall[1].includes("--scout"));
+});
+
+test("Main reads a completed Scout report through the read-only adapter boundary", async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.base, { recursive: true, force: true }));
+  await mkdir(path.join(f.root, "state"), { recursive: true });
+  await mkdir(path.join(f.root, "data", "review-scout"), { recursive: true });
+  await writeFile(path.join(f.root, "state", "review-scout.meta"), "kind=scout\n", "utf8");
+  await writeFile(path.join(f.root, "data", "review-scout", "report.md"), "NONE\n", "utf8");
+  const adapter = new FirstMateAdapter({
+    cwd: f.project,
+    env: {},
+    run: async (file) => file.endsWith("fm-crew-state.sh")
+      ? { code: 0, stdout: "state: done · source: status-log\n", stderr: "" }
+      : { code: 0, stdout: "", stderr: "" },
+  });
+  adapter.root = f.root;
+  adapter.projectRoot = f.project;
+  adapter.watcher = fakeWatcher();
+  const result = await adapter.report({ task: "review-scout" });
+  assert.equal(result.code, "scout_report");
+  assert.equal(result.report, "NONE");
 });
 
 test("spawn never claims recovery without an endpoint", async (t) => {
@@ -291,8 +429,10 @@ test("watcher re-arms before returning a crew wake to Main", async (t) => {
   });
   adapter.root = f.root;
   adapter.projectRoot = f.project;
+  adapter.workerCalm = true;
   assert.equal((await adapter.startWatcher(true)).code, "watcher_ready");
   children[0].stdout.emit("data", Buffer.from("signal: task=worker-one\n"));
+  children[0].stderr.emit("data", Buffer.from("/firstmate/bin/backends/herdr.sh: line 3052: printf: write error: Broken pipe\n"));
   children[0].emit("close", 0, null);
   for (let attempt = 0; attempt < 20 && messages.length === 0; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -300,6 +440,7 @@ test("watcher re-arms before returning a crew wake to Main", async (t) => {
   assert.equal(children.length, 2);
   assert.equal(messages.length, 1);
   assert.match(messages[0][0], /action=drain/);
+  assert.doesNotMatch(messages[0][0], /Broken pipe|watcher: started/);
   assert.deepEqual(messages[0][1], { deliverAs: "followUp" });
   adapter.shutdown();
 });
