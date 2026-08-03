@@ -117,46 +117,53 @@ kimiflow status --pretty
 
 ### Pi mit unveraendertem FirstMate
 
-Das Pi-Paket von Kimiflow ist absichtlich nur ein Skill. Es ergaenzt in Pi den Produkt- und Engineering-
-Workflow, erzeugt aber keinen Captain, startet keine Worker, verwaltet keine Worktrees, steuert Herdr nicht und
-implementiert keinen Calm-Modus. Installiere einen vertrauenswuerdigen Kimiflow-Checkout mit:
+Das Pi-Paket macht die Pi-Sitzung im aktuellen Projekt zu **Kimiflow Main**. Es enthaelt den Workflow-Skill und
+genau eine ruhende `kimiflow_crew`-Extension. Diese tut nichts, bis Kimiflow sie fuer wirklich unabhaengige Arbeit
+aktiviert. Installiere einen vertrauenswuerdigen Kimiflow-Checkout mit:
 
 ```bash
 pi install /absoluter/pfad/zu/kimiflow
 ```
 
-Mit `pi install -l /absoluter/pfad/zu/kimiflow` gilt die Installation nur fuer das aktuelle Projekt. Pi laedt
-ausschliesslich `hosts/pi/skills/kimiflow/SKILL.md`; Kimiflow deklariert keine Pi-Extension.
+Mit `pi install -l /absoluter/pfad/zu/kimiflow` gilt die Installation nur fuer das aktuelle Projekt. Fuer
+sichtbare Worker installierst du [Stock FirstMate](https://github.com/kunchenguid/firstmate) separat. Kimiflow
+kopiert oder forkt FirstMate nicht und bindet sich nicht an einen bestimmten Commit, sondern prueft beim
+Aktivieren die benoetigten Faehigkeiten. Falls die automatische Suche den FirstMate-Checkout nicht findet, setze
+vor dem Herdr-Start `KIMIFLOW_FIRSTMATE_ROOT=/absoluter/pfad/zu/firstmate`.
 
-```text
-Baue das gewuenschte Feature mit Kimiflow.
+```bash
+cd /absoluter/pfad/zu/deinem-projekt
+herdr
+# im Herdr-Terminal:
+pi
 ```
 
-Fuer eine einzige Gespraechsflaeche mit sichtbaren Workern installierst und startest du
-[Stock FirstMate](https://github.com/kunchenguid/firstmate) separat. Pi wird im FirstMate-Checkout gestartet;
-das Projekt muss vor dem Dispatch dauerhaft auf `local-only` (oder bewusst `direct-PR`) stehen. FirstMates
-`no-mistakes` darf fuer Kimiflow-Auftraege nicht verwendet werden, weil sonst ein zweiter Review-/Fix-Owner
-neben Kimiflows eigenen Gates entsteht.
-Die aktuelle Testbasis fixiert FirstMate auf `cd73e75e02a1c1e74811b00c5ee08ffae8a59e1e` und Pi auf `0.82.0`;
-ein Upgrade gilt erst nach erneut bestandenen Stock-Tests und einem echten Pi/Herdr-Ship als kompatibel. Der finale
-integrierte Lauf aus Stock-Primary, sichtbarem Worker, Statusrueckgabe und Calm bestand am 2026-08-02. Ein frueherer
-unveraenderter Calm-Test flakte einmal mit einer doppelten Antwort und bestand beim unmittelbaren Wiederholen. Calm
-bleibt damit ein Upstream-Zuverlaessigkeitsrisiko und keine von Kimiflow garantierte Funktion.
+Danach sagst du in Pi einfach:
 
-Nur der FirstMate-Primary spricht mit dir. Er prueft die aktuelle Codebasis und aktuelle autoritative Quellen,
-bespricht das Feature samt passenden Optionen in deiner Sprache, bestaetigt den finalen Vertrag und startet
-danach einen normalen sichtbaren FirstMate Ship oder Scout. Crewmates melden ueber den normalen FirstMate-
-Status und beginnen kein zweites Produktgespraech. Ausschliesslich FirstMate besitzt Worker-Lifecycle,
-Worktrees, Recovery, Cleanup, `/calm` und das gewaehlte Backend.
+```text
+Beginne mit Kimiflow Run 7.2.
+```
+
+Es gibt keinen separaten FirstMate-Befehl und Pi muss nicht im FirstMate-Ordner laufen. Main prueft den aktuellen
+Code, recherchiert bei Bedarf aktuelle Quellen, bespricht das vollstaendige Feature in deiner Sprache, zeigt den
+Ablauf einfach und holt genau eine finale Produktvertrags-Bestaetigung ein. Erst danach darf Kimiflow FirstMate
+intern aktivieren und einen normalen sichtbaren Pi Ship oder Scout starten. Das aktuelle Projekt wird
+standardmaessig `local-only`; ein bereits bewusst gesetztes `direct-PR` bleibt bestehen. `no-mistakes` wird nicht
+verwendet, weil sonst ein zweiter Review-/Fix-Owner entstuende.
+
+Alle Gespraeche mit dir bleiben in Main. Worker erhalten den bestaetigten Brief, wiederholen kein Produkt-Intake
+und melden Entscheidungen und Ergebnisse ueber FirstMate-Status zurueck. Ein Worker gilt erst als gestartet,
+wenn sein exakter Herdr/Pi-Endpoint lesbar ist. Nur FirstMate besitzt Briefs, Worktrees, Endpoints, Wake, Recovery
+und sicheren Cleanup; Kimiflow fuehrt keinen konkurrierenden Worker-State und baut Calm nicht nach.
 
 FirstMates Herdr-Backend ist experimentell. Ein fehlgeschlagener Herdr-Start bleibt ein ausdruecklicher
 FirstMate-Fehler; es gibt keinen versteckten Kimiflow-Prozess-Fallback und keinen vorgetaeuschten `recovered`-
 Status. Alte Sitzungen der entfernten Kimiflow-Pi/Herdr-Bridge bleiben Diagnosehistorie, sind mit dieser
 Architektur aber nicht fortsetzbar.
 
-Ohne FirstMate funktioniert Kimiflow weiterhin direkt als normaler Skill in der aktuellen Pi-Sitzung. Dann
-verspricht es keine Captain-/Crew-Oberflaeche im Hintergrund. Codex, Claude Code und der optionale Terminal-
-Runner bleiben unabhaengig und unveraendert.
+Ohne FirstMate funktioniert Kimiflow weiterhin direkt in der aktuellen Pi-Sitzung und im aktuellen Projekt.
+Die Crew-Aktivierung scheitert dann ausdruecklich, ohne normales Pi zu beschaedigen. Codex, Claude Code und der
+optionale Terminal-Runner bleiben unabhaengig und unveraendert.
 
 Codex ist der eingebaute Adapter. Ein vorhandenes lokales oder entferntes Coding-Agent-Harness kann denselben
 Lebenszyklus über den versionierten JSON-stdio-Vertrag ausführen:

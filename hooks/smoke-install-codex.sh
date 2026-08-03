@@ -431,14 +431,17 @@ PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import runner; assert ru
 if jq -e --arg version "$cv" '
     .name == "@kimiflow/pi" and .version == $version and .type == "module"
     and .pi.skills == ["./hosts/pi/skills/kimiflow"]
-    and (.pi | has("extensions") | not)
+    and .pi.extensions == ["./hosts/pi/extensions/kimiflow-crew.js"]
   ' "$ROOT/package.json" >/dev/null 2>&1 \
   && [ -f "$ROOT/hosts/pi/skills/kimiflow/SKILL.md" ] \
+  && [ -f "$ROOT/hosts/pi/extensions/kimiflow-crew.js" ] \
   && [ ! -e "$ROOT/hosts/pi/extensions/captain.js" ] \
+  && [ ! -e "$ROOT/hosts/pi/extensions/worker.js" ] \
+  && [ ! -e "$ROOT/hosts/pi/extensions/calm.js" ] \
   && [ ! -e "$ROOT/hooks/pi-host.sh" ]; then
-  ok "Codex remains standalone with optional version-aligned Pi skill package"
+  ok "Codex remains standalone with one optional Pi crew adapter"
 else
-  bad "optional Pi skill package inventory or version is incomplete"
+  bad "optional Pi package inventory or version is incomplete"
 fi
 if [ -x "$ROOT/hooks/secret-content-scan.sh" ] \
   && bash -n "$ROOT/hooks/secret-content-scan.sh" \

@@ -29,8 +29,10 @@ def make_candidate(root):
             "type": "module",
             "pi": {
                 "skills": ["./hosts/pi/skills/kimiflow"],
+                "extensions": ["./hosts/pi/extensions/kimiflow-crew.js"],
             },
         })),
+        "hosts/pi/extensions/kimiflow-crew.js": (0o644, b"export default function () {}\n"),
         "hosts/pi/skills/kimiflow/SKILL.md": (0o644, b"# Kimiflow for Pi\n"),
         "hooks/active-run.sh": (0o755, b"#!/usr/bin/env bash\nexit 0\n"),
         "hooks/hooks.json": (0o644, b"{}\n"),
@@ -343,16 +345,22 @@ class RuntimeReleaseTests(unittest.TestCase):
             manifest["contracts"]["adapter_protocol"]["max"],
         )
 
-    def test_skill_only_pi_package_release_and_embedded_host_parity(self):
+    def test_optional_crew_pi_package_release_and_embedded_host_parity(self):
         manifest, manifest_path, archive = self.build()
         with zipfile.ZipFile(archive) as bundle:
             package = json.loads(bundle.read("kimiflow/package.json"))
             names = set(bundle.namelist())
         self.assertEqual(package["version"], manifest["version"])
         self.assertEqual(package["name"], "@kimiflow/pi")
-        self.assertEqual(package["pi"], {"skills": ["./hosts/pi/skills/kimiflow"]})
+        self.assertEqual(package["pi"], {
+            "skills": ["./hosts/pi/skills/kimiflow"],
+            "extensions": ["./hosts/pi/extensions/kimiflow-crew.js"],
+        })
         self.assertIn("kimiflow/hosts/pi/skills/kimiflow/SKILL.md", names)
-        self.assertFalse(any(name.startswith("kimiflow/hosts/pi/extensions/") for name in names))
+        self.assertIn("kimiflow/hosts/pi/extensions/kimiflow-crew.js", names)
+        self.assertNotIn("kimiflow/hosts/pi/extensions/captain.js", names)
+        self.assertNotIn("kimiflow/hosts/pi/extensions/worker.js", names)
+        self.assertNotIn("kimiflow/hosts/pi/extensions/calm.js", names)
         self.assertFalse(any(name.startswith("kimiflow/hooks/kimiflow_core/pi_") for name in names))
         embedded_status, _, embedded = runtime_release.verify_artifact(
             manifest_path,

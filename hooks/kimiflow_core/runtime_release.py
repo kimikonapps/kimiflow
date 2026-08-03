@@ -50,6 +50,7 @@ RUNTIME_REQUIRED_FILES = {
     ".codex-plugin/plugin.json",
     "SKILL.md",
     "package.json",
+    "hosts/pi/extensions/kimiflow-crew.js",
     "hosts/pi/skills/kimiflow/SKILL.md",
     "hooks/active-run.sh",
     "hooks/hooks.json",
@@ -61,6 +62,7 @@ PI_PACKAGE = {
     "name": "@kimiflow/pi",
     "type": "module",
     "skills": ["./hosts/pi/skills/kimiflow"],
+    "extensions": ["./hosts/pi/extensions/kimiflow-crew.js"],
 }
 
 
@@ -122,8 +124,9 @@ def _validate_pi_package(value, version, label):
         or value.get("version") != version
         or value.get("type") != PI_PACKAGE["type"]
         or not isinstance(pi, dict)
-        or set(pi) != {"skills"}
+        or set(pi) != {"skills", "extensions"}
         or pi.get("skills") != PI_PACKAGE["skills"]
+        or pi.get("extensions") != PI_PACKAGE["extensions"]
     ):
         raise ReleaseError("%s is invalid or version-misaligned" % label)
 

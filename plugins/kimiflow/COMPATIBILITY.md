@@ -14,29 +14,27 @@ kimiflow concretely uses, what breaks if it changes, and a smoke checklist to ru
 
 ## Pi and FirstMate boundary
 
-The Kimiflow Pi package is skill-only: `package.json` declares
-`hosts/pi/skills/kimiflow/SKILL.md` and no extension. It does not own Pi sessions, worker processes, worktrees,
-Herdr endpoints, transport identity, status forwarding, recovery, cleanup, or Calm rendering. Install a trusted
-checkout with `pi install /absolute/path/to/kimiflow` (or `-l` for project-local scope).
+The Kimiflow Pi package declares `hosts/pi/skills/kimiflow/SKILL.md` plus exactly one dormant extension,
+`hosts/pi/extensions/kimiflow-crew.js`. The extension has no startup side effect and activates only after the
+model explicitly selects visible delegation from the current project session. Install a trusted checkout with
+`pi install /absolute/path/to/kimiflow` (or `-l` for project-local scope).
 
 The one-conversation, visible-crew experience is supplied by an independently installed, unmodified
-[FirstMate](https://github.com/kunchenguid/firstmate). FirstMate owns the primary conversation, Ship/Scout
-briefs, visible crewmates, worktrees, backend lifecycle, normal status files, recovery and `/calm`. Kimiflow
-owns only the product/workflow semantics executed by the primary and crewmates. Before a Kimiflow Ship starts,
-the project must resolve from FirstMate's persistent registry as `local-only` or explicitly `direct-PR`;
-`no-mistakes` is rejected because it would introduce a second review/fix owner.
+[FirstMate](https://github.com/kunchenguid/firstmate). The invoking Pi session remains Kimiflow Main and the only
+user conversation. The adapter capability-checks FirstMate and then invokes only its stock session-lock, brief,
+spawn, endpoint-peek, state, send, wake and teardown commands. FirstMate alone owns visible crewmates, worktrees,
+backend lifecycle, normal status files, recovery and `/calm`; Kimiflow keeps no parallel worker state. Before a
+Ship starts, the project resolves as `local-only` or an already explicit `direct-PR`; `no-mistakes` is rejected
+because it would introduce a second review/fix owner.
 
-The pinned FirstMate baseline is commit `cd73e75e02a1c1e74811b00c5ee08ffae8a59e1e` with Pi `0.82.0`. A real
-stock-Primary dispatch through a visible Pi/Herdr Ship passed on 2026-08-02. The unchanged stock Calm suite,
-however, produced one timing-sensitive duplicate-answer failure and then passed on an immediate rerun. Calm is
-therefore an explicit upstream reliability risk rather than a fully green Kimiflow acceptance claim. FirstMate's
-Herdr backend is experimental, so a spawn or lifecycle failure is surfaced as a FirstMate failure. Kimiflow
-provides no hidden process fallback and must not synthesize `recovered`. A version bump requires the stock
-FirstMate tests plus a real FirstMate Pi/Herdr Ship using the skill-only Kimiflow package; skipped tests and a
-retry-only pass are not clean acceptance evidence.
+Compatibility is capability-based rather than tied to an exact FirstMate commit. A candidate must pass the stock
+FirstMate tests plus a real current-project Pi → FirstMate → Herdr Ship smoke. FirstMate's Herdr backend remains
+experimental, so a spawn or lifecycle failure is surfaced as a FirstMate failure. Kimiflow provides no hidden
+process fallback and must not synthesize `recovered`; spawn is successful only after the exact endpoint is
+readable. Skipped tests and a retry-only pass are not clean acceptance evidence.
 
-Standalone Pi remains supported as a normal skill in the current session, without FirstMate orchestration or
-a promise of background workers. Legacy receipts from the removed custom Kimiflow Pi/Herdr bridge remain
+Standalone Pi remains supported in the current project session, without a promise of background workers. A
+missing FirstMate capability disables only the crew tool. Legacy receipts from the removed custom Kimiflow Pi/Herdr bridge remain
 readable for diagnosis, but they are not resumable. Claude Code, Codex and the optional terminal runner are
 independent of both FirstMate and Herdr.
 

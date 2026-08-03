@@ -1,47 +1,62 @@
 ---
 name: kimiflow
-description: Run the Kimiflow product workflow in standalone Pi or through an unmodified FirstMate crew.
+description: Run Kimiflow in the current Pi project session, with optional visible FirstMate workers in Herdr.
 ---
 
 # Kimiflow for Pi
 
-Kimiflow supplies the product workflow. It does not own Pi sessions, Herdr tabs, workers, worktrees, Calm, status delivery, recovery, or cleanup.
+The Pi conversation in which the user invokes Kimiflow is always **Kimiflow Main**. It owns the product discussion and is the only session that talks with the user. Kimiflow may use stock FirstMate internally for visible workers, but it never creates a second captain, a Kimiflow worker registry, a Herdr bridge, or its own recovery truth.
 
-## Choose the current context
+## Start in the current project
 
-1. **FirstMate primary:** the current repository is a stock FirstMate home and its instructions identify this session as the first mate that talks to the captain.
-2. **FirstMate crewmate:** the normal FirstMate brief identifies this session as a crewmate or scout and provides its status-file contract.
-3. **Standalone Pi:** neither FirstMate role is present.
+When the user says, for example, “Beginne mit Kimiflow Run 7.2”:
 
-Do not infer FirstMate from Herdr alone. Never create a Kimiflow-owned Captain, worker, transport envelope, endpoint, background runner, or recovery state.
+1. Preserve the user's language from the first request.
+2. Inspect the current Git project, current codebase and relevant recent commits. Research current authoritative sources when technology, APIs, models or external behavior may have changed.
+3. Discuss the feature here even when a numbered plan already exists. In simple language show the problem, intended user flow, visible success, boundaries, risks and useful adjacent functions. Challenge weak assumptions and invite corrections.
+4. Show one compact non-technical flow sketch and obtain one explicit final confirmation of the complete product contract.
+5. Decide whether genuinely independent work exists. If not, continue in Main. If yes and this Pi session runs inside Herdr, call `kimiflow_crew` with `action=activate` and delegate only after the final contract is confirmed.
 
-## FirstMate primary
+The extension is dormant until `activate`. If FirstMate is absent or incompatible, say so plainly and continue ordinary Kimiflow in this Pi session. Never imply that a worker exists when activation or endpoint verification failed.
 
-The user speaks only with this primary session. Before spawning a ship:
+## Main and visible crew
 
-- Preserve the user's language from the opening request.
-- Inspect the project's current codebase and commit state. Check current authoritative primary sources when technology, APIs, models, or external behavior may have changed.
-- Discuss the feature even when a numbered plan already exists. In plain language show: the problem, intended user flow, visible success, boundaries, risks, and useful adjacent functions. Challenge weak assumptions and invite corrections.
-- Show one compact, non-technical flow sketch. Obtain one explicit final confirmation of the resulting product contract before implementation.
-- Resolve the exact FirstMate project name. Through stock FirstMate project management, persist `local-only` by default or `direct-PR` only when the user explicitly wants it. Verify the selection with `bin/fm-project-mode.sh <project>` and refuse to spawn if it is missing, resolves to `no-mistakes`, or cannot be changed with current authority.
-- Create an ordinary stock FirstMate Ship brief. Put the confirmed Kimiflow contract, its minimum-complete plan, acceptance criteria, current codebase/research evidence, and the instruction to use this skill in that brief. The brief is authoritative product confirmation for the crewmate; do not make it ask the user to confirm the same contract again.
-- After spawning a Pi ship, follow stock FirstMate's harness-adapter startup check. If Pi shows its documented project-trust dialog, resolve it through FirstMate's normal worker-control path and verify that brief processing began before treating the dispatch as active.
-- Use a Scout only for genuinely independent read-only investigation. Use visible FirstMate workers for genuine delegation; fold local reasoning into the current role without inventing an agent.
+Main owns:
 
-FirstMate alone owns spawn, worktrees, Pi/Herdr lifecycle, Calm, status, steering, resume, recovery, and cleanup. Receive every crewmate question or result through FirstMate's normal status path, discuss it with the user here, and send any answer through FirstMate. A failed spawn stays failed; do not fall back to a hidden process or claim recovery.
+- all user questions and confirmations;
+- current-code inspection, research, contract, plan and delegation decisions;
+- worker status, steering, review decisions, integration and final verification.
 
-`no-mistakes` is not a valid delivery mode for a Kimiflow ship because it would add a second review/fix workflow. Kimiflow performs its own bounded implementation, verification, and review inside the crewmate.
+Use a visible FirstMate **Ship** only for an independent implementation packet and a visible **Scout** only for independent read-only investigation or verification. Do not create workers for internal reasoning, sequential steps or overlapping writes. Fold those into Main.
 
-## FirstMate crewmate or scout
+For every new worker:
 
-Treat the normal FirstMate brief's confirmed product contract and plan as completed Kimiflow intake and planning. Validate that the brief actually contains a concrete problem, user flow, observable success, boundaries, plan, and acceptance criteria. If it leaves a material product decision unresolved, report `needs-decision:` through the exact status-file protocol and stop; never question the user in the worker tab.
+1. Create a stable lowercase task id.
+2. Pass the already confirmed, self-contained work packet to `kimiflow_crew` with `action=spawn`, `task`, `kind` and `brief`.
+3. Treat the worker as active only when the tool returns `worker_reachable`. `spawn_failed` and `spawn_unverified` are failures, never recovery.
+4. After `worker_reachable`, do not poll or narrate progress. End the turn quietly and let FirstMate's watcher return the next actionable wake to this same Main session.
+5. On a wake, use `action=drain` once, then `action=status` for current truth. Use `action=send` only for a decision or steering message.
+6. Use `action=teardown` only after safe completion, with `confirmation` exactly equal to the task id. The adapter never forces cleanup.
 
-Execute the confirmed plan, verification, and bounded review in the isolated FirstMate worktree. Do not create a second Kimiflow Active Run, replay Product Intake, or synthesize intake/worker receipts; FirstMate already owns this task's durable lifecycle and the brief is its authority. Use the package root reported for this loaded skill when reading bundled guidance; never guess an install path. When a real decision is required, write one concise `needs-decision:` status so the primary can steer this same worker. Report progress and completion only through the normal FirstMate brief/status contract. Do not spawn a hidden Pi subagent; any genuinely independent delegation must be requested from the FirstMate primary as a visible Ship or Scout.
+FirstMate alone owns each delegated worker's brief, isolated worktree, Herdr/Pi endpoint, status, wake, recovery and cleanup. Kimiflow stores no parallel worker truth.
 
-## Standalone Pi
+If `action=activate` returns `startupWakes`, FirstMate already drained those durable records while acquiring authority. Handle their named tasks with `action=status` before dispatching new work; do not discard them or call `drain` for the already consumed rows.
 
-Run Kimiflow in the current Pi conversation and current repository. The same user-facing discussion and final confirmation are required before a substantial feature is fixed. The user may answer here because this is the only session.
+## Worker boundary
 
-Use the package root reported for this loaded skill to read the canonical `SKILL.md` and phase guidance. Standalone Pi follows the workflow in the current session. It uses mechanical Active Run/gates only when Pi exposes a reliable host/session identity; otherwise it follows the same semantics and states that mechanical gates are unavailable. Do not invent an owner or pretend a gate ran. Standalone Pi never requires FirstMate and never attempts to spawn or control Herdr.
+A Pi worker receives a normal FirstMate brief whose task section already contains the confirmed Kimiflow contract. It must:
+
+- treat product intake and confirmation as complete;
+- work autonomously in its isolated FirstMate worktree;
+- never open a second user conversation or ask the user in the worker tab;
+- never spawn another crew;
+- return `needs-decision`, blockers and results only through the brief's FirstMate status protocol;
+- use the installed Kimiflow skill for implementation, verification and bounded review, without creating a second Active Run for the same task.
+
+When a crew wake arrives in Main, call `kimiflow_crew` with `action=drain`, inspect the named worker with `action=status`, discuss any real decision with the user here, then reply to that worker with `action=send`.
+
+## Standalone behavior
+
+Kimiflow remains fully usable without FirstMate or Herdr. Run the same product workflow in the current Pi conversation and repository. Do not promise visible workers, invent an owner identity, or pretend mechanical gates ran when the host does not expose them.
 
 Direct Codex and Claude Kimiflow flows remain independent of FirstMate.

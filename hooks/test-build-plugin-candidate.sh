@@ -23,14 +23,15 @@ for rel in \
     "$CANDIDATE/RUNTIME-FINGERPRINT.json" >/dev/null
 done
 
-test_pi_package_is_skill_only() {
+test_pi_package_has_one_optional_crew_adapter() {
   version="$(jq -r '.version' "$ROOT/.claude-plugin/plugin.json")"
   jq -e --arg version "$version" '
     .name == "@kimiflow/pi" and .version == $version and .type == "module"
     and .pi.skills == ["./hosts/pi/skills/kimiflow"]
-    and (.pi | has("extensions") | not)
+    and .pi.extensions == ["./hosts/pi/extensions/kimiflow-crew.js"]
   ' "$CANDIDATE/package.json" >/dev/null
   for rel in \
+    hosts/pi/extensions/kimiflow-crew.js \
     hosts/pi/skills/kimiflow/SKILL.md \
     hooks/kimiflow_core/worktree_broker.py; do
     [ -f "$CANDIDATE/$rel" ]
@@ -49,21 +50,24 @@ test_pi_package_is_skill_only() {
     [ ! -e "$CANDIDATE/$rel" ]
   done
 }
-test_pi_package_is_skill_only
+test_pi_package_has_one_optional_crew_adapter
 
 test_required_runtime_paths_must_be_git_indexed() {
   fixture="$WORK/index-fixture"
-  mkdir -p "$fixture/hooks/kimiflow_core" "$fixture/hosts/pi/skills/kimiflow"
+  mkdir -p "$fixture/hooks/kimiflow_core" "$fixture/hosts/pi/extensions" "$fixture/hosts/pi/skills/kimiflow"
   cp "$ROOT/hooks/build-plugin-candidate.sh" "$fixture/hooks/"
   cp "$ROOT/package.json" "$fixture/"
   cp "$ROOT/hooks/kimiflow_core/worktree_broker.py" \
     "$fixture/hooks/kimiflow_core/"
   cp "$ROOT/hosts/pi/skills/kimiflow/SKILL.md" \
     "$fixture/hosts/pi/skills/kimiflow/"
+  cp "$ROOT/hosts/pi/extensions/kimiflow-crew.js" \
+    "$fixture/hosts/pi/extensions/"
   git -C "$fixture" init -q
   git -C "$fixture" add \
     hooks/build-plugin-candidate.sh package.json \
     hooks/kimiflow_core/worktree_broker.py \
+    hosts/pi/extensions/kimiflow-crew.js \
     hosts/pi/skills/kimiflow/SKILL.md
   git -C "$fixture" rm --cached -q hosts/pi/skills/kimiflow/SKILL.md
   if "$fixture/hooks/build-plugin-candidate.sh" \
@@ -211,5 +215,5 @@ printf 'ok   candidate_install_smokes_fire\n'
 printf 'ok   candidate_missing_runtime_is_detected\n'
 printf 'ok   candidate_fingerprint_is_reproducible\n'
 printf 'ok   candidate_output_is_non_destructive\n'
-printf 'ok   test_pi_package_is_skill_only\n'
+printf 'ok   test_pi_package_has_one_optional_crew_adapter\n'
 printf 'ok   test_required_runtime_paths_must_be_git_indexed\n'

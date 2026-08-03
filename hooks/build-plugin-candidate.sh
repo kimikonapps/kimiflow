@@ -84,6 +84,7 @@ tracked_paths = {
 }
 required_additive = {
     "package.json",
+    "hosts/pi/extensions/kimiflow-crew.js",
     "hosts/pi/skills/kimiflow/SKILL.md",
     "hooks/kimiflow_core/worktree_broker.py",
 }
