@@ -68,10 +68,27 @@ const WATCH_READY = /^watcher: (?:started|attached)\b/m;
 const WATCH_FAILED = /^watcher: FAILED\b/m;
 const PI_WORKER_READY = /(?:\bpi v\d|\[Skills\]|\[skill\]\s+kimiflow|Working\.\.\.)/i;
 const PI_LIFECYCLE_READY = /\bpi-ext\b|^state:\s+(?:working|done|failed|blocked|needs-decision|paused)\b.*\bsource:\s+status-log\b/m;
+const FIRSTMATE_HERDR_GATE = "# Herdr lifecycle declaration - NOT ENABLED";
 
 function cleanText(value, limit = 12_000) {
   const text = String(value ?? "").trim();
   return text.length <= limit ? text : `${text.slice(0, limit)}\n[truncated]`;
+}
+
+function stripFirstMateHerdrGate(template) {
+  const occurrences = template.split(FIRSTMATE_HERDR_GATE).length - 1;
+  if (occurrences === 0) return ok("brief_transport_ready", { template, changed: false });
+  if (occurrences !== 1) {
+    return fail("brief_contract_invalid", "FirstMate brief contained an ambiguous Herdr lifecycle declaration.");
+  }
+  const start = template.indexOf(FIRSTMATE_HERDR_GATE);
+  const setup = template.indexOf("# Setup\n", start);
+  if (setup < 0) {
+    return fail("brief_contract_invalid", "FirstMate brief's Herdr lifecycle declaration was not followed by the canonical setup section.");
+  }
+  const prefix = template.slice(0, start).trimEnd();
+  const suffix = template.slice(setup);
+  return ok("brief_transport_ready", { template: `${prefix}\n\n${suffix}`, changed: true });
 }
 
 function appendOutput(current, chunk, limit = 24_000) {
@@ -989,7 +1006,10 @@ export class FirstMateAdapter {
         cwd: this.root, env: this.commandEnv(), signal, timeout: 30_000,
       });
       if (scaffold.code !== 0) return fail("main_brief_scaffold_failed", "FirstMate could not create the normal Main brief.", { detail: cleanText(`${scaffold.stdout}\n${scaffold.stderr}`) });
-      const template = await fs.readFile(briefPath, "utf8");
+      const scaffoldTemplate = await fs.readFile(briefPath, "utf8");
+      const transport = stripFirstMateHerdrGate(scaffoldTemplate);
+      if (!transport.ok) return transport;
+      const template = transport.template;
       const taskMarker = "# Task\n{TASK}";
       if (template.split(taskMarker).length !== 2) return fail("brief_contract_invalid", "FirstMate Main brief did not contain exactly one canonical task section.");
       const mainContract = [
@@ -1000,6 +1020,7 @@ export class FirstMateAdapter {
         "- All product changes must be delegated to visible child FirstMate Ships through kimiflow_crew. Research and review use visible Scouts.",
         "- Return decisions, blockers and bounded artifact pointers through the stock FirstMate status protocol. Do not open a separate user conversation.",
         "- The Captain owns only this Main; this Main owns the child crew.",
+        "- `kimiflow_crew` is the only crew-control interface. It is not direct Herdr lifecycle work: never invoke `herdr` or `fm-herdr-lab.sh`, and never request or regenerate this brief with `--herdr-lab`. The Kimiflow adapter and stock FirstMate own production endpoint lifecycle.",
         "",
         "Immutable launch input:",
         "```json",
@@ -1043,6 +1064,9 @@ export class FirstMateAdapter {
       if (!current.includes(snapshot.trimEnd()) || !current.includes("Kimiflow control Main")) {
         return fail("main_brief_conflict", "This Main task already has a different or non-control FirstMate brief. Use a new task id.");
       }
+      const transport = stripFirstMateHerdrGate(current);
+      if (!transport.ok) return transport;
+      if (transport.changed) await fs.writeFile(briefPath, transport.template, { mode: 0o600 });
     }
 
     const marker = await this.ensureDefaultBranchMarker(signal);
@@ -1144,6 +1168,13 @@ export class FirstMateAdapter {
     const projectMode = await this.ensureProjectMode(signal);
     if (!projectMode.ok) return projectMode;
 
+    if (existingBrief) {
+      const current = await fs.readFile(briefPath, "utf8");
+      const transport = stripFirstMateHerdrGate(current);
+      if (!transport.ok) return transport;
+      if (transport.changed) await fs.writeFile(briefPath, transport.template, { mode: 0o600 });
+    }
+
     if (!existingBrief) {
       const briefArgs = [params.task, this.modeCapability === "current" ? this.projectRoot : path.basename(this.projectRoot)];
       if (kind === "scout") briefArgs.push("--scout");
@@ -1154,7 +1185,10 @@ export class FirstMateAdapter {
       if (scaffold.code !== 0) {
         return fail("brief_scaffold_failed", "FirstMate could not create the normal worker brief.", { detail: cleanText(`${scaffold.stdout}\n${scaffold.stderr}`) });
       }
-      const template = await fs.readFile(briefPath, "utf8");
+      const scaffoldTemplate = await fs.readFile(briefPath, "utf8");
+      const transport = stripFirstMateHerdrGate(scaffoldTemplate);
+      if (!transport.ok) return transport;
+      const template = transport.template;
       const taskMarker = "# Task\n{TASK}";
       if (template.split(taskMarker).length !== 2) {
         return fail("brief_contract_invalid", "FirstMate brief did not contain exactly one canonical task section.");
@@ -1183,6 +1217,7 @@ export class FirstMateAdapter {
         ...stageBoundary,
         "- Work autonomously in this isolated FirstMate worktree. Do not open a second user conversation.",
         "- Do not spawn another crew. Return decisions, blockers and results only through this brief's FirstMate status protocol.",
+        "- This task uses Kimiflow-managed stock FirstMate transport. Never invoke `herdr` or `fm-herdr-lab.sh`, and never request or regenerate this brief with `--herdr-lab`.",
         "- Use the installed Kimiflow skill only for the phase and evidence boundary assigned above; do not create a second Active Run for this task.",
       ].join("\n");
       const rendered = template

@@ -15,6 +15,12 @@ import extension, {
 } from "../extensions/kimiflow-crew.js";
 
 const execFile = promisify(execFileCallback);
+const FIRSTMATE_HERDR_GATE = [
+  "# Herdr lifecycle declaration - NOT ENABLED",
+  "**HARD SAFETY GATE:** this scaffold cannot inspect the task text that replaces `{TASK}` later.",
+  "If the task will start, stop, delete, restart, profile, or otherwise drive Herdr lifecycle behavior, stop and regenerate the brief with `--herdr-lab` before dispatch.",
+  "Do not add Herdr lifecycle commands to this unguarded brief by hand.",
+].join("\n");
 
 async function realRun(file, args, options = {}) {
   try {
@@ -208,7 +214,7 @@ test("spawn is green only after the exact endpoint is readable", async (t) => {
     if (file.endsWith("fm-brief.sh")) {
       const brief = path.join(mainHome(f), "data", args[0], "brief.md");
       await mkdir(path.dirname(brief), { recursive: true });
-      await writeFile(brief, "# Task\n{TASK}\n\nReplace `{TASK}` after scaffolding.\n", "utf8");
+      await writeFile(brief, `# Task\n{TASK}\n\n${FIRSTMATE_HERDR_GATE}\n\n# Setup\nReplace \`{TASK}\` after scaffolding.\n`, "utf8");
       return { code: 0, stdout: "scaffolded\n", stderr: "" };
     }
     if (file.endsWith("fm-spawn.sh") && args.includes("--harness")) {
@@ -234,6 +240,9 @@ test("spawn is green only after the exact endpoint is readable", async (t) => {
   const renderedBrief = await readFile(path.join(mainHome(f), "data", "run-7-2-build", "brief.md"), "utf8");
   assert.match(renderedBrief, /already confirmed/);
   assert.doesNotMatch(renderedBrief, /\{TASK\}/);
+  assert.doesNotMatch(renderedBrief, /Herdr lifecycle declaration - NOT ENABLED/);
+  assert.doesNotMatch(renderedBrief, /regenerate the brief with `--herdr-lab`/);
+  assert.match(renderedBrief, /Kimiflow-managed stock FirstMate transport/);
   assert(calls.some(([name, args]) => name === "fm-spawn.sh" && args.includes("--backend") && args.includes("herdr")));
   const spawnCall = calls.find(([name, args]) => name === "fm-spawn.sh" && args.includes("--harness"));
   const harness = spawnCall[1][spawnCall[1].indexOf("--harness") + 1];
@@ -538,7 +547,11 @@ test("a verified resume clears stale terminal wake suppression", async (t) => {
   t.after(() => rm(f.base, { recursive: true, force: true }));
   const brief = path.join(f.root, "data", "resumed-task", "brief.md");
   await mkdir(path.dirname(brief), { recursive: true });
-  await writeFile(brief, "Confirmed Kimiflow work packet:\nsame contract\n\nKimiflow worker boundary:\n", "utf8");
+  await writeFile(
+    brief,
+    `Confirmed Kimiflow work packet:\nsame contract\n\nKimiflow worker boundary:\n\n${FIRSTMATE_HERDR_GATE}\n\n# Setup\nExisting setup.\n`,
+    "utf8",
+  );
   const run = async (file) => {
     if (file.endsWith("fm-project-mode.sh")) return { code: 0, stdout: "local-only off\n", stderr: "" };
     if (file.endsWith("fm-spawn.sh")) return { code: 0, stdout: "resumed\n", stderr: "" };
@@ -556,6 +569,7 @@ test("a verified resume clears stale terminal wake suppression", async (t) => {
   adapter.terminalTasks.add("resumed-task");
   adapter.pendingWakeTasks.add("resumed-task");
   assert.equal((await adapter.spawnWorker({ task: "resumed-task", brief: "same contract" })).code, "worker_reachable");
+  assert.doesNotMatch(await readFile(brief, "utf8"), /Herdr lifecycle declaration - NOT ENABLED/);
   assert.equal(adapter.terminalTasks.has("resumed-task"), false);
   assert.equal(adapter.pendingWakeTasks.has("resumed-task"), false);
 });
@@ -852,7 +866,7 @@ test("Captain starts one control-only Main from an immutable launch snapshot", a
     if (file.endsWith("fm-brief.sh")) {
       const brief = path.join(home, "data", args[0], "brief.md");
       await mkdir(path.dirname(brief), { recursive: true });
-      await writeFile(brief, "# Task\n{TASK}\n\n# Setup\nOld ship setup.\n\n# Rules\nOld ship rules.\n\n# Definition of done\nShip {TASK}.\n", "utf8");
+      await writeFile(brief, `# Task\n{TASK}\n\n${FIRSTMATE_HERDR_GATE}\n\n# Setup\nOld ship setup.\n\n# Rules\nOld ship rules.\n\n# Definition of done\nShip {TASK}.\n`, "utf8");
       return { code: 0, stdout: "scaffolded\n", stderr: "" };
     }
     if (file.endsWith("fm-spawn.sh")) {
@@ -897,6 +911,9 @@ test("Captain starts one control-only Main from an immutable launch snapshot", a
   assert.match(brief, /After appending `needs-decision:` or `blocked:`, end the turn immediately/);
   assert.match(brief, /After a child returns `worker_reachable`, end the turn/);
   assert.match(brief, /safely tear down every exact child/);
+  assert.doesNotMatch(brief, /Herdr lifecycle declaration - NOT ENABLED/);
+  assert.doesNotMatch(brief, /regenerate the brief with `--herdr-lab`/);
+  assert.match(brief, /`kimiflow_crew` is the only crew-control interface/);
   assert.match(brief, /^Delivery contract: mode=local-only$/m);
   assert.doesNotMatch(brief, /^Delivery contract: mode=local-only\./m);
   assert.doesNotMatch(brief, /Ship the control task description/);

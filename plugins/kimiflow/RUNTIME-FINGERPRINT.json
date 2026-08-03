@@ -842,10 +842,10 @@
       "sha256": "sha256:69b1dd90595aecb844c9473889a41c65df9cc01a3005719e2cd8d0bb41dddba2"
     },
     {
-      "bytes": 79529,
+      "bytes": 81694,
       "mode": "0644",
       "path": "hosts/pi/extensions/kimiflow-crew.js",
-      "sha256": "sha256:32f2abd5aeadb79b867c3e912703db485aa852a7b11683943be1503c72cb734d"
+      "sha256": "sha256:7abe49ed9997d327231151e17b7a978b607f1987f6d39d457a6c3a5781a05699"
     },
     {
       "bytes": 6145,
@@ -1058,6 +1058,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:de670649bd1662d89dec9f9ef1861826c6570fbba113d32bd490cdfb25199c2d",
+  "runtime_fingerprint": "sha256:bc4626cda00f0bd9f38e4daaecead626bcf0f4a750ab50cbb2abf9e75ca25e64",
   "schema_version": 1
 }
