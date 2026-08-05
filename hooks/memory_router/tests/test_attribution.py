@@ -76,6 +76,22 @@ class AttributionContractCase(unittest.TestCase):
         )
         self.assertNotEqual(first, attribution.recall_id("history", "src/a.py:1", hit))
 
+    def test_global_note_source_gets_stable_attribution(self):
+        hit = {
+            "id": "cap_" + "a" * 64,
+            "topic": "Memory architecture",
+            "summary": "Prefer bounded global memory.",
+            "ref": "~/.kimiflow/memory/notes/cap_%s.md" % ("a" * 64),
+            "source_link": "/tmp/home/memory/notes/cap_%s.md" % ("a" * 64),
+        }
+        selected = attribution.attach_ids({"global_notes": [hit]})
+        attached = selected["global_notes"][0]
+        self.assertRegex(attached["recall_id"], r"^rec_[0-9a-f]{64}$")
+        self.assertEqual(
+            attached["recall_id"],
+            attribution.recall_id("global_notes", hit["ref"], hit),
+        )
+
     def test_unknown_duplicate_and_unlinked_applied_ids_fail_closed(self):
         hit = self.hit()
         identifier = hit["recall_id"]

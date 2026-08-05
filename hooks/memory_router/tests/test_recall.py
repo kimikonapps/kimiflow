@@ -11,7 +11,8 @@ import tracemalloc
 import unittest
 from unittest import mock
 
-from memory_router import recall, recall_index, store, usage_metrics, workspace_scope
+from memory_router import (global_memory, recall, recall_index, store, usage_metrics,
+                           workspace_scope)
 from memory_router.__main__ import main
 
 TAG = "kimiflow--v0.1.50"
@@ -168,7 +169,11 @@ class RecallJsonCase(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
         self.project = os.path.join(self.root, ".kimiflow", "project")
         os.makedirs(self.project)
-        p = mock.patch.dict(os.environ, _env(), clear=True)
+        p = mock.patch.dict(
+            os.environ,
+            dict(_env(), KIMIFLOW_HOME=os.path.join(self.root, "global-home")),
+            clear=True,
+        )
         p.start()
         self.addCleanup(p.stop)
 
@@ -185,7 +190,7 @@ class RecallJsonCase(unittest.TestCase):
                          ["schema_version", "query", "query_terms", "token_budget",
                           "budget", "authority", "attribution", "sources", "explanation", "omitted"])
         self.assertEqual(list(o["sources"].keys()),
-                         ["memory", "user_profile", "learnings", "facts", "index", "history"])
+                         ["memory", "user_profile", "learnings", "facts", "global_notes", "index", "history"])
         self.assertEqual(list(o["explanation"].keys()),
                          ["reason_codes", "included_sources", "omitted_sources", "hit_counts"])
 
@@ -283,6 +288,39 @@ class RecallJsonCase(unittest.TestCase):
                          + o["sources"]["index"]["count"] + o["sources"]["history"]["count"])
         self.assertIn("local_recall_hits", o["explanation"]["reason_codes"])
         self.assertIn("project_map_fact_hits", o["explanation"]["reason_codes"])
+
+    def test_global_hits_share_budget_and_local_duplicate_wins(self):
+        entry = {
+            "capsule_id": "cap_" + "a" * 64,
+            "kind": "learned",
+            "topic": "Cache memory",
+            "summary": "Use bounded cache memory.",
+            "confidence": "high",
+            "last_verified": "2999-01-01",
+        }
+        entry["capsule_id"] = global_memory.entry_id(entry)
+        global_memory.promote_entry(entry)
+        self.write(
+            "LEARNINGS.jsonl",
+            json.dumps({
+                "id": "local", "status": "current", "maturity": "durable",
+                "summary": entry["summary"], "topic": entry["topic"],
+            }) + "\n",
+        )
+
+        local = self.obj("bounded cache memory", max_hits=1)
+
+        self.assertEqual(local["sources"]["learnings"]["count"], 1)
+        self.assertEqual(local["sources"]["global_notes"]["count"], 0)
+        self.assertEqual(local["explanation"]["hit_counts"]["total"], 1)
+        self.assertLessEqual(local["budget"]["used"], local["budget"]["limit"])
+
+        os.unlink(os.path.join(self.project, "LEARNINGS.jsonl"))
+        global_only = self.obj("bounded cache memory", max_hits=1)
+        hit = global_only["sources"]["global_notes"]["hits"][0]
+        self.assertEqual(global_only["sources"]["global_notes"]["count"], 1)
+        self.assertEqual(global_only["explanation"]["hit_counts"]["total"], 1)
+        self.assertTrue(os.path.isabs(hit["source_link"]))
 
     def test_workspace_scope_keeps_local_and_global_and_omits_foreign_unit(self):
         for unit in ("api", "web"):
@@ -1674,7 +1712,11 @@ class RecallRunCase(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
         self.project = os.path.join(self.root, ".kimiflow", "project")
         os.makedirs(self.project)
-        envp = mock.patch.dict(os.environ, _env(), clear=True)
+        envp = mock.patch.dict(
+            os.environ,
+            dict(_env(), KIMIFLOW_HOME=os.path.join(self.root, "global-home")),
+            clear=True,
+        )
         envp.start()
         self.addCleanup(envp.stop)
         tsp = mock.patch("memory_router.clock.iso_now", return_value=_TS)

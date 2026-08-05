@@ -53,11 +53,28 @@ class StatusRunCase(unittest.TestCase):
         self.assertEqual(list(s.keys()), [
             "schema_version", "present", "root", "paths", "memory", "user_profile",
             "learnings", "lifecycle", "usefulness", "usage", "economics",
-            "global_efficiency", "proposals", "history", "recall_index", "provider",
+            "global_efficiency", "global_memory", "proposals", "history", "recall_index", "provider",
             "vault", "curation",
         ])
         self.assertEqual(s["present"], False)
         self.assertEqual(s["root"], self.root)
+
+    def test_global_memory_status_is_content_free(self):
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, ignore_errors=True)
+        notes = os.path.join(home, "memory", "notes")
+        os.makedirs(notes)
+        with open(os.path.join(notes, "cap_" + "a" * 64 + ".md"), "w",
+                  encoding="utf-8") as handle:
+            handle.write("malformed private project prompt")
+
+        result = self.status({"KIMIFLOW_HOME": home})["global_memory"]
+
+        self.assertEqual(result["path"], "~/.kimiflow/memory")
+        self.assertEqual(result["valid_count"], 0)
+        self.assertEqual(result["ignored_count"], 1)
+        self.assertNotIn("summary", json.dumps(result).lower())
+        self.assertNotIn("private project prompt", json.dumps(result))
 
     def test_present_true_with_any_file(self):
         self.write("MEMORY.md", "hello world\n")
@@ -171,7 +188,11 @@ class StatusParityCase(unittest.TestCase):
                          '{"id":"L2","status":"stale","topic":"b"}\n')
             with open(os.path.join(proj, "PROPOSALS.jsonl"), "w") as fh:
                 fh.write('{"id":"P1","type":"new_learning","status":"pending"}\n')
-        self.assertEqual(self._bash(root, argv), self._py(root, argv), "argv=%r" % argv)
+        bash_value = json.loads(self._bash(root, argv))
+        python_value = json.loads(self._py(root, argv))
+        global_status = python_value.pop("global_memory")
+        self.assertEqual(global_status["path"], "~/.kimiflow/memory")
+        self.assertEqual(bash_value, python_value, "argv=%r" % argv)
 
     def test_empty(self):
         self.assert_parity([])

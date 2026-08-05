@@ -10,7 +10,8 @@ import time
 import unittest
 from unittest import mock
 
-from memory_router import attribution, lifecycle, memory_md, provider, rows, store, summaries
+from memory_router import (attribution, global_memory, lifecycle, memory_md, provider,
+                           rows, store, summaries)
 from memory_router.__main__ import main
 
 
@@ -20,6 +21,14 @@ class LifecycleCase(unittest.TestCase):
             tempfile.mkdtemp(prefix="kimiflow-lifecycle-")
         )
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.global_home = os.path.join(self.root, "global-home")
+        environment = mock.patch.dict(
+            os.environ,
+            {"HOME": self.root, "KIMIFLOW_HOME": self.global_home},
+            clear=False,
+        )
+        environment.start()
+        self.addCleanup(environment.stop)
         self.project = os.path.join(self.root, ".kimiflow", "project")
         os.makedirs(self.project)
         self.learnings = os.path.join(self.project, "LEARNINGS.jsonl")
@@ -213,6 +222,10 @@ class LifecycleCase(unittest.TestCase):
         )
         stored = {row["id"]: row for row in store.read_jsonl(self.learnings)}
         self.assertEqual(stored["candidate"]["maturity"], "durable")
+        capsule_id = global_memory.capsule_id(stored["candidate"])
+        note = os.path.join(self.global_home, "memory", "notes", capsule_id + ".md")
+        self.assertTrue(os.path.isfile(note))
+        self.assertNotIn("global_memory_pending", stored["candidate"]["curation"])
         self.assertEqual(stored["candidate"]["curation"]["helpful_streak"], 2)
         self.assertEqual(stored["sensitive"]["maturity"], "probationary")
         self.assertNotIn("curation", stored["sensitive"])
@@ -237,6 +250,68 @@ class LifecycleCase(unittest.TestCase):
         stored = {row["id"]: row for row in store.read_jsonl(self.learnings)}
         self.assertEqual(stored["candidate"]["maturity"], "probationary")
         self.assertEqual(stored["candidate"]["curation"]["reason"], "verified_contradiction")
+        self.assertFalse(os.path.exists(note))
+
+    def test_promotion_transaction_recovers_after_local_commit(self):
+        self.write_rows([self.row("candidate", "2999-01-01", maturity="probationary")])
+        self.write_usage({})
+        self.write_outcomes([
+            self.outcome("a", "2026-07-20T00:00:00Z", "candidate", "helpful"),
+            self.outcome("b", "2026-07-21T00:00:00Z", "candidate", "helpful"),
+        ])
+
+        with mock.patch.object(global_memory, "apply_pending", side_effect=OSError("injected")):
+            code, result = self.run_lifecycle("--write")
+        self.assertEqual(code, 1)
+        self.assertIsNone(result)
+        stored = store.read_jsonl(self.learnings)[0]
+        self.assertEqual(stored["maturity"], "durable")
+        self.assertEqual(stored["curation"]["global_memory_pending"]["operation"], "promote")
+        self.assertFalse(os.path.exists(os.path.join(self.global_home, "memory", "notes")))
+
+        code, result = self.run_lifecycle("--write")
+
+        self.assertEqual(code, 0)
+        stored = store.read_jsonl(self.learnings)[0]
+        self.assertNotIn("global_memory_pending", stored["curation"])
+        notes = os.listdir(os.path.join(self.global_home, "memory", "notes"))
+        self.assertEqual(notes, [global_memory.capsule_id(stored) + ".md"])
+
+    def test_revocation_transaction_recovers_after_local_commit(self):
+        self.write_rows([self.row("candidate", "2999-01-01", maturity="probationary")])
+        self.write_usage({})
+        successful = [
+            self.outcome("a", "2026-07-20T00:00:00Z", "candidate", "helpful"),
+            self.outcome("b", "2026-07-21T00:00:00Z", "candidate", "helpful"),
+        ]
+        self.write_outcomes(successful)
+        self.assertEqual(self.run_lifecycle("--write")[0], 0)
+        stored = store.read_jsonl(self.learnings)[0]
+        note = os.path.join(
+            self.global_home, "memory", "notes",
+            global_memory.capsule_id(stored) + ".md",
+        )
+        self.assertTrue(os.path.isfile(note))
+        contradiction = self.outcome(
+            "c", "2026-07-22T00:00:00Z", "candidate", "contradicted"
+        )
+        self.write_outcomes(successful + [contradiction])
+
+        with mock.patch.object(global_memory, "apply_pending", side_effect=OSError("injected")):
+            code, result = self.run_lifecycle("--write")
+        self.assertEqual(code, 1)
+        self.assertIsNone(result)
+        stored = store.read_jsonl(self.learnings)[0]
+        self.assertEqual(stored["maturity"], "probationary")
+        self.assertEqual(stored["curation"]["global_memory_pending"]["operation"], "revoke")
+        self.assertTrue(os.path.isfile(note))
+
+        code, result = self.run_lifecycle("--write")
+
+        self.assertEqual(code, 0)
+        stored = store.read_jsonl(self.learnings)[0]
+        self.assertNotIn("global_memory_pending", stored["curation"])
+        self.assertFalse(os.path.exists(note))
 
     def test_verified_use_never_promotes_rewritten_learning_content(self):
         original = self.row(
