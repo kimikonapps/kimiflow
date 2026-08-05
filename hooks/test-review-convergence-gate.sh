@@ -694,6 +694,106 @@ line='CANDIDATE HIGH src/reviewed.py:1 :: late semantic discovery :: verify=veri
 write_candidate 4 spec-correctness "$line"
 assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 4 --axes spec-correctness)" CLOSED closeout-candidates-forbidden "closeout_round_rejects_new_candidates"
 
+reset_run
+printf 'prior closeout plan\n' > "$RUN/PLAN.md"
+printf 'NONE\n' > "$RUN/findings/r2-code-verified.md"
+write_candidate 2 spec-correctness NONE
+write_candidate 2 failure-security NONE
+write_candidate 2 standards-integration NONE
+rows="$(candidate_file_rows 2 spec-correctness failure-security standards-integration)"
+write_saturation_v3_receipt 2 \
+  '["spec-correctness","failure-security","standards-integration"]' \
+  '["spec-correctness","failure-security","standards-integration"]' \
+  "$rows" '[]' '[]' 'null'
+printf 'minimum complete plan\n' > "$RUN/PLAN.md"
+before="$(hash_file "$RUN/PLAN.md")"
+seed_v3_failure 3 closeout-recovery
+write_candidate 3 failure-security NONE
+write_candidate 3 standards-integration NONE
+rows="$(candidate_file_rows 3 spec-correctness failure-security standards-integration)"
+dispositions="$(jq -c .dispositions "$RUN/review-saturation/r3.json")"
+write_saturation_v3_receipt 3 \
+  '["spec-correctness","failure-security","standards-integration"]' \
+  '["spec-correctness","failure-security","standards-integration"]' \
+  "$rows" "$dispositions" '[]' 'null'
+printf '<!-- kimiflow:strategy gate=code epoch-start=1 fingerprint=%s -->\n' "$before" > "$RUN/RECOVERY.md"
+printf 'plan-changing closeout repair\n' > "$RUN/PLAN.md"
+after="$(hash_file "$RUN/PLAN.md")"
+printf '<!-- kimiflow:recovery gate=code source-round=3 epoch-start=4 cap=4 before=%s after=%s -->\n' \
+  "$before" "$after" >> "$RUN/RECOVERY.md"
+resolved="$(write_evidence closeout-recovery.txt closeout-recovery 'verifier:inspect closeout-recovery runtime path' not_reproduced repaired)"
+printf 'RESOLVED class=closeout-recovery :: verify=verifier:inspect closeout-recovery runtime path :: evidence=%s\n' \
+  "$resolved" > "$RUN/findings/r4-code-verified.md"
+write_candidate 4 spec-correctness NONE
+rows="$(candidate_file_rows 4 spec-correctness)"
+write_saturation_v3_receipt 4 '["spec-correctness"]' '["spec-correctness"]' "$rows" '[]' '[]' 'null'
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 4 --axes spec-correctness)" CLOSED closeout-delta-required "closeout_plan_recovery_cannot_omit_prior_axis"
+
+write_candidate 4 failure-security NONE
+write_candidate 4 standards-integration NONE
+rows="$(candidate_file_rows 4 spec-correctness failure-security standards-integration)"
+write_saturation_v3_receipt 4 \
+  '["spec-correctness","failure-security","standards-integration"]' \
+  '["spec-correctness","failure-security","standards-integration"]' \
+  "$rows" '[]' '[]' 'null'
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 4 --axes spec-correctness,failure-security,standards-integration)" CLOSED missing-repair "closeout_plan_recovery_requires_current_repair"
+
+jq -n \
+  --arg plan_sha256 "$after" \
+  --arg findings_sha256 "$(hash_file "$RUN/findings/r3-code-verified.md")" \
+  --arg source_saturation_sha256 "$(hash_file "$RUN/review-saturation/r3.json")" \
+  '{
+    schema_version:2,
+    round:3,
+    plan_sha256:$plan_sha256,
+    findings_sha256:$findings_sha256,
+    source_saturation_sha256:$source_saturation_sha256,
+    groups:[{
+      id:"closeout-recovery",
+      classes:["closeout-recovery"],
+      root_cause:"The final repair required a plan-changing recovery.",
+      depends_on:[],
+      repair:"Apply the recovered plan and rerun its exact falsifier.",
+      checks:[{kind:"verifier",method:"inspect closeout-recovery runtime path"}]
+    }]
+  }' > "$RUN/review-repairs/r3.json"
+cp "$RUN/review-saturation/r3.json" "$RUN/review-saturation/r3.valid"
+cp "$RUN/review-repairs/r3.json" "$RUN/review-repairs/r3.valid"
+jq '.candidate_files=[]' "$RUN/review-saturation/r3.valid" > "$RUN/review-saturation/r3.json"
+jq --arg source_saturation_sha256 "$(hash_file "$RUN/review-saturation/r3.json")" \
+  '.source_saturation_sha256=$source_saturation_sha256' \
+  "$RUN/review-repairs/r3.valid" > "$RUN/review-repairs/r3.json"
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 4 --axes spec-correctness,failure-security,standards-integration)" CLOSED candidate-digest-mismatch "closeout_plan_recovery_rejects_prebound_candidate_forgery"
+
+jq '.review_snapshot_sha256="0000000000000000000000000000000000000000000000000000000000000000"' \
+  "$RUN/review-saturation/r3.valid" > "$RUN/review-saturation/r3.json"
+jq --arg source_saturation_sha256 "$(hash_file "$RUN/review-saturation/r3.json")" \
+  '.source_saturation_sha256=$source_saturation_sha256' \
+  "$RUN/review-repairs/r3.valid" > "$RUN/review-repairs/r3.json"
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 4 --axes spec-correctness,failure-security,standards-integration)" CLOSED stale-source-review-basis "closeout_plan_recovery_rejects_prebound_basis_forgery"
+mv "$RUN/review-saturation/r3.valid" "$RUN/review-saturation/r3.json"
+mv "$RUN/review-repairs/r3.valid" "$RUN/review-repairs/r3.json"
+
+printf 'NONE\n' > "$RUN/findings/r4-code-verified.md"
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 4 --axes spec-correctness,failure-security,standards-integration)" CLOSED closeout-resolution-incomplete "closeout_plan_recovery_requires_negative_resolution_evidence"
+
+different="$(write_evidence closeout-different-verifier.txt closeout-recovery 'verifier:inspect unrelated runtime path' not_reproduced unrelated)"
+printf 'RESOLVED class=closeout-recovery :: verify=verifier:inspect unrelated runtime path :: evidence=%s\n' \
+  "$different" > "$RUN/findings/r4-code-verified.md"
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 4 --axes spec-correctness,failure-security,standards-integration)" CLOSED closeout-resolution-verifier-mismatch "closeout_plan_recovery_requires_authoritative_verifier"
+
+printf 'RESOLVED class=closeout-recovery :: verify=verifier:inspect closeout-recovery runtime path :: evidence=%s\n' \
+  "$resolved" > "$RUN/findings/r4-code-verified.md"
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 4 --axes spec-correctness,failure-security,standards-integration)" OPEN saturated "closeout_plan_recovery_allows_full_resolution_review"
+
+cp "$RUN/review-saturation/r3.json" "$RUN/review-saturation/r3.saved"
+jq '.candidate_files=[]' "$RUN/review-saturation/r3.saved" > "$RUN/review-saturation/r3.json"
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 4 --axes spec-correctness,failure-security,standards-integration)" CLOSED stale-source-saturation "closeout_plan_recovery_rejects_source_receipt_drift"
+mv "$RUN/review-saturation/r3.saved" "$RUN/review-saturation/r3.json"
+
+printf '<!-- kimiflow:recovery gate=code malformed -->\n' >> "$RUN/RECOVERY.md"
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 4 --axes spec-correctness,failure-security,standards-integration)" CLOSED recovery-malformed "closeout_plan_recovery_malformed_marker_closes"
+
 # Trajectory: after two failed code strategy epochs a new plan-bound hypothesis is mandatory.
 reset_run
 assert_gate "$("$SCRIPT" preflight --run "$RUN" --round 1)" OPEN below-threshold "trajectory_no_recovery_is_free"

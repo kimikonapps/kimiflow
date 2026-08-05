@@ -138,6 +138,7 @@ REPAIR_KEYS = {
     "findings_sha256",
     "groups",
 }
+REPAIR_V2_KEYS = REPAIR_KEYS | {"source_saturation_sha256"}
 GROUP_KEYS = {"id", "classes", "root_cause", "depends_on", "repair", "checks"}
 CHECK_KEYS = {"kind", "method"}
 TRAJECTORY_KEYS = {
@@ -474,6 +475,49 @@ def _review_basis(run, base, details=False):
     return value
 
 
+def _historical_review_basis(run, base, target, snapshot, review_files):
+    canonical = json.dumps(
+        review_files,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    if _sha(canonical) != snapshot:
+        raise GateError("stale-source-review-basis")
+    try:
+        root, _ = build_replan._root_for(run)
+        head = build_replan._git(root, "rev-parse", "HEAD")
+        base_commit = build_replan._git(
+            root, "rev-parse", "--verify", "%s^{commit}" % base
+        )
+        target_commit = build_replan._git(
+            root, "rev-parse", "--verify", "%s^{commit}" % target
+        )
+        if head.returncode or base_commit.returncode or target_commit.returncode:
+            raise GateError("source-review-basis-invalid")
+        resolved_head = head.stdout.decode("ascii", "strict").strip().casefold()
+        resolved_base = base_commit.stdout.decode("ascii", "strict").strip().casefold()
+        resolved_target = target_commit.stdout.decode("ascii", "strict").strip().casefold()
+        ancestor = build_replan._git(root, "merge-base", resolved_base, resolved_target)
+        if (
+            resolved_target != resolved_head
+            or ancestor.returncode
+            or ancestor.stdout.decode("ascii", "strict").strip().casefold()
+            != resolved_base
+        ):
+            raise GateError("source-review-basis-invalid")
+    except GateError:
+        raise
+    except (build_replan.BuildReplanError, OSError, UnicodeError, ValueError) as exc:
+        raise GateError("source-review-basis-invalid", str(exc)) from exc
+    return {
+        "review_base_sha": resolved_base,
+        "review_target_sha": resolved_target,
+        "review_snapshot_sha256": snapshot,
+        "review_files": review_files,
+    }
+
+
 def basis(run, base, details=False):
     run = _run_dir(run)
     value = _review_basis(run, base, details=details)
@@ -682,13 +726,20 @@ def _prior_text_runtime_rounds(run, round_number, stable_class):
     return count
 
 
-def saturation(run, round_number, axes):
+def saturation(run, round_number, axes, historical_plan_sha=None):
     run = _run_dir(run)
     round_number = _round(round_number)
     if round_number > REVIEW_CLOSEOUT_ROUND:
         raise GateError("review-limit-reached")
     axes = _axes(axes)
-    _, plan_sha = _plan(run)
+    _, current_plan_sha = _plan(run)
+    if historical_plan_sha is not None and (
+        not isinstance(historical_plan_sha, str)
+        or SHA_RE.fullmatch(historical_plan_sha) is None
+    ):
+        raise GateError("source-plan-invalid")
+    plan_sha = historical_plan_sha or current_plan_sha
+    plan_recovery_closeout = False
     candidates = {}
     file_rows = []
     for axis in axes:
@@ -741,6 +792,8 @@ def saturation(run, round_number, axes):
         "review_target_sha": target,
         "review_snapshot_sha256": snapshot,
     }
+    if historical_plan_sha is not None and schema_version == 1:
+        raise GateError("source-saturation-schema-invalid")
     if schema_version == 1:
         if _review_basis(run, base) != expected_basis:
             raise GateError("stale-review-basis")
@@ -750,13 +803,18 @@ def saturation(run, round_number, axes):
         )
         review_files = _review_files(receipt.get("review_files"))
         expected_basis["review_files"] = review_files
-        if _review_basis(run, base, details=True) != expected_basis:
-            raise GateError("stale-review-basis")
+        if historical_plan_sha is None:
+            if _review_basis(run, base, details=True) != expected_basis:
+                raise GateError("stale-review-basis")
+        elif _historical_review_basis(
+            run, base, target, snapshot, review_files
+        ) != expected_basis:
+            raise GateError("stale-source-review-basis")
         delta_receipt = receipt.get("delta_receipt")
         if delta_receipt is None:
             if scheduled_axes != axes:
                 raise GateError("selective-review-unproven")
-            if round_number == REVIEW_CLOSEOUT_ROUND:
+            if round_number == REVIEW_CLOSEOUT_ROUND and not _recovery(run):
                 raise GateError("closeout-delta-required")
             if round_number > 1:
                 previous_path = _artifact_path(
@@ -782,7 +840,13 @@ def saturation(run, round_number, axes):
                     or previous.get("round") != round_number - 1
                 ):
                     raise GateError("source-saturation-malformed")
-                if previous.get("plan_sha256") == plan_sha:
+                if round_number == REVIEW_CLOSEOUT_ROUND:
+                    plan_recovery_closeout = _plan_recovery_closeout(
+                        run, round_number, previous, plan_sha, scheduled_axes
+                    )
+                    if not plan_recovery_closeout:
+                        raise GateError("closeout-delta-required")
+                elif previous.get("plan_sha256") == plan_sha:
                     raise GateError("incremental-review-required")
         else:
             _validate_delta(
@@ -889,6 +953,26 @@ def saturation(run, round_number, axes):
     if missing:
         raise GateError("undisposed-candidate", missing[0])
     _, _, aggregate = _aggregate(run, round_number)
+    if plan_recovery_closeout:
+        _, _, source_aggregate = _aggregate(run, round_number - 1)
+        resolved = _resolved_findings(run, round_number)
+        missing_resolutions = sorted(
+            set(source_aggregate) - set(resolved)
+        )
+        if missing_resolutions:
+            raise GateError(
+                "closeout-resolution-incomplete", missing_resolutions[0]
+            )
+        mismatched_resolutions = sorted(
+            stable_class
+            for stable_class, source in source_aggregate.items()
+            if resolved[stable_class]["verify"] != source["verify"]
+        )
+        if mismatched_resolutions:
+            raise GateError(
+                "closeout-resolution-verifier-mismatch",
+                mismatched_resolutions[0],
+            )
     expected_classes = set(promoted_by_class) | set(carried)
     if set(aggregate) != expected_classes:
         raise GateError(
@@ -903,12 +987,16 @@ def saturation(run, round_number, axes):
         if aggregate.get(stable_class) != previous_aggregate[stable_class]:
             raise GateError("carried-class-drift", stable_class)
     if material_decisions:
+        if historical_plan_sha is not None:
+            raise GateError("source-material-decision-pending")
         return _emit(
             "CLOSED",
             "material-decision-required",
             "classes=%s" % ",".join(sorted(set(material_decisions))),
             blockers=len(set(material_decisions)),
         )
+    if historical_plan_sha is not None:
+        return True
     return _emit(
         "OPEN",
         "saturated",
@@ -932,6 +1020,25 @@ def _checks(value):
     if len(normalized) != len(set(normalized)):
         raise GateError("repair-check-duplicate")
     return normalized
+
+
+def _resolved_findings(run, round_number):
+    path = _artifact_path(
+        run, "findings", "r%s-code-verified.md" % round_number
+    )
+    resolved = {}
+    for line in _text(path).splitlines():
+        match = RESOLVED_RE.fullmatch(line)
+        if match is None:
+            continue
+        stable_class = match.group("class")
+        if stable_class in resolved:
+            raise GateError("resolved-class-duplicate", stable_class)
+        resolved[stable_class] = {
+            "verify": match.group("verify"),
+            "evidence": match.group("evidence"),
+        }
+    return resolved
 
 
 def _acyclic(groups):
@@ -964,6 +1071,7 @@ def _repair_details(run, round_number):
     if not aggregate:
         return {
             "required": False,
+            "source_bound": False,
             "groups": 0,
             "classes": 0,
             "path": None,
@@ -981,14 +1089,30 @@ def _repair_details(run, round_number):
         raise
     except (UnicodeError, json.JSONDecodeError) as exc:
         raise GateError("malformed-artifact", receipt_path) from exc
-    if not isinstance(receipt, dict) or set(receipt) != REPAIR_KEYS:
+    schema_version = receipt.get("schema_version") if isinstance(receipt, dict) else None
+    expected_keys = (
+        REPAIR_KEYS
+        if schema_version == 1
+        else REPAIR_V2_KEYS if schema_version == 2 else set()
+    )
+    if not isinstance(receipt, dict) or set(receipt) != expected_keys:
         raise GateError("repair-malformed")
-    if receipt.get("schema_version") != 1 or receipt.get("round") != round_number:
+    if receipt.get("round") != round_number:
         raise GateError("repair-malformed")
     if receipt.get("plan_sha256") != plan_sha:
         raise GateError("stale-plan")
     if receipt.get("findings_sha256") != _sha(findings_payload):
         raise GateError("stale-findings")
+    source_bound = schema_version == 2
+    if source_bound:
+        source_payload = _regular_bytes(
+            _artifact_path(
+                run, "review-saturation", "r%s.json" % round_number
+            ),
+            MAX_JSON_BYTES,
+        )
+        if receipt.get("source_saturation_sha256") != _sha(source_payload):
+            raise GateError("stale-source-saturation")
     groups = receipt.get("groups")
     if not isinstance(groups, list) or not 1 <= len(groups) <= 32:
         raise GateError("repair-groups-invalid")
@@ -1046,11 +1170,47 @@ def _repair_details(run, round_number):
     _acyclic(groups)
     return {
         "required": True,
+        "source_bound": source_bound,
         "groups": len(groups),
         "classes": len(covered),
         "path": receipt_path,
         "payload": receipt_payload,
     }
+
+
+def _plan_recovery_closeout(
+    run, round_number, previous, plan_sha, scheduled_axes
+):
+    if (
+        round_number != REVIEW_CLOSEOUT_ROUND
+        or previous.get("schema_version") not in (2, 3)
+        or previous.get("plan_sha256") == plan_sha
+    ):
+        return False
+    previous_scheduled_axes = _axis_list(
+        previous.get("scheduled_axes"), "source-scheduled-axes-invalid"
+    )
+    if previous_scheduled_axes != scheduled_axes:
+        return False
+    markers = _recovery(run)
+    if not markers:
+        return False
+    latest = markers[-1]
+    if (
+        latest["source"] != round_number - 1
+        or latest["before"] != previous.get("plan_sha256")
+        or latest["after"] != plan_sha
+    ):
+        return False
+    repair = _repair_details(run, round_number - 1)
+    if not (repair["required"] and repair["source_bound"]):
+        return False
+    return saturation(
+        run,
+        round_number - 1,
+        ",".join(previous_scheduled_axes),
+        historical_plan_sha=previous.get("plan_sha256"),
+    )
 
 
 def _material_decision_pending(run, round_number):

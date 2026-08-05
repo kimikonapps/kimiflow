@@ -184,6 +184,11 @@ class RecallJsonCase(unittest.TestCase):
     def obj(self, query="auth", max_hits=5, targeted=False):
         return recall.recall_json(self.root, query, max_hits, targeted=targeted)
 
+    def promote_global(self, entry):
+        return global_memory.promote_entry(
+            entry, "bind_" + entry["capsule_id"][4:],
+        )
+
     def test_key_order(self):
         o = self.obj()
         self.assertEqual(list(o.keys()),
@@ -299,7 +304,7 @@ class RecallJsonCase(unittest.TestCase):
             "last_verified": "2999-01-01",
         }
         entry["capsule_id"] = global_memory.entry_id(entry)
-        global_memory.promote_entry(entry)
+        self.promote_global(entry)
         self.write(
             "LEARNINGS.jsonl",
             json.dumps({
@@ -321,6 +326,69 @@ class RecallJsonCase(unittest.TestCase):
         self.assertEqual(global_only["sources"]["global_notes"]["count"], 1)
         self.assertEqual(global_only["explanation"]["hit_counts"]["total"], 1)
         self.assertTrue(os.path.isabs(hit["source_link"]))
+        markdown = os.path.join(self.root, "RECALL.md")
+        recall.write_recall_markdown(markdown, global_only)
+        self.assertIn(
+            "[%s](<%s>)" % (entry["topic"], hit["source_link"]),
+            _read(markdown),
+        )
+
+    def test_global_note_matching_uses_recall_substrings(self):
+        adapter = {
+            "kind": "learned",
+            "topic": "Architecture",
+            "summary": "Prefer bounded adapters.",
+            "confidence": "high",
+            "last_verified": "2999-01-01",
+        }
+        adapter["capsule_id"] = global_memory.entry_id(adapter)
+        short = {
+            "kind": "learned",
+            "topic": "Go",
+            "summary": "Prefer channels.",
+            "confidence": "high",
+            "last_verified": "2999-01-01",
+        }
+        short["capsule_id"] = global_memory.entry_id(short)
+        self.promote_global(adapter)
+        self.promote_global(short)
+
+        self.assertEqual(self.obj("adapter")["sources"]["global_notes"]["count"], 1)
+        self.assertEqual(self.obj("Go")["sources"]["global_notes"]["count"], 1)
+
+    def test_global_candidate_limit_keeps_best_query_match(self):
+        def entry(topic, summary):
+            value = {
+                "kind": "learned",
+                "topic": topic,
+                "summary": summary,
+                "confidence": "high",
+                "last_verified": "2999-01-01",
+            }
+            value["capsule_id"] = global_memory.entry_id(value)
+            return value
+
+        full = max(
+            (entry("Complete %03d" % number,
+                   "alpha beta complete match %03d." % number)
+             for number in range(400)),
+            key=lambda item: item["capsule_id"],
+        )
+        partials = sorted(
+            (item for item in (
+                entry("Partial %03d" % number,
+                      "alpha partial match %03d." % number)
+                for number in range(1000)
+            ) if item["capsule_id"] < full["capsule_id"]),
+            key=lambda item: item["capsule_id"],
+        )
+        self.assertGreaterEqual(len(partials), 20)
+        for item in partials[:20] + [full]:
+            self.promote_global(item)
+
+        hits = self.obj("alpha beta", max_hits=1)["sources"]["global_notes"]["hits"]
+
+        self.assertEqual([hit["id"] for hit in hits], [full["capsule_id"]])
 
     def test_workspace_scope_keeps_local_and_global_and_omits_foreign_unit(self):
         for unit in ("api", "web"):

@@ -4,7 +4,7 @@ every summary aggregator + the provider/vault subsystem + the curation-reason li
 import json
 import os
 
-from . import contracts, provider, recall_index, summaries, text
+from . import contracts, global_memory, provider, recall_index, summaries, text
 from .cli import die, resolve_root, usage
 
 _REL = ".kimiflow/project"
@@ -60,6 +60,10 @@ def status_json(root, allow_network=True):
     usage_json = summaries.usage_summary_json(usage_file)
     economics_json = summaries.economics_summary_json(economics_file)
     global_efficiency_json = summaries.global_efficiency_summary_json()
+    global_memory_json = {
+        key: value for key, value in global_memory.scan().items()
+        if key != "hits"
+    }
     lifecycle_json = summaries.learning_lifecycle_json(learnings, usage_file)
     usefulness_json = summaries.learning_usefulness_json(learnings, usage_file)
     provider_json = provider.status_json(provider_manifest, allow_network=allow_network)
@@ -149,6 +153,7 @@ def status_json(root, allow_network=True):
         "usage": dict(usage_json, present=usage_present, path=_REL + "/MEMORY-USAGE.json"),
         "economics": dict(economics_json, present=economics_present, path=_REL + "/MEMORY-ECONOMICS.jsonl"),
         "global_efficiency": global_efficiency_json,
+        "global_memory": global_memory_json,
         "proposals": proposals_json,
         "history": {
             "present": run_history_present,

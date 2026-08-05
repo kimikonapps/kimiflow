@@ -3,6 +3,17 @@
 import os
 
 
+def global_memory_home():
+    base = os.environ.get("KIMIFLOW_HOME", "")
+    if not base:
+        home = os.environ.get("HOME", "")
+        if not home:
+            return None
+        base = os.path.join(home, ".kimiflow")
+    absolute = os.path.abspath(base)
+    return None if absolute == os.path.sep else absolute
+
+
 def rel_path(root, path):
     pinned = os.environ.get("KIMIFLOW_PINNED_RUN_REL", "")
     if pinned and (path == "." or path.startswith("./")):

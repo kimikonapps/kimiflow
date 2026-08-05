@@ -5,10 +5,10 @@ import os
 import re
 import stat
 
-from . import rows
+from . import global_memory, rows
 
 CONTRACT = 1
-SOURCE_ORDER = ("facts", "learnings", "strategies", "history", "index")
+SOURCE_ORDER = ("facts", "learnings", "global_notes", "strategies", "history", "index")
 _ID_RE = re.compile(r"^rec_[0-9a-f]{64}$")
 _MARKER = "<!-- kimiflow:recall-attribution contract=1 -->"
 _MARKER_TOKEN = "kimiflow:recall-attribution"
@@ -257,6 +257,9 @@ def recall_hit_map(value):
                 try:
                     result[identifier]["learning_fingerprint"] = (
                         rows.learning_content_fingerprint(hit)
+                    )
+                    result[identifier]["global_memory_capsule_id"] = (
+                        global_memory.capsule_id(hit)
                     )
                 except ValueError as exc:
                     raise AttributionError(

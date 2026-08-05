@@ -13,8 +13,8 @@ import os
 import re
 import stat
 
-from . import (attribution, clock, contracts, outcomes, recall_index, rows, store, text,
-               usage_metrics, workspace_scope)
+from . import (attribution, clock, contracts, global_memory, outcomes, recall_index,
+               rows, store, text, usage_metrics, workspace_scope)
 from .cli import die, resolve_root, usage
 
 # terms_json_from_query (Bash 1576-1580): split on runs of chars outside [:alnum:]_-
@@ -565,7 +565,7 @@ def _content_identities(content):
 def _pack_hits(source_hits, terms, max_hits, token_limit, initial_refs=(),
                initial_summaries=(), locality=None):
     """Rank, deduplicate and pack all source candidates under one hard envelope."""
-    preference = ("facts", "learnings", "strategies", "history", "index")
+    preference = attribution.SOURCE_ORDER
     rank = {source: pos for pos, source in enumerate(preference)}
     candidates = []
     sequence = 0
@@ -767,7 +767,7 @@ def recall_json(root, query, max_hits, targeted=False, strategies=False, mode=""
         return accept
 
     def locality(source, hit):
-        if source == "index":
+        if source in ("index", "global_notes"):
             classification = "shared"
         else:
             classification = workspace_scope.classify_hit(
@@ -927,9 +927,14 @@ def recall_json(root, query, max_hits, targeted=False, strategies=False, mode=""
         else:
             index_status = index_freshness
 
+    global_source = global_memory.scan(terms, matcher=_hit)
+    global_hits = sorted(
+        global_source["hits"],
+        key=lambda hit: (-_query_coverage(hit, terms), hit["id"]),
+    )[:candidate_limit]
     strategy_source = outcomes.strategy_recall_json(root, terms, mode=mode) if strategies else None
     lower_than_learning = (
-        (strategy_source["hits"] if strategy_source is not None else [])
+        global_hits + (strategy_source["hits"] if strategy_source is not None else [])
         + history_hits + index_seed_hits
     )
     learning_scan_receipt = {}
@@ -979,6 +984,7 @@ def recall_json(root, query, max_hits, targeted=False, strategies=False, mode=""
     raw_hits = {
         "facts": fact_hits,
         "learnings": learning_hits,
+        "global_notes": global_hits,
         "strategies": strategy_source["hits"] if strategy_source is not None else [],
         "history": history_hits,
         "index": index_hits,
@@ -1020,6 +1026,7 @@ def recall_json(root, query, max_hits, targeted=False, strategies=False, mode=""
     selected = attribution.attach_ids(selected)
     fact_hits = selected["facts"]
     learning_hits = selected["learnings"]
+    global_hits = selected["global_notes"]
     history_hits = selected["history"]
     index_hits = selected["index"]
     if index_status == "used" and not index_hits:
@@ -1032,9 +1039,10 @@ def recall_json(root, query, max_hits, targeted=False, strategies=False, mode=""
             strategy_source["status"] = "available_no_hits"
 
     strategy_n = strategy_source["count"] if strategy_source is not None else 0
-    learn_n, fact_n, idx_n, hist_n = (
-        len(learning_hits), len(fact_hits), len(index_hits), len(history_hits))
-    total = learn_n + fact_n + idx_n + hist_n + strategy_n
+    learn_n, fact_n, global_n, idx_n, hist_n = (
+        len(learning_hits), len(fact_hits), len(global_hits), len(index_hits),
+        len(history_hits))
+    total = learn_n + fact_n + global_n + idx_n + hist_n + strategy_n
 
     reason_codes = []
     if targeted:
@@ -1057,6 +1065,8 @@ def recall_json(root, query, max_hits, targeted=False, strategies=False, mode=""
         reason_codes.append("local_recall_hits")
     if fact_n > 0:
         reason_codes.append("project_map_fact_hits")
+    if global_n > 0:
+        reason_codes.append("global_memory_hits")
     if idx_n > 0:
         reason_codes.append("fts_index_hits")
     if hist_n > 0:
@@ -1077,6 +1087,8 @@ def recall_json(root, query, max_hits, targeted=False, strategies=False, mode=""
         included_sources.append("LEARNINGS.jsonl")
     if fact_n > 0:
         included_sources.append("FACTS.jsonl")
+    if global_n > 0:
+        included_sources.append("GLOBAL-MEMORY")
     if idx_n > 0:
         included_sources.append("RECALL.sqlite")
     if hist_n > 0:
@@ -1132,6 +1144,14 @@ def recall_json(root, query, max_hits, targeted=False, strategies=False, mode=""
             "count": fact_n,
             "hits": fact_hits,
         },
+        "global_notes": {
+            "path": global_source["path"],
+            "present": global_source["present"],
+            "valid_count": global_source["valid_count"],
+            "ignored_count": global_source["ignored_count"],
+            "count": global_n,
+            "hits": global_hits,
+        },
         "index": {
             "path": ".kimiflow/project/RECALL.sqlite",
             "status": index_status,
@@ -1152,6 +1172,7 @@ def recall_json(root, query, max_hits, targeted=False, strategies=False, mode=""
     hit_counts = {
         "learnings": learn_n,
         "facts": fact_n,
+        "global_notes": global_n,
         "index": idx_n,
         "history": hist_n,
     }
@@ -1175,7 +1196,7 @@ def recall_json(root, query, max_hits, targeted=False, strategies=False, mode=""
         "authority": {
             "recall_status": "advisory",
             "rule": "current_project_sources_override_recall",
-            "selection_order": ["facts", "learnings", "strategies", "history", "index"],
+            "selection_order": ["facts", "learnings", "global_notes", "strategies", "history", "index"],
         },
         "attribution": {
             "contract": 1,
@@ -1218,6 +1239,11 @@ def write_recall_markdown(path, obj):
         "- USER.md: %s\n" % sources["user_profile"]["status"],
         "- LEARNINGS.jsonl hits: %s\n" % sources["learnings"]["count"],
         "- FACTS.jsonl hits: %s\n" % sources["facts"]["count"],
+        "- Global Markdown notes: %s valid, %s ignored (%s hits)\n" % (
+            sources["global_notes"]["valid_count"],
+            sources["global_notes"]["ignored_count"],
+            sources["global_notes"]["count"],
+        ),
         "- RECALL.sqlite: %s, freshness=%s, refresh=%s (%s hits)\n" % (
             sources["index"]["status"], sources["index"]["freshness"],
             sources["index"]["refresh"], sources["index"]["count"]),
@@ -1234,9 +1260,15 @@ def write_recall_markdown(path, obj):
             section = sources.get(source)
             hits = section.get("hits", []) if isinstance(section, dict) else []
             for hit in hits:
-                parts.append("- %s [%s] %s\n" % (
-                    hit["recall_id"], source, attribution.hit_reference(hit),
-                ))
+                if source == "global_notes" and isinstance(hit.get("source_link"), str):
+                    parts.append("- %s [%s] [%s](<%s>)\n" % (
+                        hit["recall_id"], source, hit.get("topic", "note"),
+                        hit["source_link"].replace(">", "%3E"),
+                    ))
+                else:
+                    parts.append("- %s [%s] %s\n" % (
+                        hit["recall_id"], source, attribution.hit_reference(hit),
+                    ))
     parts.append("\n## Omitted\n\n")
     for item in _jq_or(obj.get("omitted"), []):
         parts.append("- %s\n" % item)

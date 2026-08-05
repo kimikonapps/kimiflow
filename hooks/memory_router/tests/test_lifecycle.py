@@ -252,6 +252,47 @@ class LifecycleCase(unittest.TestCase):
         self.assertEqual(stored["candidate"]["curation"]["reason"], "verified_contradiction")
         self.assertFalse(os.path.exists(note))
 
+    def test_shared_content_revocation_converges_per_project(self):
+        self.write_rows([
+            self.row("project-a", "2999-01-01", maturity="probationary"),
+            self.row("project-b", "2999-01-01", maturity="probationary"),
+        ])
+        self.write_usage({})
+        helpful = [
+            self.outcome("a", "2026-07-20T00:00:00Z", "project-a", "helpful"),
+            self.outcome("b", "2026-07-21T00:00:00Z", "project-a", "helpful"),
+            self.outcome("c", "2026-07-20T00:00:00Z", "project-b", "helpful"),
+            self.outcome("d", "2026-07-21T00:00:00Z", "project-b", "helpful"),
+        ]
+        self.write_outcomes(helpful)
+
+        code, promoted = self.run_lifecycle("--write")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(promoted["promoted_ids"], ["project-a", "project-b"])
+        stored = {row["id"]: row for row in store.read_jsonl(self.learnings)}
+        shared_id = stored["project-a"]["curation"]["global_memory_capsule_id"]
+        self.assertEqual(
+            shared_id, stored["project-b"]["curation"]["global_memory_capsule_id"],
+        )
+        note = os.path.join(
+            self.global_home, "memory", "notes", shared_id + ".md",
+        )
+        contradiction = self.outcome(
+            "e", "2026-07-22T00:00:00Z", "project-b", "contradicted",
+        )
+        self.write_outcomes(helpful + [contradiction])
+
+        code, demoted = self.run_lifecycle("--write")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(demoted["demoted_ids"], ["project-b"])
+        stored = {row["id"]: row for row in store.read_jsonl(self.learnings)}
+        self.assertEqual(stored["project-a"]["maturity"], "durable")
+        self.assertEqual(stored["project-b"]["maturity"], "probationary")
+        self.assertNotIn("global_memory_pending", stored["project-b"]["curation"])
+        self.assertTrue(os.path.isfile(note))
+
     def test_promotion_transaction_recovers_after_local_commit(self):
         self.write_rows([self.row("candidate", "2999-01-01", maturity="probationary")])
         self.write_usage({})
@@ -269,6 +310,16 @@ class LifecycleCase(unittest.TestCase):
         self.assertEqual(stored["curation"]["global_memory_pending"]["operation"], "promote")
         self.assertFalse(os.path.exists(os.path.join(self.global_home, "memory", "notes")))
 
+        with mock.patch.object(global_memory, "_write_index", side_effect=OSError("after create")):
+            code, result = self.run_lifecycle("--write")
+        self.assertEqual(code, 1)
+        self.assertIsNone(result)
+        stored = store.read_jsonl(self.learnings)[0]
+        self.assertEqual(stored["maturity"], "durable")
+        self.assertIn("global_memory_pending", stored["curation"])
+        notes_dir = os.path.join(self.global_home, "memory", "notes")
+        self.assertEqual(os.listdir(notes_dir), [])
+
         code, result = self.run_lifecycle("--write")
 
         self.assertEqual(code, 0)
@@ -276,6 +327,149 @@ class LifecycleCase(unittest.TestCase):
         self.assertNotIn("global_memory_pending", stored["curation"])
         notes = os.listdir(os.path.join(self.global_home, "memory", "notes"))
         self.assertEqual(notes, [global_memory.capsule_id(stored) + ".md"])
+        with open(os.path.join(self.global_home, "memory", "INDEX.md"),
+                  encoding="utf-8") as handle:
+            self.assertIn(global_memory.capsule_id(stored), handle.read())
+
+    def test_pending_operations_require_matching_explicit_transition_state(self):
+        legacy = self.row("legacy", "2999-01-01")
+        promoted = dict(legacy, maturity="durable")
+        legacy["curation"] = {
+            "global_memory_pending": global_memory.pending_promotion(
+                self.root, promoted
+            )
+        }
+        self.write_rows([legacy])
+        self.write_usage({})
+        self.write_outcomes([])
+
+        code, result = self.run_lifecycle("--write")
+
+        self.assertEqual(code, 1)
+        self.assertIsNone(result)
+        self.assertFalse(os.path.exists(os.path.join(self.global_home, "memory")))
+        stored = store.read_jsonl(self.learnings)[0]
+        self.assertNotIn("maturity", stored)
+        self.assertIn("global_memory_pending", stored["curation"])
+
+        valid_pending = global_memory.pending_promotion(self.root, promoted)
+        promoted["curation"] = {
+            "global_memory_pending": valid_pending,
+            "global_memory_capsule_id": valid_pending["entry"]["capsule_id"],
+        }
+        self.write_rows([promoted])
+
+        code, result = self.run_lifecycle("--write")
+
+        self.assertEqual(code, 1)
+        self.assertIsNone(result)
+        self.assertFalse(os.path.exists(os.path.join(self.global_home, "memory")))
+
+        global_memory.promote_entry(
+            valid_pending["entry"], valid_pending["binding_id"],
+        )
+        note = os.path.join(
+            self.global_home, "memory", "notes",
+            valid_pending["entry"]["capsule_id"] + ".md",
+        )
+        demoted = dict(promoted, maturity="probationary")
+        demoted["curation"] = {
+            "global_memory_capsule_id": valid_pending["entry"]["capsule_id"],
+        }
+        demoted["curation"]["global_memory_pending"] = (
+            global_memory.pending_revocation(self.root, demoted)
+        )
+        self.write_rows([demoted])
+
+        code, result = self.run_lifecycle("--write")
+
+        self.assertEqual(code, 1)
+        self.assertIsNone(result)
+        self.assertTrue(os.path.isfile(note))
+
+    def test_forged_revocation_cannot_delete_unrelated_global_note(self):
+        foreign = self.row(
+            "foreign", "2999-01-01", maturity="durable",
+            summary="Unrelated global learning.",
+        )
+        foreign_pending = global_memory.pending_promotion(self.root, foreign)
+        self.assertIsNotNone(foreign_pending)
+        foreign_entry = foreign_pending["entry"]
+        global_memory.promote_entry(
+            foreign_entry, foreign_pending["binding_id"],
+        )
+        foreign_note = os.path.join(
+            self.global_home, "memory", "notes",
+            foreign_entry["capsule_id"] + ".md",
+        )
+        attacker = self.row(
+            "attacker", "2999-01-01", maturity="probationary",
+            summary="Different local learning.",
+        )
+        with open(os.path.join(self.root, self.evidence_ref), "a",
+                  encoding="utf-8") as handle:
+            handle.write("drift\n")
+        attacker["curation"] = {
+            "contract": 1,
+            "helpful_count": 0,
+            "contradicted_count": 0,
+            "helpful_streak": 0,
+            "last_classification": None,
+            "last_evaluated_at": None,
+            "reason": "evidence_drift",
+            "global_memory_capsule_id": foreign_entry["capsule_id"],
+            "global_memory_pending": {
+                "contract": 1,
+                "operation": "revoke",
+                "capsule_id": foreign_entry["capsule_id"],
+            },
+        }
+        self.write_rows([attacker])
+        self.write_usage({})
+        self.write_outcomes([])
+
+        code, result = self.run_lifecycle("--write")
+
+        self.assertEqual(code, 1)
+        self.assertIsNone(result)
+        self.assertTrue(os.path.isfile(foreign_note))
+
+    def test_public_binding_replay_cannot_delete_unrelated_global_note(self):
+        foreign = self.row(
+            "foreign", "2999-01-01", maturity="durable",
+            summary="Unrelated global learning.",
+        )
+        foreign_pending = global_memory.pending_promotion(self.root, foreign)
+        foreign_entry = foreign_pending["entry"]
+        global_memory.promote_entry(
+            foreign_entry, foreign_pending["binding_id"],
+        )
+        foreign_note = os.path.join(
+            self.global_home, "memory", "notes",
+            foreign_entry["capsule_id"] + ".md",
+        )
+        attacker = self.row(
+            "attacker", "2999-01-01", maturity="durable",
+            summary="Different local learning.",
+        )
+        attacker["curation"] = {
+            "contract": 1,
+            "learning_fingerprint": foreign_pending["learning_fingerprint"],
+            "global_memory_capsule_id": foreign_entry["capsule_id"],
+        }
+        self.write_rows([attacker])
+        self.write_usage({})
+        self.write_outcomes([])
+
+        code, result = self.run_lifecycle("--write")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(result["demoted_ids"], ["attacker"])
+        self.assertTrue(os.path.isfile(foreign_note))
+        stored = store.read_jsonl(self.learnings)[0]
+        self.assertEqual(stored["maturity"], "probationary")
+        self.assertNotIn("global_memory_capsule_id", stored["curation"])
+        self.assertNotIn("global_memory_pending", stored["curation"])
 
     def test_revocation_transaction_recovers_after_local_commit(self):
         self.write_rows([self.row("candidate", "2999-01-01", maturity="probationary")])
@@ -312,6 +506,304 @@ class LifecycleCase(unittest.TestCase):
         stored = store.read_jsonl(self.learnings)[0]
         self.assertNotIn("global_memory_pending", stored["curation"])
         self.assertFalse(os.path.exists(note))
+
+    def test_promotion_retry_reconciles_newer_outcomes(self):
+        cases = (
+            ("new-helpful", "alpha", "a", "b", "c", "helpful", "durable", True),
+            ("new-contradiction", "beta", "d", "e", "f", "contradicted", "probationary", False),
+        )
+        for (rid, label, first_id, second_id, later_id, later_classification,
+             expected_maturity, note_expected) in cases:
+            with self.subTest(rid=rid):
+                row = self.row(
+                    rid, "2999-01-01", maturity="probationary",
+                    summary="Bounded retry learning %s." % label,
+                )
+                self.write_rows([row])
+                self.write_usage({})
+                first = self.outcome(
+                    first_id, "2026-07-20T00:00:00Z", rid, "helpful"
+                )
+                second = self.outcome(
+                    second_id, "2026-07-21T00:00:00Z", rid, "helpful"
+                )
+                self.write_outcomes([first, second])
+                with mock.patch.object(
+                        global_memory, "apply_pending", side_effect=OSError("injected")):
+                    self.assertEqual(self.run_lifecycle("--write")[0], 1)
+                pending_row = store.read_jsonl(self.learnings)[0]
+                note = os.path.join(
+                    self.global_home, "memory", "notes",
+                    pending_row["curation"]["global_memory_capsule_id"] + ".md",
+                )
+                later = self.outcome(
+                    later_id, "2026-07-22T00:00:00Z", rid, later_classification
+                )
+                self.write_outcomes([first, second, later])
+
+                code, result = self.run_lifecycle("--write")
+
+                self.assertEqual(code, 0)
+                self.assertIsNotNone(result)
+                stored = store.read_jsonl(self.learnings)[0]
+                self.assertEqual(stored["maturity"], expected_maturity)
+                self.assertNotIn("global_memory_pending", stored["curation"])
+                self.assertEqual(os.path.isfile(note), note_expected)
+
+    def test_promotion_retry_requires_current_helpful_streak(self):
+        self.write_rows([
+            self.row("candidate", "2999-01-01", maturity="probationary")
+        ])
+        self.write_usage({})
+        first = self.outcome(
+            "a", "2026-07-20T00:00:00Z", "candidate", "helpful"
+        )
+        second = self.outcome(
+            "b", "2026-07-21T00:00:00Z", "candidate", "helpful"
+        )
+        self.write_outcomes([first, second])
+        with mock.patch.object(
+                global_memory, "apply_pending", side_effect=OSError("injected")):
+            self.assertEqual(self.run_lifecycle("--write")[0], 1)
+        pending = store.read_jsonl(self.learnings)[0]
+        note = os.path.join(
+            self.global_home, "memory", "notes",
+            pending["curation"]["global_memory_capsule_id"] + ".md",
+        )
+        contradiction = self.outcome(
+            "c", "2026-07-22T00:00:00Z", "candidate", "contradicted"
+        )
+        helpful = self.outcome(
+            "d", "2026-07-23T00:00:00Z", "candidate", "helpful"
+        )
+        self.write_outcomes([first, second, contradiction, helpful])
+
+        code, result = self.run_lifecycle("--write")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(result["promoted_ids"], [])
+        stored = store.read_jsonl(self.learnings)[0]
+        self.assertEqual(stored["maturity"], "probationary")
+        self.assertEqual(stored["curation"]["helpful_streak"], 1)
+        self.assertEqual(stored["curation"]["reason"], "awaiting_repeat_evidence")
+        self.assertFalse(os.path.exists(note))
+
+    def test_promotion_retry_replaces_changed_content_after_new_outcomes(self):
+        original = self.row(
+            "candidate", "2999-01-01", maturity="probationary",
+            summary="Original bounded pending learning.",
+        )
+        self.write_rows([original])
+        self.write_usage({})
+        original_outcomes = [
+            self.outcome("a", "2026-07-20T00:00:00Z", "candidate", "helpful"),
+            self.outcome("b", "2026-07-21T00:00:00Z", "candidate", "helpful"),
+        ]
+        self.write_outcomes(original_outcomes)
+        with mock.patch.object(
+                global_memory, "apply_pending", side_effect=OSError("injected")):
+            self.assertEqual(self.run_lifecycle("--write")[0], 1)
+        pending_row = store.read_jsonl(self.learnings)[0]
+        old_entry = pending_row["curation"]["global_memory_pending"]["entry"]
+        global_memory.promote_entry(
+            old_entry,
+            pending_row["curation"]["global_memory_pending"]["binding_id"],
+        )
+        old_note = os.path.join(
+            self.global_home, "memory", "notes", old_entry["capsule_id"] + ".md"
+        )
+        pending_row["summary"] = "Revised bounded pending learning."
+        self.write_rows([pending_row])
+        current_outcomes = [
+            self.outcome("c", "2026-07-22T00:00:00Z", "candidate", "helpful"),
+            self.outcome("d", "2026-07-23T00:00:00Z", "candidate", "helpful"),
+        ]
+        self.write_outcomes(original_outcomes + current_outcomes)
+
+        code, result = self.run_lifecycle("--write")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(result["promoted_ids"], ["candidate"])
+        stored = store.read_jsonl(self.learnings)[0]
+        new_id = stored["curation"]["global_memory_capsule_id"]
+        self.assertNotEqual(new_id, old_entry["capsule_id"])
+        self.assertNotIn("global_memory_pending", stored["curation"])
+        self.assertFalse(os.path.exists(old_note))
+        self.assertTrue(os.path.isfile(os.path.join(
+            self.global_home, "memory", "notes", new_id + ".md"
+        )))
+
+    def test_content_drift_revokes_original_global_note(self):
+        original = self.row(
+            "candidate", "2999-01-01", maturity="probationary",
+            summary="Original bounded global learning.",
+        )
+        self.write_rows([original])
+        self.write_usage({})
+        outcomes = [
+            self.outcome("a", "2026-07-20T00:00:00Z", "candidate", "helpful"),
+            self.outcome("b", "2026-07-21T00:00:00Z", "candidate", "helpful"),
+        ]
+        self.write_outcomes(outcomes)
+        self.assertEqual(self.run_lifecycle("--write")[0], 0)
+        stored = store.read_jsonl(self.learnings)[0]
+        original_id = stored["curation"]["global_memory_capsule_id"]
+        original_note = os.path.join(
+            self.global_home, "memory", "notes", original_id + ".md"
+        )
+        self.assertTrue(os.path.isfile(original_note))
+        stored["summary"] = "Changed learning that has no verified global use."
+        self.write_rows([stored])
+
+        code, result = self.run_lifecycle("--write")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(result["demoted_ids"], ["candidate"])
+        stored = store.read_jsonl(self.learnings)[0]
+        self.assertEqual(stored["maturity"], "probationary")
+        self.assertFalse(os.path.exists(original_note))
+        self.assertNotIn("global_memory_capsule_id", stored["curation"])
+
+    def test_content_drift_after_outcome_retention_revokes_original_note(self):
+        original = self.row(
+            "candidate", "2999-01-01", maturity="probationary",
+            summary="Retained global learning.",
+        )
+        self.write_rows([original])
+        self.write_usage({})
+        self.write_outcomes([
+            self.outcome("a", "2026-07-20T00:00:00Z", "candidate", "helpful"),
+            self.outcome("b", "2026-07-21T00:00:00Z", "candidate", "helpful"),
+        ])
+        self.assertEqual(self.run_lifecycle("--write")[0], 0)
+        stored = store.read_jsonl(self.learnings)[0]
+        note = os.path.join(
+            self.global_home, "memory", "notes",
+            stored["curation"]["global_memory_capsule_id"] + ".md",
+        )
+        self.assertTrue(os.path.isfile(note))
+        self.write_outcomes([])
+        stored["summary"] = "Edited after its original outcomes were retained away."
+        self.write_rows([stored])
+
+        code, result = self.run_lifecycle("--write")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(result["demoted_ids"], ["candidate"])
+        stored = store.read_jsonl(self.learnings)[0]
+        self.assertEqual(stored["maturity"], "probationary")
+        self.assertEqual(stored["curation"]["reason"], "content_drift")
+        self.assertNotIn("global_memory_capsule_id", stored["curation"])
+        self.assertFalse(os.path.exists(note))
+
+    def test_evidence_drift_after_outcome_retention_revokes_original_note(self):
+        self.write_rows([
+            self.row("candidate", "2999-01-01", maturity="probationary")
+        ])
+        self.write_usage({})
+        self.write_outcomes([
+            self.outcome("a", "2026-07-20T00:00:00Z", "candidate", "helpful"),
+            self.outcome("b", "2026-07-21T00:00:00Z", "candidate", "helpful"),
+        ])
+        self.assertEqual(self.run_lifecycle("--write")[0], 0)
+        stored = store.read_jsonl(self.learnings)[0]
+        note = os.path.join(
+            self.global_home, "memory", "notes",
+            stored["curation"]["global_memory_capsule_id"] + ".md",
+        )
+        self.write_outcomes([])
+        with open(os.path.join(self.root, self.evidence_ref), "a",
+                  encoding="utf-8") as handle:
+            handle.write("drift\n")
+
+        code, result = self.run_lifecycle("--write")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(result["demoted_ids"], ["candidate"])
+        stored = store.read_jsonl(self.learnings)[0]
+        self.assertEqual(stored["maturity"], "probationary")
+        self.assertNotIn("global_memory_capsule_id", stored["curation"])
+        self.assertNotIn("global_memory_pending", stored["curation"])
+        self.assertFalse(os.path.exists(note))
+
+    def test_deleted_note_does_not_block_evidence_drift(self):
+        self.write_rows([
+            self.row("candidate", "2999-01-01", maturity="probationary")
+        ])
+        self.write_usage({})
+        self.write_outcomes([
+            self.outcome("a", "2026-07-20T00:00:00Z", "candidate", "helpful"),
+            self.outcome("b", "2026-07-21T00:00:00Z", "candidate", "helpful"),
+        ])
+        self.assertEqual(self.run_lifecycle("--write")[0], 0)
+        stored = store.read_jsonl(self.learnings)[0]
+        note = os.path.join(
+            self.global_home, "memory", "notes",
+            stored["curation"]["global_memory_capsule_id"] + ".md",
+        )
+        os.unlink(note)
+        self.write_outcomes([])
+        with open(os.path.join(self.root, self.evidence_ref), "a",
+                  encoding="utf-8") as handle:
+            handle.write("drift\n")
+
+        code, result = self.run_lifecycle("--write")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(result["demoted_ids"], ["candidate"])
+        stored = store.read_jsonl(self.learnings)[0]
+        self.assertEqual(stored["maturity"], "probationary")
+        self.assertEqual(stored["curation"]["reason"], "evidence_drift")
+        self.assertNotIn("global_memory_capsule_id", stored["curation"])
+        self.assertNotIn("global_memory_pending", stored["curation"])
+        self.assertFalse(os.path.exists(note))
+
+    def test_revocation_retry_orders_new_promotion_after_old_removal(self):
+        original = self.row(
+            "candidate", "2999-01-01", maturity="probationary",
+            summary="Original bounded retry learning.",
+        )
+        self.write_rows([original])
+        self.write_usage({})
+        original_outcomes = [
+            self.outcome("a", "2026-07-20T00:00:00Z", "candidate", "helpful"),
+            self.outcome("b", "2026-07-21T00:00:00Z", "candidate", "helpful"),
+        ]
+        self.write_outcomes(original_outcomes)
+        self.assertEqual(self.run_lifecycle("--write")[0], 0)
+        stored = store.read_jsonl(self.learnings)[0]
+        old_id = stored["curation"]["global_memory_capsule_id"]
+        old_note = os.path.join(
+            self.global_home, "memory", "notes", old_id + ".md"
+        )
+        stored["summary"] = "Revised bounded retry learning."
+        self.write_rows([stored])
+
+        with mock.patch.object(
+                global_memory, "apply_pending", side_effect=OSError("injected")):
+            self.assertEqual(self.run_lifecycle("--write")[0], 1)
+        pending_row = store.read_jsonl(self.learnings)[0]
+        self.assertEqual(pending_row["maturity"], "probationary")
+        self.assertEqual(
+            pending_row["curation"]["global_memory_pending"]["capsule_id"], old_id
+        )
+        current_outcomes = [
+            self.outcome("c", "2026-07-22T00:00:00Z", "candidate", "helpful"),
+            self.outcome("d", "2026-07-23T00:00:00Z", "candidate", "helpful"),
+        ]
+        self.write_outcomes(original_outcomes + current_outcomes)
+
+        code, result = self.run_lifecycle("--write")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(result["promoted_ids"], ["candidate"])
+        stored = store.read_jsonl(self.learnings)[0]
+        new_id = stored["curation"]["global_memory_capsule_id"]
+        self.assertNotEqual(new_id, old_id)
+        self.assertFalse(os.path.exists(old_note))
+        self.assertTrue(os.path.isfile(os.path.join(
+            self.global_home, "memory", "notes", new_id + ".md"
+        )))
 
     def test_verified_use_never_promotes_rewritten_learning_content(self):
         original = self.row(

@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from memory_router import status
+from memory_router import global_memory, status
 from memory_router.__main__ import main
 
 TAG = "kimiflow--v0.1.50"
@@ -23,7 +23,11 @@ def _repo_root():
 
 
 def _py_status(root, extra_env=None):
-    env = dict(_ISO_ENV, PATH=os.environ.get("PATH", ""))
+    env = dict(
+        _ISO_ENV,
+        PATH=os.environ.get("PATH", ""),
+        KIMIFLOW_HOME=os.path.join(root, ".test-global-home"),
+    )
     if extra_env:
         env.update(extra_env)
     out = io.StringIO()
@@ -64,6 +68,27 @@ class StatusRunCase(unittest.TestCase):
         self.addCleanup(shutil.rmtree, home, ignore_errors=True)
         notes = os.path.join(home, "memory", "notes")
         os.makedirs(notes)
+        bindings = os.path.join(home, "memory", "bindings")
+        os.makedirs(bindings)
+        entry = {
+            "kind": "learned",
+            "topic": "Global memory",
+            "summary": "Use bounded global memory notes.",
+            "confidence": "high",
+            "last_verified": "2999-01-01",
+        }
+        entry["capsule_id"] = global_memory.entry_id(entry)
+        with open(os.path.join(notes, entry["capsule_id"] + ".md"), "w",
+                  encoding="utf-8") as handle:
+            handle.write(global_memory._render_note(
+                entry, [],
+            ))
+        association = "bind_" + entry["capsule_id"][4:]
+        with open(os.path.join(
+                bindings,
+                global_memory._binding_name(entry["capsule_id"], association),
+        ), "w", encoding="utf-8") as handle:
+            handle.write(global_memory._render_binding(entry, association))
         with open(os.path.join(notes, "cap_" + "a" * 64 + ".md"), "w",
                   encoding="utf-8") as handle:
             handle.write("malformed private project prompt")
@@ -71,7 +96,7 @@ class StatusRunCase(unittest.TestCase):
         result = self.status({"KIMIFLOW_HOME": home})["global_memory"]
 
         self.assertEqual(result["path"], "~/.kimiflow/memory")
-        self.assertEqual(result["valid_count"], 0)
+        self.assertEqual(result["valid_count"], 1)
         self.assertEqual(result["ignored_count"], 1)
         self.assertNotIn("summary", json.dumps(result).lower())
         self.assertNotIn("private project prompt", json.dumps(result))

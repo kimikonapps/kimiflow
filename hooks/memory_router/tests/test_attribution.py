@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from memory_router import attribution, recall
+from memory_router import attribution, global_memory, recall, rows
 
 
 class AttributionContractCase(unittest.TestCase):
@@ -90,6 +90,31 @@ class AttributionContractCase(unittest.TestCase):
         self.assertEqual(
             attached["recall_id"],
             attribution.recall_id("global_notes", hit["ref"], hit),
+        )
+
+    def test_learning_hit_seals_global_memory_identity(self):
+        hit = {
+            "id": "learn_binding",
+            "kind": "learned",
+            "topic": "Memory architecture",
+            "summary": "Prefer bounded global memory.",
+            "confidence": "high",
+            "last_verified": "2999-01-01",
+            "evidence": ["src/cache.py:1"],
+        }
+        selected = attribution.attach_ids({"learnings": [hit]})["learnings"][0]
+        value = {
+            "attribution": {"contract": 1},
+            "sources": {"learnings": {"hits": [selected]}},
+        }
+
+        sealed = attribution.recall_hit_map(value)[selected["recall_id"]]
+
+        self.assertEqual(
+            sealed["learning_fingerprint"], rows.learning_content_fingerprint(hit)
+        )
+        self.assertEqual(
+            sealed["global_memory_capsule_id"], global_memory.capsule_id(hit)
         )
 
     def test_unknown_duplicate_and_unlinked_applied_ids_fail_closed(self):

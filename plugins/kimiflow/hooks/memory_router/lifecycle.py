@@ -9,7 +9,8 @@ import threading
 from datetime import datetime
 
 from . import attribution as attribution_module
-from . import contracts, curate, memory_md, rows, store, summaries, usage_metrics
+from . import (contracts, curate, global_memory, memory_md, rows, store, summaries,
+               usage_metrics)
 from .cli import die, resolve_root, usage
 
 _MAX_ROWS = 20
@@ -500,8 +501,10 @@ def _outcome_signals(root, snapshot):
                 events.append((
                     sequence, evaluated_at, outcome_id, recall_id, learning_id, classification,
                     sealed_hit["learning_fingerprint"],
+                    sealed_hit.get("global_memory_capsule_id"),
                 ))
     signals = {}
+    capsule_ids = {}
     ordered_events = sorted(
         events,
         key=lambda event: (
@@ -512,7 +515,12 @@ def _outcome_signals(root, snapshot):
         ),
     )
     for (_sequence, evaluated_at, _outcome_id, _recall_id, learning_id, classification,
-         learning_fingerprint) in ordered_events:
+         learning_fingerprint, capsule_id) in ordered_events:
+        bindings = capsule_ids.setdefault(learning_id, {})
+        prior_capsule_id = bindings.get(learning_fingerprint)
+        if prior_capsule_id is not None and prior_capsule_id != capsule_id:
+            raise ValueError("strategy outcome learning identity is inconsistent")
+        bindings[learning_fingerprint] = capsule_id
         value = signals.get(learning_id)
         if value is None or value["learning_fingerprint"] != learning_fingerprint:
             value = {
@@ -532,6 +540,10 @@ def _outcome_signals(root, snapshot):
             value["helpful_streak"] = 0
         value["last_classification"] = classification
         value["last_evaluated_at"] = evaluated_at
+    for learning_id, value in signals.items():
+        value["capsule_ids_by_fingerprint"] = dict(sorted(
+            capsule_ids[learning_id].items()
+        ))
     return signals
 
 
@@ -548,6 +560,155 @@ def _curation_metadata(signal, reason):
     if isinstance(signal.get("learning_fingerprint"), str):
         value["learning_fingerprint"] = signal["learning_fingerprint"]
     return value
+
+
+def _pending_transition_action(root, row, signal, unique):
+    """Authenticate a retry and decide whether newer evidence supersedes it."""
+    if not unique or not isinstance(row, dict):
+        return None
+    curation = row.get("curation")
+    pending = curation.get("global_memory_pending") if isinstance(curation, dict) else None
+    if not isinstance(pending, dict):
+        return None
+    if ((row.get("status") if row.get("status") not in (None, False)
+            else "current") != "current"
+            or row.get("scope", "project") != "project"
+            or row.get("sensitivity", "normal") not in ("normal", "public")
+            or row.get("confidence", "medium") not in ("medium", "high")):
+        return None
+    security_scan = row.get("security_scan")
+    if security_scan is not None and security_scan != {"ok": True, "reasons": []}:
+        return None
+    try:
+        current_fingerprint = rows.learning_content_fingerprint(row)
+    except ValueError:
+        return None
+
+    operation = pending.get("operation")
+    identity = curation.get("global_memory_capsule_id")
+    if not isinstance(identity, str):
+        return None
+    expected_identity = (
+        pending.get("entry", {}).get("capsule_id")
+        if operation == "promote" and isinstance(pending.get("entry"), dict)
+        else pending.get("capsule_id") if operation == "revoke" else None
+    )
+    if identity != expected_identity:
+        return None
+    expected_fingerprint = pending.get("learning_fingerprint")
+    if curation.get("learning_fingerprint") != expected_fingerprint:
+        return None
+    association = pending.get("binding_id")
+    if association != global_memory.binding_id(
+            root, row, identity, expected_fingerprint):
+        return None
+
+    stored = dict(curation)
+    stored.pop("global_memory_pending", None)
+    stored.pop("global_memory_capsule_id", None)
+    expected_keys = {
+        "contract", "helpful_count", "contradicted_count", "helpful_streak",
+        "last_classification", "last_evaluated_at", "reason",
+    }
+    if "learning_fingerprint" in stored:
+        expected_keys.add("learning_fingerprint")
+    if (set(stored) != expected_keys or stored.get("contract") != 1
+            or any(not isinstance(stored.get(key), int) or stored[key] < 0
+                   for key in ("helpful_count", "contradicted_count", "helpful_streak"))
+            or stored.get("last_classification") not in (None, "helpful", "contradicted")
+            or (stored.get("last_evaluated_at") is not None
+                and (not isinstance(stored["last_evaluated_at"], str)
+                     or _ISO_TIME.fullmatch(stored["last_evaluated_at"]) is None))):
+        return None
+
+    evidence_current = _evidence_is_current(root, row)
+    capsule_bindings = (
+        signal.get("capsule_ids_by_fingerprint")
+        if isinstance(signal, dict) else None
+    )
+
+    def signal_binds(fingerprint):
+        return (
+            isinstance(fingerprint, str)
+            and isinstance(capsule_bindings, dict)
+            and capsule_bindings.get(fingerprint) == identity
+        )
+
+    if operation == "promote":
+        stored_fingerprint = stored.get("learning_fingerprint")
+        if (row.get("maturity") != rows.MATURITY_DURABLE
+                or stored.get("reason") != "verified_helpful_streak"
+                or stored.get("last_classification") != "helpful"
+                or stored.get("helpful_streak", 0) < 2
+                or not isinstance(stored_fingerprint, str)
+                or signal is None
+                or not signal_binds(stored_fingerprint)):
+            return None
+        signal_fingerprint = signal.get("learning_fingerprint")
+        signal_is_newer = (
+            signal.get("last_evaluated_at", "") >= stored["last_evaluated_at"]
+        )
+        if current_fingerprint != stored_fingerprint:
+            old_signal_is_current = (
+                signal_fingerprint == stored_fingerprint
+                and signal.get("helpful_count", -1) >= stored["helpful_count"]
+                and signal.get("contradicted_count", -1)
+                >= stored["contradicted_count"]
+                and signal_is_newer
+            )
+            new_signal_is_current = (
+                signal_fingerprint == current_fingerprint and signal_is_newer
+            )
+            return "replace" if old_signal_is_current or new_signal_is_current else None
+        if (signal_fingerprint != stored_fingerprint
+                or signal.get("helpful_count", -1) < stored["helpful_count"]
+                or signal.get("contradicted_count", -1)
+                < stored["contradicted_count"]
+                or not signal_is_newer):
+            return None
+        if (not evidence_current
+                or signal.get("last_classification") == "contradicted"
+                or signal.get("helpful_streak", 0) < 2):
+            return "replace"
+        return "apply"
+    elif operation == "revoke":
+        if row.get("maturity") != rows.MATURITY_PROBATIONARY:
+            return None
+        reason = stored.get("reason")
+        stored_fingerprint = stored.get("learning_fingerprint")
+        if reason == "verified_contradiction":
+            if (stored.get("last_classification") != "contradicted"
+                    or stored.get("contradicted_count", 0) < 1
+                    or not isinstance(stored_fingerprint, str)
+                    or signal is None
+                    or not signal_binds(stored_fingerprint)):
+                return None
+        elif reason == "content_drift":
+            if (not isinstance(stored_fingerprint, str)
+                    or stored_fingerprint == current_fingerprint
+                    or (signal is not None
+                        and not signal_binds(stored_fingerprint))
+                    or (signal is None and not global_memory.binding_matches(
+                        identity, association
+                    ))):
+                return None
+        elif reason == "evidence_drift":
+            identity_matches = (
+                signal_binds(stored_fingerprint)
+                if signal is not None
+                else (stored_fingerprint == current_fingerprint
+                      and identity == global_memory.capsule_id(row)
+                      and global_memory.binding_matches(
+                          identity, association
+                      ))
+            )
+            if not _evidence_drifted(root, row) or not identity_matches:
+                return None
+        else:
+            return None
+        return "apply"
+    else:
+        return None
 
 
 def _refresh_derivatives(root):
@@ -750,6 +911,50 @@ def _write_and_refresh(root, path, original_entries, output_entries, source_snap
         raise refresh_error
 
 
+def _without_global_pending(row, drop_identity=False):
+    if not isinstance(row, dict) or not isinstance(row.get("curation"), dict):
+        return row, False
+    if "global_memory_pending" not in row["curation"]:
+        return row, False
+    result = dict(row)
+    curation = dict(result["curation"])
+    pending = curation.pop("global_memory_pending", None)
+    if (drop_identity
+            or isinstance(pending, dict) and pending.get("operation") == "revoke"):
+        curation.pop("global_memory_capsule_id", None)
+    if curation:
+        result["curation"] = curation
+    else:
+        result.pop("curation", None)
+    return result, True
+
+
+def _clear_global_pending(root, learnings, usage_file, outcome_file,
+                          usage_snapshot, outcome_snapshot, identifiers):
+    if not identifiers:
+        return
+    source_snapshot = store.stable_file_snapshot(
+        learnings, missing_ok=True, max_bytes=_MAX_LEARNING_BYTES
+    )
+    entries = [
+        (raw, ending, _parsed(raw))
+        for raw, ending in _bounded_learning_segments(source_snapshot)
+    ]
+    selected = set(identifiers)
+    output = []
+    for raw, ending, row in entries:
+        changed = False
+        if isinstance(row, dict) and row.get("id") in selected:
+            row, changed = _without_global_pending(row)
+        output.append((raw, ending, row, changed))
+    if any(item[3] for item in output):
+        _write_and_refresh(
+            root, learnings, entries, output, source_snapshot,
+            usage_file=usage_file, usage_snapshot=usage_snapshot,
+            outcome_file=outcome_file, outcome_snapshot=outcome_snapshot,
+        )
+
+
 def _restore(root, learnings, entries, source_snapshot, requested, write, pretty):
     counts = _id_counts(entries)
     matches = [row for _raw, _ending, row in entries
@@ -817,6 +1022,33 @@ def _operate(root, learnings, usage_file, outcome_file, entries, source_snapshot
         usage_snapshot=usage_snapshot,
     )
     signals = _outcome_signals(root, outcome_snapshot)
+    completed_pending = []
+    replaced_promotions = {}
+    if write:
+        try:
+            for _raw, _ending, row in raw_entries:
+                curation = row.get("curation") if isinstance(row, dict) else None
+                if isinstance(curation, dict) and "global_memory_pending" in curation:
+                    rid = row.get("id")
+                    action = _pending_transition_action(
+                        root, row, signals.get(rid), counts.get(rid) == 1
+                    )
+                    if action is None:
+                        raise ValueError("invalid global memory transition marker")
+                    if action == "apply":
+                        global_memory.apply_pending(root, row)
+                    elif action == "replace":
+                        global_memory.revoke(
+                            curation["global_memory_capsule_id"],
+                            curation["global_memory_pending"]["binding_id"],
+                        )
+                        replaced_promotions[rid] = curation.get(
+                            "learning_fingerprint"
+                        )
+                    if isinstance(rid, str):
+                        completed_pending.append(rid)
+        except (ValueError, OSError, store.ConcurrentWriteError) as exc:
+            return die("lifecycle: %s; retry" % exc, 1)
     row_by_id = {
         row.get("id"): row for _raw, _ending, row in raw_entries
         if isinstance(row, dict) and isinstance(row.get("id"), str)
@@ -827,6 +1059,7 @@ def _operate(root, learnings, usage_file, outcome_file, entries, source_snapshot
     protected_ids = []
     metadata = {}
     content_fingerprints = {}
+    retained_bindings = {}
     for rid, row in row_by_id.items():
         if (row.get("status") if row.get("status") not in (None, False)
                 else "current") != "current":
@@ -863,10 +1096,46 @@ def _operate(root, learnings, usage_file, outcome_file, entries, source_snapshot
             protected_ids.append(rid)
             continue
         reason = None
-        if signal is not None and not content_matches:
+        prior_curation = row.get("curation")
+        global_identity = (
+            prior_curation.get("global_memory_capsule_id")
+            if isinstance(prior_curation, dict) else None
+        )
+        global_fingerprint = (
+            prior_curation.get("learning_fingerprint")
+            if isinstance(global_identity, str) else None
+        )
+        association = global_memory.binding_id(
+            root, row, global_identity, global_fingerprint,
+        )
+        retained_bindings[rid] = global_memory.binding_matches(
+            global_identity, association,
+        )
+        if rid in replaced_promotions:
+            if (content_matches and signal["last_classification"] == "helpful"
+                    and signal["helpful_streak"] >= 2 and evidence_current):
+                reason = "verified_helpful_streak"
+                promoted_candidates.append(rid)
+            else:
+                reason = (
+                    "content_drift"
+                    if current_fingerprint != replaced_promotions[rid]
+                    else "verified_contradiction"
+                    if signal is not None
+                    and signal["last_classification"] == "contradicted"
+                    else "evidence_drift" if evidence_drift
+                    else "awaiting_repeat_evidence"
+                )
+                demoted_candidates.append(rid)
+        elif signal is not None and not content_matches:
             reason = "content_drift"
             if tier == rows.MATURITY_DURABLE:
                 demoted_candidates.append(rid)
+        elif (tier == rows.MATURITY_DURABLE
+              and isinstance(global_fingerprint, str)
+              and current_fingerprint != global_fingerprint):
+            reason = "content_drift"
+            demoted_candidates.append(rid)
         elif signal is not None and signal["last_classification"] == "contradicted":
             reason = "verified_contradiction"
             if tier == rows.MATURITY_DURABLE:
@@ -886,6 +1155,15 @@ def _operate(root, learnings, usage_file, outcome_file, entries, source_snapshot
             reason = "awaiting_repeat_evidence"
         if signal is not None:
             metadata[rid] = _curation_metadata(signal, reason or "observed")
+        elif reason == "content_drift":
+            metadata[rid] = _curation_metadata({
+                "helpful_count": 0,
+                "contradicted_count": 0,
+                "helpful_streak": 0,
+                "last_classification": None,
+                "last_evaluated_at": None,
+                "learning_fingerprint": global_fingerprint,
+            }, reason)
         elif evidence_drift:
             metadata[rid] = _curation_metadata({
                 "helpful_count": 0,
@@ -893,6 +1171,7 @@ def _operate(root, learnings, usage_file, outcome_file, entries, source_snapshot
                 "helpful_streak": 0,
                 "last_classification": None,
                 "last_evaluated_at": None,
+                "learning_fingerprint": global_fingerprint,
             }, "evidence_drift")
 
     changed_trust = set(promoted_candidates + demoted_candidates)
@@ -934,7 +1213,9 @@ def _operate(root, learnings, usage_file, outcome_file, entries, source_snapshot
     promoted = []
     demoted = []
     metadata_updated = []
-    if write and (eligible or promoted_candidates or demoted_candidates or metadata):
+    new_pending = []
+    if write and (eligible or promoted_candidates or demoted_candidates
+                  or metadata or completed_pending):
         selected = set(eligible)
         promote_selected = set(promoted_candidates)
         demote_selected = set(demoted_candidates)
@@ -962,11 +1243,42 @@ def _operate(root, learnings, usage_file, outcome_file, entries, source_snapshot
                 row["maturity"] = rows.MATURITY_PROBATIONARY
                 demoted.append(rid)
                 changed = True
-            if current and rid in metadata and row.get("curation") != metadata[rid]:
+            if current and rid in metadata:
+                next_curation = dict(metadata[rid])
+                prior_curation = row.get("curation")
+                if isinstance(prior_curation, dict):
+                    identity = prior_curation.get("global_memory_capsule_id")
+                    if isinstance(identity, str) and retained_bindings.get(rid):
+                        next_curation["global_memory_capsule_id"] = identity
+                if row.get("curation") != next_curation:
+                    if not changed:
+                        row = dict(row)
+                    row["curation"] = next_curation
+                    metadata_updated.append(rid)
+                    changed = True
+            if current and rid in completed_pending:
                 if not changed:
                     row = dict(row)
-                row["curation"] = metadata[rid]
-                metadata_updated.append(rid)
+                row, pending_changed = _without_global_pending(
+                    row, drop_identity=rid in replaced_promotions
+                )
+                if pending_changed:
+                    metadata_updated.append(rid)
+                    changed = True
+            pending = None
+            if current and rid in promote_selected:
+                pending = global_memory.pending_promotion(root, row)
+            elif current and rid in demote_selected:
+                pending = global_memory.pending_revocation(root, row)
+            if pending is not None:
+                if not changed:
+                    row = dict(row)
+                curation = dict(row.get("curation", {}))
+                curation["global_memory_pending"] = pending
+                if pending["operation"] == "promote":
+                    curation["global_memory_capsule_id"] = pending["entry"]["capsule_id"]
+                row["curation"] = curation
+                new_pending.append(rid)
                 changed = True
             output.append((raw, ending, row, changed))
         if any(item[3] for item in output):
@@ -976,7 +1288,16 @@ def _operate(root, learnings, usage_file, outcome_file, entries, source_snapshot
                     usage_file=usage_file, usage_snapshot=usage_snapshot,
                     outcome_file=outcome_file, outcome_snapshot=outcome_snapshot,
                 )
-            except (store.ConcurrentWriteError, OSError) as exc:
+                if new_pending:
+                    selected_pending = set(new_pending)
+                    for _raw, _ending, row, _changed in output:
+                        if isinstance(row, dict) and row.get("id") in selected_pending:
+                            global_memory.apply_pending(root, row)
+                    _clear_global_pending(
+                        root, learnings, usage_file, outcome_file,
+                        usage_snapshot, outcome_snapshot, new_pending,
+                    )
+            except (ValueError, store.ConcurrentWriteError, OSError) as exc:
                 return die("lifecycle: %s; retry" % exc, 1)
 
     utility_rows = []
