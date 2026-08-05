@@ -28,6 +28,7 @@ reset_run() {
   printf 'baseline\n' > "$WORK/src/reviewed.py"
   mkdir -p \
     "$RUN/code-review-candidates" \
+    "$RUN/code-review-cascades" \
     "$RUN/findings" \
     "$RUN/review-evidence" \
     "$RUN/review-saturation" \
@@ -54,6 +55,11 @@ assert_gate() {
 write_candidate() {
   local round="$1" axis="$2" content="$3"
   printf '%s\n' "$content" > "$RUN/code-review-candidates/r${round}-${axis}.md"
+}
+
+write_cascade_candidate() {
+  local round="$1" content="$2"
+  printf '%s\n' "$content" > "$RUN/code-review-cascades/r${round}.md"
 }
 
 write_evidence() {
@@ -152,6 +158,111 @@ write_saturation_v3_receipt() {
       carried_classes: $carried_classes,
       delta_receipt: $delta_receipt
     }' > "$RUN/review-saturation/r${round}.json"
+}
+
+write_saturation_v4_receipt() {
+  local round="$1" scheduled_json="$2" axes_json="$3" files_json="$4"
+  local dispositions_json="$5" carried_json="$6" delta_receipt="$7"
+  local basis_json cascade_path
+  basis_json="$("$SCRIPT" basis --run "$RUN" --base HEAD --details)"
+  cascade_path="code-review-cascades/r${round}.md"
+  jq -n \
+    --argjson round "$round" \
+    --arg plan_sha256 "$(hash_file "$RUN/PLAN.md")" \
+    --argjson scheduled_axes "$scheduled_json" \
+    --argjson axes "$axes_json" \
+    --argjson candidate_files "$files_json" \
+    --argjson dispositions "$dispositions_json" \
+    --argjson carried_classes "$carried_json" \
+    --argjson basis "$basis_json" \
+    --argjson delta_receipt "$delta_receipt" \
+    --arg cascade_path "$cascade_path" \
+    --arg cascade_sha256 "$(hash_file "$RUN/$cascade_path")" \
+    '{
+      schema_version: 4,
+      round: $round,
+      plan_sha256: $plan_sha256,
+      review_base_sha: $basis.review_base_sha,
+      review_target_sha: $basis.review_target_sha,
+      review_snapshot_sha256: $basis.review_snapshot_sha256,
+      scheduled_axes: $scheduled_axes,
+      axes: $axes,
+      review_files: $basis.review_files,
+      candidate_files: $candidate_files,
+      cascade_candidate_file: {path:$cascade_path,sha256:$cascade_sha256},
+      dispositions: $dispositions,
+      carried_classes: $carried_classes,
+      delta_receipt: $delta_receipt
+    }' > "$RUN/review-saturation/r${round}.json"
+}
+
+cascade_json() {
+  local stable_class="$1" root_id="$2" role="$3" verify="$4"
+  local root_cause="$5" assumption="$6" surface evidence probes='[]'
+  for surface in direct-callers data-flow shared-state assumption-users error-consequences; do
+    evidence="$(write_evidence "cascade-${stable_class}-${surface}.txt" "$stable_class" "$verify" reproduced "checked ${surface} for ${stable_class}")"
+    probes="$(printf '%s' "$probes" | jq -c \
+      --arg surface "$surface" \
+      --arg verify "$verify" \
+      --arg evidence "$evidence" \
+      '. + [{surface:$surface,status:"checked",verify:$verify,evidence:$evidence}]')"
+  done
+  jq -nc \
+    --arg root_cause_id "$root_id" \
+    --arg root_cause "$root_cause" \
+    --arg assumption "$assumption" \
+    --arg role "$role" \
+    --argjson probes "$probes" \
+    '{root_cause_id:$root_cause_id,root_cause:$root_cause,assumption:$assumption,role:$role,probes:$probes}'
+}
+
+seed_v4_cascade_failure() {
+  local root_cause assumption root_cascade member_cascade rows dispositions
+  V4_ROOT_VERIFY='command:bash hooks/test-a.sh'
+  V4_MEMBER_VERIFY='verifier:inspect retry handoff'
+  V4_ROOT_LINE="CANDIDATE HIGH src/reviewed.py:1 :: main can remain stale :: verify=${V4_ROOT_VERIFY}"
+  V4_MEMBER_LINE="CANDIDATE HIGH src/reviewed.py:1 :: retry can break the handoff :: verify=${V4_MEMBER_VERIFY}"
+  V4_ROOT_EVIDENCE="$(write_evidence cascade-root.txt main-stale "$V4_ROOT_VERIFY" reproduced 'main remains stale after the failed handoff')"
+  V4_MEMBER_EVIDENCE="$(write_evidence cascade-member.txt retry-broken-pipe "$V4_MEMBER_VERIFY" reproduced 'retry breaks the same handoff')"
+  root_cause='The handoff publishes state before ownership is durably transferred.'
+  assumption='A successful send was assumed to prove that the receiver accepted ownership.'
+  write_candidate 1 spec-correctness "$V4_ROOT_LINE"
+  write_candidate 1 failure-security NONE
+  write_cascade_candidate 1 "$V4_MEMBER_LINE"
+  printf 'FINDING HIGH src/reviewed.py:1 :: main can remain stale :: class=main-stale :: verify=%s :: evidence=%s\nFINDING HIGH src/reviewed.py:1 :: retry can break the handoff :: class=retry-broken-pipe :: verify=%s :: evidence=%s\n' \
+    "$V4_ROOT_VERIFY" "$V4_ROOT_EVIDENCE" "$V4_MEMBER_VERIFY" "$V4_MEMBER_EVIDENCE" \
+    > "$RUN/findings/r1-code-verified.md"
+  root_cascade="$(cascade_json main-stale handoff-ownership root "$V4_ROOT_VERIFY" "$root_cause" "$assumption")"
+  member_cascade="$(cascade_json retry-broken-pipe handoff-ownership downstream "$V4_MEMBER_VERIFY" "$root_cause" "$assumption")"
+  rows="$(candidate_file_rows 1 spec-correctness failure-security)"
+  dispositions="$(jq -nc \
+    --arg root_id "$(candidate_id spec-correctness "$V4_ROOT_LINE")" \
+    --arg member_id "$(candidate_id cascade-scan "$V4_MEMBER_LINE")" \
+    --arg root_verify "$V4_ROOT_VERIFY" \
+    --arg member_verify "$V4_MEMBER_VERIFY" \
+    --arg root_evidence "$V4_ROOT_EVIDENCE" \
+    --arg member_evidence "$V4_MEMBER_EVIDENCE" \
+    --argjson root_cascade "$root_cascade" \
+    --argjson member_cascade "$member_cascade" \
+    '[
+      {candidate_id:$root_id,outcome:"promoted",stable_class:"main-stale",verify:$root_verify,evidence:$root_evidence,contract_status:"violated",support_status:"supported",impact_class:"runtime",proportionality:"The supported handoff can leave Main parked indefinitely.",cascade:$root_cascade},
+      {candidate_id:$member_id,outcome:"promoted",stable_class:"retry-broken-pipe",verify:$member_verify,evidence:$member_evidence,contract_status:"violated",support_status:"supported",impact_class:"runtime",proportionality:"The retry path breaks the same supported ownership handoff.",cascade:$member_cascade}
+    ]')"
+  write_saturation_v4_receipt 1 \
+    '["spec-correctness","failure-security"]' \
+    '["spec-correctness","failure-security"]' \
+    "$rows" "$dispositions" '[]' 'null'
+}
+
+write_repair_v3() {
+  local groups="$1"
+  jq -n \
+    --arg plan_sha256 "$(hash_file "$RUN/PLAN.md")" \
+    --arg findings_sha256 "$(hash_file "$RUN/findings/r1-code-verified.md")" \
+    --arg source_saturation_sha256 "$(hash_file "$RUN/review-saturation/r1.json")" \
+    --argjson groups "$groups" \
+    '{schema_version:3,round:1,plan_sha256:$plan_sha256,findings_sha256:$findings_sha256,source_saturation_sha256:$source_saturation_sha256,groups:$groups}' \
+    > "$RUN/review-repairs/r1.json"
 }
 
 candidate_file_rows() {
@@ -492,6 +603,122 @@ assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 2 --axes spec-correctne
 drifted="$(write_evidence carry-r2.txt rollback-atomicity 'command:bash hooks/test-review-convergence-gate.sh' reproduced changed)"
 printf 'FINDING HIGH src/a:1 :: carried issue :: class=rollback-atomicity :: verify=command:bash hooks/test-review-convergence-gate.sh :: evidence=%s\n' "$drifted" > "$RUN/findings/r2-code-verified.md"
 assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 2 --axes spec-correctness)" CLOSED carried-class-drift "saturation_drifted_carry_closes"
+
+# Schema 4 authenticates cascade-discovered candidates, requires one complete
+# five-surface scan per promoted class, and rejects incoherent or scan-only
+# root-cause groups before repair.
+reset_run
+write_candidate 1 spec-correctness NONE
+write_cascade_candidate 1 NONE
+rows="$(candidate_file_rows 1 spec-correctness)"
+write_saturation_v4_receipt 1 '["spec-correctness"]' '["spec-correctness"]' "$rows" '[]' '[]' 'null'
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness)" OPEN saturated "saturation_v4_clean_review_opens"
+
+reset_run
+seed_v4_cascade_failure
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness,failure-security)" OPEN saturated "saturation_v4_multi_member_cascade_opens"
+cp "$RUN/review-saturation/r1.json" "$RUN/review-saturation/r1.valid"
+
+printf 'NONE\n' >> "$RUN/code-review-cascades/r1.md"
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness,failure-security)" CLOSED cascade-candidate-digest-mismatch "saturation_v4_scan_candidate_digest_drift_closes"
+write_cascade_candidate 1 "$V4_MEMBER_LINE"
+
+jq '(.dispositions[0].cascade.probes) |= .[0:4]' \
+  "$RUN/review-saturation/r1.valid" > "$RUN/review-saturation/r1.json"
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness,failure-security)" CLOSED cascade-probes-invalid "saturation_v4_missing_probe_closes"
+
+jq '.dispositions[1].cascade.assumption="A contradictory ownership assumption is used for this member."' \
+  "$RUN/review-saturation/r1.valid" > "$RUN/review-saturation/r1.json"
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness,failure-security)" CLOSED cascade-group-conflict "saturation_v4_conflicting_assumption_closes"
+
+jq '.dispositions[1].cascade.role="root"' \
+  "$RUN/review-saturation/r1.valid" > "$RUN/review-saturation/r1.json"
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness,failure-security)" CLOSED cascade-root-count-invalid "saturation_v4_two_roots_close"
+
+jq '.dispositions[1].cascade.root_cause_id="scan-only" | .dispositions[1].cascade.role="root"' \
+  "$RUN/review-saturation/r1.valid" > "$RUN/review-saturation/r1.json"
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness,failure-security)" CLOSED cascade-origin-missing "saturation_v4_scan_only_group_closes"
+
+jq '.dispositions[1].outcome="non_blocking" | .dispositions[1].contract_status="not_violated" | .dispositions[1].support_status="unsupported" | .dispositions[1].impact_class="none"' \
+  "$RUN/review-saturation/r1.valid" > "$RUN/review-saturation/r1.json"
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness,failure-security)" CLOSED cascade-not-allowed "saturation_v4_nonpromoted_cascade_closes"
+
+jq '.dispositions[0].cascade.probes[0].status="not_applicable"' \
+  "$RUN/review-saturation/r1.valid" > "$RUN/review-saturation/r1.json"
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness,failure-security)" CLOSED evidence-mismatch "saturation_v4_probe_outcome_drift_closes"
+mv "$RUN/review-saturation/r1.valid" "$RUN/review-saturation/r1.json"
+
+write_cascade_candidate 1 NONE
+rows="$(candidate_file_rows 1 spec-correctness failure-security)"
+dispositions="$(jq -c .dispositions "$RUN/review-saturation/r1.json")"
+write_saturation_v4_receipt 1 \
+  '["spec-correctness","failure-security"]' \
+  '["spec-correctness","failure-security"]' \
+  "$rows" "$dispositions" '[]' 'null'
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness,failure-security)" CLOSED disposition-candidate-invalid "saturation_v4_unbound_scan_member_closes"
+
+# Schema-3 repairs are bound to the exact schema-4 source and must reproduce
+# its groups while retaining every member's authoritative verifier.
+reset_run
+seed_v4_cascade_failure
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 1 --axes spec-correctness,failure-security)" OPEN saturated "cascade_repair_source_saturates"
+cascade_groups='[{
+  "id":"handoff-ownership",
+  "classes":["main-stale","retry-broken-pipe"],
+  "root_cause":"The handoff publishes state before ownership is durably transferred.",
+  "depends_on":[],
+  "repair":"Publish the handoff only after the receiver durably accepts ownership.",
+  "checks":[
+    {"kind":"command","method":"bash hooks/test-a.sh"},
+    {"kind":"verifier","method":"inspect retry handoff"}
+  ]
+}]'
+write_repair_v3 "$cascade_groups"
+assert_gate "$("$SCRIPT" repair --run "$RUN" --round 1)" OPEN repair-ready "cascade_repair_requires_matching_group_and_individual_checks"
+
+write_repair_v3 "$(printf '%s' "$cascade_groups" | jq -c '.[0].checks |= .[0:1]')"
+assert_gate "$("$SCRIPT" repair --run "$RUN" --round 1)" CLOSED repair-check-incomplete "cascade_repair_missing_member_check_closes"
+
+write_repair_v3 "$(printf '%s' "$cascade_groups" | jq -c '.[0].root_cause="A different root cause was supplied by repair."')"
+assert_gate "$("$SCRIPT" repair --run "$RUN" --round 1)" CLOSED repair-cascade-group-mismatch "cascade_repair_root_cause_drift_closes"
+
+# The next delta partitions every source class into exact carry or one fresh,
+# verifier-stable negative resolution; a shared repair check cannot hide a
+# missing class outcome.
+write_repair_v3 "$cascade_groups"
+printf 'repaired handoff\n' > "$WORK/src/reviewed.py"
+basis_json="$("$SCRIPT" basis --run "$RUN" --base HEAD --details)"
+scheduled='["spec-correctness","failure-security"]'
+jq -n \
+  --arg plan_sha256 "$(hash_file "$RUN/PLAN.md")" \
+  --arg source_saturation_sha256 "$(hash_file "$RUN/review-saturation/r1.json")" \
+  --arg repair_sha256 "$(hash_file "$RUN/review-repairs/r1.json")" \
+  --argjson review_files "$(printf '%s' "$basis_json" | jq -c .review_files)" \
+  --argjson scheduled_axes "$scheduled" \
+  '{schema_version:1,source_round:1,round:2,plan_sha256:$plan_sha256,source_saturation_sha256:$source_saturation_sha256,repair_sha256:$repair_sha256,scheduled_axes:$scheduled_axes,rerun_axes:["spec-correctness"],carried_axes:["failure-security"],review_files:$review_files,changed_paths:["src/reviewed.py"],route_receipt_sha256:null}' \
+  > "$RUN/review-deltas/r2.json"
+assert_gate "$("$SCRIPT" delta --run "$RUN" --round 2 --scheduled-axes spec-correctness,failure-security --rerun-axes spec-correctness)" OPEN selective-review-ready "cascade_delta_source_opens"
+
+root_resolved="$(write_evidence cascade-root-r2.txt main-stale "$V4_ROOT_VERIFY" not_reproduced 'main no longer remains stale')"
+printf 'RESOLVED class=main-stale :: verify=%s :: evidence=%s\n' \
+  "$V4_ROOT_VERIFY" "$root_resolved" > "$RUN/findings/r2-code-verified.md"
+write_candidate 2 spec-correctness NONE
+write_cascade_candidate 2 NONE
+rows="$(candidate_file_rows 2 spec-correctness)"
+delta_spec="$(jq -Rn --arg value "review-deltas/r2.json@$(hash_file "$RUN/review-deltas/r2.json")" '$value')"
+write_saturation_v4_receipt 2 "$scheduled" '["spec-correctness"]' "$rows" '[]' '[]' "$delta_spec"
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 2 --axes spec-correctness)" CLOSED delta-resolution-incomplete "cascade_delta_missing_member_resolution_closes"
+
+wrong_resolved="$(write_evidence cascade-member-wrong-r2.txt retry-broken-pipe 'verifier:inspect unrelated handoff' not_reproduced 'an unrelated path no longer reproduces')"
+printf 'RESOLVED class=retry-broken-pipe :: verify=verifier:inspect unrelated handoff :: evidence=%s\n' \
+  "$wrong_resolved" >> "$RUN/findings/r2-code-verified.md"
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 2 --axes spec-correctness)" CLOSED delta-resolution-verifier-mismatch "cascade_delta_verifier_drift_closes"
+
+member_resolved="$(write_evidence cascade-member-r2.txt retry-broken-pipe "$V4_MEMBER_VERIFY" not_reproduced 'retry no longer breaks the handoff')"
+printf 'RESOLVED class=main-stale :: verify=%s :: evidence=%s\nRESOLVED class=retry-broken-pipe :: verify=%s :: evidence=%s\n' \
+  "$V4_ROOT_VERIFY" "$root_resolved" "$V4_MEMBER_VERIFY" "$member_resolved" \
+  > "$RUN/findings/r2-code-verified.md"
+assert_gate "$("$SCRIPT" saturation --run "$RUN" --round 2 --axes spec-correctness)" OPEN saturated "cascade_delta_individual_resolutions_open"
 
 # Repair batch: every aggregate material class is covered once in an acyclic group graph.
 reset_run
