@@ -50,24 +50,22 @@ RECOVERY_RE = re.compile(
     r"before=(?P<before>[a-f0-9]{64}) "
     r"after=(?P<after>[a-f0-9]{64}) -->$"
 )
-SATURATION_KEYS = {
+SATURATION_V4_KEYS = {
     "schema_version",
     "round",
     "plan_sha256",
     "review_base_sha",
     "review_target_sha",
     "review_snapshot_sha256",
+    "scheduled_axes",
     "axes",
+    "review_files",
     "candidate_files",
+    "cascade_candidate_file",
     "dispositions",
     "carried_classes",
-}
-SATURATION_V2_KEYS = SATURATION_KEYS | {
-    "scheduled_axes",
-    "review_files",
     "delta_receipt",
 }
-SATURATION_V3_KEYS = SATURATION_V2_KEYS
 DELTA_KEYS = {
     "schema_version",
     "source_round",
@@ -96,18 +94,17 @@ DELTA_SPEC_RE = re.compile(
 MAX_SELECTIVE_CHANGED_PATHS = 8
 MAX_SEMANTIC_REVIEW_ROUNDS = 3
 REVIEW_CLOSEOUT_ROUND = MAX_SEMANTIC_REVIEW_ROUNDS + 1
-DISPOSITION_KEYS = {
+DISPOSITION_V4_KEYS = {
     "candidate_id",
     "outcome",
     "stable_class",
     "verify",
     "evidence",
-}
-DISPOSITION_V3_KEYS = DISPOSITION_KEYS | {
     "contract_status",
     "support_status",
     "impact_class",
     "proportionality",
+    "cascade",
 }
 DISPOSITION_OUTCOMES = {
     "promoted",
@@ -131,16 +128,29 @@ IMPACT_CLASSES = {
 }
 PROTECTED_IMPACTS = {"security", "privacy", "data_loss", "irreversible"}
 USER_BOUNDARY_IMPACTS = {"paid", "privacy", "scope", "breaking", "irreversible"}
-REPAIR_KEYS = {
+REPAIR_V3_KEYS = {
     "schema_version",
     "round",
     "plan_sha256",
     "findings_sha256",
+    "source_saturation_sha256",
     "groups",
 }
-REPAIR_V2_KEYS = REPAIR_KEYS | {"source_saturation_sha256"}
 GROUP_KEYS = {"id", "classes", "root_cause", "depends_on", "repair", "checks"}
 CHECK_KEYS = {"kind", "method"}
+CASCADE_CANDIDATE_FILE_KEYS = {"path", "sha256"}
+CASCADE_KEYS = {"root_cause_id", "root_cause", "assumption", "role", "probes"}
+CASCADE_PROBE_KEYS = {"surface", "status", "verify", "evidence"}
+CASCADE_ROLES = {"root", "upstream", "sibling", "downstream"}
+CASCADE_PROBE_STATUSES = {"checked", "not_applicable"}
+CASCADE_PROBE_SURFACES = (
+    "direct-callers",
+    "data-flow",
+    "shared-state",
+    "assumption-users",
+    "error-consequences",
+)
+MAX_CASCADE_CLASSES = 32
 TRAJECTORY_KEYS = {
     "schema_version",
     "source_round",
@@ -541,7 +551,7 @@ def _safe_evidence_path(run, relative):
     return _artifact_path(run, *relative.split("/"))
 
 
-def _evidence(run, spec, stable_class, verify, outcome):
+def _evidence(run, spec, stable_class, verify, outcome, binding=None):
     match = EVIDENCE_SPEC_RE.fullmatch(spec) if isinstance(spec, str) else None
     if match is None:
         raise GateError("evidence-spec-invalid", str(spec))
@@ -561,6 +571,13 @@ def _evidence(run, spec, stable_class, verify, outcome):
     )
     if not text.startswith(prefix) or len(text.strip()) <= len(prefix):
         raise GateError("evidence-mismatch", relative)
+    if binding is not None and not text.endswith(" :: %s\n" % binding):
+        reason = (
+            "recovery-resolution-context-mismatch"
+            if binding.startswith("recovery_")
+            else "delta-resolution-context-mismatch"
+        )
+        raise GateError(reason, stable_class)
     return spec
 
 
@@ -612,6 +629,7 @@ def _aggregate(run, round_number):
         material[stable_class] = {
             "verify": finding.group("verify"),
             "evidence": finding.group("evidence"),
+            "finding_sha256": _sha(line.encode("utf-8")),
         }
     return path, payload, material
 
@@ -645,17 +663,7 @@ def _candidate_rows(path, axis):
     return payload, result
 
 
-def _saturation_keys(schema_version):
-    if schema_version == 1:
-        return SATURATION_KEYS
-    if schema_version == 2:
-        return SATURATION_V2_KEYS
-    if schema_version == 3:
-        return SATURATION_V3_KEYS
-    return set()
-
-
-def _schema3_disposition(row, candidate_id):
+def _validate_disposition(row, candidate_id):
     contract_status = row.get("contract_status")
     support_status = row.get("support_status")
     impact_class = row.get("impact_class")
@@ -694,6 +702,208 @@ def _schema3_disposition(row, candidate_id):
             raise GateError("material-decision-boundary-invalid", candidate_id)
 
 
+def _schema4_cascade(run, row, candidate_id, stable_class):
+    cascade = row.get("cascade")
+    if row.get("outcome") != "promoted":
+        if cascade is not None:
+            raise GateError("cascade-not-allowed", candidate_id)
+        return None
+    if not isinstance(cascade, dict) or set(cascade) != CASCADE_KEYS:
+        raise GateError("cascade-malformed", candidate_id)
+    root_cause_id = cascade.get("root_cause_id")
+    if (
+        not isinstance(root_cause_id, str)
+        or SLUG_RE.fullmatch(root_cause_id) is None
+    ):
+        raise GateError("cascade-root-id-invalid", candidate_id)
+    if not _bounded(cascade.get("root_cause"), 1000, 8):
+        raise GateError("cascade-root-cause-invalid", candidate_id)
+    if not _bounded(cascade.get("assumption"), 1000, 8):
+        raise GateError("cascade-assumption-invalid", candidate_id)
+    if cascade.get("role") not in CASCADE_ROLES:
+        raise GateError("cascade-role-invalid", candidate_id)
+    probes = cascade.get("probes")
+    if (
+        not isinstance(probes, list)
+        or len(probes) != len(CASCADE_PROBE_SURFACES)
+        or [
+            probe.get("surface") if isinstance(probe, dict) else None
+            for probe in probes
+        ]
+        != list(CASCADE_PROBE_SURFACES)
+    ):
+        raise GateError("cascade-probes-invalid", candidate_id)
+    evidence_digests = set()
+    for probe in probes:
+        if not isinstance(probe, dict) or set(probe) != CASCADE_PROBE_KEYS:
+            raise GateError("cascade-probe-malformed", candidate_id)
+        status = probe.get("status")
+        verify = probe.get("verify")
+        if status not in CASCADE_PROBE_STATUSES:
+            raise GateError("cascade-probe-status-invalid", candidate_id)
+        if _typed_verify(verify) is None:
+            raise GateError("cascade-probe-verify-invalid", candidate_id)
+        evidence_spec = probe.get("evidence")
+        evidence_match = (
+            EVIDENCE_SPEC_RE.fullmatch(evidence_spec)
+            if isinstance(evidence_spec, str)
+            else None
+        )
+        if evidence_match is not None and evidence_match.group(2) in evidence_digests:
+            raise GateError("cascade-probe-evidence-duplicate", candidate_id)
+        _evidence(
+            run,
+            evidence_spec,
+            stable_class,
+            verify,
+            "reproduced" if status == "checked" else "not_reproduced",
+        )
+        evidence_digests.add(evidence_match.group(2))
+    return cascade
+
+
+def _validate_cascade_groups(cascades, origins, require_root=True):
+    if len(cascades) > MAX_CASCADE_CLASSES:
+        raise GateError("cascade-limit-reached", str(len(cascades)))
+    groups = {}
+    for stable_class, cascade in cascades.items():
+        root_id = cascade["root_cause_id"]
+        group = groups.setdefault(
+            root_id,
+            {
+                "root_cause": cascade["root_cause"],
+                "assumption": cascade["assumption"],
+                "classes": set(),
+                "roots": set(),
+                "origins": set(),
+            },
+        )
+        if (
+            group["root_cause"] != cascade["root_cause"]
+            or group["assumption"] != cascade["assumption"]
+        ):
+            raise GateError("cascade-group-conflict", root_id)
+        group["classes"].add(stable_class)
+        group["origins"].update(origins.get(stable_class, set()))
+        if cascade["role"] == "root":
+            group["roots"].add(stable_class)
+    for root_id, group in groups.items():
+        if len(group["roots"]) > 1 or (
+            require_root and len(group["roots"]) != 1
+        ):
+            raise GateError("cascade-root-count-invalid", root_id)
+        if require_root and not any(
+            axis != "cascade-scan" for axis in group["origins"]
+        ):
+            raise GateError("cascade-origin-missing", root_id)
+    return groups
+
+
+def _schema4_candidates(run, round_number, receipt):
+    axes = _axis_list(receipt.get("axes"), "axes-invalid")
+    candidates = {}
+    file_rows = []
+    for axis in axes:
+        path = _artifact_path(
+            run,
+            "code-review-candidates",
+            "r%s-%s.md" % (round_number, axis),
+        )
+        payload, rows = _candidate_rows(path, axis)
+        file_rows.append({"axis": axis, "sha256": _sha(payload)})
+        candidates.update(rows)
+    if round_number == REVIEW_CLOSEOUT_ROUND and candidates:
+        raise GateError("closeout-candidates-forbidden")
+    if receipt.get("candidate_files") != file_rows:
+        raise GateError("candidate-digest-mismatch")
+    cascade_file = receipt.get("cascade_candidate_file")
+    expected_path = "code-review-cascades/r%s.md" % round_number
+    if (
+        not isinstance(cascade_file, dict)
+        or set(cascade_file) != CASCADE_CANDIDATE_FILE_KEYS
+        or cascade_file.get("path") != expected_path
+        or not isinstance(cascade_file.get("sha256"), str)
+        or SHA_RE.fullmatch(cascade_file["sha256"]) is None
+    ):
+        raise GateError("cascade-candidate-file-invalid")
+    cascade_path = _artifact_path(
+        run, "code-review-cascades", "r%s.md" % round_number
+    )
+    payload = _regular_bytes(cascade_path)
+    if cascade_file["sha256"] != _sha(payload):
+        raise GateError("cascade-candidate-digest-mismatch")
+    _, rows = _candidate_rows(cascade_path, "cascade-scan")
+    candidates.update(rows)
+    return candidates
+
+
+def _cascade_map_for_round(run, round_number, seen=None):
+    if seen is None:
+        seen = set()
+    if round_number in seen or round_number < 1:
+        raise GateError("cascade-source-invalid", str(round_number))
+    seen.add(round_number)
+    receipt = _json(
+        _artifact_path(run, "review-saturation", "r%s.json" % round_number)
+    )
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("schema_version") != 4
+        or set(receipt) != SATURATION_V4_KEYS
+        or receipt.get("round") != round_number
+    ):
+        raise GateError("cascade-source-invalid", str(round_number))
+    candidates = _schema4_candidates(run, round_number, receipt)
+    cascades = {}
+    origins = {}
+    for row in receipt.get("dispositions", []):
+        if not isinstance(row, dict) or set(row) != DISPOSITION_V4_KEYS:
+            raise GateError("cascade-source-invalid", str(round_number))
+        candidate = candidates.get(row.get("candidate_id"))
+        if candidate is None:
+            raise GateError("cascade-source-invalid", str(round_number))
+        stable_class = row.get("stable_class")
+        if (
+            not isinstance(stable_class, str)
+            or SLUG_RE.fullmatch(stable_class) is None
+        ):
+            raise GateError("cascade-source-invalid", str(round_number))
+        cascade = _schema4_cascade(
+            run, row, row.get("candidate_id"), stable_class
+        )
+        if cascade is None:
+            continue
+        prior = cascades.get(stable_class)
+        if prior is not None and prior != cascade:
+            raise GateError("cascade-class-conflict", stable_class)
+        cascades[stable_class] = cascade
+        origins.setdefault(stable_class, set()).add(candidate["axis"])
+    carried = receipt.get("carried_classes")
+    if carried:
+        prior_cascades, prior_origins, _ = _cascade_map_for_round(
+            run, round_number - 1, seen
+        )
+        for stable_class in carried:
+            if stable_class not in prior_cascades:
+                raise GateError("cascade-carried-class-unproven", stable_class)
+            if (
+                stable_class in cascades
+                and cascades[stable_class] != prior_cascades[stable_class]
+            ):
+                raise GateError("cascade-class-conflict", stable_class)
+            cascades[stable_class] = prior_cascades[stable_class]
+            origins.setdefault(stable_class, set()).update(
+                prior_origins.get(stable_class, set())
+            )
+    groups = (
+        _validate_cascade_groups(cascades, origins, require_root=False)
+        if cascades
+        else {}
+    )
+    seen.remove(round_number)
+    return cascades, origins, groups
+
+
 def _prior_text_runtime_rounds(run, round_number, stable_class):
     count = 0
     for prior_round in range(1, round_number):
@@ -708,14 +918,14 @@ def _prior_text_runtime_rounds(run, round_number, stable_class):
             raise
         if (
             not isinstance(receipt, dict)
-            or receipt.get("schema_version") != 3
-            or set(receipt) != SATURATION_V3_KEYS
+            or receipt.get("schema_version") != 4
+            or set(receipt) != SATURATION_V4_KEYS
         ):
             continue
         for row in receipt.get("dispositions", []):
             if (
                 isinstance(row, dict)
-                and set(row) == DISPOSITION_V3_KEYS
+                and set(row) == DISPOSITION_V4_KEYS
                 and row.get("stable_class") == stable_class
                 and row.get("impact_class") == "runtime"
                 and isinstance(row.get("verify"), str)
@@ -739,9 +949,10 @@ def saturation(run, round_number, axes, historical_plan_sha=None):
     ):
         raise GateError("source-plan-invalid")
     plan_sha = historical_plan_sha or current_plan_sha
-    plan_recovery_closeout = False
+    plan_recovery_binding = None
+    delta_source_material = None
+    delta_source_digest = None
     candidates = {}
-    file_rows = []
     for axis in axes:
         path = _artifact_path(
             run,
@@ -754,7 +965,6 @@ def saturation(run, round_number, axes, historical_plan_sha=None):
             if exc.reason == "missing-artifact":
                 raise GateError("missing-axis", axis)
             raise
-        file_rows.append({"axis": axis, "sha256": _sha(payload)})
         candidates.update(rows)
     if round_number == REVIEW_CLOSEOUT_ROUND and candidates:
         raise GateError("closeout-candidates-forbidden")
@@ -767,12 +977,15 @@ def saturation(run, round_number, axes, historical_plan_sha=None):
         if exc.reason == "missing-artifact":
             raise GateError("missing-saturation", receipt_path)
         raise
-    if not isinstance(receipt, dict):
+    if not isinstance(receipt, dict) or receipt.get("schema_version") != 4:
+        raise GateError("saturation-schema-required", "schema-4")
+    if set(receipt) != SATURATION_V4_KEYS or receipt.get("round") != round_number:
         raise GateError("saturation-malformed")
-    schema_version = receipt.get("schema_version")
-    expected_keys = _saturation_keys(schema_version)
-    if set(receipt) != expected_keys or receipt.get("round") != round_number:
-        raise GateError("saturation-malformed")
+    if (
+        round_number == REVIEW_CLOSEOUT_ROUND
+        and receipt.get("carried_classes")
+    ):
+        raise GateError("closeout-carry-forbidden")
     if receipt.get("plan_sha256") != plan_sha:
         raise GateError("stale-plan")
     base = receipt.get("review_base_sha")
@@ -792,74 +1005,72 @@ def saturation(run, round_number, axes, historical_plan_sha=None):
         "review_target_sha": target,
         "review_snapshot_sha256": snapshot,
     }
-    if historical_plan_sha is not None and schema_version == 1:
-        raise GateError("source-saturation-schema-invalid")
-    if schema_version == 1:
-        if _review_basis(run, base) != expected_basis:
+    scheduled_axes = _axis_list(
+        receipt.get("scheduled_axes"), "scheduled-axes-invalid"
+    )
+    review_files = _review_files(receipt.get("review_files"))
+    expected_basis["review_files"] = review_files
+    if historical_plan_sha is None:
+        if _review_basis(run, base, details=True) != expected_basis:
             raise GateError("stale-review-basis")
-    else:
-        scheduled_axes = _axis_list(
-            receipt.get("scheduled_axes"), "scheduled-axes-invalid"
-        )
-        review_files = _review_files(receipt.get("review_files"))
-        expected_basis["review_files"] = review_files
-        if historical_plan_sha is None:
-            if _review_basis(run, base, details=True) != expected_basis:
-                raise GateError("stale-review-basis")
-        elif _historical_review_basis(
-            run, base, target, snapshot, review_files
-        ) != expected_basis:
-            raise GateError("stale-source-review-basis")
-        delta_receipt = receipt.get("delta_receipt")
-        if delta_receipt is None:
-            if scheduled_axes != axes:
-                raise GateError("selective-review-unproven")
-            if round_number == REVIEW_CLOSEOUT_ROUND and not _recovery(run):
-                raise GateError("closeout-delta-required")
-            if round_number > 1:
-                previous_path = _artifact_path(
-                    run,
-                    "review-saturation",
-                    "r%s.json" % (round_number - 1),
-                )
-                try:
-                    previous = _json(previous_path)
-                except GateError as exc:
-                    if exc.reason == "missing-artifact":
-                        raise GateError("missing-source-saturation") from exc
-                    raise
-                previous_schema = (
-                    previous.get("schema_version")
-                    if isinstance(previous, dict)
-                    else None
-                )
-                previous_keys = _saturation_keys(previous_schema)
-                if (
-                    not isinstance(previous, dict)
-                    or set(previous) != previous_keys
-                    or previous.get("round") != round_number - 1
-                ):
-                    raise GateError("source-saturation-malformed")
-                if round_number == REVIEW_CLOSEOUT_ROUND:
-                    plan_recovery_closeout = _plan_recovery_closeout(
-                        run, round_number, previous, plan_sha, scheduled_axes
-                    )
-                    if not plan_recovery_closeout:
-                        raise GateError("closeout-delta-required")
-                elif previous.get("plan_sha256") == plan_sha:
-                    raise GateError("incremental-review-required")
-        else:
-            _validate_delta(
+    elif _historical_review_basis(
+        run, base, target, snapshot, review_files
+    ) != expected_basis:
+        raise GateError("stale-source-review-basis")
+    delta_receipt = receipt.get("delta_receipt")
+    if delta_receipt is None:
+        if scheduled_axes != axes:
+            raise GateError("selective-review-unproven")
+        if round_number == REVIEW_CLOSEOUT_ROUND and not _recovery(run):
+            raise GateError("closeout-delta-required")
+        if round_number > 1:
+            previous_path = _artifact_path(
                 run,
-                round_number,
-                scheduled_axes,
-                axes,
-                delta_receipt,
+                "review-saturation",
+                "r%s.json" % (round_number - 1),
             )
+            try:
+                previous = _json(previous_path)
+            except GateError as exc:
+                if exc.reason == "missing-artifact":
+                    raise GateError("missing-source-saturation") from exc
+                raise
+            if (
+                not isinstance(previous, dict)
+                or previous.get("schema_version") != 4
+                or set(previous) != SATURATION_V4_KEYS
+                or previous.get("round") != round_number - 1
+            ):
+                raise GateError("source-saturation-malformed")
+            if round_number == REVIEW_CLOSEOUT_ROUND:
+                plan_recovery_binding = _plan_recovery_closeout(
+                    run,
+                    round_number,
+                    previous,
+                    plan_sha,
+                    scheduled_axes,
+                    _regular_bytes(receipt_path, MAX_JSON_BYTES),
+                )
+                if plan_recovery_binding is None:
+                    raise GateError("closeout-delta-required")
+            elif previous.get("plan_sha256") == plan_sha:
+                raise GateError("incremental-review-required")
+    else:
+        delta_details = _validate_delta(
+            run,
+            round_number,
+            scheduled_axes,
+            axes,
+            delta_receipt,
+            expected_review_files=review_files,
+        )
+        delta_source_material = delta_details.get("source_material")
+        delta_source_digest = delta_details.get("digest")
     if receipt.get("axes") != axes:
         raise GateError("axis-receipt-mismatch")
-    if receipt.get("candidate_files") != file_rows:
-        raise GateError("candidate-digest-mismatch")
+    candidates = _schema4_candidates(run, round_number, receipt)
+    if round_number == REVIEW_CLOSEOUT_ROUND and candidates:
+        raise GateError("closeout-candidates-forbidden")
     carried = receipt.get("carried_classes")
     if (
         not isinstance(carried, list)
@@ -885,13 +1096,11 @@ def saturation(run, round_number, axes, historical_plan_sha=None):
         raise GateError("dispositions-malformed")
     seen_candidates = set()
     promoted_by_class = {}
+    cascades_by_class = {}
     class_outcomes = {}
     material_decisions = []
     for row in dispositions:
-        disposition_keys = (
-            DISPOSITION_V3_KEYS if schema_version == 3 else DISPOSITION_KEYS
-        )
-        if not isinstance(row, dict) or set(row) != disposition_keys:
+        if not isinstance(row, dict) or set(row) != DISPOSITION_V4_KEYS:
             raise GateError("disposition-malformed")
         candidate_id = row.get("candidate_id")
         candidate = candidates.get(candidate_id)
@@ -903,25 +1112,20 @@ def saturation(run, round_number, axes, historical_plan_sha=None):
         outcome = row.get("outcome")
         stable_class = row.get("stable_class")
         verify = row.get("verify")
-        allowed_outcomes = (
-            DISPOSITION_OUTCOMES
-            if schema_version == 3
-            else {"promoted", "refuted", "non_blocking"}
-        )
-        if outcome not in allowed_outcomes:
+        if outcome not in DISPOSITION_OUTCOMES:
             raise GateError("disposition-outcome-invalid", candidate_id)
         if not isinstance(stable_class, str) or SLUG_RE.fullmatch(stable_class) is None:
             raise GateError("disposition-class-invalid", candidate_id)
         if verify != candidate["verify"]:
             raise GateError("disposition-verify-mismatch", candidate_id)
-        if schema_version == 3:
-            _schema3_disposition(row, candidate_id)
-            if (
-                row["impact_class"] == "runtime"
-                and verify.startswith("verifier:")
-                and _prior_text_runtime_rounds(run, round_number, stable_class) >= 2
-            ):
-                raise GateError("runtime-evidence-required", stable_class)
+        _validate_disposition(row, candidate_id)
+        if (
+            row["impact_class"] == "runtime"
+            and verify.startswith("verifier:")
+            and _prior_text_runtime_rounds(run, round_number, stable_class) >= 2
+        ):
+            raise GateError("runtime-evidence-required", stable_class)
+        cascade = _schema4_cascade(run, row, candidate_id, stable_class)
         expected_evidence_outcome = (
             "not_reproduced" if outcome == "refuted" else "reproduced"
         )
@@ -942,6 +1146,10 @@ def saturation(run, round_number, axes, historical_plan_sha=None):
             if prior_promoted is not None and prior_promoted != expected:
                 raise GateError("promoted-class-conflict", stable_class)
             promoted_by_class[stable_class] = expected
+            prior_cascade = cascades_by_class.get(stable_class)
+            if prior_cascade is not None and prior_cascade != cascade:
+                raise GateError("cascade-class-conflict", stable_class)
+            cascades_by_class[stable_class] = cascade
         elif outcome == "material_decision":
             material_decisions.append(stable_class)
     required_candidates = {
@@ -953,7 +1161,7 @@ def saturation(run, round_number, axes, historical_plan_sha=None):
     if missing:
         raise GateError("undisposed-candidate", missing[0])
     _, _, aggregate = _aggregate(run, round_number)
-    if plan_recovery_closeout:
+    if plan_recovery_binding is not None:
         _, _, source_aggregate = _aggregate(run, round_number - 1)
         resolved = _resolved_findings(run, round_number)
         missing_resolutions = sorted(
@@ -973,6 +1181,15 @@ def saturation(run, round_number, axes, historical_plan_sha=None):
                 "closeout-resolution-verifier-mismatch",
                 mismatched_resolutions[0],
             )
+        for stable_class in sorted(source_aggregate):
+            _evidence(
+                run,
+                resolved[stable_class]["evidence"],
+                stable_class,
+                resolved[stable_class]["verify"],
+                "not_reproduced",
+                binding=plan_recovery_binding,
+            )
     expected_classes = set(promoted_by_class) | set(carried)
     if set(aggregate) != expected_classes:
         raise GateError(
@@ -981,11 +1198,63 @@ def saturation(run, round_number, axes, historical_plan_sha=None):
             % (",".join(sorted(expected_classes)), ",".join(sorted(aggregate))),
         )
     for stable_class, expected in promoted_by_class.items():
-        if aggregate.get(stable_class) != expected:
+        actual = aggregate.get(stable_class, {})
+        if any(actual.get(key) != value for key, value in expected.items()):
             raise GateError("aggregate-promotion-mismatch", stable_class)
     for stable_class in carried:
         if aggregate.get(stable_class) != previous_aggregate[stable_class]:
             raise GateError("carried-class-drift", stable_class)
+    cascade_map, cascade_origins, cascade_groups = _cascade_map_for_round(
+        run, round_number
+    )
+    if set(cascade_map) != set(aggregate):
+        raise GateError(
+            "cascade-aggregate-mismatch",
+            "expected=%s actual=%s"
+            % (
+                ",".join(sorted(cascade_map)),
+                ",".join(sorted(aggregate)),
+            ),
+        )
+    carried_set = set(carried)
+    for root_id, group in cascade_groups.items():
+        if not group["roots"] and not group["classes"].issubset(carried_set):
+            raise GateError("cascade-root-count-invalid", root_id)
+        if group["roots"] and not any(
+            axis != "cascade-scan"
+            for stable_class in group["classes"]
+            for axis in cascade_origins.get(stable_class, set())
+        ):
+            raise GateError("cascade-origin-missing", root_id)
+    if delta_source_material is not None:
+        resolved = _resolved_findings(run, round_number)
+        overlap = sorted(set(aggregate) & set(resolved))
+        if overlap:
+            raise GateError("delta-resolution-overlap", overlap[0])
+        missing_resolutions = sorted(
+            set(delta_source_material) - set(carried) - set(resolved)
+        )
+        if missing_resolutions:
+            raise GateError("delta-resolution-incomplete", missing_resolutions[0])
+        verifier_drift = sorted(
+            stable_class
+            for stable_class in set(delta_source_material) - set(carried)
+            if resolved[stable_class]["verify"]
+            != delta_source_material[stable_class]["verify"]
+        )
+        if verifier_drift:
+            raise GateError(
+                "delta-resolution-verifier-mismatch", verifier_drift[0]
+            )
+        for stable_class in sorted(set(delta_source_material) - set(carried)):
+            _evidence(
+                run,
+                resolved[stable_class]["evidence"],
+                stable_class,
+                resolved[stable_class]["verify"],
+                "not_reproduced",
+                binding="delta_sha256=%s" % delta_source_digest,
+            )
     if material_decisions:
         if historical_plan_sha is not None:
             raise GateError("source-material-decision-pending")
@@ -1005,8 +1274,8 @@ def saturation(run, round_number, axes, historical_plan_sha=None):
     )
 
 
-def _checks(value):
-    if not isinstance(value, list) or not 1 <= len(value) <= 8:
+def _checks(value, maximum=8):
+    if not isinstance(value, list) or not 1 <= len(value) <= maximum:
         raise GateError("repair-check-invalid")
     normalized = []
     for row in value:
@@ -1072,6 +1341,7 @@ def _repair_details(run, round_number):
         return {
             "required": False,
             "source_bound": False,
+            "cascade_bound": False,
             "groups": 0,
             "classes": 0,
             "path": None,
@@ -1089,13 +1359,9 @@ def _repair_details(run, round_number):
         raise
     except (UnicodeError, json.JSONDecodeError) as exc:
         raise GateError("malformed-artifact", receipt_path) from exc
-    schema_version = receipt.get("schema_version") if isinstance(receipt, dict) else None
-    expected_keys = (
-        REPAIR_KEYS
-        if schema_version == 1
-        else REPAIR_V2_KEYS if schema_version == 2 else set()
-    )
-    if not isinstance(receipt, dict) or set(receipt) != expected_keys:
+    if not isinstance(receipt, dict) or receipt.get("schema_version") != 3:
+        raise GateError("cascade-repair-required")
+    if set(receipt) != REPAIR_V3_KEYS:
         raise GateError("repair-malformed")
     if receipt.get("round") != round_number:
         raise GateError("repair-malformed")
@@ -1103,16 +1369,35 @@ def _repair_details(run, round_number):
         raise GateError("stale-plan")
     if receipt.get("findings_sha256") != _sha(findings_payload):
         raise GateError("stale-findings")
-    source_bound = schema_version == 2
-    if source_bound:
-        source_payload = _regular_bytes(
-            _artifact_path(
-                run, "review-saturation", "r%s.json" % round_number
-            ),
-            MAX_JSON_BYTES,
-        )
-        if receipt.get("source_saturation_sha256") != _sha(source_payload):
-            raise GateError("stale-source-saturation")
+    source_payload = _regular_bytes(
+        _artifact_path(run, "review-saturation", "r%s.json" % round_number),
+        MAX_JSON_BYTES,
+    )
+    if receipt.get("source_saturation_sha256") != _sha(source_payload):
+        raise GateError("stale-source-saturation")
+    try:
+        source_receipt = json.loads(source_payload.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise GateError("source-saturation-malformed") from exc
+    if (
+        not isinstance(source_receipt, dict)
+        or source_receipt.get("schema_version") != 4
+        or set(source_receipt) != SATURATION_V4_KEYS
+        or source_receipt.get("round") != round_number
+    ):
+        raise GateError("cascade-source-invalid")
+    source_axes = _axis_list(
+        source_receipt.get("axes"), "source-axes-invalid"
+    )
+    saturation(
+        run,
+        round_number,
+        ",".join(source_axes),
+        historical_plan_sha=source_receipt.get("plan_sha256"),
+    )
+    cascade_map, _, cascade_groups = _cascade_map_for_round(run, round_number)
+    if set(cascade_map) != set(aggregate):
+        raise GateError("cascade-aggregate-mismatch")
     groups = receipt.get("groups")
     if not isinstance(groups, list) or not 1 <= len(groups) <= 32:
         raise GateError("repair-groups-invalid")
@@ -1154,13 +1439,22 @@ def _repair_details(run, round_number):
             raise GateError("repair-root-cause-invalid", group_id)
         if not _bounded(group.get("repair"), 1000, 8):
             raise GateError("repair-action-invalid", group_id)
-        checks = _checks(group.get("checks"))
+        checks = _checks(group.get("checks"), MAX_CASCADE_CLASSES)
+        if not set(classes).issubset(aggregate):
+            raise GateError("incomplete-repair", group_id)
         covered_methods = {
             _typed_verify(aggregate[stable_class]["verify"])
             for stable_class in classes
         }
-        if not set(checks).intersection(covered_methods):
-            raise GateError("repair-check-unbound", group_id)
+        if not covered_methods.issubset(set(checks)):
+            raise GateError("repair-check-incomplete", group_id)
+        expected_group = cascade_groups.get(group_id)
+        if (
+            expected_group is None
+            or set(classes) != expected_group["classes"]
+            or group["root_cause"] != expected_group["root_cause"]
+        ):
+            raise GateError("repair-cascade-group-mismatch", group_id)
     if len(covered) != len(set(covered)) or set(covered) != set(aggregate):
         raise GateError(
             "incomplete-repair",
@@ -1168,9 +1462,12 @@ def _repair_details(run, round_number):
             % (",".join(sorted(aggregate)), ",".join(sorted(set(covered)))),
         )
     _acyclic(groups)
+    if group_ids != set(cascade_groups):
+        raise GateError("repair-cascade-group-mismatch")
     return {
         "required": True,
-        "source_bound": source_bound,
+        "source_bound": True,
+        "cascade_bound": True,
         "groups": len(groups),
         "classes": len(covered),
         "path": receipt_path,
@@ -1179,37 +1476,50 @@ def _repair_details(run, round_number):
 
 
 def _plan_recovery_closeout(
-    run, round_number, previous, plan_sha, scheduled_axes
+    run,
+    round_number,
+    previous,
+    plan_sha,
+    scheduled_axes,
+    closeout_saturation_payload,
 ):
     if (
         round_number != REVIEW_CLOSEOUT_ROUND
-        or previous.get("schema_version") not in (2, 3)
+        or previous.get("schema_version") != 4
         or previous.get("plan_sha256") == plan_sha
     ):
-        return False
+        return None
     previous_scheduled_axes = _axis_list(
         previous.get("scheduled_axes"), "source-scheduled-axes-invalid"
     )
     if previous_scheduled_axes != scheduled_axes:
-        return False
+        return None
     markers = _recovery(run)
     if not markers:
-        return False
+        return None
     latest = markers[-1]
     if (
         latest["source"] != round_number - 1
         or latest["before"] != previous.get("plan_sha256")
         or latest["after"] != plan_sha
     ):
-        return False
+        return None
     repair = _repair_details(run, round_number - 1)
-    if not (repair["required"] and repair["source_bound"]):
-        return False
-    return saturation(
+    if not (
+        repair["required"]
+        and repair["source_bound"]
+        and repair["cascade_bound"]
+    ):
+        return None
+    saturation(
         run,
         round_number - 1,
         ",".join(previous_scheduled_axes),
         historical_plan_sha=previous.get("plan_sha256"),
+    )
+    return (
+        "recovery_repair_sha256=%s :: closeout_saturation_sha256=%s"
+        % (_sha(repair["payload"]), _sha(closeout_saturation_payload))
     )
 
 
@@ -1223,8 +1533,8 @@ def _material_decision_pending(run, round_number):
         raise
     if (
         not isinstance(receipt, dict)
-        or receipt.get("schema_version") != 3
-        or set(receipt) != SATURATION_V3_KEYS
+        or receipt.get("schema_version") != 4
+        or set(receipt) != SATURATION_V4_KEYS
         or receipt.get("round") != round_number
     ):
         return []
@@ -1232,7 +1542,7 @@ def _material_decision_pending(run, round_number):
     for row in receipt.get("dispositions", []):
         if (
             isinstance(row, dict)
-            and set(row) == DISPOSITION_V3_KEYS
+            and set(row) == DISPOSITION_V4_KEYS
             and row.get("outcome") == "material_decision"
             and isinstance(row.get("stable_class"), str)
         ):
@@ -1241,9 +1551,11 @@ def _material_decision_pending(run, round_number):
 
 
 def repair(run, round_number):
-    if _round(round_number) >= REVIEW_CLOSEOUT_ROUND:
+    run = _run_dir(run)
+    round_number = _round(round_number)
+    if round_number >= REVIEW_CLOSEOUT_ROUND:
         raise GateError("review-limit-reached")
-    pending = _material_decision_pending(_run_dir(run), _round(round_number))
+    pending = _material_decision_pending(run, round_number)
     if pending:
         return _emit(
             "CLOSED",
@@ -1251,9 +1563,15 @@ def repair(run, round_number):
             "classes=%s" % ",".join(pending),
             blockers=len(pending),
         )
-    details = _repair_details(run, round_number)
-    if not details["required"]:
+    _, _, aggregate = _aggregate(run, round_number)
+    if not aggregate:
         return _emit("OPEN", "not-required", "no material findings")
+    source = _json(
+        _artifact_path(run, "review-saturation", "r%s.json" % round_number)
+    )
+    if not isinstance(source, dict) or source.get("schema_version") != 4:
+        raise GateError("cascade-source-required", "schema-4")
+    details = _repair_details(run, round_number)
     return _emit(
         "OPEN",
         "repair-ready",
@@ -1261,7 +1579,14 @@ def repair(run, round_number):
     )
 
 
-def _validate_delta(run, round_number, scheduled_axes, rerun_axes, spec=None):
+def _validate_delta(
+    run,
+    round_number,
+    scheduled_axes,
+    rerun_axes,
+    spec=None,
+    expected_review_files=None,
+):
     run = _run_dir(run)
     round_number = _round(round_number)
     if round_number > REVIEW_CLOSEOUT_ROUND:
@@ -1315,15 +1640,12 @@ def _validate_delta(run, round_number, scheduled_axes, rerun_axes, spec=None):
         source_saturation = json.loads(source_saturation_payload.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError) as exc:
         raise GateError("source-saturation-malformed") from exc
-    source_schema = (
-        source_saturation.get("schema_version")
-        if isinstance(source_saturation, dict)
-        else None
-    )
+    if not isinstance(source_saturation, dict) or source_saturation.get(
+        "schema_version"
+    ) != 4:
+        raise GateError("cascade-source-required", "schema-4")
     if (
-        not isinstance(source_saturation, dict)
-        or source_schema not in (2, 3)
-        or set(source_saturation) != _saturation_keys(source_schema)
+        set(source_saturation) != SATURATION_V4_KEYS
         or source_saturation.get("round") != source_round
         or source_saturation.get("plan_sha256") != plan_sha
     ):
@@ -1341,9 +1663,12 @@ def _validate_delta(run, round_number, scheduled_axes, rerun_axes, spec=None):
     if receipt.get("repair_sha256") != _sha(repair_details["payload"]):
         raise GateError("stale-repair")
 
-    base = source_saturation.get("review_base_sha")
-    current_basis = _review_basis(run, base, details=True)
-    current_files = _review_files(current_basis["review_files"])
+    if expected_review_files is None:
+        base = source_saturation.get("review_base_sha")
+        current_basis = _review_basis(run, base, details=True)
+        current_files = _review_files(current_basis["review_files"])
+    else:
+        current_files = _review_files(expected_review_files)
     if receipt.get("review_files") != current_files:
         raise GateError("delta-snapshot-mismatch")
     source_by_path = {row["path"]: row for row in source_files}
@@ -1413,6 +1738,7 @@ def _validate_delta(run, round_number, scheduled_axes, rerun_axes, spec=None):
         "rerun_axes": rerun_axes,
         "carried_axes": carried_axes,
         "digest": _sha(delta_payload),
+        "source_material": _aggregate(run, source_round)[2],
     }
 
 
@@ -1510,7 +1836,7 @@ def _trajectory_semantics(receipt):
     ), hypothesis, assumption, checks
 
 
-def _schema3_failure_classes(run, source_round):
+def _schema4_failure_classes(run, source_round):
     path = _artifact_path(run, "review-saturation", "r%s.json" % source_round)
     try:
         receipt = _json(path)
@@ -1520,8 +1846,8 @@ def _schema3_failure_classes(run, source_round):
         raise
     if (
         not isinstance(receipt, dict)
-        or receipt.get("schema_version") != 3
-        or set(receipt) != SATURATION_V3_KEYS
+        or receipt.get("schema_version") != 4
+        or set(receipt) != SATURATION_V4_KEYS
         or receipt.get("round") != source_round
     ):
         return None
@@ -1642,87 +1968,19 @@ def preflight(run, round_number):
         return _emit("OPEN", "below-threshold", "failed_strategies=%s" % len(markers))
     latest = markers[-2:]
     latest_classes = [
-        _schema3_failure_classes(run, row["source"]) for row in latest
+        _schema4_failure_classes(run, row["source"]) for row in latest
     ]
-    if all(classes is not None for classes in latest_classes):
-        common_classes = set.intersection(*latest_classes)
-        if not common_classes:
-            return _emit(
-                "OPEN",
-                "below-threshold",
-                "failed_strategies=class-scoped",
-            )
-        return _class_scoped_preflight(
-            run, round_number, markers, latest, common_classes
+    if any(classes is None for classes in latest_classes):
+        raise GateError("trajectory-source-schema-required", "schema-4")
+    common_classes = set.intersection(*latest_classes)
+    if not common_classes:
+        return _emit(
+            "OPEN",
+            "below-threshold",
+            "failed_strategies=class-scoped",
         )
-    source_round = latest[-1]["source"]
-    if round_number <= source_round:
-        raise GateError("round-invalid", str(round_number))
-    receipt_path = _artifact_path(
-        run, "review-trajectories", "source-r%s.json" % source_round
-    )
-    try:
-        receipt = _json(receipt_path)
-    except GateError as exc:
-        if exc.reason == "missing-artifact":
-            raise GateError("trajectory-required", receipt_path)
-        raise
-    if not isinstance(receipt, dict) or set(receipt) != TRAJECTORY_KEYS:
-        raise GateError("trajectory-malformed")
-    if receipt.get("schema_version") != 1 or receipt.get("source_round") != source_round:
-        raise GateError("trajectory-malformed")
-    plan_payload, plan_sha = _plan(run)
-    if receipt.get("plan_sha256") != plan_sha:
-        raise GateError("stale-plan")
-    failed_rounds = [row["source"] for row in latest]
-    if receipt.get("failed_source_rounds") != failed_rounds:
-        raise GateError("trajectory-receipts-mismatch")
-    receipt_hashes = [_sha(row["line"].encode("utf-8")) for row in latest]
-    if receipt.get("recovery_receipt_sha256s") != receipt_hashes:
-        raise GateError("trajectory-receipts-mismatch")
-    prior_payloads = []
-    prior_semantics = []
-    for row in markers[1:-1]:
-        prior_path = _artifact_path(
-            run, "review-trajectories", "source-r%s.json" % row["source"]
-        )
-        payload = _regular_bytes(prior_path, MAX_JSON_BYTES)
-        try:
-            prior = json.loads(payload.decode("utf-8"))
-        except (UnicodeError, json.JSONDecodeError) as exc:
-            raise GateError("trajectory-malformed", prior_path) from exc
-        if (
-            not isinstance(prior, dict)
-            or set(prior) != TRAJECTORY_KEYS
-            or prior.get("schema_version") != 1
-            or prior.get("source_round") != row["source"]
-        ):
-            raise GateError("trajectory-malformed", prior_path)
-        prior_payloads.append(_sha(payload))
-        prior_semantics.append(_trajectory_semantics(prior)[0])
-    if receipt.get("prior_trajectory_sha256s") != prior_payloads:
-        raise GateError("trajectory-receipts-mismatch")
-    semantics, hypothesis, assumption, checks = _trajectory_semantics(receipt)
-    if semantics in prior_semantics:
-        raise GateError("trajectory-repeated")
-    try:
-        plan_text = plan_payload.decode("utf-8")
-    except UnicodeError as exc:
-        raise GateError("trajectory-plan-mismatch") from exc
-    required_lines = {
-        "Trajectory action: %s" % receipt["action"],
-        "Trajectory hypothesis: %s" % hypothesis,
-        "Changed assumption: %s" % assumption,
-    }
-    required_lines.update(
-        "Trajectory check: %s :: %s" % check for check in checks
-    )
-    if not required_lines.issubset(set(plan_text.splitlines())):
-        raise GateError("trajectory-plan-mismatch")
-    return _emit(
-        "OPEN",
-        "trajectory-ready",
-        "source_round=%s action=%s" % (source_round, receipt["action"]),
+    return _class_scoped_preflight(
+        run, round_number, markers, latest, common_classes
     )
 
 

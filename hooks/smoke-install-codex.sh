@@ -142,8 +142,8 @@ fi
 if [ -x "$ROOT/hooks/test-current-state-gate.sh" ] && bash -n "$ROOT/hooks/test-current-state-gate.sh" 2>/dev/null; then ok "current-state gate test ok"; else bad "current-state gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/review-convergence-gate.sh" ] \
   && bash -n "$ROOT/hooks/review-convergence-gate.sh" 2>/dev/null \
-  && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import review_convergence; assert callable(review_convergence.delta); assert review_convergence.REVIEW_CLOSEOUT_ROUND == 4; assert review_convergence.SATURATION_V3_KEYS == review_convergence.SATURATION_V2_KEYS' 2>/dev/null \
-  && grep -q 'schema-3 saturation' "$ROOT/phases/phase-7-review-commit.md" \
+  && PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import review_convergence; assert callable(review_convergence.delta); assert review_convergence.REVIEW_CLOSEOUT_ROUND == 4; assert "cascade_candidate_file" in review_convergence.SATURATION_V4_KEYS; assert not hasattr(review_convergence, "SATURATION_V3_KEYS")' 2>/dev/null \
+  && grep -q 'schema-4 saturation' "$ROOT/phases/phase-7-review-commit.md" \
   && grep -q 'material-decision-required' "$ROOT/phases/phase-7-review-commit.md"; then
   ok "review convergence gate helper ok"
 else

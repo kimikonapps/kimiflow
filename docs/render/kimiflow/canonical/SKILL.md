@@ -91,7 +91,7 @@ These operative rules stay in the driver until a later approved packet proves an
 - **Phase 4 held rule:** only evidenced BLOCKER/HIGH revises; architecture changes need an executable failure/named-invariant violation. Contracted findings are candidate-first, typed, digest-pinned, class-stable, and need negative resolution evidence. Never reset valid rounds. Budgets: 2 small, 3 large/audit. Repeat class/oscillation/cap recovers autonomously. Schema 4+ pauses only for material risk.
 - **Phase 5 protected rules:** require the PLAN-digest write gate; execute required spike/runtime evidence and slices. Stage named paths only, preserve foreign staging, and scan weakening/secrets/paths. Red commits tests only; deletion needs proof; failures change approach.
 - **Phase 6 protected rules:** fixes require `red-green-gate.sh`. Execute declared checks; record each decision's evidence result plus the whole-intent sweep, and trace every Contract-3/4 Requirement. Code gaps → Phase 5; strategy/research drift → Phase 2.
-- **Phase 7 protected rules:** review the stable PLAN once, then exact deltas. Schema-3 materiality admits only `promoted` repairs; protected/user-boundary impacts cannot be waived. Recovery is stable-class scoped; three semantic rounds plus one closeout are absolute.
+- **Phase 7 protected rules:** review the stable PLAN once, then exact deltas. Schema-4 saturation binds cascades; only source-bound schema-3 repairs pass. Protected impacts stay gated. Recovery is class-scoped; three rounds plus zero-carry closeout are absolute.
 
 ## Scaling Knobs
 
