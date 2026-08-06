@@ -126,44 +126,190 @@ class OutcomeFixture(unittest.TestCase):
         return outcomes.evaluate_json(self.root, self.run_dir, terminal)
 
     def write_saturation(self, round_number):
+        self.assertEqual(round_number, 2)
         script = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
             "review-convergence-gate.sh",
         )
-        result = subprocess.run(
-            [script, "basis", "--run", self.run_dir, "--base", self.started],
-            cwd=self.root,
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+        scheduled_axes = ["spec-correctness", "failure-security"]
+        stable_class = "rollback-atomicity"
+        verify = "command:test -f rollback.log"
+        root_cause = "The rollback path exposes partially applied state."
+        plan_path = os.path.join(self.run_dir, "PLAN.md")
+
+        def digest(payload):
+            if isinstance(payload, str):
+                payload = payload.encode("utf-8")
+            return hashlib.sha256(payload).hexdigest()
+
+        def file_digest(relative):
+            with open(os.path.join(self.run_dir, relative), "rb") as handle:
+                return digest(handle.read())
+
+        def basis():
+            result = subprocess.run(
+                [script, "basis", "--run", self.run_dir, "--base", self.started, "--details"],
+                cwd=self.root,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            return json.loads(result.stdout)
+
+        def candidate_file(round_value, axis, content):
+            relative = "code-review-candidates/r%s-%s.md" % (round_value, axis)
+            self.write(relative, content)
+            return {"axis": axis, "sha256": file_digest(relative)}
+
+        with open(plan_path, "rb") as handle:
+            plan_sha = digest(handle.read())
+
+        candidate = (
+            "CANDIDATE HIGH app.py:1 :: rollback is partial :: verify=%s\n" % verify
         )
-        fields = json.loads(result.stdout)
-        candidate = "NONE\n"
+        candidate_id = "cand_" + digest(
+            ("spec-correctness\0" + candidate.rstrip("\n")).encode("utf-8")
+        )
+        candidate_files = [
+            candidate_file(1, "spec-correctness", candidate),
+            candidate_file(1, "failure-security", "NONE\n"),
+        ]
+        self.write("code-review-cascades/r1.md", "NONE\n")
+
+        probes = []
+        for surface in (
+            "direct-callers",
+            "data-flow",
+            "shared-state",
+            "assumption-users",
+            "error-consequences",
+        ):
+            relative = "review-evidence/cascade-%s.txt" % surface
+            self.write(
+                relative,
+                "REVIEW_EVIDENCE class=%s :: verify=%s :: outcome=reproduced :: checked %s\n"
+                % (stable_class, verify, surface),
+            )
+            probes.append({
+                "surface": surface,
+                "status": "checked",
+                "verify": verify,
+                "evidence": "%s@%s" % (relative, file_digest(relative)),
+            })
+
+        first_basis = basis()
+        first_saturation = {
+            "schema_version": 4,
+            "round": 1,
+            "plan_sha256": plan_sha,
+            "review_base_sha": first_basis["review_base_sha"],
+            "review_target_sha": first_basis["review_target_sha"],
+            "review_snapshot_sha256": first_basis["review_snapshot_sha256"],
+            "scheduled_axes": scheduled_axes,
+            "axes": scheduled_axes,
+            "review_files": first_basis["review_files"],
+            "candidate_files": candidate_files,
+            "cascade_candidate_file": {
+                "path": "code-review-cascades/r1.md",
+                "sha256": file_digest("code-review-cascades/r1.md"),
+            },
+            "dispositions": [{
+                "candidate_id": candidate_id,
+                "outcome": "promoted",
+                "stable_class": stable_class,
+                "verify": verify,
+                "evidence": "review-evidence/r1.txt@%s" % file_digest("review-evidence/r1.txt"),
+                "contract_status": "violated",
+                "support_status": "supported",
+                "impact_class": "correctness",
+                "proportionality": "The reproduced rollback violates the confirmed atomicity contract.",
+                "cascade": {
+                    "root_cause_id": stable_class,
+                    "root_cause": root_cause,
+                    "assumption": "A failed rollback was assumed to leave no partially applied state.",
+                    "role": "root",
+                    "probes": probes,
+                },
+            }],
+            "carried_classes": [],
+            "delta_receipt": None,
+        }
+        self.write("review-saturation/r1.json", json.dumps(first_saturation) + "\n")
+
+        repair = {
+            "schema_version": 3,
+            "round": 1,
+            "plan_sha256": plan_sha,
+            "findings_sha256": file_digest("findings/r1-code-verified.md"),
+            "source_saturation_sha256": file_digest("review-saturation/r1.json"),
+            "groups": [{
+                "id": stable_class,
+                "classes": [stable_class],
+                "root_cause": root_cause,
+                "depends_on": [],
+                "repair": "Restore rollback atomicity and rerun the exact falsifier.",
+                "checks": [{"kind": "command", "method": "test -f rollback.log"}],
+            }],
+        }
+        self.write("review-repairs/r1.json", json.dumps(repair) + "\n")
+
+        _write(os.path.join(self.root, "app.py"), "VALUE = 3\n")
+        second_basis = basis()
+        delta = {
+            "schema_version": 1,
+            "source_round": 1,
+            "round": 2,
+            "plan_sha256": plan_sha,
+            "source_saturation_sha256": file_digest("review-saturation/r1.json"),
+            "repair_sha256": file_digest("review-repairs/r1.json"),
+            "scheduled_axes": scheduled_axes,
+            "rerun_axes": ["spec-correctness"],
+            "carried_axes": ["failure-security"],
+            "review_files": second_basis["review_files"],
+            "changed_paths": ["app.py"],
+            "route_receipt_sha256": None,
+        }
+        self.write("review-deltas/r2.json", json.dumps(delta) + "\n")
+        delta_sha = file_digest("review-deltas/r2.json")
+
+        resolved_relative = "review-evidence/r2.txt"
+        with open(os.path.join(self.run_dir, resolved_relative), "r", encoding="utf-8") as handle:
+            resolved = handle.read().rstrip("\n")
         self.write(
-            "code-review-candidates/r%s-spec-correctness.md" % round_number,
-            candidate,
+            resolved_relative,
+            "%s :: delta_sha256=%s\n" % (resolved, delta_sha),
         )
-        with open(os.path.join(self.run_dir, "PLAN.md"), "rb") as handle:
-            plan_sha = hashlib.sha256(handle.read()).hexdigest()
         self.write(
-            "review-saturation/r%s.json" % round_number,
-            json.dumps({
-                "schema_version": 1,
-                "round": round_number,
-                "plan_sha256": plan_sha,
-                "review_base_sha": fields["review_base_sha"],
-                "review_target_sha": fields["review_target_sha"],
-                "review_snapshot_sha256": fields["review_snapshot_sha256"],
-                "axes": ["spec-correctness"],
-                "candidate_files": [{
-                    "axis": "spec-correctness",
-                    "sha256": hashlib.sha256(candidate.encode("utf-8")).hexdigest(),
-                }],
-                "dispositions": [],
-                "carried_classes": [],
-            }) + "\n",
+            "findings/r2-code-verified.md",
+            "RESOLVED class=%s :: verify=%s :: evidence=%s@%s\n"
+            % (stable_class, verify, resolved_relative, file_digest(resolved_relative)),
         )
+
+        second_candidate_files = [
+            candidate_file(2, "spec-correctness", "NONE\n"),
+        ]
+        self.write("code-review-cascades/r2.md", "NONE\n")
+        second_saturation = {
+            "schema_version": 4,
+            "round": 2,
+            "plan_sha256": plan_sha,
+            "review_base_sha": second_basis["review_base_sha"],
+            "review_target_sha": second_basis["review_target_sha"],
+            "review_snapshot_sha256": second_basis["review_snapshot_sha256"],
+            "scheduled_axes": scheduled_axes,
+            "axes": ["spec-correctness"],
+            "review_files": second_basis["review_files"],
+            "candidate_files": second_candidate_files,
+            "cascade_candidate_file": {
+                "path": "code-review-cascades/r2.md",
+                "sha256": file_digest("code-review-cascades/r2.md"),
+            },
+            "dispositions": [],
+            "carried_classes": [],
+            "delta_receipt": "review-deltas/r2.json@%s" % delta_sha,
+        }
+        self.write("review-saturation/r2.json", json.dumps(second_saturation) + "\n")
 
 
 class OutcomeEvaluationCase(OutcomeFixture):
