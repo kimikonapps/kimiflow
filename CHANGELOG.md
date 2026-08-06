@@ -4,6 +4,12 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.2.45
+
+Human-readable cross-project memory and root-cause bug-cascade convergence.
+
 ### Added
 
 - Added human-readable, Obsidian-independent cross-project memory under `~/.kimiflow/memory/`, with a

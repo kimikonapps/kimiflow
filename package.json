@@ -1,6 +1,6 @@
 {
   "name": "@kimiflow/pi",
-  "version": "0.2.44",
+  "version": "0.2.45",
   "description": "Kimiflow workflow for Pi with optional stock FirstMate crew orchestration.",
   "type": "module",
   "license": "MIT",
