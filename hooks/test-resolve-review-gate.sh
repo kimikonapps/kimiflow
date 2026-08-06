@@ -385,6 +385,7 @@ mkdir -p \
   "$CODE_ROOT/src" \
   "$CODE_RUN/findings" \
   "$CODE_RUN/code-review-candidates" \
+  "$CODE_RUN/code-review-cascades" \
   "$CODE_RUN/review-saturation"
 git -C "$CODE_ROOT" init -q
 git -C "$CODE_ROOT" config user.email kimiflow-test@example.invalid
@@ -398,22 +399,28 @@ printf '<!-- kimiflow:strategy gate=code epoch-start=1 fingerprint=%s -->\n' \
   "$(hash_file "$CODE_RUN/PLAN.md")" > "$CODE_RUN/RECOVERY.md"
 printf 'NONE\n' > "$CODE_RUN/findings/r1-code-verified.md"
 printf 'NONE\n' > "$CODE_RUN/code-review-candidates/r1-spec-correctness.md"
-code_basis="$("$(dirname "$SCRIPT")/review-convergence-gate.sh" basis --run "$CODE_RUN" --base HEAD)"
+printf 'NONE\n' > "$CODE_RUN/code-review-cascades/r1.md"
+code_basis="$("$(dirname "$SCRIPT")/review-convergence-gate.sh" basis --run "$CODE_RUN" --base HEAD --details)"
 jq -n \
   --arg plan_sha256 "$(hash_file "$CODE_RUN/PLAN.md")" \
   --arg candidate_hash "$(hash_file "$CODE_RUN/code-review-candidates/r1-spec-correctness.md")" \
+  --arg cascade_hash "$(hash_file "$CODE_RUN/code-review-cascades/r1.md")" \
   --argjson basis "$code_basis" \
   '{
-    schema_version:1,
+    schema_version:4,
     round:1,
     plan_sha256:$plan_sha256,
     review_base_sha:$basis.review_base_sha,
     review_target_sha:$basis.review_target_sha,
     review_snapshot_sha256:$basis.review_snapshot_sha256,
+    scheduled_axes:["spec-correctness"],
     axes:["spec-correctness"],
+    review_files:$basis.review_files,
     candidate_files:[{axis:"spec-correctness",sha256:$candidate_hash}],
+    cascade_candidate_file:{path:"code-review-cascades/r1.md",sha256:$cascade_hash},
     dispositions:[],
-    carried_classes:[]
+    carried_classes:[],
+    delta_receipt:null
   }' > "$CODE_RUN/review-saturation/r1.json"
 code_run() { "$SCRIPT" "$CODE_RUN/findings" "$@"; }
 af "$(code_run --round 1 --expect code-verified --epoch-start 1 --cap 3 --finding-contract 1 --review-axes spec-correctness)" 3 malformed "contracted_code_requires_gate"
