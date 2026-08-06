@@ -37,7 +37,7 @@
       ],
       "required_markers": [
         "saturation_clean_axis_opens",
-        "trajectory_repeated_strategy_closes",
+        "trajectory_v2_same_class_requires_changed_strategy",
         "ALL GREEN"
       ],
       "trace_recovery": true

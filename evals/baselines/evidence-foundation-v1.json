@@ -6,8 +6,8 @@
       "id": "product-intake",
       "marker_count": 3,
       "marker_pass_count": 3,
-      "output_bytes": 789,
-      "output_sha256": "sha256:6daedf19b6a6a79f0d67391594c460c208a1dc6a3e6b1968bd885cbfbcf0da9e",
+      "output_bytes": 1519,
+      "output_sha256": "sha256:de513dbed88fb1bb8e45b093d47785bb49f1d3ac1ae75df19caa81e91a8479d7",
       "passed": true,
       "phase": 1,
       "skip_detected": false
@@ -18,7 +18,7 @@
       "marker_count": 1,
       "marker_pass_count": 1,
       "output_bytes": 109,
-      "output_sha256": "sha256:cf409505e4e20c382d7c8c9617924e897bbb96d9f88b3deff43c73709e60194f",
+      "output_sha256": "sha256:818cdd6b8c392ce44c05928697912fc22d5c138d23624975771c0becc77f48c0",
       "passed": true,
       "phase": 5,
       "skip_detected": false
@@ -28,8 +28,8 @@
       "id": "review-convergence",
       "marker_count": 3,
       "marker_pass_count": 3,
-      "output_bytes": 1359,
-      "output_sha256": "sha256:5018d565999a581dd6e661729ca1ad243e4a38b8483657daa6b1b87a388a9464",
+      "output_bytes": 4636,
+      "output_sha256": "sha256:ffe628f91684aa05f9f9906ce6ae65cd63dcb3e6a70aba147d6cc11e12f6d6c0",
       "passed": true,
       "phase": 7,
       "skip_detected": false
@@ -39,14 +39,14 @@
       "id": "intent-conformance",
       "marker_count": 1,
       "marker_pass_count": 1,
-      "output_bytes": 6101,
-      "output_sha256": "sha256:174406a785820a610869ebfa695bedae43726dd44ccdf9b1ee671a7e5903f5e5",
+      "output_bytes": 6783,
+      "output_sha256": "sha256:ff6e05ce9dcbe89c8b857c4c85ff37479d5e6174548881411a9b07fb65e79afb",
       "passed": true,
       "phase": 6,
       "skip_detected": false
     }
   ],
-  "manifest_sha256": "sha256:38bb3a8b426e46ce879820262e2f911b0197a04425ff3079c75f61232cddbd16",
+  "manifest_sha256": "sha256:aae8918712c0b550aef180bbbd734abb80a6316229b7f707675f48ab1fbca6d9",
   "privacy": {
     "local_only": true,
     "stores_absolute_paths": false,
@@ -57,9 +57,9 @@
     "stores_secrets": false
   },
   "schema_version": 1,
-  "seal": "sha256:55cde36716e4688fa75e105e04b617c5e9a89f35c53f19bdd7bd1c34d54ba5dc",
-  "source_commit": "86faa3bf4aebcdda6ef827de8caedf0d0f56b5aa",
-  "source_snapshot_sha256": "sha256:4b944a54cc5e0e5e0fd10072116b4887902446b88048368270c2f6a52653152b",
+  "seal": "sha256:57d320f3f067c956ed7e6a6986013a1567d049d45971168506ad4834ddc2b1cd",
+  "source_commit": "19207c2e47d6abd1ab4c5de199feaaa71bfc7c10",
+  "source_snapshot_sha256": "sha256:972725ed3bd560ba6422729f707d5157a131786f71b83767f93d01b4f7a5014c",
   "suite": "evidence-foundation-v1",
   "summary": {
     "case_count": 4,
@@ -74,146 +74,146 @@
         "name": "evaluation-suite",
         "parent_span_id": null,
         "phase": null,
-        "span_id": "45be525fb71ccaca",
+        "span_id": "e763fe3f5d233bf0",
         "status": "planned",
-        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+        "trace_id": "04c5a591863ab79441404ef6e1fd86d0"
       },
       {
         "kind": "phase",
         "name": "phase-1",
-        "parent_span_id": "45be525fb71ccaca",
+        "parent_span_id": "e763fe3f5d233bf0",
         "phase": 1,
-        "span_id": "8f32356f91988321",
+        "span_id": "d438d19aa227747c",
         "status": "planned",
-        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+        "trace_id": "04c5a591863ab79441404ef6e1fd86d0"
       },
       {
         "kind": "tool",
         "name": "test-command",
-        "parent_span_id": "8f32356f91988321",
+        "parent_span_id": "d438d19aa227747c",
         "phase": 1,
-        "span_id": "9c5dd0811f43c3d1",
+        "span_id": "c8ef833e95e1503d",
         "status": "planned",
-        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+        "trace_id": "04c5a591863ab79441404ef6e1fd86d0"
       },
       {
         "kind": "gate",
         "name": "product-intake",
-        "parent_span_id": "9c5dd0811f43c3d1",
+        "parent_span_id": "c8ef833e95e1503d",
         "phase": 1,
-        "span_id": "888a44734dfd86c3",
+        "span_id": "81b69a5d2733b383",
         "status": "passed",
-        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+        "trace_id": "04c5a591863ab79441404ef6e1fd86d0"
       },
       {
         "kind": "phase",
         "name": "phase-5",
-        "parent_span_id": "45be525fb71ccaca",
+        "parent_span_id": "e763fe3f5d233bf0",
         "phase": 5,
-        "span_id": "4f88196a7cbb4beb",
+        "span_id": "d0230c9e8ec6ff56",
         "status": "planned",
-        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+        "trace_id": "04c5a591863ab79441404ef6e1fd86d0"
       },
       {
         "kind": "tool",
         "name": "test-command",
-        "parent_span_id": "4f88196a7cbb4beb",
+        "parent_span_id": "d0230c9e8ec6ff56",
         "phase": 5,
-        "span_id": "9e5cacc228606af4",
+        "span_id": "f08c71a51f973471",
         "status": "planned",
-        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+        "trace_id": "04c5a591863ab79441404ef6e1fd86d0"
       },
       {
         "kind": "gate",
         "name": "recovery",
-        "parent_span_id": "9e5cacc228606af4",
+        "parent_span_id": "f08c71a51f973471",
         "phase": 5,
-        "span_id": "bef7825ca4370f1c",
+        "span_id": "98f11f0dd97e2b48",
         "status": "passed",
-        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+        "trace_id": "04c5a591863ab79441404ef6e1fd86d0"
       },
       {
         "kind": "recovery",
         "name": "recovery-check",
-        "parent_span_id": "bef7825ca4370f1c",
+        "parent_span_id": "98f11f0dd97e2b48",
         "phase": 5,
-        "span_id": "6d80eb187452d8e6",
+        "span_id": "4b7a9eab30862263",
         "status": "passed",
-        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+        "trace_id": "04c5a591863ab79441404ef6e1fd86d0"
       },
       {
         "kind": "phase",
         "name": "phase-7",
-        "parent_span_id": "45be525fb71ccaca",
+        "parent_span_id": "e763fe3f5d233bf0",
         "phase": 7,
-        "span_id": "0f36484a5231d61f",
+        "span_id": "afd17c7d6ca4d2d8",
         "status": "planned",
-        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+        "trace_id": "04c5a591863ab79441404ef6e1fd86d0"
       },
       {
         "kind": "tool",
         "name": "test-command",
-        "parent_span_id": "0f36484a5231d61f",
+        "parent_span_id": "afd17c7d6ca4d2d8",
         "phase": 7,
-        "span_id": "95a7511873ab3277",
+        "span_id": "57779a3492394f71",
         "status": "planned",
-        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+        "trace_id": "04c5a591863ab79441404ef6e1fd86d0"
       },
       {
         "kind": "gate",
         "name": "review-convergence",
-        "parent_span_id": "95a7511873ab3277",
+        "parent_span_id": "57779a3492394f71",
         "phase": 7,
-        "span_id": "c93d3e163862c1f0",
+        "span_id": "4245362b7b25c8dd",
         "status": "passed",
-        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+        "trace_id": "04c5a591863ab79441404ef6e1fd86d0"
       },
       {
         "kind": "recovery",
         "name": "recovery-check",
-        "parent_span_id": "c93d3e163862c1f0",
+        "parent_span_id": "4245362b7b25c8dd",
         "phase": 7,
-        "span_id": "9c2c166e0d634317",
+        "span_id": "3cb3977e6ea89b57",
         "status": "passed",
-        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+        "trace_id": "04c5a591863ab79441404ef6e1fd86d0"
       },
       {
         "kind": "phase",
         "name": "phase-6",
-        "parent_span_id": "45be525fb71ccaca",
+        "parent_span_id": "e763fe3f5d233bf0",
         "phase": 6,
-        "span_id": "db8db68e0a3268e5",
+        "span_id": "3d396b067cb20317",
         "status": "planned",
-        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+        "trace_id": "04c5a591863ab79441404ef6e1fd86d0"
       },
       {
         "kind": "tool",
         "name": "test-command",
-        "parent_span_id": "db8db68e0a3268e5",
+        "parent_span_id": "3d396b067cb20317",
         "phase": 6,
-        "span_id": "42820b3936452f62",
+        "span_id": "54f4193f28154093",
         "status": "planned",
-        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+        "trace_id": "04c5a591863ab79441404ef6e1fd86d0"
       },
       {
         "kind": "gate",
         "name": "intent-conformance",
-        "parent_span_id": "42820b3936452f62",
+        "parent_span_id": "54f4193f28154093",
         "phase": 6,
-        "span_id": "db52a1cd3dc950ef",
+        "span_id": "2eef4a3a27fd3f8c",
         "status": "passed",
-        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+        "trace_id": "04c5a591863ab79441404ef6e1fd86d0"
       },
       {
         "kind": "handoff",
         "name": "candidate-result",
-        "parent_span_id": "45be525fb71ccaca",
+        "parent_span_id": "e763fe3f5d233bf0",
         "phase": null,
-        "span_id": "20ec036274bc1fd6",
+        "span_id": "7279ff371110a392",
         "status": "passed",
-        "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+        "trace_id": "04c5a591863ab79441404ef6e1fd86d0"
       }
     ],
-    "trace_id": "5479bf8e7c0ef9761132e933950a87e6"
+    "trace_id": "04c5a591863ab79441404ef6e1fd86d0"
   }
 }
