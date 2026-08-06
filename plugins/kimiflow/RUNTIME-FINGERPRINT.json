@@ -884,10 +884,10 @@
       "sha256": "sha256:655eb4e4a4d758c99e8420de49e68e2eba078184811ac0b681b65f4db37aa4bd"
     },
     {
-      "bytes": 20291,
+      "bytes": 19432,
       "mode": "0644",
       "path": "phases/phase-2-understand.md",
-      "sha256": "sha256:361c6057cf7f49b1527e0b9ce006c46b121f00ca8632197faf46a1eaf83837c4"
+      "sha256": "sha256:b3b7cea08290652dac6e030f6f62c84d09f7831506b667fdadf336c100262e14"
     },
     {
       "bytes": 9864,
@@ -1064,6 +1064,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:67118427836aa033170015b8ed5f23365f4974070a5c7443bdee0b2412f30e05",
+  "runtime_fingerprint": "sha256:f949de8fd4ab4e4c4065e2de803bd22a7cae8c6d463275eb588f042288bf6d11",
   "schema_version": 1
 }
