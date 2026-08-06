@@ -6,6 +6,28 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.2.46
+
+Same-pass prose quality across the Kimiflow workflow without another model call or gate.
+
+### Added
+
+- Added one bounded, meaning-preserving prose-quality contract for Clarify, Understand, Plan, Plan Review,
+  Verify, and Review/Commit, shared by Claude, Codex, and Pi from the installed plugin root.
+- Added contract and installation-smoke coverage for same-pass execution, existing-gate ownership,
+  semantic/style classes, technical exclusions, delegated-author packets, README claims, and skill budgets.
+
+### Fixed
+
+- Wired Pi's dedicated loaded skill to the same central contract and bound delegated planners, verifiers, and
+  reviewers to that contract in their existing packet.
+- Closed test blind spots around negative model-call/detector wording and the core meaning-preservation,
+  minimum-edit, semantic-defect, and style-defect clauses.
+
+### Credits
+
+- The minimum-effective-edit idea is adapted from [petergyang/no-ai-slop](https://github.com/petergyang/no-ai-slop).
+
 ## 0.2.45
 
 Human-readable cross-project memory and root-cause bug-cascade convergence.
