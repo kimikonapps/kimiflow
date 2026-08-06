@@ -886,7 +886,7 @@ html&gt;body{padding:0}&lt;/style&gt;
   &lt;div class=&quot;kf-graph&quot;&gt;
     &lt;svg viewBox=&quot;0 0 1100 750&quot; role=&quot;img&quot; aria-labelledby=&quot;kfg-title kfg-desc&quot;&gt;
       &lt;title id=&quot;kfg-title&quot;&gt;Kimiflow vom bestätigten Produktintent bis zur ausführbaren Evidence&lt;/title&gt;
-      &lt;desc id=&quot;kfg-desc&quot;&gt;Der Gesamtgraph zeigt das Produktgespräch, die aktuelle Codebasis, gezielte Recherche, acht Phasen, Evidence-Verträge, endliche Reviews und den lokalen Commit.&lt;/desc&gt;
+      &lt;desc id=&quot;kfg-desc&quot;&gt;Der Gesamtgraph zeigt Produktgespräch, aktuelle Codebasis, ausführbare Evidence, Bug-Kaskaden-Review, menschenlesbares projektübergreifendes Memory und den lokalen Commit.&lt;/desc&gt;
       &lt;defs&gt;
         &lt;marker id=&quot;kfg-arrow&quot; viewBox=&quot;0 0 10 10&quot; refX=&quot;8.5&quot; refY=&quot;5&quot; markerWidth=&quot;7&quot; markerHeight=&quot;7&quot; orient=&quot;auto-start-reverse&quot;&gt;
           &lt;path d=&quot;M0 0 L10 5 L0 10 z&quot;&gt;&lt;/path&gt;
@@ -957,8 +957,8 @@ html&gt;body{padding:0}&lt;/style&gt;
       &lt;/g&gt;
       &lt;g class=&quot;kfg-node kfg-satellite kfg-program&quot; data-node=&quot;program&quot; transform=&quot;translate(805 31)&quot;&gt;
         &lt;rect width=&quot;244&quot; height=&quot;60&quot; rx=&quot;14&quot;&gt;&lt;/rect&gt;
-        &lt;text x=&quot;122&quot; y=&quot;25&quot; text-anchor=&quot;middle&quot;&gt;Endliches Review-Budget&lt;/text&gt;
-        &lt;text class=&quot;kfg-secondary&quot; x=&quot;122&quot; y=&quot;46&quot; text-anchor=&quot;middle&quot;&gt;Relevanz vor Reparatur&lt;/text&gt;
+        &lt;text x=&quot;122&quot; y=&quot;25&quot; text-anchor=&quot;middle&quot;&gt;Bug-Kaskaden-Review&lt;/text&gt;
+        &lt;text class=&quot;kfg-secondary&quot; x=&quot;122&quot; y=&quot;46&quot; text-anchor=&quot;middle&quot;&gt;5 Probes · eine Root Cause&lt;/text&gt;
       &lt;/g&gt;
 
       &lt;g class=&quot;kfg-node kfg-satellite kfg-workspace&quot; data-node=&quot;workspace&quot; transform=&quot;translate(38 107)&quot;&gt;
@@ -988,8 +988,8 @@ html&gt;body{padding:0}&lt;/style&gt;
       &lt;/g&gt;
       &lt;g class=&quot;kfg-node kfg-satellite kfg-models&quot; data-node=&quot;models&quot; transform=&quot;translate(575 664)&quot;&gt;
         &lt;rect width=&quot;224&quot; height=&quot;63&quot; rx=&quot;14&quot;&gt;&lt;/rect&gt;
-        &lt;text x=&quot;112&quot; y=&quot;26&quot; text-anchor=&quot;middle&quot;&gt;Begrenztes Modell-Routing&lt;/text&gt;
-        &lt;text class=&quot;kfg-secondary&quot; x=&quot;112&quot; y=&quot;48&quot; text-anchor=&quot;middle&quot;&gt;Top entscheidet · Worker liefern Evidence&lt;/text&gt;
+        &lt;text x=&quot;112&quot; y=&quot;26&quot; text-anchor=&quot;middle&quot;&gt;Menschenlesbares Memory&lt;/text&gt;
+        &lt;text class=&quot;kfg-secondary&quot; x=&quot;112&quot; y=&quot;48&quot; text-anchor=&quot;middle&quot;&gt;Markdown-Index · Links · Widerruf&lt;/text&gt;
       &lt;/g&gt;
       &lt;g class=&quot;kfg-node kfg-satellite kfg-evidence&quot; data-node=&quot;tests&quot; transform=&quot;translate(107 600)&quot;&gt;
         &lt;rect width=&quot;205&quot; height=&quot;65&quot; rx=&quot;14&quot;&gt;&lt;/rect&gt;
@@ -1050,7 +1050,7 @@ html&gt;body{padding:0}&lt;/style&gt;
       &lt;g class=&quot;kfg-node kfg-phase&quot; data-node=&quot;p7&quot; transform=&quot;translate(295 156)&quot;&gt;
         &lt;ellipse cx=&quot;55&quot; cy=&quot;44&quot; rx=&quot;55&quot; ry=&quot;44&quot;&gt;&lt;/ellipse&gt;
         &lt;text x=&quot;55&quot; y=&quot;37&quot; text-anchor=&quot;middle&quot;&gt;7 · Review&lt;/text&gt;
-        &lt;text class=&quot;kfg-secondary&quot; x=&quot;55&quot; y=&quot;59&quot; text-anchor=&quot;middle&quot;&gt;Relevanz + Commit&lt;/text&gt;
+        &lt;text class=&quot;kfg-secondary&quot; x=&quot;55&quot; y=&quot;59&quot; text-anchor=&quot;middle&quot;&gt;Kaskade + Commit&lt;/text&gt;
       &lt;/g&gt;
     &lt;/svg&gt;
   &lt;/div&gt;
@@ -1059,8 +1059,10 @@ html&gt;body{padding:0}&lt;/style&gt;
     &lt;li data-mobile-node=&quot;goal&quot;&gt;&lt;strong&gt;Problem + Ergebnis&lt;/strong&gt; → WHAT und WHY vom User&lt;/li&gt;
     &lt;li data-mobile-node=&quot;workspace&quot;&gt;&lt;strong&gt;Workspace-Routing&lt;/strong&gt; → clean main direkt, sonst sicher geleaster Worktree&lt;/li&gt;
     &lt;li data-mobile-node=&quot;product&quot;&gt;&lt;strong&gt;Feature-Gespräch&lt;/strong&gt; → Problem, Erfolg, Optionen und Scope besprechen und bestätigen&lt;/li&gt;
+    &lt;li data-mobile-node=&quot;program&quot;&gt;&lt;strong&gt;Bug-Kaskaden-Review&lt;/strong&gt; → fünf Evidence-Probes, zusammengehörige Symptome, eine belegte Root Cause&lt;/li&gt;
     &lt;li data-mobile-node=&quot;memory&quot;&gt;&lt;strong&gt;Aktuelle Codebasis&lt;/strong&gt; → HEAD, Pfade und Bytes; reuse vor new&lt;/li&gt;
     &lt;li data-mobile-node=&quot;code&quot;&gt;&lt;strong&gt;Recherche-Vergleich&lt;/strong&gt; → Code, Primärquellen und bestätigten Scope abgleichen&lt;/li&gt;
+    &lt;li data-mobile-node=&quot;models&quot;&gt;&lt;strong&gt;Menschenlesbares Memory&lt;/strong&gt; → verifizierte portable Learnings als Markdown-Graph mit widerrufbaren Projekt-Bindings&lt;/li&gt;
     &lt;li data-mobile-node=&quot;controller&quot;&gt;&lt;strong&gt;Flow Controller&lt;/strong&gt; → wählt die nächste durch Intent, Evidence und Budget erlaubte Kante&lt;/li&gt;
     &lt;li data-mobile-node=&quot;p0&quot;&gt;&lt;strong&gt;0 Setup&lt;/strong&gt;&lt;/li&gt;
     &lt;li data-mobile-node=&quot;p1&quot;&gt;&lt;strong&gt;1 Klären&lt;/strong&gt;&lt;/li&gt;
@@ -1297,24 +1299,24 @@ html&gt;body{padding:0}&lt;/style&gt;
         nodes: allNodes,
         edges: [...sequenceEdges, ...feedbackEdges, ...contextEdges],
         focus: [&#x27;controller&#x27;],
-        text: &#x27;Kimiflow bespricht zuerst WHAT und WHY, bindet den Plan an aktuellen Code und verlangt ausführbare Evidence. Nur relevante Findings gehen in eine begrenzte Reparaturrunde.&#x27;,
-        desc: &#x27;Der Gesamtgraph zeigt das Produktgespräch, die aktuelle Codebasis, gezielte Recherche, acht Phasen, Evidence-Verträge, endliche Reviews und den lokalen Commit.&#x27;
+        text: &#x27;Kimiflow bestätigt WHAT und WHY, bindet den Plan an aktuellen Code und verlangt ausführbare Evidence. Materielle Findings werden als Bug-Kaskade geprüft und nur verifizierte durable Learnings gelangen in den lokalen Markdown-Graphen.&#x27;,
+        desc: &#x27;Der Gesamtgraph zeigt Produktgespräch, aktuelle Codebasis, ausführbare Evidence, Bug-Kaskaden-Review, menschenlesbares projektübergreifendes Memory und den lokalen Commit.&#x27;
       },
       feature: {
         label: &#x27;Feature&#x27;,
-        nodes: [&#x27;goal&#x27;, &#x27;workspace&#x27;, &#x27;product&#x27;, &#x27;memory&#x27;, &#x27;code&#x27;, &#x27;models&#x27;, &#x27;tests&#x27;, &#x27;evidence&#x27;, &#x27;commit&#x27;, ...phaseNodes],
-        edges: [...sequenceEdges, ...feedbackEdges, &#x27;goal&#x27;, &#x27;workspace&#x27;, &#x27;product&#x27;, &#x27;memory&#x27;, &#x27;code&#x27;, &#x27;models&#x27;, &#x27;tests&#x27;, &#x27;outcome-memory&#x27;, &#x27;evidence-controller&#x27;, &#x27;evidence-review&#x27;, &#x27;commit&#x27;],
+        nodes: [&#x27;goal&#x27;, &#x27;program&#x27;, &#x27;workspace&#x27;, &#x27;product&#x27;, &#x27;memory&#x27;, &#x27;code&#x27;, &#x27;models&#x27;, &#x27;tests&#x27;, &#x27;evidence&#x27;, &#x27;commit&#x27;, ...phaseNodes],
+        edges: [...sequenceEdges, ...feedbackEdges, &#x27;goal&#x27;, &#x27;program&#x27;, &#x27;workspace&#x27;, &#x27;product&#x27;, &#x27;memory&#x27;, &#x27;code&#x27;, &#x27;models&#x27;, &#x27;tests&#x27;, &#x27;outcome-memory&#x27;, &#x27;evidence-controller&#x27;, &#x27;evidence-review&#x27;, &#x27;commit&#x27;],
         focus: [&#x27;product&#x27;, &#x27;p2&#x27;, &#x27;p3&#x27;, &#x27;controller&#x27;],
         text: &#x27;Neue Features beginnen mit einem Code-informierten Gespräch über Problem, sichtbaren Erfolg, Optionen und Scope. Erst nach expliziter Scope- und Flow-Bestätigung folgen Recherche, Plan, Build und ausführbare Verifikation.&#x27;,
-        desc: &#x27;Der Feature-Teilgraph hebt Produktdialog, aktuelle Codebasis, Recherche-Vergleich, Evidence-Klassen und relevanzbewusstes Review hervor.&#x27;
+        desc: &#x27;Der Feature-Teilgraph hebt Produktdialog, aktuelle Codebasis, Recherche-Vergleich, Evidence-Klassen, Bug-Kaskaden-Review und verifiziertes Memory hervor.&#x27;
       },
       bugfix: {
         label: &#x27;Bugfix&#x27;,
-        nodes: [&#x27;goal&#x27;, &#x27;workspace&#x27;, &#x27;memory&#x27;, &#x27;tests&#x27;, &#x27;evidence&#x27;, &#x27;commit&#x27;, ...phaseNodes],
-        edges: [...sequenceEdges, &#x27;replan-build&#x27;, &#x27;replan-verify&#x27;, &#x27;repair-review&#x27;, &#x27;retry-tests&#x27;, &#x27;goal&#x27;, &#x27;workspace&#x27;, &#x27;memory&#x27;, &#x27;tests&#x27;, &#x27;outcome-memory&#x27;, &#x27;evidence-controller&#x27;, &#x27;evidence-review&#x27;, &#x27;commit&#x27;],
-        focus: [&#x27;p5&#x27;, &#x27;p6&#x27;, &#x27;tests&#x27;],
-        text: &#x27;Ein Bugfix nutzt denselben Flow schlanker: reproduzieren, Ursache belegen, minimal beheben und Regression ausführen. Nur Findings mit relevantem unterstütztem Pfad gehen zurück in Repair.&#x27;,
-        desc: &#x27;Der Bugfix-Teilgraph fokussiert Reproduktion, Red/Green-Evidence, Regression und kurze relevante Reparaturschleifen.&#x27;
+        nodes: [&#x27;goal&#x27;, &#x27;program&#x27;, &#x27;workspace&#x27;, &#x27;memory&#x27;, &#x27;models&#x27;, &#x27;tests&#x27;, &#x27;evidence&#x27;, &#x27;commit&#x27;, ...phaseNodes],
+        edges: [...sequenceEdges, &#x27;replan-build&#x27;, &#x27;replan-verify&#x27;, &#x27;repair-review&#x27;, &#x27;retry-tests&#x27;, &#x27;goal&#x27;, &#x27;program&#x27;, &#x27;workspace&#x27;, &#x27;memory&#x27;, &#x27;models&#x27;, &#x27;tests&#x27;, &#x27;outcome-memory&#x27;, &#x27;evidence-controller&#x27;, &#x27;evidence-review&#x27;, &#x27;commit&#x27;],
+        focus: [&#x27;program&#x27;, &#x27;p5&#x27;, &#x27;p6&#x27;, &#x27;p7&#x27;, &#x27;tests&#x27;],
+        text: &#x27;Ein Bugfix reproduziert zuerst den Fehler und belegt die Ursache. Das Review prüft jede materielle Klasse über fünf Kaskadenflächen; zusammengehörige Symptome werden einmal an ihrer Root Cause repariert und mit Regression-Evidence abgeschlossen.&#x27;,
+        desc: &#x27;Der Bugfix-Teilgraph fokussiert Reproduktion, Red/Green-Evidence, Bug-Kaskaden, Root-Cause-Reparatur und begrenzte Review-Runden.&#x27;
       },
       parallel: {
         label: &#x27;Parallel&#x27;,

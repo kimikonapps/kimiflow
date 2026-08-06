@@ -22,7 +22,7 @@ checks the current codebase, and binds important claims to executable evidence.
 
 <p align="center">
   <a href="https://kimikonapps.github.io/kimiflow/">
-    <img src="docs/kimiflow-graph.svg" alt="Kimiflow workflow: discuss and confirm the product intent, inspect current code, compare focused research, plan with evidence classes, implement the smallest change, verify it, classify review findings by relevance, and commit locally.">
+    <img src="docs/kimiflow-graph.svg" alt="Kimiflow workflow: confirm product intent, inspect current code, execute evidence, expand material findings through five bug-cascade probes, repair one proved root, retain verified learning in human-readable memory, and commit locally.">
   </a>
   <br>
   <sub><a href="https://kimikonapps.github.io/kimiflow/">Explore the interactive graph</a></sub>
@@ -30,9 +30,20 @@ checks the current codebase, and binds important claims to executable evidence.
 
 <!-- capabilities:start -->
 **What kimiflow does:** disciplined **feature and bug-fix** delivery with mechanical gates; local
-**project intelligence** and curated memory; publish-safe **repo docs**; and reviewable local
-**findings**.
+**project intelligence** and human-readable cross-project memory; publish-safe **repo docs**; and
+reviewable local **findings**, including mechanically bounded bug-cascade analysis.
 <!-- capabilities:end -->
+
+## What is new
+
+- **Bug cascades are repaired as one cause, not many symptoms.** Every material review class must check
+  direct callers, data flow, shared state, assumption users, and error consequences. Related findings share
+  one proved root cause, one repair, and retained regression evidence.
+- **Cross-project memory no longer needs Obsidian.** Verified portable learnings become ordinary Markdown
+  notes under `~/.kimiflow/memory/`, with a human-readable `INDEX.md`, bounded related-note links, and
+  revocable project bindings. Ask the model when you want to query that graph; no database UI is required.
+- **Nothing is promoted merely because a run produced it.** Project learnings still need current evidence and
+  repeated verified use before they can enter global memory. A contradiction or stale source revokes trust.
 
 The execution runtime is model-agnostic. Codex and Claude Code are built-in terminal adapters, while
 other coding agents can implement the same versioned JSON-stdio contract. Strict read-only Work-Units
@@ -50,11 +61,13 @@ Native agents already plan, delegate, and review. Kimiflow adds a durable contra
 abilities:
 
 - state and evidence live under `.kimiflow/<slug>/`, so a run can resume safely;
-- plan and code-review findings use tested fail-closed resolvers;
+- plan and code-review findings use tested fail-closed resolvers; material findings trigger a bounded
+  root-cause cascade scan before repair;
 - repeated runtime claims require executable evidence; irrelevant findings stop before repair and repeated failed strategies cannot create an endless loop;
 - fixes require reproduction, a proven cause, and red/green evidence;
 - material product/authority decisions stop for human approval; verified local commits are automatic, while push and release stay explicit;
-- successful learnings are curated, while failed or parked attempts are not promoted as truth;
+- successful learnings are curated into project-local state and, when safe and durable, a human-readable
+  cross-project graph; failed or parked attempts are not promoted as truth;
 - the strongest selected model orchestrates and plans, while typed bounded workers handle cheaper tasks;
 - mechanically bounded Solution Search stays off for clear work and explores at most three fixed candidate
   lenses plus one fresh selector only when a material design decision is genuinely open.
@@ -67,7 +80,10 @@ The result is not maximum ceremony. The default is the smallest loop that still 
 - **Current code beats remembered code.** Planning is bound to the current HEAD and the exact bytes/types of every affected path. Kimiflow searches in the order `reuse → evolve → new` so an existing feature or abstraction is not rebuilt by accident.
 - **Research challenges the local idea; it does not expand the product.** Project evidence comes first, current primary sources close named gaps, and the selected approach is compared back against the codebase and confirmed scope.
 - **Runtime claims need runtime evidence.** Important decisions declare whether review, an isolated spike, or executable runtime proof is required. A prose-only “passed” claim is never enough.
-- **Reviews are proportional and finite.** Reproduced findings are classified by contract, supported path, impact, and repair cost. Irrelevant edge cases do not enter the repair loop; security, privacy, data-loss, and irreversible impacts cannot be waived; repeated strategies are counted per stable root class.
+- **Reviews are proportional, cascade-aware, and finite.** Reproduced findings are classified by contract,
+  supported path, impact, and repair cost. Each material class probes callers, data flow, shared state,
+  assumption users, and error consequences before related symptoms are repaired at one proved root. Irrelevant
+  edge cases do not enter the loop; protected impacts cannot be waived; repeated strategies remain bounded.
 - **Prefer the smallest replaceable design.** Features, integrations, models, and review routes must be easy to add, adapt, or remove without rewriting the workflow. No new service, provider, or abstraction is introduced when an existing contract can evolve cleanly.
 - **Learning remains evidence-bound.** Durable lessons cite current source paths and become stale automatically when those source bytes change.
 
@@ -362,7 +378,7 @@ remains compatible.
 
 ## Demo
 
-![Kimiflow confirmed-intent and evidence-first feature flow](docs/demo/kimiflow.gif)
+![Kimiflow feature flow from confirmed intent through executable evidence, bug-cascade repair, human-readable memory, and an atomic local commit](docs/demo/kimiflow.gif)
 
 > Scripted illustration of the current feature conversation, codebase check, evidence classes,
 > relevance-aware review, and local commit. The source and real-recording guide
@@ -416,7 +432,7 @@ Exact trivial work and fixes keep their direct routes.
 | 4 Review | Resolve plan blockers and pause only for a material authority, scope, risk, privacy, cost, or irreversible decision. |
 | 5 Implement | Apply the smallest accepted change, normally sequentially; fixes preserve red evidence before production code. |
 | 6 Verify | Execute the required acceptance, regression, spike, and runtime evidence and prove that every locked requirement is covered. |
-| 7 Review and commit | Classify findings by contract, supported path, impact, and proportionality; repair only relevant defects, then create and prove the named-path local commit. |
+| 7 Review and commit | Classify findings by contract, supported path, impact, and proportionality; scan material findings for a five-surface bug cascade, repair each proved root once, then create and prove the named-path local commit. |
 
 ## Mechanical Gates
 
@@ -427,7 +443,7 @@ Exact trivial work and fixes keep their direct routes.
 | Workspace preflight | Every linked tree and dirty path is classified; up to three owned Fleet trees receive exclusive leases, revalidation, serialized candidate-first integration, and ancestry-gated archive. |
 | Product Intake, Clarify and Discovery gates | Planning and writes stay blocked until the user explicitly marks scope ready and confirms the final product flow; generic chat, defaults, and timeouts never confirm it. |
 | Current-code and plan gates | Every affected path is bound to current HEAD/type/bytes; discovery proves `reuse → evolve → new`, and material decisions declare their required evidence class. |
-| Plan-blocker and review gates | Acceptance mappings and evidenced `BLOCKER/HIGH` findings are resolved within a bounded budget; reproduced immaterial edges do not enter repair, while protected impacts cannot be waived. |
+| Plan-blocker and review gates | Acceptance mappings and evidenced `BLOCKER/HIGH` findings are resolved within a bounded budget; every material review class carries one root-cause cascade with five evidence-bound probes, while immaterial edges stop before repair and protected impacts cannot be waived. |
 | Implementation-conformance gate | Researched decisions, invariants, affected paths, exact checks, and every locked product requirement converge in Phase 6; finish additionally proves the committed delivery matches. |
 | Adaptive execution controller | Run-wide no-progress and budget pressure select a bounded recovery action; mandatory quality gates remain intact. |
 | Evidence evaluation | Four critical workflow behaviors run once in CI against a sealed prior-release baseline; artifacts contain bounded metadata and digests, never prompts, output, code, secrets, or absolute paths. |
@@ -531,9 +547,17 @@ paths, evidence references, credential or JWT shapes, dotted/dotless emails, pri
 The outcome writer retains the newest complete rows below the stricter lifecycle ceiling, so normal long-running
 projects do not eventually require manual ledger cleanup.
 
+Safe durable learnings can also enter a local, Obsidian-independent graph at `~/.kimiflow/memory/`. Its
+`INDEX.md` and one Markdown file per learning are deliberately human-readable; each note links to at most five
+related notes. Project-specific bindings are stored separately, so one project can revoke its association
+without deleting a learning still proven by another project. Files are private by default, bounded, created
+atomically, and rejected on malformed content, symlink substitution, stale evidence, or capacity overflow.
+Kimiflow reads this graph through the same bounded recall path; it is not a second workflow engine or a source
+of truth above current code and tests.
+
 An Obsidian Vault is optional. Without it, project-local memory and every quality gate continue to
-work. With authenticated Vault MCP tools, Kimiflow can recall and export curated, non-private
-cross-project learning. API keys are never stored in `.kimiflow/`.
+work, and the Markdown graph provides cross-project recall. With authenticated Vault MCP tools, Kimiflow can
+additionally recall and export curated, non-private learning. API keys are never stored in `.kimiflow/`.
 
 Vault reads are namespace-bound: foreign project paths and unsafe fields are rejected before selected content
 enters a run, then locally deduplicated and capped. Old terminal run artifacts can be archived one at a time
@@ -593,6 +617,18 @@ basis is unknown, Kimiflow revalidates before implementation instead of building
 - [`examples/`](examples/README.md) - small fix, risky fix, and feature walkthroughs.
 - [`evals/`](evals/README.md) - deterministic evidence checks and behavioral release calibration.
 - [`CHANGELOG.md`](CHANGELOG.md) - release history.
+
+### Public schemas
+
+All machine-readable contracts are versioned JSON Schema files. Internal run artifacts remain internal; a new
+public schema is added only when an external producer or consumer needs a stable contract.
+
+| Area | Schemas |
+|---|---|
+| Agent adapters | [`adapter-protocol-v1`](references/adapter-protocol-v1.schema.json), [`adapter-conformance-v1`](references/adapter-conformance-v1.schema.json) |
+| Code intelligence | [`code-intelligence-provider-v1`](references/code-intelligence-provider-v1.schema.json), [`code-retrieval-eval-v1`](references/code-retrieval-eval-v1.schema.json) |
+| Programs and releases | [`program-v1`](references/program-v1.schema.json), [`release-profile-v1`](references/release-profile-v1.schema.json), [`release-profile-v2`](references/release-profile-v2.schema.json), [`runtime-release-v1`](references/runtime-release-v1.schema.json) |
+| Security | [`coverage-v1`](references/security-coverage-v1.schema.json), [`deep-plan-v1`](references/security-deep-plan-v1.schema.json), [`deep-result-v1`](references/security-deep-result-v1.schema.json), [`eval-v1`](references/security-eval-v1.schema.json), [`findings-v1`](references/security-findings-v1.schema.json), [`promotion-v1`](references/security-promotion-v1.schema.json), [`report-v1`](references/security-report-v1.schema.json), [`scan-manifest-v1`](references/security-scan-manifest-v1.schema.json) |
 
 ## License
 

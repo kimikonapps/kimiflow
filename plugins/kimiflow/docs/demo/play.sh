@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # kimiflow demo — SCRIPTED ILLUSTRATION of the current feature workflow, NOT a
 # captured model run. It shows feature dialogue, current-code inspection,
-# evidence-first planning, relevance-aware review, and a local commit. Rendered to
+# evidence-first planning, bug-cascade review, human-readable memory, and a local commit. Rendered to
 # a GIF by kimiflow-demo.tape. For a REAL run, see docs/demo/README.md.
 set -euo pipefail
 
@@ -39,9 +39,12 @@ e "🟡 4 · plan review ·· ${D}falsify material assumptions →${Z} ${G}ready
 e "🟠 5 · implement ···· ${D}smallest accepted change · no parallel overlap${Z}" 0.7
 e "🟤 6 · verify ······· ${D}execute acceptance, regression, spike, runtime evidence${Z}" 0.8
 e "🟢 7 · review ······· ${D}contract · supported path · impact · proportionality${Z}" 0.8
+e "  Cascade scan ······· callers · data · state · assumptions · consequences" 0.7
+e "  Root group ········· ${G}3 symptoms → 1 proved cause → 1 repair${Z}" 0.7
 e "  Edge finding ······· ${G}non-blocking: immaterial, no repair loop${Z}" 0.6
 e "  Protected impact ··· ${G}still blocks: security · privacy · data loss${Z}" 0.6
 e "  ${B}${G}named run-owned paths committed locally · push stays explicit${Z}" 0.9
 e "↺ learn ············ ${D}only verified, path-bound evidence becomes memory${Z}" 0.7
+e "  Global graph ······· ${G}Markdown index + related notes + revocable binding${Z}" 0.7
 e "" 0.3
-e "${B}Discuss first. Inspect current code. Prove what matters. Stop when done.${Z}" 1.2
+e "${B}Discuss. Inspect. Prove. Repair the root. Retain only verified learning.${Z}" 1.2

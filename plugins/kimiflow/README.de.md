@@ -14,11 +14,23 @@ bindet wichtige Behauptungen an ausführbare Evidence.
 
 <p align="center">
   <a href="https://kimikonapps.github.io/kimiflow/">
-    <img src="docs/kimiflow-graph.svg" alt="Kimiflow-Workflow: Produktintent besprechen und bestätigen, aktuellen Code prüfen, gezielte Recherche vergleichen, mit Evidence-Klassen planen, die kleinste Änderung implementieren, verifizieren, Review-Findings nach Relevanz einstufen und lokal committen.">
+    <img src="docs/kimiflow-graph.svg" alt="Kimiflow-Workflow: Produktintent bestätigen, aktuellen Code prüfen, Evidence ausführen, materielle Findings über fünf Bug-Kaskaden-Probes untersuchen, eine belegte Ursache reparieren, verifiziertes Wissen menschenlesbar speichern und lokal committen.">
   </a>
   <br>
   <sub><a href="https://kimikonapps.github.io/kimiflow/">Interaktiven Graph öffnen</a></sub>
 </p>
+
+## Neu in diesem Release
+
+- **Bug-Kaskaden werden an der Ursache repariert, nicht Symptom für Symptom.** Jede materielle
+  Review-Klasse prüft direkte Aufrufer, Datenfluss, gemeinsamen Zustand, Annahme-Nutzer und
+  Fehlerfolgen. Zusammengehörige Findings teilen eine belegte Root Cause, einen Fix und erhaltene
+  Regression-Evidence.
+- **Projektübergreifendes Memory braucht kein Obsidian mehr.** Verifizierte portable Learnings werden
+  normale Markdown-Notizen unter `~/.kimiflow/memory/`, mit lesbarem `INDEX.md`, begrenzten
+  Verknüpfungen und widerrufbaren Projekt-Bindings. Fragen an das Modell reichen, um den Graphen zu nutzen.
+- **Ein Run darf Wissen nicht einfach selbst zur Wahrheit erklären.** Erst aktuelle Evidence und wiederholt
+  verifizierter Nutzen erlauben die Promotion. Widerspruch oder stale Quellen entziehen das Vertrauen.
 
 Kimiflow kann konkrete Umsetzungsauftraege fuer substanzielle Feature-Arbeit automatisch routen.
 Diskussionen, Ideen, Empfehlungen, Erklaerungen, Statusfragen und Wunschformulierungen bleiben direkt
@@ -32,11 +44,13 @@ Claude Code und Codex können bereits planen, delegieren und reviewen. Kimiflow 
 dauerhaften, wiederaufnehmbaren Qualitätsvertrag:
 
 - State und Evidence liegen unter `.kimiflow/<slug>/`;
-- Plan- und Code-Review-Gates lösen BLOCKER/HIGH mechanisch auf;
+- Plan- und Code-Review-Gates lösen BLOCKER/HIGH mechanisch auf; materielle Findings starten vor dem
+  Repair einen begrenzten Root-Cause-Kaskaden-Scan;
 - wiederholte Runtime-Behauptungen brauchen ausführbare Evidence; irrelevante Findings stoppen vor dem Repair und wiederholte Fehlstrategien erzeugen keinen Endlos-Loop;
 - Bugfixes brauchen Reproduktion, belegte Ursache und Red/Green-Evidence;
 - wesentliche Produkt-/Berechtigungsentscheidungen warten auf menschliche Freigabe; verifizierte lokale Commits laufen automatisch, Push und Release bleiben explizit;
-- nur erfolgreich verifizierte Learnings werden kuratiert;
+- nur erfolgreich verifizierte Learnings werden lokal und, wenn sicher und durable, in einem
+  menschenlesbaren projektübergreifenden Graphen kuratiert;
 - das stärkste gewählte Modell orchestriert, kleinere Worker übernehmen begrenzte Aufgaben.
 
 Der Default ist nicht der größte, sondern der kleinste Flow, der die konkrete Arbeit sicher trägt.
@@ -47,7 +61,10 @@ Der Default ist nicht der größte, sondern der kleinste Flow, der die konkrete 
 - **Aktueller Code schlägt erinnerten Code.** Planung bindet aktuellen HEAD sowie Typ und Bytes aller betroffenen Pfade. Kimiflow prüft `reuse → evolve → new`, damit vorhandene Funktionen nicht doppelt gebaut werden.
 - **Recherche fordert die lokale Idee heraus, erweitert aber nicht das Produkt.** Projekt-Evidence kommt zuerst; aktuelle Primärquellen schließen benannte Lücken und werden mit Code und bestätigtem Scope verglichen.
 - **Runtime-Behauptungen brauchen Runtime-Evidence.** Wichtige Entscheidungen verlangen Review, isolierten Spike oder ausführbaren Laufzeitnachweis. Ein reines „passed“ in Prosa reicht nicht.
-- **Reviews sind verhältnismäßig und endlich.** Findings werden nach Vertrag, unterstütztem Pfad, Impact und Reparaturkosten klassifiziert. Irrelevante Randfälle gehen nicht in den Repair-Loop; Security, Privacy, Datenverlust und irreversible Auswirkungen bleiben geschützt.
+- **Reviews sind verhältnismäßig, kaskadenbewusst und endlich.** Jede materielle Klasse prüft Aufrufer,
+  Datenfluss, gemeinsamen Zustand, Annahme-Nutzer und Fehlerfolgen. Zusammengehörige Symptome werden an
+  genau einer belegten Ursache repariert; irrelevante Randfälle gehen nicht in den Loop, geschützte
+  Auswirkungen können nicht weggewischt werden.
 - **Die kleinste austauschbare Lösung gewinnt.** Features, Integrationen, Modelle und Review-Routen sollen leicht ergänzt, angepasst oder entfernt werden können. Bestehende Verträge werden weiterentwickelt, bevor neue Systeme entstehen.
 - **Learnings bleiben Evidence-gebunden.** Dauerhafte Erkenntnisse nennen aktuelle Quellpfade und werden automatisch stale, wenn sich deren Bytes ändern.
 
@@ -280,7 +297,7 @@ v1-Ausführung bleibt kompatibel.
 
 ## Demo
 
-![Kimiflow-Feature-Flow mit bestätigtem Intent und ausführbarer Evidence](docs/demo/kimiflow.gif)
+![Kimiflow-Feature-Flow von bestätigtem Intent über ausführbare Evidence und Bug-Kaskaden-Reparatur bis zu menschenlesbarem Memory und atomarem lokalem Commit](docs/demo/kimiflow.gif)
 
 > Geskriptete Illustration von Feature-Gespräch, Codebasis-Prüfung, Evidence-Klassen,
 > relevanzbewusstem Review und lokalem Commit. Quelle und Anleitung für einen
@@ -335,7 +352,7 @@ behalten ihre direkten Routen.
 | 4 Review | Plan-Blocker lösen; nur bei Autorität, materiellem Scope/Risiko, Privacy/Kosten oder Irreversibilität pausieren. |
 | 5 Umsetzen | Kleinste akzeptierte Änderung bauen; Fixes sichern Red-Evidence vor Production-Code. |
 | 6 Verifizieren | Erforderliche Akzeptanz-, Regressions-, Spike- und Runtime-Evidence ausführen und jede gesperrte Anforderung nachweisen. |
-| 7 Review und Commit | Findings nach Vertrag, unterstütztem Pfad, Impact und Verhältnismäßigkeit einstufen, nur relevante Defekte reparieren und danach den lokalen Commit beweisen. |
+| 7 Review und Commit | Findings nach Vertrag, unterstütztem Pfad, Impact und Verhältnismäßigkeit einstufen, materielle Klassen über fünf Flächen auf Bug-Kaskaden prüfen, jede belegte Ursache einmal reparieren und danach den lokalen Commit beweisen. |
 
 ## Mechanische Gates
 
@@ -346,7 +363,7 @@ behalten ihre direkten Routen.
 | Workspace-Preflight | Alle Worktrees und Dirty-Pfade werden klassifiziert; bis zu drei eigene Fleet-Trees erhalten exklusive Leases, Revalidierung, serialisierte Candidate-first-Integration und Ancestry-gesichertes Archivieren. |
 | Product-Intake-/Clarify-/Discovery-Gates | Planung und Writes bleiben gesperrt, bis der User den Scope explizit bereit markiert und den finalen Produktablauf bestätigt; generischer Chat, Defaults und Timeouts bestätigen nichts. |
 | Aktueller Code und Plan | Jeder betroffene Pfad wird an aktuellen HEAD, Typ und Bytes gebunden; Discovery belegt `reuse → evolve → new`, materielle Entscheidungen deklarieren ihre Evidence-Klasse. |
-| Plan-/Review-Gates | AC-Mapping und belegte BLOCKER/HIGHs werden begrenzt gelöst; reproduzierte immaterielle Randfälle gehen nicht in Repair, geschützte Auswirkungen können nicht weggewischt werden. |
+| Plan-/Review-Gates | AC-Mapping und belegte BLOCKER/HIGHs werden begrenzt gelöst; jede materielle Review-Klasse trägt eine Root-Cause-Kaskade mit fünf Evidence-gebundenen Probes, immaterielle Randfälle stoppen vor Repair und geschützte Auswirkungen können nicht weggewischt werden. |
 | Implementation-Conformance-Gate | Rechercheentscheidungen, Invarianten, Pfade, Checks und jede gesperrte Produktanforderung konvergieren in Phase 6; beim Abschluss muss zusätzlich der Commit exakt dem geprüften Stand entsprechen. |
 | Adaptiver Execution-Controller | Run-weites No-Progress und Budgetdruck wählen eine begrenzte Recovery-Aktion; verpflichtende Qualitäts-Gates bleiben erhalten. |
 | Evidence-Evaluation | Vier kritische Flow-Verhalten laufen in CI genau einmal gegen eine versiegelte Baseline des vorherigen Releases; Artefakte enthalten nur begrenzte Metadaten und Digests, nie Prompts, Output, Code, Secrets oder absolute Pfade. |
@@ -453,9 +470,17 @@ unsichere Inhalte.
 Der Outcome-Writer hält die neuesten vollständigen Zeilen unterhalb des strengeren Lifecycle-Limits, damit lange
 laufende Projekte keine manuelle Ledger-Bereinigung benötigen.
 
-Ein Obsidian Vault ist optional. Ohne ihn funktionieren lokales Memory und alle Gates weiter. Mit
-authentifizierten Vault-MCP-Tools kann Kimiflow kuratierte, nicht-private projektübergreifende
-Learnings abrufen oder exportieren. API-Keys landen nie in `.kimiflow/`.
+Sichere durable Learnings können zusätzlich in einen lokalen, Obsidian-unabhängigen Graphen unter
+`~/.kimiflow/memory/` gelangen. `INDEX.md` und eine Markdown-Datei pro Learning bleiben absichtlich
+menschenlesbar; jede Notiz verlinkt höchstens fünf verwandte Notizen. Projekt-Bindings liegen getrennt,
+damit ein Projekt seine Beziehung widerrufen kann, ohne weiterhin anderweitig belegtes Wissen zu löschen.
+Die Dateien sind standardmäßig privat, begrenzt und atomar geschrieben. Malformed Content,
+Symlink-Austausch, stale Evidence und Kapazitätsüberschreitung sperren fail-closed. Der Graph läuft über
+denselben begrenzten Recall und steht nie über aktuellem Code und Tests.
+
+Ein Obsidian Vault ist optional. Ohne ihn funktionieren lokales Memory, projektübergreifender
+Markdown-Recall und alle Gates weiter. Mit authentifizierten Vault-MCP-Tools kann Kimiflow zusätzlich
+kuratierte, nicht-private Learnings abrufen oder exportieren. API-Keys landen nie in `.kimiflow/`.
 
 Vault-Reads sind an den Projekt-Namespace gebunden: Fremde Projektpfade und unsichere Felder werden vor der
 Run-Injektion verworfen, danach lokal dedupliziert und begrenzt. Alte terminale Run-Artefakte können nach einer
@@ -509,6 +534,18 @@ oder unbekannter Plan-Basis wird vor der Umsetzung revalidiert.
 - [`examples/`](examples/README.md) - Small Fix, riskanter Fix und Feature-Walkthrough.
 - [`evals/`](evals/README.md) - deterministische Evidence-Checks und verhaltensbasierte Release-Kalibrierung.
 - [`CHANGELOG.md`](CHANGELOG.md) - Release-Historie.
+
+### Öffentliche Schemas
+
+Alle maschinenlesbaren Verträge sind versionierte JSON-Schemas. Interne Run-Artefakte bleiben intern; ein
+neues öffentliches Schema entsteht nur, wenn ein externer Producer oder Consumer einen stabilen Vertrag braucht.
+
+| Bereich | Schemas |
+|---|---|
+| Agent-Adapter | [`adapter-protocol-v1`](references/adapter-protocol-v1.schema.json), [`adapter-conformance-v1`](references/adapter-conformance-v1.schema.json) |
+| Code Intelligence | [`code-intelligence-provider-v1`](references/code-intelligence-provider-v1.schema.json), [`code-retrieval-eval-v1`](references/code-retrieval-eval-v1.schema.json) |
+| Programme und Releases | [`program-v1`](references/program-v1.schema.json), [`release-profile-v1`](references/release-profile-v1.schema.json), [`release-profile-v2`](references/release-profile-v2.schema.json), [`runtime-release-v1`](references/runtime-release-v1.schema.json) |
+| Security | [`coverage-v1`](references/security-coverage-v1.schema.json), [`deep-plan-v1`](references/security-deep-plan-v1.schema.json), [`deep-result-v1`](references/security-deep-result-v1.schema.json), [`eval-v1`](references/security-eval-v1.schema.json), [`findings-v1`](references/security-findings-v1.schema.json), [`promotion-v1`](references/security-promotion-v1.schema.json), [`report-v1`](references/security-report-v1.schema.json), [`scan-manifest-v1`](references/security-scan-manifest-v1.schema.json) |
 
 ## Lizenz
 

@@ -4,7 +4,30 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Added
+
+- Added human-readable, Obsidian-independent cross-project memory under `~/.kimiflow/memory/`, with a
+  Markdown index, bounded related-note graph, private atomic files, and revocable per-project bindings.
+- Added mandatory bug-cascade analysis for every material review class. Five evidence-bound probes connect
+  direct callers, data flow, shared state, assumption users, and error consequences to one proved root cause.
+
+### Changed
+
+- Pi now delegates Kimiflow through nested stock FirstMate crews while keeping the conversational Captain
+  responsive and preserving FirstMate ownership of Herdr lifecycle, briefs, workers, and delivery.
+- Review repair rounds now retain complete cascade groups, prove negative resolution per class, and repair one
+  root cause instead of repeatedly patching related symptoms.
+- Rewrote the English and German README coverage, the static and interactive workflow graphs, the scripted
+  demo, and the complete public JSON Schema catalog for the current runtime.
+
+### Fixed
+
+- Kept Kimiflow crews out of Herdr lab mode and stabilized quiet FirstMate review supervision.
+
+### Verification
+
+- Added contract and regression coverage for global-memory promotion/revocation, malformed or unsafe storage,
+  cascade grouping, five-probe completeness, carry/resolve behavior, and bounded review convergence.
 
 ## 0.2.44
 

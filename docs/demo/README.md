@@ -2,7 +2,8 @@
 
 The README's short demo links here. The committed clip is a scripted overview of the current feature
 flow: product dialogue → explicit scope readiness → current-code inspection → focused research →
-evidence-first planning and verification → relevance-aware review → atomic local commit.
+evidence-first planning and verification → five-surface bug-cascade review → root-cause repair →
+human-readable memory → atomic local commit.
 
 Two ways to produce it. **Prefer A** — a real recording is the honest, credible artifact. B is a
 cosmetic placeholder, clearly labelled.
@@ -32,13 +33,16 @@ agg --theme monokai --font-size 18 kimiflow.cast kimiflow.gif
 
 **Tips:** terminal ~100×30, a high-contrast theme, and include the scope discussion, both explicit
 confirmations, one executable-evidence gate, relevance classification, and the final local commit.
-`kimiflow.cast` is plain JSON; trim dead air before converting if a phase ran long.
+`kimiflow.cast` is plain JSON; trim dead air before converting if a phase ran long. A current capture should
+show one material finding expanding through the five cascade probes and the final verified learning entering
+the local Markdown graph.
 
 ## B — branded illustration (placeholder, clearly labelled)
 
 A deterministic, scripted reconstruction for a clean branded loop **before** a real capture exists.
-It is **not** a model run — [`play.sh`](play.sh) walks the current confirmed-intent and evidence-first
-feature flow with pacing and ANSI colour. Edit `play.sh` to change wording; re-run the tape to re-render.
+It is **not** a model run — [`play.sh`](play.sh) walks the current confirmed-intent, evidence-first,
+bug-cascade, and human-readable-memory flow with pacing and ANSI colour. Edit `play.sh` to change wording;
+re-run the tape to re-render.
 ([`play-refusals.sh`](play-refusals.sh) holds an alternative *"four moments the gates refuse"* montage
 — point the tape's `bash play.sh` at it to render that instead.)
 

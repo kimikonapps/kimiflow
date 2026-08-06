@@ -1,6 +1,6 @@
 # kimiflow-demo.tape — render the SCRIPTED ILLUSTRATION (play.sh) to a GIF.
 # play.sh walks the current feature flow: dialogue → current code → focused research →
-# evidence-first plan/build/verify → relevance-aware review → local commit. This is a reconstruction,
+# evidence-first plan/build/verify → bug-cascade review → human-readable memory → local commit. This is a reconstruction,
 # NOT a captured model session. For a real run, see docs/demo/README.md.
 #
 # Render:  vhs kimiflow-demo.tape        →   kimiflow.gif
@@ -22,7 +22,7 @@ Show
 Sleep 400ms
 
 Type "bash play.sh" Sleep 500ms Enter
-# play.sh prints for ~24s; then hold the completed frame ~7s so the last line
+# play.sh prints for ~27s; then hold the completed frame ~7s so the last line
 # is readable before the loop restarts (static frames cost ~nothing in a GIF).
-Sleep 24s
+Sleep 27s
 Sleep 7s

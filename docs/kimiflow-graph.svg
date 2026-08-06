@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" role="img" aria-labelledby="title desc">
   <title id="title">Kimiflow confirmed-intent and evidence-first workflow</title>
-  <desc id="desc">An eight-phase engineering workflow that discusses and confirms product intent, inspects current code, compares focused research, plans evidence classes, verifies executable evidence, classifies review findings by relevance, and creates an atomic local commit.</desc>
+  <desc id="desc">An eight-phase engineering workflow that confirms product intent, inspects current code, verifies executable evidence, expands material findings into bounded bug cascades, writes safe durable learnings into human-readable cross-project memory, and creates an atomic local commit.</desc>
   <style>
     text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #1f2328; }
     .title { font-size: 24px; font-weight: 600; letter-spacing: .8px; }
@@ -55,7 +55,7 @@
 
   <rect class="background" width="1200" height="820" rx="18"/>
   <text class="title" x="600" y="32" text-anchor="middle">KIMIFLOW · CONFIRMED INTENT → EXECUTABLE EVIDENCE</text>
-  <text class="subtitle" x="600" y="55" text-anchor="middle">The user confirms WHAT and WHY; current code and evidence guide HOW; only relevant findings enter repair.</text>
+  <text class="subtitle" x="600" y="55" text-anchor="middle">Confirm intent · prove current behavior · repair one cascade root · retain only verified learning.</text>
 
   <g aria-hidden="true">
     <path class="spoke" d="M600 408L600 190"/>
@@ -108,8 +108,8 @@
     <text class="node-title" x="600" y="96" text-anchor="middle">Problem + outcome</text>
 
     <rect class="node intelligence" x="916" y="82" width="252" height="58" rx="14"/>
-    <text class="node-title" x="1042" y="106" text-anchor="middle">Finite review budget</text>
-    <text class="node-sub" x="1042" y="127" text-anchor="middle">relevance before repair</text>
+    <text class="node-title" x="1042" y="106" text-anchor="middle">Bug-cascade review</text>
+    <text class="node-sub" x="1042" y="127" text-anchor="middle">5 probes · one proved root</text>
 
     <rect class="node workspace" x="42" y="153" width="194" height="82" rx="14"/>
     <text class="node-title" x="139" y="179" text-anchor="middle">Safe workspace routing</text>
@@ -132,8 +132,8 @@
     <text class="node-sub" x="1096" y="568" text-anchor="middle">confirmed scope</text>
 
     <rect class="node intelligence" x="635" y="690" width="228" height="66" rx="14"/>
-    <text class="node-title" x="749" y="716" text-anchor="middle">Bounded model routing</text>
-    <text class="node-sub" x="749" y="739" text-anchor="middle">top decides · workers gather evidence</text>
+    <text class="node-title" x="749" y="716" text-anchor="middle">Human-readable memory</text>
+    <text class="node-sub" x="749" y="739" text-anchor="middle">Markdown · related links · revocable</text>
 
     <rect class="node evidence" x="154" y="670" width="206" height="68" rx="14"/>
     <text class="node-title" x="257" y="697" text-anchor="middle">Executable verification</text>
@@ -182,7 +182,7 @@
 
     <ellipse class="phase" cx="410" cy="240" rx="66" ry="42"/>
     <text class="phase-label" x="410" y="235" text-anchor="middle">7 · Review</text>
-    <text class="phase-sub" x="410" y="255" text-anchor="middle">relevance + commit</text>
+    <text class="phase-sub" x="410" y="255" text-anchor="middle">cascade + commit</text>
   </g>
 
   <g transform="translate(414 790)">
