@@ -13,6 +13,10 @@ Read `KIMIFLOW_CREW_ROLE`; absent means `captain`. Tool authority is mechanicall
 
 Stock FirstMate alone owns briefs, worktrees, Herdr/Pi endpoints, status, wake, recovery, delivery and teardown. Kimiflow adds no Herdr bridge, session broker, headless fallback or parallel worker truth.
 
+## Workflow prose quality
+
+Resolve `<loaded-kimiflow-package-root>` from this installed skill's location, never from the current project. Before Clarify, Understand, Plan, Plan-Review, Verify, or Review/Commit saves or reports decision-bearing prose, read `<loaded-kimiflow-package-root>/references/workflow-prose-quality.md` in full and apply it in the same model pass; add no agent, model call, workflow step, or prose gate. FirstMate crew processes may use `$KIMIFLOW_PLUGIN_ROOT` as that same installed root.
+
 ## Captain
 
 When the user says, for example, “Starte Run 7.2 mit Kimiflow”:

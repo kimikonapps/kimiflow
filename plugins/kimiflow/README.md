@@ -36,6 +36,10 @@ reviewable local **findings**, including mechanically bounded bug-cascade analys
 
 ## What is new
 
+- **Decision-bearing prose now gets one bounded same-pass quality check.** The existing author or reviewer
+  preserves meaning and evidence, corrects generic or inflated wording in place, and never adds another
+  model call or gate. The approach adapts the minimum-effective-edit idea from
+  [petergyang/no-ai-slop](https://github.com/petergyang/no-ai-slop); it is not an AI-authorship detector.
 - **Bug cascades are repaired as one cause, not many symptoms.** Every material review class must check
   direct callers, data flow, shared state, assumption users, and error consequences. Related findings share
   one proved root cause, one repair, and retained regression evidence.

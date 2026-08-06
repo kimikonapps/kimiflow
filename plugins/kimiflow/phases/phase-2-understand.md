@@ -2,6 +2,8 @@
 
 ## 🟣 Phase 2 — Understand & research / diagnose (memory-first → recall → understanding ∥ web → synthesis → save)
 
+- **Prose quality (same model pass):** Before saving or reviewing decision-bearing prose, read all of `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/references/workflow-prose-quality.md` (Codex: `$KIMIFLOW_PLUGIN_ROOT/references/workflow-prose-quality.md`) and apply it before output; add no agent, call, step, or gate.
+
 Goal: understand the affected code before planning, with evidence. Full checklists: → reference.md "Understand & research", "Fix mode", "Project memory & standards".
 
 The `top` model owns understanding, Discovery/Research briefs, source evaluation, synthesis, Decision Triage, and risky diagnosis. `cheap`/`balanced` helpers only collect or normalize bounded evidence from fixed briefs; they never expand scope, choose architecture/product decisions, or prove root cause.

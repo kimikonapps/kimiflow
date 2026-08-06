@@ -2,6 +2,8 @@
 
 ## 🔵 Phase 1 — Clarify (plain language): Intent (feature) or Problem (fix)
 
+- **Prose quality (same model pass):** Before saving or reviewing decision-bearing prose, read all of `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/references/workflow-prose-quality.md` (Codex: `$KIMIFLOW_PLUGIN_ROOT/references/workflow-prose-quality.md`) and apply it before output; add no agent, call, step, or gate.
+
 Goal: source-backed product intent for features and a usable problem brief for fixes BEFORE research/plan. The user owns WHAT/WHY: goal, actor, visible behavior, boundaries, success, and material product/policy consequences. The agent owns HOW: architecture, dependencies, data model, internal APIs, code structure, tests, migrations, performance/concurrency mechanism, and implementation order. Never ask the user to design the solution. → reference.md "Intent clarification" / "Fix mode".
 
 - **Coverage scan first:** inspect the request, code, project docs, tests, memory, and current sources. Mark each product dimension with `user_explicit|user_confirmed|project_evidence|reversible_default|not_applicable|unknown_material`; goal, behavior, and success require user/evidence provenance, never a default. Translate a necessary technical-looking uncertainty into its product consequence (for example "must it work offline?", never "which database?").

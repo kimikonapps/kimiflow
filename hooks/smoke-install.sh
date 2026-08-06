@@ -17,6 +17,21 @@ bad() { printf '  FAIL %s\n' "$1"; FAILS=$((FAILS + 1)); }
 command -v jq  >/dev/null 2>&1 || { echo "smoke-install: jq required"; exit 2; }
 command -v git >/dev/null 2>&1 || { echo "smoke-install: git required"; exit 2; }
 
+echo "== workflow prose quality =="
+prose_ok=true
+[ -f "$ROOT/references/workflow-prose-quality.md" ] || prose_ok=false
+grep -Fq 'same model pass' "$ROOT/references/workflow-prose-quality.md" 2>/dev/null || prose_ok=false
+for phase in phase-1-clarify.md phase-2-understand.md phase-3-plan.md phase-4-review-approval.md phase-6-verify.md phase-7-review-commit.md; do
+  grep -Fq '${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/references/workflow-prose-quality.md' "$ROOT/phases/$phase" 2>/dev/null || prose_ok=false
+done
+grep -Fq '<loaded-kimiflow-package-root>/references/workflow-prose-quality.md' "$ROOT/hosts/pi/skills/kimiflow/SKILL.md" 2>/dev/null || prose_ok=false
+grep -Fq 'same model pass' "$ROOT/hosts/pi/skills/kimiflow/SKILL.md" 2>/dev/null || prose_ok=false
+if $prose_ok && [ "$(wc -c < "$ROOT/SKILL.md" | tr -d ' ')" -le 17000 ]; then
+  ok "lazy same-pass prose contract, Claude/Pi wiring and budgets"
+else
+  bad "workflow prose quality contract or wiring invalid"
+fi
+
 echo "== manifests =="
 for j in .claude-plugin/plugin.json .claude-plugin/marketplace.json hooks/hooks.json; do
   if jq -e . "$ROOT/$j" >/dev/null 2>&1; then ok "valid JSON: $j"; else bad "invalid JSON: $j"; fi

@@ -22,6 +22,10 @@ bindet wichtige Behauptungen an ausführbare Evidence.
 
 ## Neu in diesem Release
 
+- **Entscheidungstragende Prosa erhält eine begrenzte Same-pass-Qualitätsprüfung.** Der bestehende Autor
+  oder Reviewer bewahrt Bedeutung und Evidence, korrigiert generische oder aufgeblähte Formulierungen
+  direkt und erzeugt keinen weiteren Modellaufruf oder Gate. Adaptiert ist die Minimum-effective-edit-Idee
+  von [petergyang/no-ai-slop](https://github.com/petergyang/no-ai-slop), kein AI-Urheberschaftsdetektor.
 - **Bug-Kaskaden werden an der Ursache repariert, nicht Symptom für Symptom.** Jede materielle
   Review-Klasse prüft direkte Aufrufer, Datenfluss, gemeinsamen Zustand, Annahme-Nutzer und
   Fehlerfolgen. Zusammengehörige Findings teilen eine belegte Root Cause, einen Fix und erhaltene
