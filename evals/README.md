@@ -1,11 +1,13 @@
 # kimiflow evaluations
 
-Kimiflow has two deliberately separate evaluation lanes:
+Kimiflow has three deliberately separate evaluation lanes:
 
 1. **Deterministic evidence foundation:** a local, model-free CI lane for Product Intake, Recovery,
    Review Convergence, and Intent Conformance.
 2. **Behavioral release calibration:** on-demand model pressure tests for the deployed skill. These
    remain slow, variable, and strictly out of normal CI.
+3. **Paired outcome evidence:** local validation and honest summaries of actual Plain-vs-Kimiflow
+   comparisons. The tool reads recorded Evidence; it never starts either arm.
 
 ## Deterministic evidence foundation
 
@@ -45,6 +47,35 @@ bash hooks/evidence-eval.sh model-plan \
 
 It always declares `release_only`, zero model calls, and zero network calls. Normal runs and CI never
 start a model evaluation.
+
+## Paired outcome evidence
+
+[`outcome-comparisons-v1.schema.json`](outcome-comparisons-v1.schema.json) defines the closed v1 Row
+shape. [`outcome-comparisons.jsonl`](outcome-comparisons.jsonl) is the only measurement source; it is
+committed with zero Rows until actual Evidence exists. The stdlib-only validator adds the cross-field,
+time, identity and repository-file checks that JSON Schema cannot express.
+
+```bash
+bash hooks/outcome-comparisons.sh validate
+bash hooks/outcome-comparisons.sh summary
+```
+
+Validation separates malformed or unsafe Rows from structurally valid field notes. Estimated, missing
+or null primary values remain null and exclude the whole Pair from primary metrics. A nonempty Confound
+list is also a field note; no Confound is represented only by `null`. Complete Pairs require a stable
+`task_id`, the closed `bug|feature` taxonomy and per-arm tool-call counts.
+
+Per-arm session, outcome, diff, merge and post-merge Evidence is canonical compact sorted JSON whose
+payload must exactly equal the corresponding Row fields. Fingerprint-only or stale Evidence therefore
+cannot validate a later measurement mutation. The Summary uses only complete actual Pairs, reports raw
+paired differences plus dataset-ordered `per_task` verdicts, and returns `insufficient_evidence` below ten
+valid Pairs. It does not emit a combined score, a significance claim or a six-bug/six-feature gate; real
+collection is separate work outside this MVP.
+
+This surface has no runner, provider, model call, network access or Kimiflow runtime hook. Any later
+comparison execution must happen only in purpose-built disposable benchmark repositories or disposable
+copies of public open-source test projects. Private or production user projects must never be used as
+the test environment.
 
 ## Deterministic security quality and promotion
 
