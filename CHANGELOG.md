@@ -2,9 +2,21 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+Versions before 0.3.0 were internal development snapshots. **0.3.0 is the first public release.**
+
 ## Unreleased
 
 _No unreleased changes._
+
+## 0.3.0
+
+First public release of Kimiflow.
+
+### Included
+
+- The complete feature, fix, review, self-repair, memory, and release workflow for Claude Code, Codex, and Pi.
+- Deterministic runtime artifacts with immutable GitHub publication and offline integrity verification.
+- Same-pass, meaning-preserving prose quality without an additional model call or workflow gate.
 
 ## 0.2.46
 
