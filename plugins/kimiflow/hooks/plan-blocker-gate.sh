@@ -268,6 +268,69 @@ if [ -n "$conformance_contract" ]; then
   fi
 fi
 
+# New plan reviews opt into one mechanically broad, globally bounded contract. Legacy runs
+# remain resumable. Contract-heavy plans additionally prove a PLAN-bound pairwise state matrix
+# before reviewer tokens are spent.
+plan_review_contract_count="$(kimiflow_state_value_count "$state" "Plan review contract")"
+plan_review_contract_count="${plan_review_contract_count:-0}"
+plan_review_contract="$(kimiflow_state_value "$state" "Plan review contract" | awk '{print $1}')"
+plan_review_profile_count="$(kimiflow_state_value_count "$state" "Plan review profile")"
+plan_review_profile="$(kimiflow_state_value "$state" "Plan review profile" | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
+flow_schema_count="$(kimiflow_state_value_count "$state" "Flow schema")"
+flow_schema_count="${flow_schema_count:-0}"
+flow_schema="$(kimiflow_state_value "$state" "Flow schema" | awk '{print $1}')"
+flow_schema_current=0
+if [ "$flow_schema_count" -gt 1 ]; then
+  add_blocker "flow_schema_duplicate"
+elif [ "$flow_schema_count" -eq 1 ]; then
+  case "$flow_schema" in
+    ''|*[!0-9]*) add_blocker "flow_schema_invalid" ;;
+    *)
+      normalized_flow_schema=$((10#$flow_schema))
+      if [ "$flow_schema" != "$normalized_flow_schema" ]; then
+        add_blocker "flow_schema_noncanonical"
+      elif [ "$normalized_flow_schema" -ge 5 ]; then
+        flow_schema_current=1
+      fi
+      ;;
+  esac
+fi
+if [ "$flow_schema_current" -eq 1 ] && [ "$audit_mode" -eq 0 ] && [ "$plan_review_contract_count" -eq 0 ]; then
+  add_blocker "plan_review_contract_missing"
+fi
+if [ "$plan_review_contract_count" -gt 1 ] || [ "$plan_review_profile_count" -gt 1 ]; then
+  add_blocker "plan_review_selector_duplicate"
+elif [ "$plan_review_contract_count" -eq 1 ]; then
+  if [ "$plan_review_contract" != "1" ]; then
+    add_blocker "plan_review_contract_version_invalid"
+  elif [ "$plan_review_profile_count" -ne 1 ]; then
+    add_blocker "plan_review_profile_missing"
+  else
+    case "$plan_review_profile" in
+      standard) ;;
+      contract)
+        plan_review_gate="$SCRIPT_DIR/plan-review-gate.sh"
+        if [ ! -x "$plan_review_gate" ]; then
+          add_blocker "plan_review_gate_missing"
+        else
+          plan_review_out="$("$plan_review_gate" matrix --run "$run_dir" 2>/dev/null)"
+          plan_review_rc=$?
+          plan_review_status="$(printf '%s\n' "$plan_review_out" | cut -f2)"
+          plan_review_reason="$(printf '%s\n' "$plan_review_out" | cut -f3 | sed 's/^reason=//')"
+          if [ "$plan_review_rc" -ne 0 ]; then
+            add_blocker "plan_review_matrix_error"
+          elif [ "$plan_review_status" != "OPEN" ]; then
+            add_blocker "plan_review_matrix_closed:${plan_review_reason:-invalid}"
+          fi
+        fi
+        ;;
+      *) add_blocker "plan_review_profile_invalid" ;;
+    esac
+  fi
+elif [ "$plan_review_profile_count" -gt 0 ]; then
+  add_blocker "plan_review_profile_without_contract"
+fi
+
 phase_detail="$(phase_read_blocker)"
 [ -z "$phase_detail" ] || add_blocker "$phase_detail"
 

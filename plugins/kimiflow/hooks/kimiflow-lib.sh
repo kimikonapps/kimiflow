@@ -22,6 +22,24 @@ kimiflow_state_value() {
   ' "$state_file"
 }
 
+kimiflow_state_value_count() {
+  local state_file="$1" key="$2" key_lower
+  [ -f "$state_file" ] || { printf '0\n'; return 0; }
+  key_lower="$(printf '%s' "$key" | tr '[:upper:]' '[:lower:]')"
+  awk -v key="$key_lower" '
+    {
+      line = $0
+      gsub(/\r/, "", line)
+      gsub(/\*\*/, "", line)
+      sub(/^[[:space:]]*-[[:space:]]*/, "", line)
+      lower = tolower(line)
+      pattern = "^" key "[[:space:]]*:"
+      if (lower ~ pattern) count++
+    }
+    END { print count + 0 }
+  ' "$state_file"
+}
+
 kimiflow_resolve_root() {
   local root="$1"
   if [ -n "$root" ]; then

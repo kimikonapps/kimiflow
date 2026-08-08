@@ -16,7 +16,7 @@ import tempfile
 import threading
 from datetime import datetime, timezone
 
-from . import adaptive_control, execution_control, flow_graph, phase_context, phase_reads, scorecard, state, workspace_preflight
+from . import adaptive_control, execution_control, flow_graph, phase_context, phase_reads, plan_review, scorecard, state, workspace_preflight
 from .atomic import atomic_write
 
 try:
@@ -41,6 +41,7 @@ USAGE = """#!/usr/bin/env bash
 #   active-run.sh refresh-baseline [--root <path>] [--workspace-disposition] [--write] [--pretty]
 #   active-run.sh await-user --run <path> [--kind <kind>] [--round <1|2>] [--request <path>] [--reason <text>] [--root <path>] [--write] [--pretty]
 #   active-run.sh pin-intent-lock --run <path> --digest <sha256:...> [--root <path>] [--write] [--pretty]
+#   active-run.sh pin-plan-saturation --run <path> --round <1|2|3> --expect <lensCSV> [--root <path>] [--write] [--pretty]
 #   active-run.sh phase-read --run <path> --phase <0-7> --file phases/<file>.md [--root <path>] [--write] [--pretty]
 #   active-run.sh phase-read-status --run <path> [--root <path>] [--json] [--pretty]
 #   active-run.sh phase-read-gate --run <path> --through-phase <0-7> [--root <path>]
@@ -2652,6 +2653,10 @@ def cmd_start(args, _workspace_locked=False):
         status["intent_lock_digest"] = prior_active["intent_lock_digest"]
     elif resume_pins.get("intent_lock_digest"):
         status["intent_lock_digest"] = resume_pins["intent_lock_digest"]
+    if same_active and isinstance(prior_active.get("plan_saturation_receipts"), list):
+        status["plan_saturation_receipts"] = prior_active["plan_saturation_receipts"]
+    elif isinstance(resume_pins.get("plan_saturation_receipts"), list):
+        status["plan_saturation_receipts"] = resume_pins["plan_saturation_receipts"]
     if same_active and "frontend_quality_contract" in prior_active:
         status["frontend_quality_contract"] = prior_active.get("frontend_quality_contract")
     elif "frontend_quality_contract" in resume_pins:
@@ -3056,6 +3061,75 @@ def cmd_pin_intent_lock(args):
     json_print({"status": "intent_lock_pinned", "written": opts["--write"] is True, "run": active["run"], "digest": opts["--digest"]}, opts["--pretty"])
 
 
+def cmd_pin_plan_saturation(args):
+    opts = parse_options(
+        args,
+        "pin-plan-saturation",
+        {
+            "--root": "",
+            "--run": "",
+            "--round": "",
+            "--expect": "",
+            "--write": False,
+            "--pretty": False,
+        },
+    )
+    need_jq()
+    if not opts["--run"] or not re.fullmatch(r"[1-3]", opts["--round"]):
+        die("pin-plan-saturation requires --run and --round 1|2|3", 2)
+    if not opts["--expect"]:
+        die("pin-plan-saturation requires --expect", 2)
+    root = resolve_root(opts["--root"], strict=opts["--write"])
+    bind_owner_for_write(root, opts["--write"])
+    active = load_active(root)
+    run_dir = resolve_run_dir(root, opts["--run"])
+    run_rel = rel_path(root, run_dir)
+    if active.get("present") is not True or active.get("run") != run_rel:
+        die("pin-plan-saturation: run does not match active session", 1)
+    round_number = int(opts["--round"])
+    lenses = tuple(part for part in opts["--expect"].split(",") if part)
+    result, expected_pins = plan_review.prepare_saturation_pins(
+        run_dir, round_number, lenses
+    )
+    if not result.is_open or expected_pins is None:
+        die(
+            "pin-plan-saturation: saturation closed (%s%s)"
+            % (result.reason, ":" + result.detail if result.detail else ""),
+            1,
+        )
+    existing = active.get("plan_saturation_receipts", [])
+    if not isinstance(existing, list):
+        die("pin-plan-saturation: active receipt pins malformed", 1)
+    if existing not in (expected_pins[:-1], expected_pins):
+        die("pin-plan-saturation: accepted receipt history is immutable", 1)
+    updated = dict(active)
+    updated.pop("present", None)
+    updated.pop("path", None)
+    updated["plan_saturation_receipts"] = expected_pins
+    updated["updated_at"] = iso_now()
+    if opts["--write"]:
+        write_active(root, updated)
+        strict = plan_review.validate_saturation(
+            run_dir, round_number, lenses, require_active_pin=True
+        )
+        if not strict.is_open:
+            die(
+                "pin-plan-saturation: active pin verification failed (%s%s)"
+                % (strict.reason, ":" + strict.detail if strict.detail else ""),
+                1,
+            )
+    json_print(
+        {
+            "status": "plan_saturation_pinned",
+            "written": opts["--write"] is True,
+            "run": run_rel,
+            "round": round_number,
+            "receipt_sha256": expected_pins[-1]["receipt_sha256"],
+        },
+        opts["--pretty"],
+    )
+
+
 def repair_adjacent_phase_overlap(run_dir, phase):
     """Repair only the common handoff error where two adjacent phases are active."""
     try:
@@ -3434,6 +3508,8 @@ def session_pins(active):
     )
     if "execution_contract" in active:
         keys = keys + ("execution_contract",)
+    if "plan_saturation_receipts" in active:
+        keys = keys + ("plan_saturation_receipts",)
     return {key: active.get(key) for key in keys if key in active}
 
 
@@ -4664,6 +4740,8 @@ def main(argv=None):
             cmd_await_user(args)
         elif command == "pin-intent-lock":
             cmd_pin_intent_lock(args)
+        elif command == "pin-plan-saturation":
+            cmd_pin_plan_saturation(args)
         elif command == "phase-read":
             cmd_phase_read(args)
         elif command == "phase-read-status":

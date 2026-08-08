@@ -3,7 +3,8 @@
 # Fixtures = temp findings-dir with crafted r<N>-<lens>.md files. Run: bash hooks/test-resolve-review-gate.sh
 set -u
 SCRIPT="$(cd "$(dirname "$0")" && pwd)/resolve-review-gate.sh"
-WORK="$(mktemp -d)"; FD="$WORK/findings"; trap 'rm -rf "$WORK"' EXIT
+ACTIVE_SCRIPT="$(cd "$(dirname "$0")" && pwd)/active-run.sh"
+TEST_ROOT="$(mktemp -d)"; WORK="$TEST_ROOT/.kimiflow/demo"; FD="$WORK/findings"; trap 'rm -rf "$TEST_ROOT"' EXIT
 FAILS=0
 BEFORE="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 AFTER="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -20,6 +21,7 @@ reset() {
   rm -rf "$FD"
   rm -rf "$WORK/code-review-candidates" "$WORK/review-saturation"
   rm -f "$WORK/STATE.md" "$WORK/RECOVERY.md" "$WORK/PLAN.md"
+  rm -rf "$TEST_ROOT/.kimiflow/session"
   mkdir -p "$FD"
   printf 'initial plan strategy\n' > "$WORK/PLAN.md"
 }
@@ -181,59 +183,34 @@ reset
 put r1-B.md "FINDING HIGH src/base:1 :: baseline strategy"
 put r2-B.md "FINDING HIGH src/old:1 :: old strategy"
 put r3-B.md "FINDING HIGH src/new:1 :: new strategy"
-af "$(run --round 3 --expect B --epoch-start 3 --cap 4 --gate plan)" 3 malformed "epoch_without_receipt_is_malformed"
+af "$(run --round 3 --expect B --epoch-start 3 --cap 3 --gate plan)" 3 malformed "epoch_without_receipt_is_malformed"
 baseline plan
 af "$(run --round 1 --expect B --epoch-start 1 --cap 2 --gate plan)" 3 open-findings "first_epoch_valid_baseline_preserves_verdict"
 change_basis plan "recovered plan strategy"
-receipt plan 2 3 4
-af "$(run --round 3 --expect B --epoch-start 3 --cap 4 --gate plan)" 3 open-findings "epoch_first_round_skips_previous_strategy"
+receipt plan 2 3 3
+af "$(run --round 3 --expect B --epoch-start 3 --cap 3 --gate plan)" 3 cap-reached "epoch_first_round_honors_global_closeout"
 
-# anti-oscillation still applies after the first round inside the new epoch.
+# Anti-oscillation still applies inside a recovery epoch that fits the global limit.
 reset
-put r2-B.md "FINDING HIGH src/old:1 :: old strategy"
-put r3-B.md "FINDING HIGH src/a:1 :: x"
-put r4-B.md "FINDING HIGH src/b:2 :: y"
+put r1-B.md "FINDING HIGH src/old:1 :: old strategy"
+put r2-B.md "FINDING HIGH src/a:1 :: x"
+put r3-B.md "FINDING HIGH src/b:2 :: y"
 baseline plan
 change_basis plan "second recovered plan strategy"
-receipt plan 2 3 5
-af "$(run --round 4 --expect B --epoch-start 3 --cap 5 --gate plan)" 3 oscillation "epoch_internal_oscillation"
+receipt plan 1 2 3
+af "$(run --round 3 --expect B --epoch-start 2 --cap 3 --gate plan)" 3 cap-reached "epoch_internal_closeout_precedes_more_recovery"
 
-# a finding from an older failed epoch is not a reappearance in the current strategy epoch.
-reset
-put r1-B.md "FINDING HIGH src/a:1 :: old"
-put r2-B.md "FINDING HIGH src/b:2 :: failed strategy"
-put r3-B.md "FINDING HIGH src/c:3 :: c
-FINDING HIGH src/d:4 :: d"
-put r4-B.md "FINDING HIGH src/a:1 :: new epoch"
-baseline plan
-change_basis plan "third recovered plan strategy"
-receipt plan 2 3 5
-af "$(run --round 4 --expect B --epoch-start 3 --cap 5 --gate plan)" 3 open-findings "epoch_reappearance_ignores_older_epochs"
-
-# a disappeared finding that returns inside the current epoch is still rejected.
+# Legacy epoch continuity remains fail-closed; the new selector-specific cap is tested below.
 reset
 put r2-B.md "FINDING HIGH src/old:1 :: failed strategy"
-put r3-B.md "FINDING HIGH src/a:1 :: a
-FINDING HIGH src/b:2 :: b
-FINDING HIGH src/c:3 :: c"
-put r4-B.md "FINDING HIGH src/b:2 :: b
-FINDING HIGH src/c:3 :: c"
-put r5-B.md "FINDING HIGH src/a:1 :: a"
+put r3-B.md "NONE"
 baseline plan
-change_basis plan "fourth recovered plan strategy"
-receipt plan 2 3 6
-af "$(run --round 5 --expect B --epoch-start 3 --cap 6 --gate plan)" 3 reappeared "epoch_internal_reappearance"
-
-# clean at an epoch cap opens, while a later round stays closed.
-reset
-put r2-B.md "FINDING HIGH src/old:1 :: failed strategy"
+change_basis plan "final recovered plan strategy"
+receipt plan 2 3 3
+af "$(run --round 3 --expect B --epoch-start 3 --cap 3 --gate plan)" 1 OPEN "global_closeout_clean_opens"
 put r4-B.md "NONE"
-baseline plan
-change_basis plan "fifth recovered plan strategy"
-receipt plan 2 3 4
-af "$(run --round 4 --expect B --epoch-start 3 --cap 4 --gate plan)" 1 OPEN "epoch_clean_at_cap_opens"
-put r5-B.md "NONE"
-af "$(run --round 5 --expect B --epoch-start 3 --cap 4 --gate plan)" 3 cap-reached "epoch_clean_beyond_cap_stays_closed"
+af "$(run --round 4 --expect B --epoch-start 4 --cap 4 --gate plan)" 3 malformed "legacy_fourth_epoch_requires_valid_recovery"
+af "$(run --round 1 --expect B --epoch-start 1 --cap 4 --gate plan)" 3 malformed "legacy_plan_cap_must_match_state"
 
 # a later epoch is not caller-trusted: continuity, fingerprints, marker, and STATE must agree.
 reset
@@ -278,12 +255,12 @@ af "$(run --round 2 --expect B --epoch-start 2 --cap 2 --gate plan)" 3 malformed
 receipt plan 1 2 2
 af "$(run --round 2 --expect B --epoch-start 2 --cap 2 --gate plan)" 3 cap-reached "epoch_actual_after_hash_accepted"
 change_basis plan "third strategy bytes"
-append_receipt plan 2 3 4
-af "$(run --round 3 --expect B --epoch-start 3 --cap 4 --gate plan)" 3 open-findings "epoch_prior_fingerprint_chain_accepted"
+append_receipt plan 2 3 3
+af "$(run --round 3 --expect B --epoch-start 3 --cap 3 --gate plan)" 3 cap-reached "epoch_prior_fingerprint_chain_accepted"
 change_basis plan "fourth strategy bytes"
-append_receipt plan 3 4 5 "$BEFORE"
+append_receipt plan 3 4 4
 put r4-B.md "FINDING HIGH src/d:4 :: fourth strategy"
-af "$(run --round 4 --expect B --epoch-start 4 --cap 5 --gate plan)" 3 malformed "epoch_broken_prior_fingerprint_chain_rejected"
+af "$(run --round 4 --expect B --epoch-start 4 --cap 4 --gate plan)" 3 cap-reached "legacy_epoch_remains_resumable"
 
 # Receipt order is itself append-only: a lower epoch cannot be appended after a higher one.
 reset
@@ -293,13 +270,13 @@ baseline plan
 base_hash="$(hash_file "$WORK/PLAN.md")"
 change_basis plan "epoch three strategy"
 epoch_three_hash="$(hash_file "$WORK/PLAN.md")"
-receipt plan 2 3 4 "$base_hash" "$epoch_three_hash"
+receipt plan 2 3 3 "$base_hash" "$epoch_three_hash"
 change_basis plan "out-of-order epoch two strategy"
 append_receipt plan 1 2 2 "$base_hash"
 change_basis plan "epoch three strategy"
-printf 'Review gate: plan\nReview epoch start: 3\nReview epoch cap: 4\nStrategy fingerprint: %s\nRecovery: active\n' \
+printf 'Review gate: plan\nReview epoch start: 3\nReview epoch cap: 3\nStrategy fingerprint: %s\nRecovery: active\n' \
   "$epoch_three_hash" > "$WORK/STATE.md"
-af "$(run --round 3 --expect B --epoch-start 3 --cap 4 --gate plan)" 3 malformed "epoch_out_of_order_receipts_rejected"
+af "$(run --round 3 --expect B --epoch-start 3 --cap 3 --gate plan)" 3 malformed "epoch_out_of_order_receipts_rejected"
 
 # The whole prior chain, not only the current edge, must link back to the baseline.
 reset
@@ -310,8 +287,8 @@ change_basis plan "epoch two strategy"
 epoch_two_hash="$(hash_file "$WORK/PLAN.md")"
 receipt plan 1 2 2 "$BEFORE" "$epoch_two_hash"
 change_basis plan "epoch three strategy"
-append_receipt plan 2 3 4 "$epoch_two_hash"
-af "$(run --round 3 --expect B --epoch-start 3 --cap 4 --gate plan)" 3 malformed "epoch_tampered_prior_chain_rejected"
+append_receipt plan 2 3 3 "$epoch_two_hash"
+af "$(run --round 3 --expect B --epoch-start 3 --cap 3 --gate plan)" 3 malformed "epoch_tampered_prior_chain_rejected"
 
 # The source round must be a complete, grammar-valid ledger for every expected lens.
 reset
@@ -369,6 +346,95 @@ enable_finding_contract
 put r1-B.md "NONE"
 af "$(run --round 1 --expect B)" 3 malformed "contracted_state_requires_finding_flag"
 af "$(run --round 1 --expect B --finding-contract 1)" 1 OPEN "contracted_initial_clean_opens"
+
+# New plan-review contract binds broad reviewer coverage and every findings file to one PLAN.
+reset
+printf 'Flow schema: 5\nMode: feature\nScope: small\nConvergence contract: 1\nPlan review contract: 1\nPlan review profile: standard\n' > "$WORK/STATE.md"
+baseline plan
+mkdir -p "$WORK/plan-review-candidates" "$WORK/plan-review-saturation"
+cat > "$WORK/plan-review-candidates/r1-a.md" <<EOF
+BASIS plan_sha256=$(hash_file "$WORK/PLAN.md")
+COVERAGE intent-trace :: status=checked :: evidence=PLAN.md §intent
+COVERAGE state-space :: status=not_applicable :: evidence=PLAN.md §no-state-machine
+COVERAGE identity-binding :: status=not_applicable :: evidence=PLAN.md §no-identities
+COVERAGE scope-subtraction :: status=checked :: evidence=PLAN.md §minimum-complete
+NONE
+EOF
+cat > "$WORK/plan-review-candidates/r1-b.md" <<EOF
+BASIS plan_sha256=$(hash_file "$WORK/PLAN.md")
+COVERAGE evidence-safety :: status=not_applicable :: evidence=PLAN.md §no-evidence-files
+COVERAGE time-lifecycle :: status=not_applicable :: evidence=PLAN.md §no-time-rules
+COVERAGE aggregation-verdict :: status=not_applicable :: evidence=PLAN.md §no-aggregation
+NONE
+EOF
+put r1-a.md "NONE"
+put r1-b.md "NONE"
+af "$(run --round 1 --expect a,b --gate plan --epoch-start 1 --cap 3 --finding-contract 1)" 3 incomplete "plan_contract_requires_saturation"
+jq -n \
+  --arg plan_sha256 "$(hash_file "$WORK/PLAN.md")" \
+  --arg candidate_a_sha256 "$(hash_file "$WORK/plan-review-candidates/r1-a.md")" \
+  --arg candidate_sha256 "$(hash_file "$WORK/plan-review-candidates/r1-b.md")" \
+  --arg finding_a_sha256 "$(hash_file "$FD/r1-a.md")" \
+  --arg finding_sha256 "$(hash_file "$FD/r1-b.md")" \
+  '{schema_version:1,round:1,plan_sha256:$plan_sha256,lenses:["a","b"],candidate_files:[{lens:"a",sha256:$candidate_a_sha256},{lens:"b",sha256:$candidate_sha256}],finding_files:[{lens:"a",sha256:$finding_a_sha256},{lens:"b",sha256:$finding_sha256}],dispositions:[],families:[]}' \
+  > "$WORK/plan-review-saturation/r1.json"
+printf '<!-- kimiflow:plan-saturation round=1 receipt=%s plan=%s previous=none -->\n' \
+  "$(hash_file "$WORK/plan-review-saturation/r1.json")" "$(hash_file "$WORK/PLAN.md")" >> "$WORK/RECOVERY.md"
+mkdir -p "$TEST_ROOT/.kimiflow/session"
+jq -n \
+  '{schema_version:1,status:"active",run:".kimiflow/demo",plan_saturation_receipts:[]}' \
+  > "$TEST_ROOT/.kimiflow/session/ACTIVE_RUN.json"
+pin_out="$("$ACTIVE_SCRIPT" pin-plan-saturation --root "$TEST_ROOT" --run .kimiflow/demo --round 1 --expect a,b --write)"
+if [ "$(printf '%s' "$pin_out" | jq -r '.status')" = plan_saturation_pinned ]; then
+  pass "active_run_plan_saturation_pin_persists_receipt"
+else
+  fail "active_run_plan_saturation_pin_persists_receipt"
+fi
+af "$(run --round 1 --expect b --gate plan --epoch-start 1 --cap 3 --finding-contract 1)" 3 incomplete "plan_contract_rejects_single_lens"
+af "$(run --round 1 --expect a,b --gate plan --epoch-start 1 --cap 2 --finding-contract 1)" 3 malformed "plan_contract_rejects_short_cap"
+af "$(run --round 1 --expect a,b --gate plan --epoch-start 1 --cap 3 --finding-contract 1)" 1 OPEN "plan_contract_saturation_opens"
+af "$(run --round 4 --expect a,b --gate plan --epoch-start 1 --cap 4 --finding-contract 1)" 3 review-limit-reached "plan_contract_rejects_fourth_round"
+jq '.plan_saturation_receipts[0].receipt_sha256 = ("0" * 64)' \
+  "$TEST_ROOT/.kimiflow/session/ACTIVE_RUN.json" > "$TEST_ROOT/.kimiflow/session/ACTIVE_RUN.tmp"
+mv "$TEST_ROOT/.kimiflow/session/ACTIVE_RUN.tmp" "$TEST_ROOT/.kimiflow/session/ACTIVE_RUN.json"
+af "$(run --round 1 --expect a,b --gate plan --epoch-start 1 --cap 3 --finding-contract 1)" 3 incomplete "plan_contract_requires_active_session_pin"
+
+reset
+printf 'Flow schema: 5\nMode: feature\nScope: small\nConvergence contract: 1\n' > "$WORK/STATE.md"
+put r1-b.md "NONE"
+af "$(run --round 1 --expect b --finding-contract 1)" 3 malformed "flow5_converged_plan_requires_review_contract"
+
+reset
+printf 'Flow schema: 05\nMode: feature\nScope: small\nConvergence contract: 1\n' > "$WORK/STATE.md"
+put r1-b.md "NONE"
+af "$(run --round 1 --expect b --finding-contract 1)" 3 malformed "noncanonical_flow_schema_cannot_bypass_plan_contract"
+
+reset
+printf 'Flow schema: 6\nMode: feature\nScope: small\nConvergence contract: 1\n' > "$WORK/STATE.md"
+put r1-b.md "NONE"
+af "$(run --round 1 --expect b --gate plan --epoch-start 1 --cap 3 --finding-contract 1)" 3 malformed "future_flow_schema_requires_plan_contract"
+
+reset
+printf 'Flow schema: 5\nMode: audit\nScope: small\n' > "$WORK/STATE.md"
+put r1-b.md "NONE"
+af "$(run --round 1 --expect b --gate plan --epoch-start 1 --cap 3)" 3 incomplete "flow5_audit_requires_three_lenses"
+af "$(run --round 4 --expect a,b,c --gate plan --epoch-start 1 --cap 4)" 3 review-limit-reached "flow5_audit_stops_after_round_three"
+
+reset
+printf 'Flow schema: 5\nMode: audit\nScope: small\n' > "$WORK/STATE.md"
+printf 'approved audit slices\n' > "$WORK/AUDIT.md"
+printf '<!-- kimiflow:strategy gate=plan epoch-start=1 fingerprint=%s -->\n' \
+  "$(hash_file "$WORK/AUDIT.md")" > "$WORK/RECOVERY.md"
+put r1-a.md "NONE"
+put r1-b.md "NONE"
+put r1-c.md "NONE"
+af "$(run --round 1 --expect a,b,c --gate plan --epoch-start 1 --cap 3)" 1 OPEN "flow5_audit_uses_audit_basis_and_three_lenses"
+
+reset
+printf 'Flow schema: 5\nMode: feature\nScope: small\nConvergence contract: 1\nPlan review contract: 1\nPlan review profile: standard\n' > "$WORK/STATE.md"
+baseline code
+put r1-code-verified.md "NONE"
+af "$(run --round 1 --expect code-verified --gate code --epoch-start 1 --cap 4 --finding-contract 1 --review-axes spec-correctness)" 3 incomplete "plan_selector_does_not_force_code_gate_to_plan"
 
 reset
 enable_finding_contract
@@ -506,11 +572,11 @@ put r1-B.md "NONE"
 put r2-B.md "FINDING HIGH src/a:1 :: failed strategy :: class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$epoch_ev"
 put r3-B.md "NONE"
 change_basis plan "recovered contracted strategy"
-receipt plan 2 3 4
-af "$(run --round 3 --expect B --epoch-start 3 --cap 4 --gate plan --finding-contract 1)" 3 unproven-resolution "contracted_strategy_reset_preserves_unresolved_class"
+receipt plan 2 3 3
+af "$(run --round 3 --expect B --epoch-start 3 --cap 3 --gate plan --finding-contract 1)" 3 unproven-resolution "contracted_strategy_reset_preserves_unresolved_class"
 epoch_resolved="$(evidence epoch-r3.txt rollback-atomicity 'command:test -f rollback.log' not_reproduced 'fresh command exits nonzero')"
 put r3-B.md "RESOLVED class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$epoch_resolved"
-af "$(run --round 3 --expect B --epoch-start 3 --cap 4 --gate plan --finding-contract 1)" 1 OPEN "contracted_strategy_reset_accepts_negative_receipt"
+af "$(run --round 3 --expect B --epoch-start 3 --cap 3 --gate plan --finding-contract 1)" 1 OPEN "contracted_strategy_reset_accepts_negative_receipt"
 
 reset
 enable_finding_contract
@@ -523,9 +589,9 @@ put r2-B.md "FINDING HIGH src/a:1 :: failed strategy :: class=rollback-atomicity
 put r3-B.md "FINDING HIGH src/b:2 :: first recovered evaluation :: class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$epoch_r3"
 put r4-B.md "FINDING HIGH src/c:3 :: repeated recovered evaluation :: class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$epoch_r4"
 change_basis plan "second recovered contracted strategy"
-receipt plan 2 3 5
-af "$(run --round 3 --expect B --epoch-start 3 --cap 5 --gate plan --finding-contract 1)" 3 open-findings "contracted_cross_epoch_debt_is_not_same_epoch_repeat"
-af "$(run --round 4 --expect B --epoch-start 3 --cap 5 --gate plan --finding-contract 1)" 3 root-class-repeated "contracted_second_same_epoch_repeat_resets"
+receipt plan 2 3 3
+af "$(run --round 3 --expect B --epoch-start 3 --cap 3 --gate plan --finding-contract 1)" 3 cap-reached "contracted_cross_epoch_debt_hits_closeout"
+af "$(run --round 4 --expect B --epoch-start 3 --cap 4 --gate plan --finding-contract 1)" 3 malformed "legacy_contracted_fourth_round_needs_recovery"
 
 reset
 enable_finding_contract

@@ -336,6 +336,7 @@ else
   bad "product intent ownership contract incomplete"
 fi
 if [ -x "$ROOT/hooks/plan-blocker-gate.sh" ] && bash -n "$ROOT/hooks/plan-blocker-gate.sh" 2>/dev/null; then ok "plan-blocker gate helper ok"; else bad "plan-blocker gate helper missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/plan-review-gate.sh" ] && bash -n "$ROOT/hooks/plan-review-gate.sh" 2>/dev/null; then ok "plan-review gate helper ok"; else bad "plan-review gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-plan-blocker-gate.sh" ] && bash -n "$ROOT/hooks/test-plan-blocker-gate.sh" 2>/dev/null; then ok "plan-blocker gate test ok"; else bad "plan-blocker gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/codebase-basis.sh" ] \
   && bash -n "$ROOT/hooks/codebase-basis.sh" 2>/dev/null \
@@ -463,6 +464,7 @@ fi
 grep -q 'working-tree-gate.sh' "$ROOT/reference.md" && ok "reference documents working-tree gate helper" || bad "missing working-tree gate helper in reference.md"
 grep -q 'clarify-gate.sh' "$ROOT/reference.md" && ok "reference documents clarify gate helper" || bad "missing clarify gate helper in reference.md"
 grep -q 'plan-blocker-gate.sh' "$ROOT/reference.md" && ok "reference documents plan-blocker gate helper" || bad "missing plan-blocker gate helper in reference.md"
+grep -q 'plan-review-gate.sh' "$ROOT/reference.md" && ok "reference documents plan-review saturation helper" || bad "missing plan-review saturation helper in reference.md"
 grep -q 'red-green-gate.sh' "$ROOT/reference.md" && ok "reference documents red-green gate helper" || bad "missing red-green gate helper in reference.md"
 grep -q 'BUG-REPRO.md' "$ROOT/reference.md" && ok "reference documents BUG-REPRO evidence" || bad "missing BUG-REPRO evidence in reference.md"
 grep -q 'lsp-diagnostics.sh' "$ROOT/reference.md" && ok "reference documents local diagnostics helper" || bad "missing local diagnostics helper in reference.md"

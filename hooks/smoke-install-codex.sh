@@ -208,6 +208,7 @@ else
   bad "product intent ownership contract incomplete"
 fi
 if [ -x "$ROOT/hooks/plan-blocker-gate.sh" ] && bash -n "$ROOT/hooks/plan-blocker-gate.sh" 2>/dev/null; then ok "plan-blocker gate helper ok"; else bad "plan-blocker gate helper missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/plan-review-gate.sh" ] && bash -n "$ROOT/hooks/plan-review-gate.sh" 2>/dev/null; then ok "plan-review gate helper ok"; else bad "plan-review gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-plan-blocker-gate.sh" ] && bash -n "$ROOT/hooks/test-plan-blocker-gate.sh" 2>/dev/null; then ok "plan-blocker gate test ok"; else bad "plan-blocker gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/codebase-basis.sh" ] \
   && bash -n "$ROOT/hooks/codebase-basis.sh" 2>/dev/null \
@@ -338,6 +339,7 @@ fi
 grep -q 'working-tree-gate.sh' "$ROOT/reference.md" && ok "canonical working-tree gate helper documented" || bad "canonical working-tree gate helper missing"
 grep -q 'clarify-gate.sh' "$ROOT/reference.md" && ok "canonical clarify gate helper documented" || bad "canonical clarify gate helper missing"
 grep -q 'plan-blocker-gate.sh' "$ROOT/reference.md" && ok "canonical plan-blocker gate helper documented" || bad "canonical plan-blocker gate helper missing"
+grep -q 'plan-review-gate.sh' "$ROOT/reference.md" && ok "canonical plan-review gate helper documented" || bad "canonical plan-review gate helper missing"
 grep -q 'red-green-gate.sh' "$ROOT/reference.md" && ok "canonical red-green gate helper documented" || bad "canonical red-green gate helper missing"
 grep -q 'BUG-REPRO.md' "$ROOT/reference.md" && ok "canonical BUG-REPRO evidence documented" || bad "canonical BUG-REPRO evidence missing"
 grep -q 'lsp-diagnostics.sh' "$ROOT/reference.md" && ok "canonical local diagnostics helper documented" || bad "canonical local diagnostics helper missing"
@@ -351,6 +353,7 @@ grep -q 'discovery-gate.sh' "$SKILL" && ok "Codex wrapper maps discovery gate he
 grep -q 'working-tree-gate.sh' "$SKILL" && ok "Codex wrapper maps working-tree gate helper" || bad "Codex wrapper missing working-tree gate helper"
 grep -q 'clarify-gate.sh' "$SKILL" && ok "Codex wrapper maps clarify gate helper" || bad "Codex wrapper missing clarify gate helper"
 grep -q 'plan-blocker-gate.sh' "$SKILL" && ok "Codex wrapper maps plan-blocker gate helper" || bad "Codex wrapper missing plan-blocker gate helper"
+grep -q 'plan-review-gate.sh' "$SKILL" && ok "Codex wrapper maps plan-review gate helper" || bad "Codex wrapper missing plan-review gate helper"
 grep -q 'red-green-gate.sh' "$SKILL" && ok "Codex wrapper maps red-green gate helper" || bad "Codex wrapper missing red-green gate helper"
 grep -q 'lsp-diagnostics.sh' "$SKILL" && ok "Codex wrapper maps local diagnostics helper" || bad "Codex wrapper missing local diagnostics helper"
 grep -q 'memory-router.sh' "$SKILL" && ok "Codex wrapper maps memory router helper" || bad "Codex wrapper missing memory router helper"

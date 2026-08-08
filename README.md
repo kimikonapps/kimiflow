@@ -205,6 +205,9 @@ does not reimplement Calm. Main may run several Ships only for disjoint, self-co
 A tightly coupled build intentionally starts one Ship.
 Independent research and semantic review use separate visible Scouts; `small` code review uses two review axes
 and `large`/release-critical review uses three when the FirstMate crew is available.
+Plan review freezes one PLAN version and runs its lenses as one batch. Contract-heavy plans add a pairwise state
+matrix and family-wide counterexample checks. The plan gate has three global rounds maximum—discovery, repair
+verification, and resolution-only closeout—so a changed plan or model cannot restart the loop.
 
 The adapter mechanically restricts which crew actions each role can call; it is not an OS sandbox around Pi's
 shell. Brief boundaries plus Kimiflow's integration/final Git and evidence gates detect forbidden product writes.

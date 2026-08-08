@@ -22,6 +22,10 @@ assert_contains() {
   local out="$1" want="$2" label="$3"
   if printf '%s\n' "$out" | grep -qF "$want"; then pass "$label"; else fail "$label (missing '$want')"; fi
 }
+assert_not_contains() {
+  local out="$1" unwanted="$2" label="$3"
+  if printf '%s\n' "$out" | grep -qF "$unwanted"; then fail "$label (unexpected '$unwanted')"; else pass "$label"; fi
+}
 
 reset_run() {
   rm -rf "$WORK"
@@ -89,6 +93,70 @@ assert_contains "$out" "reason=clean" "clean_reason"
 
 # Runs created before Architecture Contract remain resumable.
 assert_field "$out" 2 OPEN "legacy_run_without_architecture_contract_opens"
+
+reset_run
+printf 'Flow schema: 5\nConvergence contract: 1\n' >> "$RUN/STATE.md"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "flow5_converged_plan_requires_review_contract"
+assert_contains "$out" "plan_review_contract_missing" "flow5_missing_plan_review_contract_detail"
+
+reset_run
+printf 'Flow schema: 4\nConvergence contract: 1\n' >> "$RUN/STATE.md"
+out="$(run_gate)"
+assert_not_contains "$out" "plan_review_contract_missing" "flow4_legacy_does_not_require_plan_review_contract"
+
+reset_run
+printf 'Flow schema: 05\n' >> "$RUN/STATE.md"
+out="$(run_gate)"
+assert_contains "$out" "flow_schema_noncanonical" "noncanonical_flow_schema_cannot_bypass_plan_contract"
+
+reset_run
+printf 'Flow schema: 6\n' >> "$RUN/STATE.md"
+out="$(run_gate)"
+assert_contains "$out" "plan_review_contract_missing" "future_flow_schema_requires_plan_review_contract"
+
+# New plan-review contract is explicit and contract-heavy plans require a PLAN-bound matrix.
+reset_run
+printf 'Plan review contract: 1\n' >> "$RUN/STATE.md"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "plan_review_profile_missing_closes"
+assert_contains "$out" "plan_review_profile_missing" "plan_review_profile_missing_detail"
+
+reset_run
+printf 'Plan review contract: 1\nPlan review profile: standard\n' >> "$RUN/STATE.md"
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "standard_plan_review_profile_opens"
+
+reset_run
+printf 'Plan review contract: 1\nPlan review profile: contract\n' >> "$RUN/STATE.md"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "contract_profile_without_matrix_closes"
+assert_contains "$out" "plan_review_matrix_closed:artifact-missing" "contract_profile_missing_matrix_detail"
+
+plan_digest="$(shasum -a 256 "$RUN/PLAN.md" | awk '{print $1}')"
+cat > "$RUN/CONTRACT-MATRIX.json" <<EOF
+{
+  "schema_version": 1,
+  "plan_sha256": "$plan_digest",
+  "dimensions": [
+    {"name": "measurement", "values": ["actual", "missing"]},
+    {"name": "merge", "values": ["merged", "not-merged"]}
+  ],
+  "invariants": [{
+    "id": "actual-required", "acceptance": "AC-1",
+    "statement": "Only actual values enter the primary sample.",
+    "accept_case": "actual-merged", "reject_case": "missing-merged"
+  }],
+  "cases": [
+    {"id": "actual-merged", "kind": "legal", "values": {"measurement": "actual", "merge": "merged"}, "classification": "eligible", "acceptance": ["AC-1"], "expected": "Included."},
+    {"id": "actual-not-merged", "kind": "boundary", "values": {"measurement": "actual", "merge": "not-merged"}, "classification": "eligible", "acceptance": ["AC-1"], "expected": "Included without merge evidence."},
+    {"id": "missing-merged", "kind": "invalid", "values": {"measurement": "missing", "merge": "merged"}, "classification": "field-note", "acceptance": ["AC-1"], "expected": "Excluded."},
+    {"id": "missing-not-merged", "kind": "invalid", "values": {"measurement": "missing", "merge": "not-merged"}, "classification": "field-note", "acceptance": ["AC-1"], "expected": "Excluded."}
+  ]
+}
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "complete_contract_matrix_opens"
 
 enable_active_architecture() {
   cat >> "$RUN/STATE.md" <<'EOF'

@@ -19,6 +19,7 @@ LEGACY_FINDING_RE='^FINDING (BLOCKER|HIGH|MEDIUM|LOW) .+ :: .+$'
 CONTRACT_FINDING_RE='^FINDING (BLOCKER|HIGH|MEDIUM|LOW) .+ :: .+ :: class=[a-z0-9][a-z0-9-]{0,63} :: verify=(command|verifier):[^[:cntrl:]]+ :: evidence=review-evidence/[A-Za-z0-9._/-]+@[a-f0-9]{64}$'
 CONTRACT_RESOLVED_RE='^RESOLVED class=[a-z0-9][a-z0-9-]{0,63} :: verify=(command|verifier):[^[:cntrl:]]+ :: evidence=review-evidence/[A-Za-z0-9._/-]+@[a-f0-9]{64}$'
 CODE_REVIEW_CLOSEOUT_ROUND=4
+PLAN_REVIEW_CLOSEOUT_ROUND=3
 
 sha256_file() {
   if command -v shasum >/dev/null 2>&1; then
@@ -113,6 +114,70 @@ fi
 contracted=false
 [ "$finding_contract" = "1" ] && contracted=true
 
+state_plan_review_contract_count="$(state_value_count "$state" "Plan review contract")"
+state_plan_review_contract_count="${state_plan_review_contract_count:-0}"
+state_plan_review_contract="$(state_value "$state" "Plan review contract" | awk '{print $1}')"
+[ "$state_plan_review_contract_count" -le 1 ] \
+  || emit CLOSED - malformed "duplicate STATE plan review contract"
+state_flow_schema_count="$(state_value_count "$state" "Flow schema")"
+state_flow_schema_count="${state_flow_schema_count:-0}"
+state_flow_schema="$(state_value "$state" "Flow schema" | awk '{print $1}')"
+state_flow_current=false
+[ "$state_flow_schema_count" -le 1 ] \
+  || emit CLOSED - malformed "duplicate STATE flow schema"
+if [ "$state_flow_schema_count" -eq 1 ]; then
+  case "$state_flow_schema" in
+    ''|*[!0-9]*) emit CLOSED - malformed "invalid STATE flow schema" ;;
+  esac
+  normalized_flow_schema=$((10#$state_flow_schema))
+  [ "$state_flow_schema" = "$normalized_flow_schema" ] \
+    || emit CLOSED - malformed "noncanonical STATE flow schema"
+  [ "$normalized_flow_schema" -ge 5 ] && state_flow_current=true
+fi
+state_mode="$(state_value "$state" "Mode" | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
+state_alias="$(state_value "$state" "Alias" | tr '[:upper:]' '[:lower:]' | awk '{print $1}')"
+flow5_audit=false
+if printf '%s\n%s\n' "$state_mode" "$state_alias" | grep -Eq '(^|[^a-z])audit([^a-z]|$)'; then
+  flow5_audit=true
+fi
+
+if [ "$state_flow_current" = true ] && [ "$gate" != code ] && [ "$expect" != code-verified ]; then
+  [ "$gate" = plan ] \
+    || emit CLOSED - malformed "Flow schema 5+ plan review requires --gate plan"
+  [ "$epoch_arg" = true ] && [ "$cap_arg" = true ] \
+    || emit CLOSED - malformed "Flow schema 5+ plan review requires explicit bounds"
+  [ "$round" -le "$PLAN_REVIEW_CLOSEOUT_ROUND" ] \
+    || emit CLOSED - review-limit-reached "plan review ended after round ${PLAN_REVIEW_CLOSEOUT_ROUND}"
+  [ "$cap" -eq "$PLAN_REVIEW_CLOSEOUT_ROUND" ] \
+    || emit CLOSED - malformed "plan review cap must equal global limit ${PLAN_REVIEW_CLOSEOUT_ROUND}"
+  if [ "$state_plan_review_contract_count" -eq 0 ]; then
+    if [ "$flow5_audit" = true ]; then
+      [ "$expect" = "a,b,c" ] \
+        || emit CLOSED - incomplete "Flow schema 5+ audit plan review requires --expect a,b,c"
+    else
+      emit CLOSED - malformed "Flow schema 5+ plan review requires STATE plan review contract"
+    fi
+  fi
+fi
+plan_review_contracted=false
+if [ "$state_plan_review_contract_count" -eq 1 ]; then
+  [ "$state_plan_review_contract" = "1" ] \
+    || emit CLOSED - malformed "unsupported STATE plan review contract"
+  if [ "$gate" != code ] && [ "$expect" != code-verified ]; then
+    [ "$contracted" = true ] \
+      || emit CLOSED - malformed "plan review contract requires finding contract"
+    [ "$gate" = plan ] \
+      || emit CLOSED - malformed "plan review contract requires --gate plan"
+    [ "$epoch_arg" = true ] && [ "$cap_arg" = true ] \
+      || emit CLOSED - malformed "plan review contract requires explicit bounds"
+    [ "$round" -le "$PLAN_REVIEW_CLOSEOUT_ROUND" ] \
+      || emit CLOSED - review-limit-reached "plan review ended after round ${PLAN_REVIEW_CLOSEOUT_ROUND}"
+    [ "$cap" -eq "$PLAN_REVIEW_CLOSEOUT_ROUND" ] \
+      || emit CLOSED - malformed "plan review cap must equal global limit ${PLAN_REVIEW_CLOSEOUT_ROUND}"
+    plan_review_contracted=true
+  fi
+fi
+
 if [ "$contracted" = true ] && [ "$expect" = code-verified ] && [ "$gate" != code ]; then
   emit CLOSED - malformed "contracted code review requires --gate code"
 fi
@@ -144,6 +209,24 @@ if [ "$contracted" = true ] && [ "$gate" = code ]; then
   saturation_reason="$(printf '%s\n' "$saturation_out" | awk -F '\t' 'NR == 1 { sub(/^reason=/, "", $4); print $4 }')"
   [ "$saturation_status" = OPEN ] \
     || emit CLOSED - incomplete "review saturation ${saturation_reason:-invalid}"
+fi
+
+if [ "$plan_review_contracted" = true ]; then
+  [ -x "$SCRIPT_DIR/plan-review-gate.sh" ] \
+    || emit CLOSED - malformed "plan review gate unavailable"
+  plan_saturation_out="$("$SCRIPT_DIR/plan-review-gate.sh" saturation \
+    --run "$run_dir" --round "$round" --expect "$expect" 2>/dev/null)" \
+    || emit CLOSED - malformed "plan review saturation failed"
+  plan_saturation_status="$(printf '%s\n' "$plan_saturation_out" | awk -F '\t' 'NR == 1 { print $2 }')"
+  plan_saturation_reason="$(printf '%s\n' "$plan_saturation_out" | awk -F '\t' 'NR == 1 { sub(/^reason=/, "", $3); print $3 }')"
+  if [ "$plan_saturation_status" != OPEN ]; then
+    case "$plan_saturation_reason" in
+      closeout-new-candidate|review-limit-reached)
+        emit CLOSED - review-limit-reached "plan review saturation ${plan_saturation_reason}"
+        ;;
+      *) emit CLOSED - incomplete "plan review saturation ${plan_saturation_reason:-invalid}" ;;
+    esac
+  fi
 fi
 
 safe_evidence_path() {
@@ -205,7 +288,11 @@ parse_contract_line() {
 if [ "$epoch_arg" = true ] && [ -n "$gate" ]; then
   run_dir="$(dirname "${dir%/}")"
   recovery="$run_dir/RECOVERY.md"
-  basis="$run_dir/PLAN.md"
+  if [ "$gate" = plan ] && [ "$flow5_audit" = true ]; then
+    basis="$run_dir/AUDIT.md"
+  else
+    basis="$run_dir/PLAN.md"
+  fi
   [ -s "$basis" ] || emit CLOSED - malformed "missing ${gate} strategy basis"
   basis_fingerprint="$(sha256_file "$basis")" \
     || emit CLOSED - malformed "sha256 unavailable"

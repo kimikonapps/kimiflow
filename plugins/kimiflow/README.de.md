@@ -178,6 +178,10 @@ Kimiflow fuehrt keinen konkurrierenden Worker-State und baut Calm nicht nach. Ma
 fuer getrennte, eigenstaendige Schreibpakete. Ein eng gekoppelter Build verwendet bewusst einen Ship.
 Unabhaengige Recherche und semantische Reviews verwenden eigene sichtbare Scouts; ein `small`-
 Code-Review nutzt zwei Review-Achsen und `large`/release-critical drei, wenn die FirstMate-Crew verfuegbar ist.
+Das Plan-Review friert eine PLAN-Version ein und prueft alle Linsen als ein Paket. Vertragsreiche Plaene erhalten
+zusaetzlich eine paarweise Zustandsmatrix und familienweite Gegenbeispiele. Das Plan-Gate hat global hoechstens
+drei Runden: Entdeckung, Reparaturpruefung und reinen Abschluss; ein neuer Plan oder ein Modellwechsel startet
+die Schleife nicht neu.
 
 Der Adapter begrenzt mechanisch, welche Crew-Aktionen jede Rolle aufrufen darf; er ist keine OS-Sandbox um Pis
 Shell. Brief-Grenzen plus Kimiflows Git-/Evidence-Gates bei Integration und Abschluss erkennen unerlaubte
