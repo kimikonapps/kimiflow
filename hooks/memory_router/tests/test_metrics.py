@@ -12,7 +12,7 @@ from unittest import mock
 from memory_router import metrics, summaries
 from memory_router.__main__ import main
 
-TAG = "kimiflow--v0.1.50"
+BASELINE_COMMIT = "a9bf10df56ed29c1022aab08d75caea7aa8ee219"
 
 
 def _repo_root():
@@ -104,7 +104,7 @@ def _tools_present():
     if not all(shutil.which(t) for t in ("bash", "jq", "git")):
         return False
     probe = subprocess.run(
-        ["git", "-C", _repo_root(), "cat-file", "-e", TAG + ":hooks/memory-router.sh"],
+        ["git", "-C", _repo_root(), "cat-file", "-e", BASELINE_COMMIT + ":hooks/memory-router.sh"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     return probe.returncode == 0
@@ -118,7 +118,7 @@ class MetricsParityCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         src = subprocess.run(
-            ["git", "-C", _repo_root(), "show", TAG + ":hooks/memory-router.sh"],
+            ["git", "-C", _repo_root(), "show", BASELINE_COMMIT + ":hooks/memory-router.sh"],
             stdout=subprocess.PIPE, check=True,
         ).stdout
         fd, cls.script = tempfile.mkstemp(suffix=".sh")

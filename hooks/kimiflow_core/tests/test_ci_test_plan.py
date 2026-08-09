@@ -83,6 +83,16 @@ class CiTestPlanCase(unittest.TestCase):
         )
         self.assertEqual(missing, ())
 
+    def test_full_lane_pins_parity_to_immutable_commit(self):
+        self.assertRegex(ci_test_plan.PINNED_PARITY_COMMIT, r"^[0-9a-f]{40}$")
+        available = set(ci_test_plan.FULL_REQUIRED_TOOLS)
+        missing = ci_test_plan.missing_dependencies(
+            self.root,
+            "full",
+            which=lambda tool: "/usr/bin/" + tool if tool in available else None,
+        )
+        self.assertEqual(missing, ())
+
     def test_bash_surfaces_do_not_need_an_execute_bit(self):
         with mock.patch.object(ci_test_plan, "missing_dependencies", return_value=()):
             with mock.patch.object(ci_test_plan.os.path, "isfile", return_value=True):

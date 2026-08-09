@@ -36,7 +36,7 @@ EVIDENCE_COMMAND = (
     "evals/baselines/evidence-foundation-v1.json",
 )
 FULL_REQUIRED_TOOLS = ("bash", "git", "jq", "sqlite3", "shasum")
-PINNED_PARITY_TAG = "kimiflow--v0.1.50"
+PINNED_PARITY_COMMIT = "a9bf10df56ed29c1022aab08d75caea7aa8ee219"
 PORTABILITY_MODULES = (
     "kimiflow_core.tests.test_atomic",
     "kimiflow_core.tests.test_adapter_conformance",
@@ -144,12 +144,12 @@ def missing_dependencies(root, lane, which=shutil.which):
     missing = [tool for tool in required if which(tool) is None]
     if lane == "full":
         probe = subprocess.run(
-            ["git", "-C", root, "cat-file", "-e", PINNED_PARITY_TAG + ":hooks/memory-router.sh"],
+            ["git", "-C", root, "cat-file", "-e", PINNED_PARITY_COMMIT + ":hooks/memory-router.sh"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         ) if which("git") else None
         if probe is None or probe.returncode != 0:
-            missing.append("git-tag:" + PINNED_PARITY_TAG)
+            missing.append("git-commit:" + PINNED_PARITY_COMMIT)
     return tuple(missing)
 
 

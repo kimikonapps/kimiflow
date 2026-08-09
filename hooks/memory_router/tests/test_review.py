@@ -11,7 +11,7 @@ from unittest import mock
 
 from memory_router import recall_index, review, runs
 
-TAG = "kimiflow--v0.1.50"
+BASELINE_COMMIT = "a9bf10df56ed29c1022aab08d75caea7aa8ee219"
 _FIXED_SALT = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 
@@ -404,7 +404,7 @@ def _tools_present():
     if not all(shutil.which(t) for t in ("bash", "jq", "git")):
         return False
     probe = subprocess.run(
-        ["git", "-C", _repo_root(), "cat-file", "-e", TAG + ":hooks/memory-router.sh"],
+        ["git", "-C", _repo_root(), "cat-file", "-e", BASELINE_COMMIT + ":hooks/memory-router.sh"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     return probe.returncode == 0
@@ -466,7 +466,7 @@ class ReviewParityCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         src = subprocess.run(
-            ["git", "-C", _repo_root(), "show", TAG + ":hooks/memory-router.sh"],
+            ["git", "-C", _repo_root(), "show", BASELINE_COMMIT + ":hooks/memory-router.sh"],
             stdout=subprocess.PIPE, check=True,
         ).stdout
         fd, cls.script = tempfile.mkstemp(suffix=".sh")
