@@ -1,0 +1,1 @@
+{"accepted":true,"completed":false,"confounds":["The workspace-write sandbox prevented the task-required Git commit for both arms.","The 25,000,000-token cap was checked between model samples; Kimiflow was terminated when the runner reported 25,933,540 total tokens."],"internal_defects":{"blocker":0,"high":0},"residual_defects":{"blocker":0,"high":0},"rework_rounds":0}

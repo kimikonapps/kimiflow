@@ -1,0 +1,1 @@
+{"accepted":true,"completed":true,"confounds":["Exact model-call, tool-call, and protocol-independent rework-round counters were not captured.","Time and token budgets are retrospective shared recording ceilings, not runner-enforced limits."],"internal_defects":{"blocker":0,"high":0},"residual_defects":{"blocker":0,"high":0},"rework_rounds":null}

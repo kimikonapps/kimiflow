@@ -754,11 +754,16 @@ class OutcomeComparisonsTest(unittest.TestCase):
         encoded = outcome_comparisons._json_output({"median": median})
         self.assertEqual(expected, json.loads(encoded, parse_float=Decimal)["median"])
 
-    def test_cli_empty_dataset_and_schema_contract(self):
+    def test_cli_dataset_and_schema_contract(self):
         repository = Path(__file__).resolve().parents[3]
         schema_path = repository / "evals" / "outcome-comparisons-v1.schema.json"
-        empty_path = repository / "evals" / "outcome-comparisons.jsonl"
+        dataset_path = repository / "evals" / "outcome-comparisons.jsonl"
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        dataset_rows = [
+            line
+            for line in dataset_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
 
         self.assertEqual("https://json-schema.org/draft/2020-12/schema", schema["$schema"])
         self.assertEqual(1, schema["properties"]["schema_version"]["const"])
@@ -767,7 +772,6 @@ class OutcomeComparisonsTest(unittest.TestCase):
         self.assertIn("tool_calls", schema["$defs"]["arm"]["properties"])
         self.assertIn("confounds", schema["$defs"]["arm"]["properties"])
         self.assertFalse(schema["additionalProperties"])
-        self.assertEqual("", empty_path.read_text(encoding="utf-8"))
 
         command = [str(repository / "hooks" / "outcome-comparisons.sh")]
         for operation in ("validate", "summary"):
@@ -781,8 +785,20 @@ class OutcomeComparisonsTest(unittest.TestCase):
             )
             self.assertEqual(0, process.returncode, process.stderr)
             value = json.loads(process.stdout)
-            self.assertEqual(0, value["recorded_pairs"])
-            self.assertEqual("insufficient_evidence", value["claim_status"])
+            self.assertEqual(len(dataset_rows), value["recorded_pairs"])
+            self.assertEqual(
+                value["recorded_pairs"],
+                value["valid_pairs"]
+                + value["field_note_pairs"]
+                + value["invalid_pairs"],
+            )
+            self.assertEqual(0, value["invalid_pairs"])
+            expected_claim = (
+                "evidence_available"
+                if value["valid_pairs"] >= outcome_comparisons.CLAIM_THRESHOLD
+                else "insufficient_evidence"
+            )
+            self.assertEqual(expected_claim, value["claim_status"])
         unsupported = subprocess.run(
             command + ["run"],
             cwd=repository,
@@ -810,7 +826,9 @@ class OutcomeComparisonsTest(unittest.TestCase):
             )
             self.assertEqual(0, foreign.returncode, foreign.stderr)
             self.assertNotIn("HIJACKED", foreign.stdout)
-            self.assertEqual(0, json.loads(foreign.stdout)["recorded_pairs"])
+            self.assertEqual(
+                len(dataset_rows), json.loads(foreign.stdout)["recorded_pairs"]
+            )
 
 
 if __name__ == "__main__":

@@ -6,8 +6,25 @@ proof of better quality.
 
 ## Current status
 
-`evals/outcome-comparisons.jsonl` contains zero recorded comparisons. Therefore the current claim status
-is `insufficient_evidence`: no better outcome has been proven.
+`evals/outcome-comparisons.jsonl` contains two recorded pilot comparisons. Both are intentionally
+classified as field notes. The first lacks exact call/rework counters and exposed test-harness confounds;
+the second used exact counters but the shared sandbox prevented the task-required Git commit, while the
+Kimiflow arm crossed the between-sample token cap before it could be stopped. Therefore there are still
+zero primary-eligible comparisons and the current claim status remains `insufficient_evidence`: no better
+outcome has been proven.
+
+The pilot used a disposable checkpoint-recovery bug repository. Plain and Kimiflow both completed the
+task, passed all 12 held-out acceptance groups and tied in the verified blind review. Plain took 196
+seconds; Kimiflow took 1,854 seconds. The result is useful for repairing the benchmark protocol, but not
+for a general product claim.
+
+The second pilot used a disposable transactional JSONL import feature repository. Both arms passed all
+12 held-out acceptance groups. A blinded review preferred Kimiflow on one reproduced MEDIUM robustness
+edge: it enforced UTF-8 for stdin even when the process text encoding was deliberately misconfigured.
+Plain took 334 seconds and 319,170 total tokens; Kimiflow took 1,954 seconds and 25,933,540 total tokens
+before termination. Neither arm could create the requested commit because the shared workspace-write
+sandbox made Git metadata read-only. This is useful directional Evidence, but remains a field note rather
+than a primary result.
 
 ## Safety boundary
 
@@ -16,7 +33,7 @@ do not start sessions, call a model, access the network or change Kimiflow's run
 
 Any later Plain-vs-Kimiflow runs must use purpose-built disposable benchmark repositories or disposable
 copies of public open-source test projects. Private or production user projects must never be used as a
-test environment. Running comparisons is separate future work and needs separate approval.
+test environment. Each comparison run remains separate work and requires explicit start authority.
 
 ## Commands
 
