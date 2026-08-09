@@ -27,13 +27,15 @@ has "$REF" "never replaces evidence or a mechanical gate" "evidence precedence m
 
 for phase in $PHASES; do
   file="$ROOT/phases/$phase"
-  has "$file" '${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/references/workflow-prose-quality.md' "$phase lacks installed Claude/Pi reference"
-  has "$file" '$KIMIFLOW_PLUGIN_ROOT/references/workflow-prose-quality.md' "$phase lacks installed Codex reference"
-  has "$file" "same model pass" "$phase lacks same-pass boundary"
+  has "$file" 'Reuse the run-loaded `workflow-prose-quality.md` contract' "$phase lacks the run-loaded prose contract"
+  { grep -Fq -- "same model pass" "$file" || grep -Fq -- "same-pass/no-extra-call" "$file"; } \
+    || fail "$phase lacks same-pass boundary"
 done
 
 for phase in phase-3-plan.md phase-4-review-approval.md phase-6-verify.md phase-7-review-commit.md; do
-  test "$(grep -Fo 'workflow-prose-quality.md' "$ROOT/phases/$phase" | wc -l | tr -d ' ')" -ge 2 \
+  file="$ROOT/phases/$phase"
+  { test "$(grep -Fo 'workflow-prose-quality.md' "$file" | wc -l | tr -d ' ')" -ge 2 \
+    || grep -Fq -- 'prose-quality path' "$file"; } \
     || fail "$phase does not pass prose quality to delegated authors/reviewers"
 done
 

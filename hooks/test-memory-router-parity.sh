@@ -4,13 +4,13 @@
 # Known-bug divergences are listed in WHITELIST (see spec §12).
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TAG="kimiflow--v0.1.50"
+BASELINE_COMMIT="a9bf10df56ed29c1022aab08d75caea7aa8ee219"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 OLD="$WORK/old-mr.sh"
-if ! git -C "$ROOT" show "$TAG:hooks/memory-router.sh" > "$OLD" 2>/dev/null; then
-  echo "cannot fetch $TAG:hooks/memory-router.sh — is the tag present?" >&2
+if ! git -C "$ROOT" show "$BASELINE_COMMIT:hooks/memory-router.sh" > "$OLD" 2>/dev/null; then
+  echo "cannot load pinned 0.1.50 baseline commit $BASELINE_COMMIT" >&2
   exit 1
 fi
 chmod +x "$OLD"

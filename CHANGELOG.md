@@ -2,12 +2,20 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
-Versions before 0.3.0 were internal development snapshots. **0.3.0 is the first public release.**
+Versions before 0.4.0 were internal development snapshots. **0.4.0 is the first public release.**
 
 ## Unreleased
 
+No unreleased changes.
+
+## 0.4.0
+
+First public release of Kimiflow.
+
 ### Changed
 
+- Memory-router parity now pins the internal 0.1.50 Bash baseline by commit, so removing development release
+  tags cannot weaken its differential coverage.
 - Fresh schema-5 runs now use deterministic `init-state` scaffolding instead of model-written selectors.
 - Completed Product Intake no longer blocks bounded multiline reads in fresh phase workers, and large-run `critic=passed` now requires an explicit fresh-context critic action.
 - Codex intake now accepts the exact pending intake file through its native patch payload, advances recorded
@@ -59,7 +67,7 @@ Versions before 0.3.0 were internal development snapshots. **0.3.0 is the first 
 
 ## 0.3.0
 
-First public release of Kimiflow.
+Internal development milestone.
 
 ### Included
 
