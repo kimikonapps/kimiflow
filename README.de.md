@@ -35,6 +35,10 @@ bindet wichtige Behauptungen an ausführbare Evidence.
 - **Kontext-Laden ist Digest-gebunden und druckabhängig.** Jede Phase erhält ein begrenztes Paket; große
   Kontexte rollen nur bei gemessenem Druck um. Reviews, Tests und ausführbare Evidence bleiben verpflichtend,
   sobald ihr jeweiliger Vertrag aktiv ist.
+- **Entscheidungstragende Prosa erhält eine begrenzte Same-pass-Qualitätsprüfung.** Der bestehende Autor oder
+  Reviewer bewahrt Bedeutung und Evidence, macht direkt die kleinste wirksame Änderung und erzeugt keinen
+  weiteren Modellaufruf oder Gate. Der Ansatz adaptiert die Minimum-effective-edit-Idee von
+  [petergyang/no-ai-slop](https://github.com/petergyang/no-ai-slop) und ist kein AI-Urheberschaftsdetektor.
 - **Token- und Qualitätsaussagen lassen sich ehrlich vergleichen.** Ein lokaler modellfreier Evaluator
   validiert aufgezeichnete Plain-vs-Kimiflow-Evidence und zeigt paarweise Unterschiede. Er startet keinen Arm
   selbst und ist ausschließlich für Wegwerf-Benchmarkprojekte gedacht—nie für private oder produktive Projekte.

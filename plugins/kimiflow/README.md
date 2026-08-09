@@ -49,6 +49,10 @@ reviewable local **findings**, including mechanically bounded bug-cascade analys
 - **Context loading is digest-bound and pressure-aware.** Each phase receives one bounded packet, and a large
   context rolls over only when measured pressure requires it. Review, tests, and executable evidence remain
   mandatory where their contracts apply.
+- **Decision-bearing prose gets one bounded same-pass quality check.** The existing author or reviewer
+  preserves meaning and evidence, makes the minimum effective edit in place, and never adds another model call
+  or gate. The approach adapts the minimum-effective-edit idea from
+  [petergyang/no-ai-slop](https://github.com/petergyang/no-ai-slop); it is not an AI-authorship detector.
 - **Token and quality claims can be compared honestly.** A local, model-free evaluator validates recorded
   Plain-vs-Kimiflow evidence and reports paired differences. It never starts either arm and is intended only
   for disposable benchmark projects—not private or production projects.
