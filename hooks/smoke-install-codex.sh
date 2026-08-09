@@ -17,8 +17,9 @@ prose_ok=true
 [ -f "$ROOT/references/workflow-prose-quality.md" ] || prose_ok=false
 grep -Fq 'same model pass' "$ROOT/references/workflow-prose-quality.md" 2>/dev/null || prose_ok=false
 for phase in phase-1-clarify.md phase-2-understand.md phase-3-plan.md phase-4-review-approval.md phase-6-verify.md phase-7-review-commit.md; do
-  grep -Fq '$KIMIFLOW_PLUGIN_ROOT/references/workflow-prose-quality.md' "$ROOT/phases/$phase" 2>/dev/null || prose_ok=false
+  grep -Fq 'Reuse the run-loaded `workflow-prose-quality.md` contract' "$ROOT/phases/$phase" 2>/dev/null || prose_ok=false
 done
+grep -Fq '$KIMIFLOW_PLUGIN_ROOT/references/workflow-prose-quality.md' "$ROOT/skills/kimiflow/SKILL.md" 2>/dev/null || prose_ok=false
 grep -Fq '<loaded-kimiflow-package-root>/references/workflow-prose-quality.md' "$ROOT/hosts/pi/skills/kimiflow/SKILL.md" 2>/dev/null || prose_ok=false
 grep -Fq 'same model pass' "$ROOT/hosts/pi/skills/kimiflow/SKILL.md" 2>/dev/null || prose_ok=false
 if $prose_ok && [ "$(wc -c < "$ROOT/skills/kimiflow/SKILL.md" | tr -d ' ')" -le 15000 ]; then
@@ -240,7 +241,12 @@ grep -q '^## First Principles' "$ROOT/README.md" \
 if grep -q 'Flow schema: 5' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'Convergence contract: 1' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'kimiflow:convergence contract=1 risk=' "$ROOT/phases/phase-3-plan.md" \
-  && grep -q 'finding-contract 1' "$ROOT/phases/phase-4-review-approval.md" \
+  && grep -q 'plan-review-gate.sh seal.*--write' "$ROOT/phases/phase-4-review-approval.md" \
+  && grep -q 'Codex planning context boundary' "$ROOT/phases/phase-1-clarify.md" \
+  && grep -q 'Codex intake command economy' "$ROOT/phases/phase-1-clarify.md" \
+  && grep -q 'worker replaces parent planning' "$SKILL" \
+  && grep -q 'one fresh independent closeout verifier' "$ROOT/phases/phase-4-review-approval.md" \
+  && grep -q 'dispatch A+B together' "$ROOT/phases/phase-4-review-approval.md" \
   && grep -q 'root-class-repeated' "$ROOT/hooks/resolve-review-gate.sh" \
   && grep -q 'review_snapshot_sha256' "$ROOT/hooks/kimiflow_core/review_convergence.py" \
   && grep -q 'requires explicit --epoch-start' "$ROOT/hooks/resolve-review-gate.sh" \
@@ -412,7 +418,7 @@ grep -q -- '--record-fix-approval' "$ROOT/reference.md" && ok "reference documen
 grep -q 'research-driven product expansion is forbidden' "$ROOT/reference.md" && ok "canonical research scope creep blocked" || bad "canonical research scope-creep guard missing"
 grep -q -- '--epoch-start <S>' "$ROOT/reference.md" && ok "canonical strategy epoch bounds documented" || bad "canonical strategy epoch bounds missing"
 grep -q -- '--gate <plan|code>' "$ROOT/reference.md" && ok "canonical strategy epoch gate documented" || bad "canonical strategy epoch gate missing"
-grep -q 'kimiflow:recovery gate=<plan|code>' "$ROOT/reference.md" && ok "canonical recovery receipt documented" || bad "canonical recovery receipt missing"
+grep -q 'plan seal records and binds that transition mechanically' "$ROOT/reference.md" && ok "canonical recovery receipt documented" || bad "canonical recovery receipt missing"
 grep -q 'kimiflow:strategy gate=<plan|code>' "$ROOT/reference.md" && ok "canonical strategy baseline documented" || bad "canonical strategy baseline missing"
 grep -Eq -- 'await-user .*--kind <kind>' "$ROOT/reference.md" && ok "canonical typed user pauses documented" || bad "canonical typed user pauses missing"
 grep -q 'Autonomous recovery contract' "$ROOT/reference.md" && ok "canonical autonomous review recovery documented" || bad "canonical autonomous review recovery missing"

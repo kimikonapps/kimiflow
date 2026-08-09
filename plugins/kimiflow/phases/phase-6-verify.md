@@ -2,7 +2,7 @@
 
 ## 🟤 Phase 6 — Verify against acceptance criteria (goal-backward)
 
-- **Prose quality (same model pass):** Before saving or reviewing decision-bearing prose, read all of `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/references/workflow-prose-quality.md` (Codex: `$KIMIFLOW_PLUGIN_ROOT/references/workflow-prose-quality.md`) and apply it before output; add no agent, call, step, or gate.
+- **Prose quality (same model pass):** Reuse the run-loaded `workflow-prose-quality.md` contract and apply it before output. Read it now only if this is the first decision-bearing artifact or a fresh-context/digest change invalidated the loaded copy; add no agent, call, step, or gate.
 
 Run each check, prove the goal, and persist full evidence in the run artifacts — full checklist (incl. the ✓/⚠/✗ marking scheme, cold-start trigger list, LSP tool selection): → reference.md "Verification". If resolved verbosity is `quiet`, chat shows only pass/fail + command/path for decisive checks; full output stays in files.
 

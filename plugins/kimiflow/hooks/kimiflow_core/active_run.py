@@ -32,6 +32,7 @@ USAGE = """#!/usr/bin/env bash
 #   active-run.sh status [--root <path>] [--pretty]
 #   active-run.sh next-action [--root <path>] [--event <event>] [--pretty]
 #   active-run.sh observe [--root <path>] [--event <event>] [--outcome <outcome>] [--evidence <run-artifact>] [--model-calls N] [--tool-calls N] [--input-tokens N] [--output-tokens N] [--write] [--pretty]
+#   active-run.sh init-state --run <path> --mode <feature|fix|audit|full> --scope <trivial|small|large> --language <BCP-47> --title <text> [--root <path>] [--write] [--pretty]
 #   active-run.sh start --run <path> [--root <path>] [--mode <mode>] [--scope <scope>] [--host <host>] [--write] [--pretty]
 #   active-run.sh rescope --run <path> --classification <path> [--root <path>] [--write] [--pretty]
 #   active-run.sh conflict-check [--root <path>] [--path <path>]... [--pretty]
@@ -42,7 +43,7 @@ USAGE = """#!/usr/bin/env bash
 #   active-run.sh await-user --run <path> [--kind <kind>] [--round <1|2>] [--request <path>] [--reason <text>] [--root <path>] [--write] [--pretty]
 #   active-run.sh pin-intent-lock --run <path> --digest <sha256:...> [--root <path>] [--write] [--pretty]
 #   active-run.sh pin-plan-saturation --run <path> --round <1|2|3> --expect <lensCSV> [--root <path>] [--write] [--pretty]
-#   active-run.sh phase-read --run <path> --phase <0-7> --file phases/<file>.md [--root <path>] [--write] [--pretty]
+#   active-run.sh phase-read --run <path> --phase <0-7> --file phases/<file>.md [--packet] [--root <path>] [--write] [--pretty]
 #   active-run.sh phase-read-status --run <path> [--root <path>] [--json] [--pretty]
 #   active-run.sh phase-read-gate --run <path> --through-phase <0-7> [--root <path>]
 #   active-run.sh finish [--root <path>] [--write] [--skip-learning <reason>] [--pretty]
@@ -581,6 +582,9 @@ def status_json(root, event=""):
     for key in ("workspace_wait_used_at", "workspace_disposition_head", "frontend_quality_start_head"):
         if active.get(key):
             result[key] = active[key]
+    for key in ("intake_action", "intake_stage", "intake_response_at"):
+        if active.get(key):
+            result[key] = active[key]
     owner = valid_owner(active.get("owner"))
     if owner:
         result["owner"] = owner
@@ -664,6 +668,8 @@ def normalized_product_flow_value(value):
 
 
 INTAKE_LANGUAGE_RE = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*")
+INIT_RUN_RE = re.compile(r"\.kimiflow/[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?")
+INIT_TITLE_LIMIT = 200
 SCHEMA2_INTAKE_ACTIONS = {
     "scope": ("scope_ready", "discuss"),
     "final": ("confirmed", "corrected"),
@@ -2451,8 +2457,153 @@ def cmd_observe(args):
     )
 
 
+def _initial_state(run_rel, mode, scope, language, title):
+    requested_mode = str(mode or "").strip().lower()
+    selected_scope = str(scope or "").strip().lower()
+    alias = ""
+    if requested_mode == "full":
+        requested_mode = "feature"
+        selected_scope = "large"
+        alias = "full"
+    if requested_mode not in ("feature", "fix", "audit"):
+        die("init-state: mode must be feature, fix, audit, or full", 2)
+    if selected_scope not in ("trivial", "small", "large"):
+        die("init-state: scope must be trivial, small, or large", 2)
+    if requested_mode == "audit" and selected_scope == "trivial":
+        die("init-state: audit scope must be small or large", 2)
+    selected_language = str(language or "").strip()
+    if INTAKE_LANGUAGE_RE.fullmatch(selected_language) is None:
+        die("init-state: language must be a BCP-47 tag such as de, en, or pt-BR", 2)
+    selected_title = str(title or "").strip()
+    if (
+        not selected_title
+        or len(selected_title) > INIT_TITLE_LIMIT
+        or any(character in selected_title for character in "\r\n")
+        or not selected_title.isprintable()
+    ):
+        die("init-state: title must be one printable line of at most 200 characters", 2)
+
+    nontrivial_write = requested_mode in ("feature", "fix") and selected_scope != "trivial"
+    label = "Feature" if requested_mode == "feature" else "Problem" if requested_mode == "fix" else "Target"
+    lines = [
+        "# Kimiflow State",
+        "Flow schema: 5",
+        "%s: %s" % (label, selected_title),
+        "Slug: %s" % run_rel.split("/", 1)[1],
+        "Date: %s" % datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "Mode: %s" % requested_mode,
+    ]
+    if alias:
+        lines.append("Alias: %s" % alias)
+    lines.extend([
+        "Scope: %s" % selected_scope,
+        "Interaction language: %s" % selected_language,
+        "Discovery required: %s" % (
+            "yes" if requested_mode == "feature" and selected_scope != "trivial" else "no"
+        ),
+    ])
+    if requested_mode == "feature" and selected_scope != "trivial":
+        lines.append("Intent contract: 4")
+    lines.extend([
+        "Architecture contract: 1",
+        "Architecture deliberation: pending",
+    ])
+    if nontrivial_write:
+        lines.extend([
+            "Conformance contract: 1",
+            "Convergence contract: 1",
+            "Conformance basis: pending",
+            "Execution contract: 1",
+        ])
+    lines.extend([
+        "Affected files:",
+        "Status: active",
+        "Recovery: clean",
+        "Frontend quality contract: 1",
+        "Frontend quality: off",
+        "Frontend quality routing: provisional",
+        "Frontend quality evidence: pending",
+        "Frontend quality basis: pending",
+        "Frontend quality start: pending",
+        "Frontend quality recovery: clean",
+        "Frontend quality recovery owns global: no",
+    ])
+    lines.extend(
+        "Phase %s: %s" % (phase, "in-progress" if phase == 0 else "open")
+        for phase in range(8)
+    )
+    return "\n".join(lines) + "\n", requested_mode, selected_scope, alias
+
+
+def cmd_init_state(args):
+    opts = parse_options(
+        args,
+        "init-state",
+        {
+            "--root": "",
+            "--run": "",
+            "--mode": "feature",
+            "--scope": "small",
+            "--language": "",
+            "--title": "",
+            "--write": False,
+            "--pretty": False,
+        },
+    )
+    need_jq()
+    root = resolve_root(opts["--root"], strict=opts["--write"])
+    run_dir = resolve_run_dir(root, opts["--run"])
+    run_rel = rel_path(root, run_dir)
+    if INIT_RUN_RE.fullmatch(run_rel) is None:
+        die("init-state: run must be one kebab-case .kimiflow/<slug> path", 2)
+    content, mode, scope, alias = _initial_state(
+        run_rel,
+        opts["--mode"],
+        opts["--scope"],
+        opts["--language"],
+        opts["--title"],
+    )
+    existing = status_json(root)
+    if existing.get("present") is True and existing.get("terminal") is False:
+        die("init-state: an active Kimiflow session already exists", 1)
+    state_path = os.path.join(run_dir, "STATE.md")
+    if os.path.lexists(state_path):
+        die("init-state: STATE.md already exists for %s" % run_rel, 1)
+    if opts["--write"]:
+        kimiflow_dir = os.path.join(root, ".kimiflow")
+        if os.path.lexists(kimiflow_dir):
+            info = os.lstat(kimiflow_dir)
+            if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+                die("init-state: .kimiflow must be a real directory", 2)
+        else:
+            os.mkdir(kimiflow_dir, 0o700)
+        if os.path.lexists(run_dir):
+            info = os.lstat(run_dir)
+            if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+                die("init-state: run path must be a real directory", 2)
+        else:
+            os.mkdir(run_dir, 0o700)
+        atomic_write(state_path, content, mode=0o600, refuse_symlink=True)
+    result = {
+        "status": "initialized" if opts["--write"] else "preview",
+        "written": opts["--write"] is True,
+        "run": run_rel,
+        "mode": mode,
+        "scope": scope,
+        "interaction_language": opts["--language"].strip(),
+        "state": rel_path(root, state_path),
+        "next_command": "active-run.sh start --run %s --mode %s --scope %s --write"
+        % (run_rel, mode, scope),
+    }
+    if alias:
+        result["alias"] = alias
+    json_print(result, opts["--pretty"])
+
+
 def cmd_start(args, _workspace_locked=False):
     opts = parse_options(args, "start", {"--root": "", "--run": "", "--mode": "feature", "--scope": "small", "--host": os.environ.get("KIMIFLOW_HOST", "unknown"), "--write": False, "--pretty": False})
+    if str(opts["--mode"] or "").strip().lower() == "full":
+        die("start: full is an invocation alias; use init-state and its returned feature/large selectors", 2)
     need_jq()
     write = opts["--write"]
     root = resolve_root(opts["--root"], strict=write)
@@ -3131,7 +3282,7 @@ def cmd_pin_plan_saturation(args):
 
 
 def repair_adjacent_phase_overlap(run_dir, phase):
-    """Repair only the common handoff error where two adjacent phases are active."""
+    """Advance a recorded phase handoff without requiring a manual STATE edit."""
     try:
         phase_number = int(phase)
     except (TypeError, ValueError):
@@ -3145,11 +3296,17 @@ def repair_adjacent_phase_overlap(run_dir, phase):
         if len(rows) != 1:
             return False
         values.append(rows[0].strip().lower().split(" ", 1)[0])
-    if values[phase_number - 1] != "in-progress" or values[phase_number] != "in-progress":
+    if values[phase_number - 1] != "in-progress" or values[phase_number] not in {"open", "in-progress"}:
         return False
     if any(value not in {"done", "skipped"} for value in values[:phase_number - 1]):
         return False
     if any(value != "open" for value in values[phase_number + 1:]):
+        return False
+    try:
+        prior_reads = phase_reads.load_records(run_dir).get("reads", {})
+    except phase_reads.PhaseReadError:
+        return False
+    if not isinstance(prior_reads.get(str(phase_number - 1)), dict):
         return False
 
     output = []
@@ -3161,16 +3318,63 @@ def repair_adjacent_phase_overlap(run_dir, phase):
             if re.match(r"^Phase[ \t]+%d:[ \t]*" % (phase_number - 1), plain):
                 output.append("Phase %d: done" % (phase_number - 1))
                 replaced += 1
+            elif (
+                values[phase_number] == "open"
+                and re.match(r"^Phase[ \t]+%d:[ \t]*" % phase_number, plain)
+            ):
+                output.append("Phase %d: in-progress" % phase_number)
+                replaced += 1
             else:
                 output.append(line)
-    if replaced != 1:
+    expected_replacements = 2 if values[phase_number] == "open" else 1
+    if replaced != expected_replacements:
         return False
     atomic_write(state_path, "\n".join(output) + "\n", mode=0o600, refuse_symlink=True)
     return True
 
 
+def require_phase_entry_prerequisites(root, run_dir, phase, write):
+    """Keep fresh Contract-4 features in Phase 1 until intent is locked."""
+    if not write:
+        return
+    try:
+        phase_number = int(phase)
+    except (TypeError, ValueError):
+        return
+    if phase_number < 2:
+        return
+    state_path = os.path.join(run_dir, "STATE.md")
+    flow_schema = state.state_value(state_path, "Flow schema").strip().split(" ", 1)[0]
+    mode = state.state_value(state_path, "Mode").strip().lower().split(" ", 1)[0]
+    scope = state.state_value(state_path, "Scope").strip().lower().split(" ", 1)[0]
+    intent_contract = state.state_value(state_path, "Intent contract").strip()
+    if not (
+        flow_schema.isdigit()
+        and int(flow_schema) >= 5
+        and mode == "feature"
+        and scope != "trivial"
+        and intent_contract == "4"
+    ):
+        return
+    active = _active_for_run(root, rel_path(root, run_dir))
+    lock_path = os.path.join(run_dir, "INTENT-LOCK.json")
+    pinned = str((active or {}).get("intent_lock_digest") or "")
+    if (
+        not pinned
+        or INTAKE_DIGEST_RE.fullmatch(pinned) is None
+        or not os.path.isfile(lock_path)
+        or os.path.islink(lock_path)
+        or file_sha256(lock_path) != pinned
+    ):
+        die(
+            "phase-read refused: Phase 2 requires the confirmed and pinned Contract-4 intent lock; "
+            "finish INTAKE-2.md and run clarify-gate.sh --record-intent-lock while Phase 1 remains in progress",
+            1,
+        )
+
+
 def cmd_phase_read(args):
-    opts = parse_options(args, "phase-read", {"--root": "", "--run": "", "--phase": "", "--file": "", "--write": False, "--pretty": False})
+    opts = parse_options(args, "phase-read", {"--root": "", "--run": "", "--phase": "", "--file": "", "--packet": False, "--write": False, "--pretty": False})
     need_jq()
     if not opts["--run"]:
         die("phase-read requires --run", 2)
@@ -3180,8 +3384,20 @@ def cmd_phase_read(args):
         die("phase-read requires --file", 2)
     root = resolve_root(opts["--root"], strict=opts["--write"])
     run_dir = resolve_run_dir(root, opts["--run"])
+    require_phase_entry_prerequisites(root, run_dir, opts["--phase"], opts["--write"])
     try:
-        record = phase_reads.record_read(root, run_dir, opts["--phase"], opts["--file"], iso_now(), write=opts["--write"])
+        packet = None
+        if opts["--packet"]:
+            record, packet = phase_reads.read_and_record_packet(
+                root,
+                run_dir,
+                opts["--phase"],
+                opts["--file"],
+                iso_now(),
+                write=opts["--write"],
+            )
+        else:
+            record = phase_reads.record_read(root, run_dir, opts["--phase"], opts["--file"], iso_now(), write=opts["--write"])
     except phase_reads.PhaseReadError as exc:
         die(str(exc), 2)
     phase_progress_repaired = False
@@ -3223,15 +3439,24 @@ def cmd_phase_read(args):
                     "reason": str(exc)[:160],
                     "user_gate": False,
                 }
-    json_print({
+    result = {
         "status": "phase_read_recorded",
         "written": opts["--write"] is True,
         "run": rel_path(root, run_dir),
-        "record": record,
         "phase_progress_repaired": phase_progress_repaired,
-        "context_shadow": shadow,
-        "context_rollover": rollover,
-    }, opts["--pretty"])
+    }
+    if packet is not None:
+        # The packet is the model-facing phase contract.  Shadow/rollover
+        # receipts remain persisted on disk; echoing those large manifests
+        # here only makes every later model call replay administrative data.
+        result["phase_packet"] = packet
+    else:
+        result.update({
+            "record": record,
+            "context_shadow": shadow,
+            "context_rollover": rollover,
+        })
+    json_print(result, opts["--pretty"])
 
 
 def cmd_rescope(args):
@@ -4724,6 +4949,8 @@ def main(argv=None):
             cmd_next_action(args)
         elif command == "observe":
             cmd_observe(args)
+        elif command == "init-state":
+            cmd_init_state(args)
         elif command == "start":
             cmd_start(args)
         elif command == "rescope":

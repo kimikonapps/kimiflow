@@ -10,6 +10,7 @@ import os
 import re
 import stat
 import sys
+import tempfile
 import unicodedata
 from urllib.parse import urlsplit
 
@@ -184,17 +185,38 @@ def _https_url(value):
     )
 
 
+def _nearby(text, left, right, words=6):
+    # A freshness cue in another sentence/row belongs to another claim. Do not
+    # pair e.g. "public Python API. Validate the current store".
+    bridge = r"(?:[^.!?\n\w]+[\w+-]+){0,%d}[^.!?\n\w]+" % words
+    return (
+        re.search(r"(?:%s)%s(?:%s)" % (left, bridge, right), text, re.IGNORECASE)
+        is not None
+        or re.search(r"(?:%s)%s(?:%s)" % (right, bridge, left), text, re.IGNORECASE)
+        is not None
+    )
+
+
 def _risk_for_text(text):
+    # Intent artifacts contain Kimiflow's own current-run metadata. It must not
+    # turn an otherwise local task into a freshness-research requirement.
+    text = re.sub(r"<!--[\s\S]*?-->", " ", text)
     high_patterns = (
         r"\b(?:codex|claude[ -]?code|cursor|windsurf|plugins?|marketplace|"
         r"hooks?|skills?|mcp|model context protocol)\b",
         r"\b(?:security|auth|oauth|payments?|stripe|privacy|deployment|"
         r"deploy|ci/cd|app store|external service|hosted api|sdk)\b",
     )
-    medium_pattern = (
-        r"\b(?:library|libraries|framework|dependencies?|packages?|version|api|"
-        r"tooling|typescript|react|vite|node|python|swift|xcode|npm|pip|"
-        r"coding|programming|programmierung|architecture|architectural|architektur)\b"
+    volatile_surface = (
+        r"\b(?:library|libraries|framework|dependencies?|packages?|tooling|"
+        r"typescript|react|vite|node|python|swift|xcode|npm|pip|api)\b"
+    )
+    freshness_cue = (
+        r"\b(?:current|currently|latest|update|upgrade|migrate|version|release|"
+        r"documentation|docs|research|aktuell|aktualisier|version)\w*\b"
+    )
+    methods_surface = (
+        r"\b(?:coding|programming|programmierung|architecture|architectural|architektur|methods?|methoden)\b"
     )
     reasons = []
     if re.search(high_patterns[0], text, re.IGNORECASE):
@@ -203,7 +225,9 @@ def _risk_for_text(text):
         reasons.append("security_or_external_platform")
     if reasons:
         return "high", reasons
-    if re.search(medium_pattern, text, re.IGNORECASE):
+    if _nearby(text, volatile_surface, freshness_cue) or _nearby(
+        text, methods_surface, freshness_cue
+    ):
         return "medium", ["possibly_changing_tooling_or_api"]
     return "low", []
 
@@ -244,6 +268,55 @@ def _assess_text(text):
 
 def assess(path):
     return _assess_text(_read_text(path, MAX_RECALL_BYTES))
+
+
+def _write_assessment(input_path, value):
+    input_path = os.path.abspath(input_path)
+    directory = os.path.dirname(input_path)
+    try:
+        directory_info = os.lstat(directory)
+    except OSError as exc:
+        raise CurrentStateError("unsafe-output-directory") from exc
+    if stat.S_ISLNK(directory_info.st_mode) or not stat.S_ISDIR(directory_info.st_mode):
+        raise CurrentStateError("unsafe-output-directory")
+    target = os.path.join(directory, "CURRENT-STATE.json")
+    try:
+        target_info = os.lstat(target)
+    except FileNotFoundError:
+        target_info = None
+    except OSError as exc:
+        raise CurrentStateError("unsafe-output") from exc
+    if target_info is not None and (
+        stat.S_ISLNK(target_info.st_mode) or not stat.S_ISREG(target_info.st_mode)
+    ):
+        raise CurrentStateError("unsafe-output")
+    payload = (
+        json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+    ).encode("utf-8")
+    descriptor = None
+    temporary = ""
+    try:
+        descriptor, temporary = tempfile.mkstemp(
+            prefix=".CURRENT-STATE.", suffix=".tmp", dir=directory
+        )
+        with os.fdopen(descriptor, "wb") as handle:
+            descriptor = None
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, target)
+        temporary = ""
+    except OSError as exc:
+        raise CurrentStateError("unsafe-output") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        if temporary:
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
+    return target
 
 
 def _assessment(value):
@@ -482,6 +555,7 @@ def _parser():
     subparsers = parser.add_subparsers(dest="command", required=True)
     assess_parser = subparsers.add_parser("assess")
     assess_parser.add_argument("--input", required=True)
+    assess_parser.add_argument("--write", action="store_true")
     assess_parser.add_argument("--pretty", action="store_true")
     verify_parser = subparsers.add_parser("verify")
     verify_parser.add_argument("--assessment", required=True)
@@ -499,15 +573,26 @@ def main(argv=None):
         except CurrentStateError as exc:
             print("current-state-gate: %s" % exc, file=sys.stderr)
             return 2
-        print(
-            json.dumps(
-                value,
-                ensure_ascii=False,
-                sort_keys=True,
-                indent=2 if args.pretty else None,
-                separators=None if args.pretty else (",", ":"),
+        if args.write:
+            try:
+                target = _write_assessment(args.input, value)
+            except CurrentStateError as exc:
+                print("current-state-gate: %s" % exc, file=sys.stderr)
+                return 2
+            print(
+                "CURRENT_STATE_ASSESSMENT\t%s\tpath=%s"
+                % (value["current_state_risk"], target)
             )
-        )
+        else:
+            print(
+                json.dumps(
+                    value,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    indent=2 if args.pretty else None,
+                    separators=None if args.pretty else (",", ":"),
+                )
+            )
         return 0
     return verify(args.assessment, args.recall, args.sources, args.input)
 

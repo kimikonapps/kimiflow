@@ -2,9 +2,15 @@
 # Contract-3/4 Product Intake lifecycle and PreToolUse barrier tests.
 set -eu
 DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(dirname "$DIR")"
 ACTIVE="$DIR/active-run.sh"
 GATE="$DIR/intake-gate.sh"
 FRONTEND="$DIR/frontend-quality-gate.sh"
+VERBOSITY="$DIR/resolve-verbosity.sh"
+PREFLIGHT="$DIR/workspace-preflight.sh"
+WORKING_TREE="$DIR/working-tree-gate.sh"
+ADAPTIVE="$DIR/adaptive-control.sh"
+CODEBASE_BASIS="$DIR/codebase-basis.sh"
 WORK="$(mktemp -d)"
 REPO="$WORK/repo"
 trap 'rm -rf "$WORK"' EXIT
@@ -111,9 +117,58 @@ assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"
 payload="$(jq -nc --arg d "$REPO" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:"rg -n TODO src"}}')"
 out="$(printf '%s' "$payload" | hook)"
 assert "[ -z '$out' ]" "readonly_inspection_allowed_before_receipt"
+payload="$(jq -nc --arg d "$REPO" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:"rg -n \"Intake|intake|awaiting|Phase\" .kimiflow/demo"}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "quoted_search_alternation_is_not_a_pipeline"
+payload="$(jq -nc --arg d "$REPO" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:"rg --files .kimiflow | sort"}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "readonly_pipeline_allowed_before_receipt"
+payload="$(jq -nc --arg d "$REPO" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:"find . -maxdepth 2 -type f -print | LC_ALL=C sort"}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "readonly_pipeline_with_bounded_environment_allowed"
+payload="$(jq -nc --arg d "$REPO" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:"sed -n '\''1,80p'\'' .kimiflow/demo/STATE.md && test -e .kimiflow/project/INDEX.json; printf '\''index_exit=%s\\n'\'' \"$?\""}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "readonly_test_and_printf_chain_allowed_before_receipt"
+payload="$(jq -nc --arg d "$REPO" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:"rg --files .kimiflow | touch src/bypass.txt"}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"deny\"' >/dev/null" "readonly_pipeline_rejects_mutating_stage"
 payload="$(jq -nc --arg d "$REPO" --arg c "\"$FRONTEND\" .kimiflow/demo --record-start --write" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
 out="$(printf '%s' "$payload" | hook)"
 assert "[ -z '$out' ]" "frontend_start_receipt_allowed_before_intake"
+payload="$(jq -nc --arg d "$REPO" --arg c "env KIMIFLOW_PLUGIN_ROOT=\"$PLUGIN_ROOT\" KIMIFLOW_HOST=codex \"$ACTIVE\" phase-read-status --run .kimiflow/demo" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "trusted_plugin_root_assignment_allows_phase_setup"
+preamble_command="export KIMIFLOW_PLUGIN_ROOT=\"$PLUGIN_ROOT\"
+KIMIFLOW_HOST=codex \"\$KIMIFLOW_PLUGIN_ROOT/hooks/active-run.sh\" phase-read-status --run .kimiflow/demo"
+payload="$(jq -nc --arg d "$REPO" --arg c "$preamble_command" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "trusted_two_line_plugin_root_preamble_allowed"
+preamble_command="export KIMIFLOW_PLUGIN_ROOT=\"$WORK/fake\"
+KIMIFLOW_HOST=codex \"\$KIMIFLOW_PLUGIN_ROOT/hooks/active-run.sh\" phase-read-status --run .kimiflow/demo"
+payload="$(jq -nc --arg d "$REPO" --arg c "$preamble_command" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"deny\"' >/dev/null" "forged_two_line_plugin_root_preamble_blocked"
+payload="$(jq -nc --arg d "$REPO" --arg c "env KIMIFLOW_PLUGIN_ROOT=\"$PLUGIN_ROOT\" KIMIFLOW_HOST=codex \"$ACTIVE\" next-action --root \"$REPO\" --pretty" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "trusted_next_action_allowed_before_intake"
+payload="$(jq -nc --arg d "$REPO" --arg c "env KIMIFLOW_PLUGIN_ROOT=\"$PLUGIN_ROOT\" KIMIFLOW_HOST=codex \"$ADAPTIVE\" classify --run .kimiflow/demo --write" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "trusted_adaptive_classification_allowed_before_intake"
+payload="$(jq -nc --arg d "$REPO" --arg c "KIMIFLOW_HOST=codex \"$ADAPTIVE\" classify --run .kimiflow/demo --root \"$REPO\" --write --pretty" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "trusted_adaptive_classification_with_root_allowed_before_intake"
+payload="$(jq -nc --arg d "$REPO" --arg c "KIMIFLOW_HOST=codex \"$PREFLIGHT\" route --run .kimiflow/demo --root \"$REPO\" --write --pretty" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "trusted_workspace_route_with_root_allowed_before_intake"
+payload="$(jq -nc --arg d "$REPO" --arg c "KIMIFLOW_HOST=codex \"$PREFLIGHT\" route --run .kimiflow/demo --root \"$WORK\" --write --pretty" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"deny\"' >/dev/null" "forged_workspace_route_root_blocked"
+payload="$(jq -nc --arg d "$REPO" --arg c "env KIMIFLOW_PLUGIN_ROOT=\"$PLUGIN_ROOT\" KIMIFLOW_HOST=codex \"$WORKING_TREE\" --root \"$REPO\" --pretty" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "trusted_working_tree_gate_allowed_before_intake"
+payload="$(jq -nc --arg d "$REPO" --arg c "env KIMIFLOW_PLUGIN_ROOT=$WORK/fake KIMIFLOW_HOST=codex $ACTIVE phase-read-status --run .kimiflow/demo" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"deny\"' >/dev/null" "forged_plugin_root_assignment_blocked"
 payload="$(jq -nc --arg d "$REPO" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:"hooks/active-run.sh status; touch src/bypass.txt"}}')"
 out="$(printf '%s' "$payload" | hook)"
 assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"deny\"' >/dev/null" "setup_command_chaining_blocked"
@@ -132,6 +187,44 @@ assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"
 payload="$(jq -nc --arg d "$REPO" '{cwd:$d,session_id:"owner-session",tool_name:"apply_patch",tool_input:{patch:"*** Begin Patch\n*** Update File: .kimiflow/demo/INTAKE.md\n@@\n-Product\n+Product question\n*** End Patch"}}')"
 out="$(printf '%s' "$payload" | hook)"
 assert "[ -z '$out' ]" "exact_intake_artifact_allowed"
+patch='*** Begin Patch
+*** Update File: .kimiflow/demo/INTAKE.md
+@@
+-Product
++Product question
+*** End Patch'
+payload="$(jq -nc --arg d "$REPO" --arg p "$patch" '{cwd:$d,session_id:"owner-session",tool_name:"apply_patch",command:$p,tool_input:{patch:$p}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "codex_apply_patch_top_level_command_allows_exact_intake"
+payload="$(jq -nc --arg d "$REPO" --arg p "$patch" '{cwd:$d,session_id:"owner-session",tool_name:"apply_patch",tool_input:{command:$p}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "codex_apply_patch_nested_command_allows_exact_intake"
+product_patch='*** Begin Patch
+*** Update File: src/app.txt
+@@
+-base
++changed
+*** End Patch'
+payload="$(jq -nc --arg d "$REPO" --arg p "$product_patch" '{cwd:$d,session_id:"owner-session",tool_name:"apply_patch",command:$p,tool_input:{patch:$p}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"deny\"' >/dev/null" "codex_apply_patch_top_level_command_blocks_product_write"
+payload="$(jq -nc --arg d "$REPO" --arg p "$product_patch" '{cwd:$d,session_id:"owner-session",tool_name:"apply_patch",tool_input:{command:$p}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"deny\"' >/dev/null" "codex_apply_patch_nested_command_blocks_product_write"
+setup_command="git rev-parse --is-inside-work-tree; git status --short --branch; KIMIFLOW_HOST=codex \"$VERBOSITY\" get; KIMIFLOW_HOST=codex \"$PREFLIGHT\" status --pretty; KIMIFLOW_HOST=codex \"$PREFLIGHT\" route --run .kimiflow/demo --write --pretty"
+payload="$(jq -nc --arg d "$REPO" --arg c "$setup_command" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "bounded_phase0_setup_chain_allowed_before_intake"
+await_command="env KIMIFLOW_PLUGIN_ROOT=\"$PLUGIN_ROOT\" KIMIFLOW_HOST=codex \"$ACTIVE\" await-user --root \"$REPO\" --run .kimiflow/demo --kind intake --round 1 --request .kimiflow/demo/INTAKE.md --reason scope_deliberation --write"
+payload="$(jq -nc --arg d "$REPO" --arg c "$await_command" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "exact_intake_wait_registration_allowed"
+payload="$(jq -nc --arg d "$REPO" --arg c "env KIMIFLOW_PLUGIN_ROOT=\"$PLUGIN_ROOT\" KIMIFLOW_HOST=codex \"$ACTIVE\" await-user --root \"$REPO\" --run .kimiflow/demo --kind intake --reason scope_deliberation --write" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"deny\"' >/dev/null" "incomplete_intake_wait_registration_blocked"
+payload="$(jq -nc --arg d "$REPO" --arg c "$setup_command; touch src/bypass.txt" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"deny\"' >/dev/null" "phase0_setup_chain_rejects_extra_mutation"
 mv "$REPO/.kimiflow/demo/INTAKE.md" "$REPO/.kimiflow/demo/INTAKE.md.regular"
 printf 'outside\n' > "$WORK/outside-intake.md"
 ln -s "$WORK/outside-intake.md" "$REPO/.kimiflow/demo/INTAKE.md"
@@ -216,6 +309,90 @@ assert "jq -e '.contract == 4 and .round == 1 and .channel == \"chat\"' '$REPO/.
 payload="$(jq -nc --arg d "$REPO" '{cwd:$d,session_id:"owner-session",tool_name:"apply_patch",tool_input:{patch:"*** Begin Patch\n*** Update File: src/app.txt\n@@\n-base\n+changed\n*** End Patch"}}')"
 out="$(printf '%s' "$payload" | hook)"
 assert "[ -z '$out' ]" "contract4_project_write_allowed_after_receipt"
+
+# Fresh Contract-4 schema 2 keeps product bytes read-only after scope readiness,
+# while permitting bounded run-local research until final confirmation.
+rm -rf "$REPO/.kimiflow/session" "$REPO/.kimiflow/demo"
+mkdir -p "$REPO/.kimiflow/demo"
+KIMIFLOW_HOST=codex KIMIFLOW_SESSION_ID=owner-session "$ACTIVE" init-state --root "$REPO" --run .kimiflow/demo --mode feature --scope large --language en --title "Schema 2 intake" --write >/dev/null
+KIMIFLOW_HOST=codex KIMIFLOW_SESSION_ID=owner-session "$ACTIVE" start --root "$REPO" --run .kimiflow/demo --mode feature --scope large --write >/dev/null
+cat > "$REPO/.kimiflow/demo/INTAKE.md" <<'EOF'
+# Product Intake
+<!-- kimiflow:intake contract=4 schema=2 stage=scope round=1 confirmation=scope_deliberation user_language=en -->
+
+Problem: Add one bounded feature without changing unrelated behavior.
+
+Observable success: The named feature works and existing tests remain green.
+
+Boundary: Only the named local files and standard library are in scope.
+
+Option 1: Implement the complete named behavior.
+
+Option 2: Add focused regression coverage for its failure boundary.
+
+Included: The named behavior and focused tests.
+
+Later: Unrelated enhancements.
+
+Excluded: Network services and unrelated refactors.
+
+Counter perspective: A smaller partial implementation would be cheaper but incomplete.
+
+Completeness check: Goal, boundary, outcome, and exclusions are explicit.
+
+Action scope_ready: Continue to bounded research and the final product contract.
+
+Action discuss: Discuss or revise this scope draft.
+EOF
+KIMIFLOW_HOST=codex KIMIFLOW_SESSION_ID=owner-session "$ACTIVE" await-user --root "$REPO" --run .kimiflow/demo --kind intake --round 1 --request .kimiflow/demo/INTAKE.md --reason scope_deliberation --write >/dev/null
+printf '{"cwd":"%s","session_id":"owner-session","prompt":"Continue to bounded research and the final product contract."}' "$REPO" | KIMIFLOW_HOST=codex "$ACTIVE" prompt-context >/dev/null
+status_out="$(KIMIFLOW_HOST=codex KIMIFLOW_SESSION_ID=owner-session "$ACTIVE" status --root "$REPO")"
+assert "printf '%s' '$status_out' | jq -e '.intake_stage == \"scope\" and .intake_action == \"scope_ready\" and (.intake_response_at | type == \"string\")' >/dev/null" "schema2_status_exposes_recorded_scope_action"
+payload="$(jq -nc --arg d "$REPO" '{cwd:$d,session_id:"owner-session",tool_name:"apply_patch",tool_input:{patch:"*** Begin Patch\n*** Update File: src/app.txt\n@@\n-base\n+changed\n*** End Patch"}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"deny\"' >/dev/null" "schema2_scope_receipt_keeps_product_readonly"
+payload="$(jq -nc --arg d "$REPO" '{cwd:$d,session_id:"owner-session",tool_name:"apply_patch",tool_input:{patch:"*** Begin Patch\n*** Add File: .kimiflow/demo/RESEARCH.md\n+bounded research\n*** End Patch"}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "schema2_scope_receipt_allows_run_local_research"
+payload="$(jq -nc --arg d "$REPO" --arg c "env KIMIFLOW_PLUGIN_ROOT=\"$PLUGIN_ROOT\" KIMIFLOW_HOST=codex \"$CODEBASE_BASIS\" create --root \"$REPO\" --run .kimiflow/demo --write" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "schema2_scope_receipt_allows_bounded_codebase_basis"
+payload="$(jq -nc --arg d "$REPO" --arg c "KIMIFLOW_HOST=codex \"$CODEBASE_BASIS\" create --run .kimiflow/demo --write --pretty" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "schema2_scope_receipt_allows_pretty_codebase_basis"
+payload="$(jq -nc --arg d "$REPO" --arg c "python3 -m unittest discover -s tests -v" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "schema2_scope_receipt_allows_exact_baseline_suite"
+payload="$(jq -nc --arg d "$REPO" --arg c "python3 -m unittest discover -s tests" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"deny\"' >/dev/null" "schema2_scope_receipt_rejects_other_python_commands"
+
+cat > "$REPO/.kimiflow/demo/INTAKE-2.md" <<'EOF'
+<!-- kimiflow:intake contract=4 schema=2 stage=final round=2 confirmation=final_contract cause=scope_ready user_language=en -->
+Problem: Add one bounded feature without changing unrelated behavior.
+Step 1: Validate the confirmed input.
+Step 2: Implement and verify the bounded behavior.
+Roles and boundaries: The user owns product behavior and the agent owns implementation details.
+Included: The named behavior and focused tests.
+Excluded: Network services and unrelated refactors.
+Observable success: The named feature works and existing tests remain green.
+End-to-end example: A valid request completes with the named result and no unrelated behavior changes.
+Requirement R1: Preserve existing behavior outside the named feature.
+Action confirmed: Confirm this final product contract.
+Action corrected: Correct this final product contract.
+EOF
+KIMIFLOW_HOST=codex KIMIFLOW_SESSION_ID=owner-session "$ACTIVE" await-user --root "$REPO" --run .kimiflow/demo --kind intake --round 2 --request .kimiflow/demo/INTAKE-2.md --reason final_contract --write >/dev/null
+printf '{"cwd":"%s","session_id":"owner-session","prompt":"Confirm this final product contract."}' "$REPO" | KIMIFLOW_HOST=codex "$ACTIVE" prompt-context >/dev/null
+multiline_read="sed -n '1,80p' .kimiflow/demo/STATE.md
+sed -n '1,80p' .kimiflow/demo/CODEBASE-BASIS.json
+command -v python3 || true"
+payload="$(jq -nc --arg d "$REPO" --arg c "$multiline_read" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "schema2_final_receipt_allows_fresh_worker_multiline_reads"
+
+payload="$(jq -nc --arg d "$REPO" '{cwd:$d,session_id:"owner-session",tool_name:"Write",tool_input:{file_path:".kimiflow/demo/INTENT-LOCK.json",content:"replacement"}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"deny\"' >/dev/null" "schema2_final_receipt_keeps_authority_files_protected"
 
 echo "----"
 if [ "$fails" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$fails FAILED"; exit 1; fi

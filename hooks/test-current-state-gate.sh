@@ -145,7 +145,22 @@ assert_assess "Build a Codex and Claude Code plugin hook for MCP marketplace beh
 assert_assess "Implement Stripe payment auth deployment SDK flow" "high" "high_security_external_surface"
 assert_assess "Update React dependency usage for new framework API" "medium" "medium_library_api_surface"
 assert_assess "Research current software architecture and coding methods" "medium" "medium_generic_architecture_surface"
+assert_assess "Implement transactional JSONL import as a public Python API and local CLI" "low" "low_local_public_api_surface"
+assert_assess '<!-- kimiflow:intent-coverage source=current-run -->
+Implement a public Python API. Validate the current store and preserve compatibility with existing callers.' "low" "low_workflow_metadata_and_store_state"
 assert_assess "Fix capitalization in a local message" "low" "low_api_substring_does_not_route"
+
+write_input="$WORK/write-assessment/INTENT.md"
+mkdir -p "$(dirname "$write_input")"
+write_file "$write_input" "Implement transactional JSONL import as a public Python API and local CLI"
+write_out="$("$SCRIPT" assess --input "$write_input" --write)"
+if printf '%s\n' "$write_out" | grep -q $'^CURRENT_STATE_ASSESSMENT\tlow\tpath=' \
+  && jq -e '.schema_version == 2 and .current_state_risk == "low"' "$(dirname "$write_input")/CURRENT-STATE.json" >/dev/null 2>&1; then
+  pass "assess_write_persists_compact_receipt"
+else
+  fail "assess_write_persists_compact_receipt"
+  printf '%s\n' "$write_out"
+fi
 
 LEGACY_HIGH='{"schema_version":1,"current_state_risk":"high"}'
 LEGACY_LOW='{"schema_version":1,"current_state_risk":"low"}'

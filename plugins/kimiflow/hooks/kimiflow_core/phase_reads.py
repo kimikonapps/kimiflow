@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 
 from . import state
 from .atomic import atomic_write
@@ -210,6 +211,50 @@ def file_hash(path):
     return "sha256:%s" % digest.hexdigest()
 
 
+def _regular_file_bytes(path, maximum):
+    descriptor = None
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        named = os.stat(path, follow_symlinks=False)
+        if stat.S_ISLNK(named.st_mode) or not stat.S_ISREG(named.st_mode):
+            raise PhaseReadError("phase file must be a regular file")
+        if named.st_size > maximum:
+            raise PhaseReadError("phase file exceeds context file cap")
+        descriptor = os.open(path, flags)
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or (named.st_dev, named.st_ino, named.st_size, named.st_mtime_ns, named.st_ctime_ns)
+            != (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns, opened.st_ctime_ns)
+        ):
+            raise PhaseReadError("phase file changed while reading")
+        chunks = []
+        total = 0
+        while total <= maximum:
+            chunk = os.read(descriptor, min(65536, maximum + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+        if total > maximum:
+            raise PhaseReadError("phase file exceeds context file cap")
+        closed = os.fstat(descriptor)
+        if (
+            total != opened.st_size
+            or (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns, opened.st_ctime_ns)
+            != (closed.st_dev, closed.st_ino, closed.st_size, closed.st_mtime_ns, closed.st_ctime_ns)
+        ):
+            raise PhaseReadError("phase file changed while reading")
+        return b"".join(chunks)
+    except OSError as exc:
+        raise PhaseReadError("phase file unreadable: %s" % exc.__class__.__name__)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
 def reference_path():
     path = os.path.join(plugin_root(), "reference.md")
     if os.path.islink(path) or not os.path.isfile(path):
@@ -265,6 +310,79 @@ def reference_section_records(entry):
     return records
 
 
+def phase_packet(root, phase, rel_file):
+    """Return the exact phase instructions and references bound by one receipt."""
+    entry = phase_entry(root, phase)
+    rel = _safe_phase_file(rel_file)
+    if rel != entry["file"]:
+        raise PhaseReadError(
+            "phase %s requires %s, got %s" % (entry["id"], entry["file"], rel)
+        )
+    phase_payload = _regular_file_bytes(
+        resolve_phase_file(root, rel), entry["context"]["max_file_bytes"]
+    )
+    references = []
+    total = len(phase_payload)
+    for name in entry.get("reference_sections", []):
+        payload = reference_section_bytes(name)
+        if len(payload) > entry["context"]["max_file_bytes"]:
+            raise PhaseReadError("reference section exceeds context file cap: %s" % name)
+        total += len(payload)
+        if total > entry["context"]["max_total_bytes"]:
+            raise PhaseReadError("phase packet exceeds context total cap")
+        try:
+            content = payload.decode("utf-8")
+        except UnicodeError as exc:
+            raise PhaseReadError("reference section encoding invalid: %s" % name) from exc
+        references.append({
+            "name": name,
+            "sha256": "sha256:%s" % hashlib.sha256(payload).hexdigest(),
+            "size": len(payload),
+            "content": content,
+        })
+    try:
+        phase_content = phase_payload.decode("utf-8")
+    except UnicodeError as exc:
+        raise PhaseReadError("phase file encoding invalid: %s" % rel) from exc
+    return {
+        "schema_version": 1,
+        "phase": entry["id"],
+        "phase_name": entry["name"],
+        "file": rel,
+        "sha256": "sha256:%s" % hashlib.sha256(phase_payload).hexdigest(),
+        "size": len(phase_payload),
+        "content": phase_content,
+        "reference_sections": references,
+        "total_bytes": total,
+        "estimated_tokens": (total + 3) // 4,
+    }
+
+
+def _record_packet(run_dir, packet, now, write):
+    record = {
+        "phase": packet["phase"],
+        "file": packet["file"],
+        "sha256": packet["sha256"],
+        "size": packet["size"],
+        "read_at": now,
+        "reference_sections": [
+            {key: section[key] for key in ("name", "sha256", "size")}
+            for section in packet["reference_sections"]
+        ],
+    }
+    records = load_records(run_dir)
+    revision = records.get("revision", 0)
+    if isinstance(revision, bool) or not isinstance(revision, int) or not 0 <= revision < MAX_READ_REVISION:
+        raise PhaseReadError("phase-read records invalid: revision")
+    records["schema_version"] = 1
+    records["revision"] = revision + 1
+    records.setdefault("reads", {})[str(packet["phase"])] = record
+    records["updated_at"] = now
+    if write:
+        write_records(run_dir, records)
+    return record
+
+
 def load_records(run_dir):
     path = reads_path(run_dir)
     if not os.path.isfile(path):
@@ -293,31 +411,14 @@ def phase_reads_required(root, run_dir, active=None):
 
 
 def record_read(root, run_dir, phase, rel_file, now, write=False):
-    entry = phase_entry(root, phase)
-    rel = _safe_phase_file(rel_file)
-    if rel != entry["file"]:
-        raise PhaseReadError("phase %s requires %s, got %s" % (entry["id"], entry["file"], rel))
-    path = resolve_phase_file(root, rel)
-    stat = os.stat(path)
-    record = {
-        "phase": entry["id"],
-        "file": rel,
-        "sha256": file_hash(path),
-        "size": stat.st_size,
-        "read_at": now,
-        "reference_sections": reference_section_records(entry),
-    }
-    records = load_records(run_dir)
-    revision = records.get("revision", 0)
-    if isinstance(revision, bool) or not isinstance(revision, int) or not 0 <= revision < MAX_READ_REVISION:
-        raise PhaseReadError("phase-read records invalid: revision")
-    records["schema_version"] = 1
-    records["revision"] = revision + 1
-    records.setdefault("reads", {})[str(entry["id"])] = record
-    records["updated_at"] = now
-    if write:
-        write_records(run_dir, records)
-    return record
+    return _record_packet(
+        run_dir, phase_packet(root, phase, rel_file), now, write
+    )
+
+
+def read_and_record_packet(root, run_dir, phase, rel_file, now, write=False):
+    packet = phase_packet(root, phase, rel_file)
+    return _record_packet(run_dir, packet, now, write), packet
 
 
 def gate(root, run_dir, through_phase, active=None):

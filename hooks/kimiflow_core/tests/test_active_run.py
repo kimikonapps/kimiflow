@@ -602,6 +602,142 @@ class ActiveRunContractTests(unittest.TestCase):
             os.path.exists(os.path.join(run_dir, "INTAKE-RECEIPT-1.json")),
         )
 
+
+class TestInitState(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        subprocess.run(["git", "init", "-q", self.root], check=True)
+        subprocess.run(["git", "-C", self.root, "config", "user.name", "Test"], check=True)
+        subprocess.run(["git", "-C", self.root, "config", "user.email", "test@example.test"], check=True)
+        with open(os.path.join(self.root, "tracked.txt"), "w", encoding="utf-8") as handle:
+            handle.write("base\n")
+        subprocess.run(["git", "-C", self.root, "add", "tracked.txt"], check=True)
+        subprocess.run(["git", "-C", self.root, "commit", "-qm", "base"], check=True)
+
+    def init(self, *extra):
+        return run_main([
+            "init-state",
+            "--root", self.root,
+            "--run", ".kimiflow/token-efficient-start",
+            "--mode", "feature",
+            "--scope", "small",
+            "--language", "de",
+            "--title", "Token-effizient starten",
+            *extra,
+        ])
+
+    def test_full_alias_writes_schema5_contracts_and_starts_as_large_feature(self):
+        rc, out = self.init("--mode", "full", "--scope", "trivial", "--write")
+        self.assertEqual(rc, 0)
+        result = json.loads(out)
+        self.assertEqual((result["mode"], result["scope"], result["alias"]), ("feature", "large", "full"))
+        state_path = os.path.join(self.root, ".kimiflow", "token-efficient-start", "STATE.md")
+        with open(state_path, encoding="utf-8") as handle:
+            value = handle.read()
+        for line in (
+            "Flow schema: 5",
+            "Mode: feature",
+            "Alias: full",
+            "Scope: large",
+            "Interaction language: de",
+            "Intent contract: 4",
+            "Conformance contract: 1",
+            "Convergence contract: 1",
+            "Execution contract: 1",
+            "Frontend quality contract: 1",
+            "Phase 0: in-progress",
+            "Phase 7: open",
+        ):
+            self.assertEqual(value.count(line + "\n"), 1)
+
+        rc, _ = run_main([
+            "start", "--root", self.root,
+            "--run", ".kimiflow/token-efficient-start",
+            "--mode", "full", "--scope", "large", "--write",
+        ])
+        self.assertEqual(rc, 2)
+        self.assertFalse(os.path.exists(active_run.active_file(self.root)))
+
+        rc, out = run_main([
+            "start", "--root", self.root,
+            "--run", ".kimiflow/token-efficient-start",
+            "--mode", "feature", "--scope", "large", "--write",
+        ])
+        self.assertEqual(rc, 0)
+        status = json.loads(out)
+        self.assertEqual((status["mode"], status["scope"]), ("feature", "large"))
+        with open(active_run.active_file(self.root), encoding="utf-8") as handle:
+            active = json.load(handle)
+        self.assertEqual(active["intent_contract"], "4")
+
+    def test_preview_is_read_only(self):
+        rc, out = self.init()
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["status"], "preview")
+        self.assertFalse(os.path.exists(os.path.join(self.root, ".kimiflow")))
+
+    def test_fix_and_audit_get_only_their_required_contracts(self):
+        rc, _ = self.init("--mode", "fix", "--write")
+        self.assertEqual(rc, 0)
+        state_path = os.path.join(self.root, ".kimiflow", "token-efficient-start", "STATE.md")
+        with open(state_path, encoding="utf-8") as handle:
+            fix_state = handle.read()
+        self.assertIn("Problem: Token-effizient starten\n", fix_state)
+        self.assertIn("Execution contract: 1\n", fix_state)
+        self.assertNotIn("Intent contract:", fix_state)
+
+        other_root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, other_root, ignore_errors=True)
+        subprocess.run(["git", "init", "-q", other_root], check=True)
+        rc, _ = run_main([
+            "init-state", "--root", other_root,
+            "--run", ".kimiflow/audit-target", "--mode", "audit",
+            "--scope", "small", "--language", "en", "--title", "src", "--write",
+        ])
+        self.assertEqual(rc, 0)
+        with open(os.path.join(other_root, ".kimiflow", "audit-target", "STATE.md"), encoding="utf-8") as handle:
+            audit_state = handle.read()
+        self.assertIn("Target: src\n", audit_state)
+        self.assertIn("Frontend quality contract: 1\n", audit_state)
+        self.assertNotIn("Conformance contract:", audit_state)
+        self.assertNotIn("Execution contract:", audit_state)
+
+    def test_invalid_mechanical_inputs_fail_without_writes(self):
+        cases = [
+            ("--language", "English"),
+            ("--mode", "build"),
+            ("--scope", "huge"),
+            ("--title", "bad\nline"),
+            ("--run", ".kimiflow/not/nested"),
+        ]
+        for flag, value in cases:
+            with self.subTest(flag=flag, value=value):
+                rc, _ = self.init(flag, value, "--write")
+                self.assertEqual(rc, 2)
+                self.assertFalse(os.path.exists(os.path.join(self.root, ".kimiflow")))
+
+    def test_existing_state_and_symlinked_control_directory_fail_closed(self):
+        rc, _ = self.init("--write")
+        self.assertEqual(rc, 0)
+        rc, _ = self.init("--write")
+        self.assertEqual(rc, 1)
+
+        other_root = tempfile.mkdtemp()
+        outside = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, other_root, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
+        subprocess.run(["git", "init", "-q", other_root], check=True)
+        os.symlink(outside, os.path.join(other_root, ".kimiflow"))
+        rc, _ = run_main([
+            "init-state", "--root", other_root,
+            "--run", ".kimiflow/demo", "--mode", "feature",
+            "--scope", "small", "--language", "en", "--title", "Demo", "--write",
+        ])
+        self.assertEqual(rc, 2)
+        self.assertFalse(os.path.exists(os.path.join(outside, "demo", "STATE.md")))
+
+
 class TestAffectedPathsHeaders(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.mkdtemp()

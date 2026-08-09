@@ -257,21 +257,70 @@ def _basis_path(run_dir):
     return os.path.join(run_dir, BASIS_NAME)
 
 
+def _scope_research_marker(root, run_dir, basis_digest):
+    """Return the exact schema-2 binding marker after a valid scope receipt."""
+    try:
+        active = active_run.load_active(root)
+        if (
+            active.get("intent_contract") != "4"
+            or int(active.get("intake_schema") or 1) != 2
+            or os.path.realpath(active_run.resolve_run_dir(root, active.get("run", "")))
+            != os.path.realpath(run_dir)
+        ):
+            return ""
+        language = str(active.get("interaction_language") or "")
+        request_path = os.path.join(run_dir, "INTAKE.md")
+        if (
+            os.path.islink(request_path)
+            or not os.path.isfile(request_path)
+            or not 0 < os.path.getsize(request_path) <= active_run.INTAKE_REQUEST_LIMIT
+        ):
+            return ""
+        with open(request_path, "r", encoding="utf-8") as handle:
+            text = handle.read()
+        parsed = active_run.parse_intake_document(text, 4, 1, language)
+        request_digest = _file_digest(request_path)
+        scope_digest = active_run.structured_intake_digest(parsed)
+        if not active_run.valid_intake_receipt(
+            run_dir,
+            1,
+            request_digest,
+            4,
+            schema=2,
+            action="scope_ready",
+            user_language=language,
+            contract_digest=scope_digest,
+        ):
+            return ""
+    except (active_run.ActiveError, OSError, TypeError, UnicodeError, ValueError):
+        return ""
+    return (
+        "<!-- kimiflow:scope-research contract=4 schema=2 "
+        "codebase_basis=%s scope=%s selection=non_expanded -->"
+        % (basis_digest, scope_digest)
+    )
+
+
 def create_for_run(root, run_dir, write=False):
     paths = active_run.run_affected_paths(run_dir)
     basis = capture(root, paths)
+    payload = json.dumps(basis, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+    basis_digest = _digest(payload.encode("utf-8"))
     if write:
         atomic_write(
             _basis_path(run_dir),
-            json.dumps(basis, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+            payload,
             mode=0o600,
             refuse_symlink=True,
         )
+    marker = _scope_research_marker(root, run_dir, basis_digest)
     return {
         "status": "OPEN",
         "action": "create",
         "written": bool(write),
         "snapshot_sha256": basis["snapshot_sha256"],
+        "basis_sha256": basis_digest,
+        "scope_research_marker": marker,
         "basis": basis,
     }
 
@@ -332,8 +381,10 @@ def main(argv=None):
             run_value = args.pop(0)
         elif item == "--write":
             write = True
+        elif item == "--pretty":
+            pass
         elif item in ("-h", "--help"):
-            sys.stdout.write("Usage: codebase-basis.sh create|verify --run <path> [--root <path>] [--write]\n")
+            sys.stdout.write("Usage: codebase-basis.sh create|verify --run <path> [--root <path>] [--write] [--pretty]\n")
             return 0
         else:
             sys.stderr.write("codebase-basis: unknown or incomplete argument: %s\n" % item)
@@ -349,8 +400,15 @@ def main(argv=None):
         verdict = {"status": "CLOSED", "action": action, "details": [str(exc)]}
     details = ",".join(verdict.get("details", [])) or "clean"
     sys.stdout.write(
-        "CODEBASE_BASIS\t%s\taction=%s\tdetail=%s\n"
-        % (verdict["status"], action, details)
+        "CODEBASE_BASIS\t%s\taction=%s\tdetail=%s%s%s\n"
+        % (
+            verdict["status"],
+            action,
+            details,
+            "\tbasis_sha256=" + verdict["basis_sha256"] if verdict.get("basis_sha256") else "",
+            "\tscope_research_marker=" + verdict["scope_research_marker"]
+            if verdict.get("scope_research_marker") else "",
+        )
     )
     return 0 if verdict["status"] == "OPEN" else 1
 

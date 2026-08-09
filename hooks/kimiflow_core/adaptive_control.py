@@ -416,16 +416,9 @@ def decide_rollover(previous, current, scope, pressure="normal", cumulative_inpu
     all_names = set(before) | set(after)
     changed = sum(1 for name in all_names if before.get(name) != after.get(name))
     change_ratio = changed / max(1, len(all_names))
-    phase_changed = previous.get("phase") != current.get("phase")
     estimated = int(current.get("estimated_tokens") or 0)
     measured_pressure = pressure == "hard" or int(cumulative_input_tokens or 0) >= 120000
-    material_boundary = (
-        scope == "large"
-        and phase_changed
-        and change_ratio >= 0.60
-        and estimated >= 20000
-    )
-    trigger = measured_pressure or material_boundary
+    trigger = measured_pressure
     basis = {
         "previous": previous.get("composite_basis"),
         "current": current.get("composite_basis"),
@@ -442,8 +435,6 @@ def decide_rollover(previous, current, scope, pressure="normal", cumulative_inpu
         "reason": (
             "measured_context_pressure"
             if measured_pressure
-            else "material_phase_context_change"
-            if material_boundary
             else "below_threshold"
         ),
         "scope": scope,

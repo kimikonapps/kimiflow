@@ -1,11 +1,13 @@
 import json
+import contextlib
+import io
 import os
 import shutil
 import subprocess
 import tempfile
 import unittest
 
-from kimiflow_core import codebase_basis
+from kimiflow_core import active_run, codebase_basis
 
 
 class CodebaseBasisTests(unittest.TestCase):
@@ -85,7 +87,10 @@ class CodebaseBasisTests(unittest.TestCase):
             handle.write("Affected files: a.txt, future.py\n")
         created = codebase_basis.create_for_run(self.root, run_dir, write=True)
         self.assertEqual(created["status"], "OPEN")
+        self.assertRegex(created["basis_sha256"], r"^sha256:[0-9a-f]{64}$")
+        self.assertEqual(created["scope_research_marker"], "")
         path = os.path.join(run_dir, "CODEBASE-BASIS.json")
+        self.assertEqual(created["basis_sha256"], codebase_basis._file_digest(path))
         with open(path, encoding="utf-8") as handle:
             stored = json.load(handle)
         self.assertEqual(codebase_basis.verify_for_run(self.root, run_dir)["status"], "OPEN")
@@ -95,6 +100,70 @@ class CodebaseBasisTests(unittest.TestCase):
         verdict = codebase_basis.verify_for_run(self.root, run_dir)
         self.assertEqual(verdict["status"], "CLOSED")
         self.assertIn("basis_keys_invalid", verdict["details"])
+
+    def test_schema2_create_returns_complete_receipt_bound_research_marker(self):
+        run_rel = ".kimiflow/schema2"
+        run_dir = os.path.join(self.root, run_rel)
+        os.makedirs(run_dir)
+        with open(os.path.join(run_dir, "STATE.md"), "w", encoding="utf-8") as handle:
+            handle.write("Affected files: a.txt, future.py\n")
+        intake = (
+            "<!-- kimiflow:intake contract=4 schema=2 stage=scope round=1 "
+            "confirmation=scope_deliberation user_language=en -->\n"
+            "Problem: A requested feature could be built from an unchecked assumption.\n"
+            "Observable success: The user sees and accepts the bounded product scope.\n"
+            "Boundary: Product intent is settled before implementation.\n"
+            "Option 1: Build the complete named behavior.\n"
+            "Option 2: Build the smallest complete compatible behavior.\n"
+            "Included: The named behavior and focused regression coverage.\n"
+            "Later: Unrelated improvements.\n"
+            "Excluded: Network services and unrelated refactors.\n"
+            "Counter perspective: Existing behavior may already satisfy the need.\n"
+            "Completeness check: Goal, boundary, outcome, and exclusions are explicit.\n"
+            "Action scope_ready: Continue and finalize this scope\n"
+            "Action discuss: Discuss or revise this scope\n"
+        )
+        intake_path = os.path.join(run_dir, "INTAKE.md")
+        with open(intake_path, "w", encoding="utf-8") as handle:
+            handle.write(intake)
+        parsed = active_run.parse_intake_document(intake, 4, 1, "en")
+        scope_digest = active_run.structured_intake_digest(parsed)
+        request_digest = codebase_basis._file_digest(intake_path)
+        receipt = {
+            "schema_version": 2,
+            "contract": 4,
+            "round": 1,
+            "stage": "scope",
+            "action": "scope_ready",
+            "request": "INTAKE.md",
+            "request_digest": request_digest,
+            "contract_digest": scope_digest,
+            "user_language": "en",
+            "channel": "chat",
+            "responded_at": "2026-08-09T12:00:00Z",
+        }
+        with open(os.path.join(run_dir, "INTAKE-RECEIPT-1.json"), "w", encoding="utf-8") as handle:
+            json.dump(receipt, handle)
+        active_run.write_active(self.root, {
+            "schema_version": 1,
+            "status": "active",
+            "run": run_rel,
+            "mode": "feature",
+            "scope": "large",
+            "host": "codex",
+            "intent_contract": "4",
+            "intake_schema": 2,
+            "interaction_language": "en",
+        })
+
+        created = codebase_basis.create_for_run(self.root, run_dir, write=True)
+
+        expected = (
+            "<!-- kimiflow:scope-research contract=4 schema=2 "
+            "codebase_basis=%s scope=%s selection=non_expanded -->"
+            % (created["basis_sha256"], scope_digest)
+        )
+        self.assertEqual(created["scope_research_marker"], expected)
 
     def test_rejects_absolute_traversal_duplicate_and_git_paths(self):
         for paths in (
@@ -106,6 +175,20 @@ class CodebaseBasisTests(unittest.TestCase):
         ):
             with self.subTest(paths=paths), self.assertRaises(codebase_basis.BasisError):
                 codebase_basis.capture(self.root, paths)
+
+    def test_cli_accepts_pretty_flag_without_changing_bounded_output(self):
+        run_rel = ".kimiflow/pretty"
+        run_dir = os.path.join(self.root, run_rel)
+        os.makedirs(run_dir)
+        with open(os.path.join(run_dir, "STATE.md"), "w", encoding="utf-8") as handle:
+            handle.write("Affected files: a.txt\n")
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            status = codebase_basis.main([
+                "create", "--root", self.root, "--run", run_rel, "--write", "--pretty",
+            ])
+        self.assertEqual(status, 0)
+        self.assertIn("CODEBASE_BASIS\tOPEN", output.getvalue())
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ description: "Codex port of the Kimiflow feature/fix/release loop. Use automatic
 
 Run the Kimiflow loop for the user's request.
 
-This Codex skill maps the same Kimiflow engine used by Claude Code. Read installed `SKILL.md` once. Per phase, read only its `PHASES.json` `reference_sections` via `hooks/reference-section.sh`; the receipt binds their hashes. Never preload all `reference.md`. Then apply this host map.
+Read installed `SKILL.md` once. Per phase call `active-run.sh phase-read --run .kimiflow/<slug> --phase <N> --file phases/<phase-file> --packet --write`; trust its packet and do not read phase/reference files separately. Never preload all `reference.md`. Then apply this host map.
 
 ## Routing
 
@@ -28,13 +28,10 @@ Treat these as explicit Kimiflow requests:
 
 ## Host Map
 
-Before invoking any Kimiflow helper script, establish the plugin root from this installed skill file:
-
-1. Treat `KIMIFLOW_SKILL_DIR` as the absolute directory that contains this `skills/kimiflow/SKILL.md` file.
-2. Export `KIMIFLOW_PLUGIN_ROOT="$(cd "$KIMIFLOW_SKILL_DIR/../.." && pwd)"`.
-3. Export `KIMIFLOW_HOST=codex`.
-
-Invoke helpers only from `$KIMIFLOW_PLUGIN_ROOT`, never by a project-relative `hooks` path.
+Take the normalized absolute plugin-root path two levels above this installed `skills/kimiflow/SKILL.md`.
+Copy that literal path into each helper command: `KIMIFLOW_HOST=codex /absolute/plugin/root/hooks/<helper>`.
+Do not assign or expand `KIMIFLOW_PLUGIN_ROOT` inside the command; never use project-relative hooks.
+Do not probe helpers with `--help` during a run; use the exact documented command shapes.
 
 Apply the canonical Kimiflow workflow from `$KIMIFLOW_PLUGIN_ROOT/SKILL.md` with these Codex substitutions:
 
@@ -47,10 +44,13 @@ Apply the canonical Kimiflow workflow from `$KIMIFLOW_PLUGIN_ROOT/SKILL.md` with
 - `kimiflow security scan` / `security diff|deep|ci-artifact|eval|promote` stays private/advisory and fail-closed.
 - Phase-4 plan review dispatches every scheduled lens in parallel on one frozen PLAN hash when seats exist; the Codex orchestrator waits for the whole candidate batch, verifies it, writes the plan saturation receipt, and only then repairs complete root families. The three-round global limit never resets after a PLAN/model/strategy change.
 - Phase-7 Review Ensemble runs every axis once per stable PLAN, then required repair deltas. Mandatory schema-4 saturation authenticates bounded bug-cascade evidence; only source-bound schema-3 repairs for that exact source are accepted. Protected impacts cannot be waived; stable classes and the absolute three-round-plus-zero-carry-closeout cap stop ping-pong.
-- Kimiflow's Active Session and Adaptive Execution contracts use `$KIMIFLOW_PLUGIN_ROOT/hooks/active-run.sh` in Codex. The originating Codex thread owns the run, so only its follow-up prompts remain inside Kimiflow and only its Stop hook may continue the loop. Contract-1 Stop records one bounded turn observation automatically, but coalesces an explicit same-turn observation instead of charging it twice; `status` and `next-action` stay read-only. Use `observe --event <event> --outcome <progress|passed|failed> --evidence .kimiflow/<slug>/<artifact> --write` only for new decisive run artifacts, never prompts or source churn. Other Codex or Claude sessions may read and plan normally; before shared-checkout edits they run `conflict-check --path <path>` for every intended path and proceed only on `allow_disjoint`. Use `append-item`, `mark-built`, `mark-accepted`, `mark-rejected`, `drop-item`, `refresh-baseline`, and `finish|park|fail|abort --write` exactly as the canonical workflow describes.
+- Active Session and Adaptive Execution contracts use `active-run.sh`; the originating task owns the run. Stop coalesces an explicit same-turn observation; `status`/`next-action` are read-only and `observe` records only decisive artifacts. For pending context rollover, use one fresh `top` worker with `fork_turns="none"`. Pass the literal workspace root, literal plugin root, exact allowed status/read/handoff commands, run/packet identity, retained artifact digests, phase, and named code; the worker must not rediscover helpers or inspect hook internals. Persist its result, then call `rollover-handoff` with the exact ID/digest. Shared-checkout edits require `conflict-check`=`allow_disjoint`; use canonical item/terminal helpers.
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/workspace-preflight.sh` routes: free Primary direct; busy/dirty gets ≤3 locked owned Fleet trees, then FIFO. Work in its returned root. Phase 3 `declare`s exclusive Primary/Fleet path-contract leases + `blocked_by` against PLAN; Phase 5 requires `write-gate` and post-advance `revalidate`. Commit, `integrate` the JSON-argv-checked combined candidate, then `needs-reconcile` or finish/`retire`. Never mutate manual/Codex trees or request routine commit/stash/clean; ask only about ambiguous foreign bytes and require `WORKING_TREE_GATE OPEN`.
 - Kimiflow's clarify gate uses `$KIMIFLOW_PLUGIN_ROOT/hooks/clarify-gate.sh`. Fresh Contract-4 features preserve user language and require two explicit actions: discuss/accept scope, then correct/confirm the final flow. Generic assent never confirms; content-free receipts and the intent lock bind both stages. Contract-3/schema-1 resumes.
-- Kimiflow's Current-State Pulse / Gate uses `$KIMIFLOW_PLUGIN_ROOT/hooks/current-state-gate.sh` in Codex. Run it for every non-trivial run; generic current coding/architecture research is at least medium, and medium/high requires one schema-2 subject-bound, horizon-checked, applicable primary-source receipt before planning. Persisted schema-1 runs keep their legacy recall path.
+- Large/critical Codex runs must visibly spawn exactly one independent bounded Intent Critic with `fork_turns="none"` before writing `INTENT.md`; local judgment may never set `critic=passed`. “Do not parallelize implementation” does not disable this verification.
+- The host hook records an exact intake action. On resume call `status` once and trust its stage/action; never inspect receipt-hook internals or manufacture a hook response. Continue Phase 1 after `scope_ready`; after `confirmed`, write intent and run the clarify gate.
+- Before `confirmed`, do not call `append-item`, create/update the task widget, or patch phase progress; `phase-read` advances phase state mechanically.
+- Kimiflow's Current-State Pulse / Gate uses `$KIMIFLOW_PLUGIN_ROOT/hooks/current-state-gate.sh` in Codex. Run it for every non-trivial run; only an explicitly changing/current external dependency, platform, API, or method is medium/high and requires a subject-bound fresh primary source. A local public API is low-risk by itself. Persisted schema-1 runs keep legacy recall.
 - Discovery uses `$KIMIFLOW_PLUGIN_ROOT/hooks/discovery-gate.sh`; `$KIMIFLOW_PLUGIN_ROOT/hooks/codebase-basis.sh` first binds HEAD and affected-path bytes/types. Prove `reuse → evolve → new`, compare research to that basis, and reject scope expansion.
 - Conformance uses `$KIMIFLOW_PLUGIN_ROOT/hooks/conformance-gate.sh`. Bind up to five material decisions to evidence/paths/ACs/checks and `review_only|spike_required|runtime_required`; required spikes bind executed fixture, command, and output. Trace Contract-4 requirements like Contract 3.
 - Decision-bearing artifacts, findings, learnings, and final reports load all of `$KIMIFLOW_PLUGIN_ROOT/references/workflow-prose-quality.md` only at their existing writing/review boundary and apply it in the same model pass; it adds no agent, model call, step, or gate.

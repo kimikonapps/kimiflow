@@ -3,6 +3,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 from kimiflow_core import phase_reads
 
@@ -56,6 +57,76 @@ class TestPhaseReads(unittest.TestCase):
         with open(os.path.join(self.run, "PHASE-READS.json"), "r", encoding="utf-8") as handle:
             saved = json.load(handle)
         self.assertEqual(saved["reads"]["1"]["file"], "phases/phase-1.md")
+
+    def test_phase_packet_returns_and_records_the_exact_selected_content(self):
+        manifest = os.path.join(self.root, "phases", "PHASES.json")
+        with open(manifest, encoding="utf-8") as handle:
+            value = json.load(handle)
+        value["phases"][1]["reference_sections"] = ["Selected contract"]
+        with open(manifest, "w", encoding="utf-8") as handle:
+            json.dump(value, handle)
+        with open(os.path.join(self.root, "reference.md"), "w", encoding="utf-8") as handle:
+            handle.write(
+                "## Selected contract\nRequired rule.\n\n"
+                "## Unselected contract\nMust stay out.\n"
+            )
+        self.require_phase_reads()
+
+        record, packet = phase_reads.read_and_record_packet(
+            self.root,
+            self.run,
+            1,
+            "phases/phase-1.md",
+            "now",
+            write=True,
+        )
+
+        self.assertEqual(packet["content"], "phase 1\n")
+        self.assertEqual(packet["sha256"], record["sha256"])
+        self.assertEqual(packet["size"], record["size"])
+        self.assertEqual(
+            [section["name"] for section in packet["reference_sections"]],
+            ["Selected contract"],
+        )
+        self.assertIn("Required rule.", packet["reference_sections"][0]["content"])
+        self.assertNotIn("Must stay out.", packet["reference_sections"][0]["content"])
+        self.assertEqual(phase_reads.gate(self.root, self.run, 1)["status"], "CLOSED")
+        phase_reads.record_read(
+            self.root, self.run, 0, "phases/phase-0.md", "now", write=True
+        )
+        self.assertEqual(phase_reads.gate(self.root, self.run, 1)["status"], "OPEN")
+
+    def test_phase_packet_fails_closed_when_selected_content_exceeds_total_cap(self):
+        manifest = os.path.join(self.root, "phases", "PHASES.json")
+        with open(manifest, encoding="utf-8") as handle:
+            value = json.load(handle)
+        value["phases"][1]["reference_sections"] = ["Selected contract"]
+        value["phases"][1]["context"]["max_total_bytes"] = 4096
+        with open(manifest, "w", encoding="utf-8") as handle:
+            json.dump(value, handle)
+        with open(os.path.join(self.root, "reference.md"), "w", encoding="utf-8") as handle:
+            handle.write("## Selected contract\n" + ("x" * 4070) + "\n")
+
+        with self.assertRaisesRegex(phase_reads.PhaseReadError, "context total cap"):
+            phase_reads.phase_packet(
+                self.root, 1, "phases/phase-1.md"
+            )
+
+    def test_phase_packet_rejects_a_file_changed_during_the_read(self):
+        path = os.path.join(self.root, "phases", "phase-1.md")
+        opened = os.stat(path, follow_symlinks=False)
+        changed = mock.Mock(
+            st_dev=opened.st_dev,
+            st_ino=opened.st_ino,
+            st_size=opened.st_size,
+            st_mode=opened.st_mode,
+            st_mtime_ns=opened.st_mtime_ns,
+            st_ctime_ns=opened.st_ctime_ns + 1,
+        )
+
+        with mock.patch.object(phase_reads.os, "fstat", side_effect=[opened, changed]):
+            with self.assertRaisesRegex(phase_reads.PhaseReadError, "changed while reading"):
+                phase_reads.phase_packet(self.root, 1, "phases/phase-1.md")
 
     def test_traversal_refused(self):
         with self.assertRaises(phase_reads.PhaseReadError):
@@ -178,6 +249,26 @@ class TestPhaseReads(unittest.TestCase):
         self.assertIn("## Template heading", payload)
         self.assertIn("Still selected.", payload)
         self.assertNotIn("Not selected.", payload)
+
+
+class TestProductionPhasePacketBudgets(unittest.TestCase):
+    def test_high_cost_phases_keep_only_self_contained_bounded_references(self):
+        root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+        expected = {
+            2: (["Understand & research (Phase 2)", "Adaptive Architecture Deliberation"], 9000),
+            4: (["Build Preview / Risk Gate (Phase 4 → Phase 5)"], 3000),
+            7: (["Commit hygiene (Phase 7 atomic local commit)"], 6500),
+        }
+        with mock.patch.dict(os.environ, {"KIMIFLOW_PLUGIN_ROOT": root}):
+            for phase, (sections, token_cap) in expected.items():
+                with self.subTest(phase=phase):
+                    entry = phase_reads.phase_entry(root, phase)
+                    packet = phase_reads.phase_packet(root, phase, entry["file"])
+                    self.assertEqual(
+                        [row["name"] for row in packet["reference_sections"]],
+                        sections,
+                    )
+                    self.assertLessEqual(packet["estimated_tokens"], token_cap)
 
 
 if __name__ == "__main__":

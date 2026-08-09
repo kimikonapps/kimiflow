@@ -504,15 +504,16 @@ def request(round_no):
         errors.append("intake_marker_%d_invalid"%round_no); return path,None,None,None
     attrs=dict(re.findall(r"([a-z_]+)=([A-Za-z0-9_-]+)",markers[0]))
     if attrs.get("contract")!=str(contract) or attrs.get("round")!=str(round_no): errors.append("intake_marker_%d_invalid"%round_no)
-    try: questions=int(attrs.get("questions","0"))
-    except ValueError: questions=0
-    if not 1 <= questions <= 5: errors.append("intake_questions_%d_out_of_bounds"%round_no)
-    if attrs.get("selection")!="impact_uncertainty": errors.append("intake_selection_%d_invalid"%round_no)
-    if attrs.get("technical_questions")!="0": errors.append("intake_technical_questions_%d_forbidden"%round_no)
     schema_raw=attrs.get("schema","1")
     if schema_raw not in ("1","2"):
         errors.append("intake_schema_%d_invalid"%round_no); return path,sha(path),None,None
     schema=int(schema_raw)
+    if schema==1:
+        try: questions=int(attrs.get("questions","0"))
+        except ValueError: questions=0
+        if not 1 <= questions <= 5: errors.append("intake_questions_%d_out_of_bounds"%round_no)
+        if attrs.get("selection")!="impact_uncertainty": errors.append("intake_selection_%d_invalid"%round_no)
+        if attrs.get("technical_questions")!="0": errors.append("intake_technical_questions_%d_forbidden"%round_no)
     parsed=None
     if contract==4 and schema==2:
         try:
@@ -572,7 +573,9 @@ if rounds==1 and os.path.lexists(os.path.join(run_dir,"INTAKE-RECEIPT-2.json")):
 schemas={row["schema"] for row in request_data.values()}
 if len(schemas)>1: errors.append("intake_schema_drift")
 intake_schema=next(iter(schemas)) if len(schemas)==1 else 1
-if intake_schema==2 and rounds!=2: errors.append("intake_schema2_final_required")
+if intake_schema==2 and rounds!=2:
+    errors.append("intent_schema2_question_rounds_must_be_2")
+    errors.append("intake_schema2_final_required")
 
 intent=os.path.join(run_dir,"INTENT.md")
 try:
@@ -593,17 +596,21 @@ elif contract==4 and intake_schema==2:
     final_parsed=request_data.get(2,{}).get("parsed")
     if scope_parsed is not None: scope_digest=active_module.structured_intake_digest(scope_parsed)
     if final_parsed is not None: final_contract_digest=active_module.structured_intake_digest(final_parsed)
-    pseudo=(
-        "<!-- kimiflow:intake contract=4 schema=2 stage=final round=2 questions=1 selection=impact_uncertainty technical_questions=0 confirmation=final_contract cause=scope_ready user_language=%s -->\n"%interaction_language
-        + intent_text
-        + "\nAction confirmed: internal confirmed action\nAction corrected: internal corrected action\n"
-    )
-    try:
-        intent_contract=active_module.parse_intake_document(pseudo,4,2,interaction_language)
-        if active_module.structured_intake_digest(intent_contract)!=final_contract_digest:
-            errors.append("final_contract_not_bound_to_intent")
-    except active_module.ActiveError:
-        errors.append("intent_schema2_contract_invalid")
+    action_rows=re.findall(r"^Action (?:confirmed|corrected):\s*\S.+$",intent_text,re.M)
+    if action_rows:
+        errors.append("intent_schema2_action_rows_forbidden")
+    else:
+        pseudo=(
+            "<!-- kimiflow:intake contract=4 schema=2 stage=final round=2 confirmation=final_contract cause=scope_ready user_language=%s -->\n"%interaction_language
+            + intent_text
+            + "\nAction confirmed: internal confirmed action\nAction corrected: internal corrected action\n"
+        )
+        try:
+            intent_contract=active_module.parse_intake_document(pseudo,4,2,interaction_language)
+            if active_module.structured_intake_digest(intent_contract)!=final_contract_digest:
+                errors.append("final_contract_not_bound_to_intent")
+        except active_module.ActiveError:
+            errors.append("intent_schema2_contract_invalid")
     basis_path=os.path.join(run_dir,"CODEBASE-BASIS.json")
     research_path=os.path.join(run_dir,"RESEARCH.md")
     try:

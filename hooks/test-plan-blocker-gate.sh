@@ -115,7 +115,8 @@ printf 'Flow schema: 6\n' >> "$RUN/STATE.md"
 out="$(run_gate)"
 assert_contains "$out" "plan_review_contract_missing" "future_flow_schema_requires_plan_review_contract"
 
-# New plan-review contract is explicit and contract-heavy plans require a PLAN-bound matrix.
+# New plan-review contract is explicit; contract-heavy plans receive lens C without a
+# duplicated model-authored matrix precondition.
 reset_run
 printf 'Plan review contract: 1\n' >> "$RUN/STATE.md"
 out="$(run_gate)"
@@ -130,8 +131,7 @@ assert_field "$out" 2 OPEN "standard_plan_review_profile_opens"
 reset_run
 printf 'Plan review contract: 1\nPlan review profile: contract\n' >> "$RUN/STATE.md"
 out="$(run_gate)"
-assert_field "$out" 2 CLOSED "contract_profile_without_matrix_closes"
-assert_contains "$out" "plan_review_matrix_closed:artifact-missing" "contract_profile_missing_matrix_detail"
+assert_field "$out" 2 OPEN "contract_profile_without_matrix_opens"
 
 plan_digest="$(shasum -a 256 "$RUN/PLAN.md" | awk '{print $1}')"
 cat > "$RUN/CONTRACT-MATRIX.json" <<EOF
@@ -156,7 +156,7 @@ cat > "$RUN/CONTRACT-MATRIX.json" <<EOF
 }
 EOF
 out="$(run_gate)"
-assert_field "$out" 2 OPEN "complete_contract_matrix_opens"
+assert_field "$out" 2 OPEN "legacy_contract_matrix_remains_nonblocking"
 
 enable_active_architecture() {
   cat >> "$RUN/STATE.md" <<'EOF'
@@ -200,6 +200,15 @@ reset_run
 enable_active_architecture
 out="$(run_gate)"
 assert_field "$out" 2 OPEN "valid_active_architecture_contract_opens"
+
+reset_run
+enable_active_architecture
+cat >> "$RUN/RESEARCH.md" <<'EOF'
+## Material implementation decisions
+Falsification check: This later decision-local check is outside the architecture note.
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "architecture_fields_are_scoped_to_architecture_section"
 
 for mutation in 'approaches=2 approaches=3 architecture_approach_count_invalid' \
                 'principles=2 principles=4 architecture_principle_count_invalid' \

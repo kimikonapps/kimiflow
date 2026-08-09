@@ -22,8 +22,9 @@ prose_ok=true
 [ -f "$ROOT/references/workflow-prose-quality.md" ] || prose_ok=false
 grep -Fq 'same model pass' "$ROOT/references/workflow-prose-quality.md" 2>/dev/null || prose_ok=false
 for phase in phase-1-clarify.md phase-2-understand.md phase-3-plan.md phase-4-review-approval.md phase-6-verify.md phase-7-review-commit.md; do
-  grep -Fq '${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/references/workflow-prose-quality.md' "$ROOT/phases/$phase" 2>/dev/null || prose_ok=false
+  grep -Fq 'Reuse the run-loaded `workflow-prose-quality.md` contract' "$ROOT/phases/$phase" 2>/dev/null || prose_ok=false
 done
+grep -Fq '${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/references/workflow-prose-quality.md' "$ROOT/SKILL.md" 2>/dev/null || prose_ok=false
 grep -Fq '<loaded-kimiflow-package-root>/references/workflow-prose-quality.md' "$ROOT/hosts/pi/skills/kimiflow/SKILL.md" 2>/dev/null || prose_ok=false
 grep -Fq 'same model pass' "$ROOT/hosts/pi/skills/kimiflow/SKILL.md" 2>/dev/null || prose_ok=false
 if $prose_ok && [ "$(wc -c < "$ROOT/SKILL.md" | tr -d ' ')" -le 17000 ]; then
@@ -232,12 +233,12 @@ grep -q 'Mechanical Solution Search (before Architecture Deliberation' "$ROOT/ph
   || bad "Phase 2 bounded Solution Search call boundary incomplete"
 if grep -q 'solution_search=off.*strictly no-call/no-artifact' "$ROOT/phases/phase-2-understand.md" \
   && grep -q 'at most three isolated read-only candidates.*fresh selector' "$ROOT/phases/phase-2-understand.md" \
-  && grep -Fq 'Full contract → reference.md "Bounded Solution Search (Phase 2)"' "$ROOT/phases/phase-2-understand.md" \
+  && grep -q 'only then read the single.*Bounded Solution Search (Phase 2)' "$ROOT/phases/phase-2-understand.md" \
   && grep -q 'Architecture deliberation: off|active' "$ROOT/phases/phase-2-understand.md" \
   && grep -q 'materially crosses subsystems/data flow/integration' "$ROOT/phases/phase-2-understand.md" \
   && grep -q 'zero-count marker.*Architecture off reason.*no Architecture Note' "$ROOT/phases/phase-2-understand.md" \
-  && grep -q 'kimiflow:architecture-deliberation.*two-approach/≤3-principle/one-critique marker.*≤450-word Architecture Note' "$ROOT/phases/phase-2-understand.md" \
-  && grep -Fq 'Full contract → reference.md "Adaptive Architecture Deliberation"' "$ROOT/phases/phase-2-understand.md"; then
+  && grep -q 'exact marker, two approaches, ≤3 principles, one critique, ≤450-word Architecture Note' "$ROOT/phases/phase-2-understand.md" \
+  && grep -q 'Adaptive Architecture Deliberation.*already supplied.*phase packet' "$ROOT/phases/phase-2-understand.md"; then
   ok "Phase 2 preserves compact Solution Search and Architecture contracts"
 else
   bad "Phase 2 compact Solution Search or Architecture contract incomplete"
@@ -367,7 +368,11 @@ grep -q '^## First Principles' "$ROOT/README.md" \
 if grep -q 'Flow schema: 5' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'Convergence contract: 1' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'kimiflow:convergence contract=1 risk=' "$ROOT/phases/phase-3-plan.md" \
-  && grep -q 'finding-contract 1' "$ROOT/phases/phase-4-review-approval.md" \
+  && grep -q 'plan-review-gate.sh seal.*--write' "$ROOT/phases/phase-4-review-approval.md" \
+  && grep -q 'Codex planning context boundary' "$ROOT/phases/phase-1-clarify.md" \
+  && grep -q 'Codex intake command economy' "$ROOT/phases/phase-1-clarify.md" \
+  && grep -q 'one fresh independent closeout verifier' "$ROOT/phases/phase-4-review-approval.md" \
+  && grep -q 'dispatch A+B together' "$ROOT/phases/phase-4-review-approval.md" \
   && grep -q 'root-class-repeated' "$ROOT/hooks/resolve-review-gate.sh" \
   && grep -q 'review_snapshot_sha256' "$ROOT/hooks/kimiflow_core/review_convergence.py" \
   && grep -q 'requires explicit --epoch-start' "$ROOT/hooks/resolve-review-gate.sh" \
@@ -533,7 +538,7 @@ grep -q 'Build Preview / Risk Gate' "$ROOT/reference.md" && ok "reference docume
 grep -q 'research-driven product expansion is forbidden' "$ROOT/reference.md" && ok "reference blocks research scope creep" || bad "missing research scope-creep guard"
 grep -q -- '--epoch-start <S>' "$ROOT/reference.md" && ok "reference documents strategy epoch bounds" || bad "missing strategy epoch bounds"
 grep -q -- '--gate <plan|code>' "$ROOT/reference.md" && ok "reference binds strategy epochs to review gate" || bad "missing strategy epoch gate binding"
-grep -q 'kimiflow:recovery gate=<plan|code>' "$ROOT/reference.md" && ok "reference documents recovery receipt" || bad "missing recovery receipt contract"
+grep -q 'plan seal records and binds that transition mechanically' "$ROOT/reference.md" && ok "reference documents recovery receipt" || bad "missing recovery receipt contract"
 grep -q 'kimiflow:strategy gate=<plan|code>' "$ROOT/reference.md" && ok "reference documents verified strategy baseline" || bad "missing strategy baseline contract"
 grep -Eq -- 'await-user .*--kind <kind>' "$ROOT/reference.md" && ok "reference documents typed user pauses" || bad "missing typed user pause contract"
 grep -q 'Autonomous recovery contract' "$ROOT/reference.md" && ok "reference documents autonomous review recovery" || bad "missing autonomous review recovery"

@@ -121,7 +121,7 @@ class AdaptiveControlTests(unittest.TestCase):
             value,
         )
 
-    def test_rollover_requires_material_or_measured_pressure_and_keeps_resume_basis(self):
+    def test_rollover_requires_measured_pressure_and_keeps_resume_basis(self):
         previous = {
             "phase": 2,
             "estimated_tokens": 30000,
@@ -143,8 +143,14 @@ class AdaptiveControlTests(unittest.TestCase):
         self.assertEqual(
             adaptive_control.decide_rollover(previous, current, "small")["status"], "off"
         )
-        pending = adaptive_control.decide_rollover(previous, current, "large")
+        self.assertEqual(
+            adaptive_control.decide_rollover(previous, current, "large")["status"], "off"
+        )
+        pending = adaptive_control.decide_rollover(
+            previous, current, "large", cumulative_input_tokens=120000,
+        )
         self.assertEqual(pending["status"], "pending")
+        self.assertEqual(pending["reason"], "measured_context_pressure")
         self.assertRegex(pending["rollover_id"], r"^roll_[0-9a-f]{32}$")
         self.assertEqual({row["name"] for row in pending["retained"]}, {"PLAN.md", "ACCEPTANCE.md"})
         newer = dict(current, composite_basis="sha256:" + "7" * 64)

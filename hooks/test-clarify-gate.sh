@@ -177,7 +177,7 @@ Phase 0: done
 Phase 1: done
 EOF
   cat > "$RUN/INTAKE.md" <<'EOF'
-<!-- kimiflow:intake contract=4 schema=2 stage=scope round=1 questions=2 selection=impact_uncertainty technical_questions=0 confirmation=scope_deliberation user_language=de -->
+<!-- kimiflow:intake contract=4 schema=2 stage=scope round=1 confirmation=scope_deliberation user_language=de -->
 Problem: Feature requests can be implemented from an unverified assumption.
 Observable success: The user sees and corrects the understood product flow.
 Boundary: Product intent is discussed before research, planning, or writes.
@@ -192,7 +192,7 @@ Action scope_ready: Umfang ist bereit
 Action discuss: Weiter besprechen
 EOF
   cat > "$RUN/INTAKE-2.md" <<'EOF'
-<!-- kimiflow:intake contract=4 schema=2 stage=final round=2 questions=1 selection=impact_uncertainty technical_questions=0 confirmation=final_contract cause=scope_ready user_language=de -->
+<!-- kimiflow:intake contract=4 schema=2 stage=final round=2 confirmation=final_contract cause=scope_ready user_language=de -->
 Problem: Feature requests can be implemented from an unverified assumption.
 Step 1: The user starts a feature run.
 Step 2: Kimiflow discusses and confirms the product intent.
@@ -732,6 +732,18 @@ if command -v jq >/dev/null 2>&1; then
   out="$(record_intent_lock)"
   assert_field "$out" 2 CLOSED "contract4_schema2_final_contract_drift_closes"
   assert_contains "$out" "final_contract_not_bound_to_intent" "contract4_schema2_final_contract_drift_detail"
+
+  reset_contract4_schema2_feature
+  printf '\nAction confirmed: Vertrag bestätigen\nAction corrected: Korrektur erforderlich\n' >> "$RUN/INTENT.md"
+  out="$(record_intent_lock)"
+  assert_field "$out" 2 CLOSED "contract4_schema2_intent_action_rows_close"
+  assert_contains "$out" "intent_schema2_action_rows_forbidden" "contract4_schema2_intent_action_rows_detail"
+
+  reset_contract4_schema2_feature
+  sed -i.bak 's/question_rounds=2/question_rounds=1/' "$RUN/INTENT.md" && rm "$RUN/INTENT.md.bak"
+  out="$(record_intent_lock)"
+  assert_field "$out" 2 CLOSED "contract4_schema2_question_rounds_must_stay_two"
+  assert_contains "$out" "intent_schema2_question_rounds_must_be_2" "contract4_schema2_question_rounds_detail"
 
   reset_contract4_feature
   out="$(record_intent_lock)"

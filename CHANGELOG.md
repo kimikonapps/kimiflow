@@ -6,7 +6,56 @@ Versions before 0.3.0 were internal development snapshots. **0.3.0 is the first 
 
 ## Unreleased
 
-_No unreleased changes._
+### Changed
+
+- Fresh schema-5 runs now use deterministic `init-state` scaffolding instead of model-written selectors.
+- Completed Product Intake no longer blocks bounded multiline reads in fresh phase workers, and large-run `critic=passed` now requires an explicit fresh-context critic action.
+- Codex intake now accepts the exact pending intake file through its native patch payload, advances recorded
+  phase handoffs mechanically, permits bounded read-only/Phase-0 preflight commands, and documents the exact
+  two intake wait registrations while continuing to block product writes.
+- Reduced repeated phase-context loading by returning the exact phase instructions and selected references in
+  one digest-bound `phase-read --packet` response.
+- Phase 0 no longer duplicates launcher, model-routing, display, and active-session reference sections after
+  those rules have already been resolved or loaded; its packet now stays below the host display ceiling.
+- Codex now derives the installed plugin root once and invokes helpers by their literal absolute path instead
+  of repeating shell exports and command substitution; the intake guard also recognizes the legacy trusted
+  two-line export form without accepting arbitrary shell preambles.
+- Context rollover now requires measured pressure instead of every large phase boundary, avoiding worker
+  handoff overhead while preserving the same artifacts, gates, review lenses, and three-round review limit.
+- Contract-4 schema-2 clarification now uses one grammar end to end; its codebase-basis helper emits the
+  complete receipt-bound research marker so agents no longer reconstruct hidden digests.
+- Large and critical runs retain one bounded independent Intent Critic, while small runs may keep the cheaper
+  folded check.
+- Local public APIs no longer trigger external-current-source research by name alone; only explicit
+  dependency/platform/API freshness cues do. Phase-2 packets now spell out the exact discovery, reuse-order,
+  and architecture artifact shapes required before planning.
+- Current-state classification now ignores workflow metadata and separates local store/compatibility language
+  from nearby explicit freshness cues; `assess --write` persists its receipt atomically with compact output.
+- Empty projects now skip broad memory, recall, and provider probes; configured memory keeps the same bounded
+  recall quality while large JSON output is redirected to run artifacts.
+- Fresh bootstrap follows the initializer's returned command, intake resumes trust the host hook, and the
+  independent critic receives every confirmed requirement before descriptive compression.
+- Scope research permits only the exact repository baseline unittest command, keeping arbitrary Python and
+  product mutations blocked until final intake confirmation.
+- Phase changes now reuse the already loaded prose-quality contract, and clean direct workspace routing no
+  longer repeats the full workspace inventory.
+- Contract-matrix validation accepts equivalent safe human-readable identifiers and prefixed digests, reports
+  the exact invariant/case mismatch, and architecture validation scopes its fields to the architecture section.
+- Phase 2 now prepares the complete schema-2 research artifact before its first discovery check and returns
+  actionable clarification errors for forbidden intent action rows and the fixed two-stage round count.
+- Self-contained phase instructions no longer preload duplicate memory, review-rubric, and learning reference
+  sections; production packet-budget tests keep the high-cost phases bounded while conditional complex-work
+  research, architecture, contract, security, and review checks remain available.
+- Plan review now seals reviewer candidates, evidence, findings, hashes, recovery receipts, Active-Run pins,
+  saturation, and resolution in one deterministic command. Contract-heavy plans keep the independent A/B/C
+  state-space review but no longer duplicate the plan into a large mandatory cross-product matrix.
+- Large Codex planning now crosses the confirmed-contract boundary in one fresh worker instead of replaying
+  the user/orchestration transcript through every planning call. Round 1 keeps independent A/B/C discovery;
+  repair and resolution rounds use one fresh whole-contract verifier, and phase packets no longer echo
+  persisted context-administration manifests back into later model calls.
+- Codex intake now inventories and reads the selected code surface once after scope readiness, while the
+  planning worker schedules independent reviewers within the known four-seat limit instead of spending turns
+  on blocked broad scans, guessed paths, over-capacity spawns, and recovery polling.
 
 ## 0.3.0
 

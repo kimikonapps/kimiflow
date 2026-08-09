@@ -9,6 +9,7 @@ import json
 import os
 import re
 import stat
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -20,6 +21,7 @@ MAX_DIMENSIONS = 12
 MAX_CASES = 128
 SHA_RE = re.compile(r"^[a-f0-9]{64}$")
 SLUG_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
+MATRIX_IDENTIFIER_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
 CLASS_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 AC_RE = re.compile(r"^AC-[1-9][0-9]*$")
 EVIDENCE_RE = re.compile(r"^(review-evidence/[A-Za-z0-9._/-]+)@([a-f0-9]{64})$")
@@ -120,6 +122,32 @@ def _closed(reason: str, detail: str = "") -> GateResult:
 
 def _digest_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
+
+
+def _atomic_write(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink() or path.parent.is_symlink():
+        raise ValidationError("unsafe-artifact", path.as_posix())
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+
+
+def _write_exact(path: Path, payload: bytes) -> None:
+    if path.exists():
+        if path.is_symlink() or not path.is_file() or path.read_bytes() != payload:
+            raise ValidationError("sealed-artifact-conflict", path.as_posix())
+        return
+    _atomic_write(path, payload)
 
 
 def _read_regular(run: Path, relative: str, limit: int) -> bytes:
@@ -323,7 +351,10 @@ def validate_matrix(run: Path) -> GateResult:
         _exact_keys(value, MATRIX_KEYS, "matrix-shape-invalid")
         if value["schema_version"] != 1:
             raise ValidationError("matrix-schema-invalid")
-        if value["plan_sha256"] != _plan_digest(run):
+        matrix_plan_sha256 = value["plan_sha256"]
+        if isinstance(matrix_plan_sha256, str) and matrix_plan_sha256.startswith("sha256:"):
+            matrix_plan_sha256 = matrix_plan_sha256.removeprefix("sha256:")
+        if matrix_plan_sha256 != _plan_digest(run):
             raise ValidationError("stale-plan")
         declared_acceptance = _declared_acceptance_criteria(run)
 
@@ -337,7 +368,11 @@ def validate_matrix(run: Path) -> GateResult:
             _exact_keys(row, DIMENSION_KEYS, "dimension-shape-invalid")
             name = row["name"]
             values = row["values"]
-            if not isinstance(name, str) or not SLUG_RE.fullmatch(name) or name in dimension_values:
+            if (
+                not isinstance(name, str)
+                or not MATRIX_IDENTIFIER_RE.fullmatch(name)
+                or name in dimension_values
+            ):
                 raise ValidationError("dimension-name-invalid", str(name))
             if (
                 not isinstance(values, list)
@@ -358,7 +393,11 @@ def validate_matrix(run: Path) -> GateResult:
                 raise ValidationError("case-shape-invalid")
             _exact_keys(row, CASE_KEYS, "case-shape-invalid")
             case_id = row["id"]
-            if not isinstance(case_id, str) or not SLUG_RE.fullmatch(case_id) or case_id in case_by_id:
+            if (
+                not isinstance(case_id, str)
+                or not MATRIX_IDENTIFIER_RE.fullmatch(case_id)
+                or case_id in case_by_id
+            ):
                 raise ValidationError("case-id-invalid", str(case_id))
             if row["kind"] not in {"legal", "invalid", "boundary"}:
                 raise ValidationError("case-kind-invalid", case_id)
@@ -427,7 +466,7 @@ def validate_matrix(run: Path) -> GateResult:
             invariant_id = row["id"]
             if (
                 not isinstance(invariant_id, str)
-                or not SLUG_RE.fullmatch(invariant_id)
+                or not MATRIX_IDENTIFIER_RE.fullmatch(invariant_id)
                 or invariant_id in invariant_ids
             ):
                 raise ValidationError("invariant-id-invalid", str(invariant_id))
@@ -452,7 +491,15 @@ def validate_matrix(run: Path) -> GateResult:
                 row["acceptance"] not in accept_case["acceptance"]
                 or row["acceptance"] not in reject_case["acceptance"]
             ):
-                raise ValidationError("invariant-case-acceptance-mismatch", invariant_id)
+                missing = []
+                if row["acceptance"] not in accept_case["acceptance"]:
+                    missing.append(f"accept_case={row['accept_case']}")
+                if row["acceptance"] not in reject_case["acceptance"]:
+                    missing.append(f"reject_case={row['reject_case']}")
+                raise ValidationError(
+                    "invariant-case-acceptance-mismatch",
+                    f"{invariant_id}:acceptance={row['acceptance']}:missing={','.join(missing)}",
+                )
         return GateResult(True, "matrix-complete")
     except ValidationError as exc:
         return _closed(exc.reason, exc.detail)
@@ -542,6 +589,413 @@ def _parse_findings(payload: bytes, lens: str) -> tuple[dict[str, dict], dict[st
 
 def _candidate_evidence_class(candidate_id: str) -> str:
     return "candidate-" + candidate_id.removeprefix("cand_")[:54]
+
+
+def _review_class(candidate: dict, used: set[str]) -> str:
+    family = candidate["family"]
+    if family not in used:
+        return family
+    suffix = candidate["candidate_id"].removeprefix("cand_")[:8]
+    return f"{family[:54]}-{suffix}"
+
+
+def _review_evidence_payload(
+    stable_class: str, verify: str, outcome: str, detail: str
+) -> bytes:
+    normalized = " ".join(detail.split())[:4000]
+    return (
+        f"REVIEW_EVIDENCE class={stable_class} :: verify={verify} :: "
+        f"outcome={outcome} :: {normalized}\n"
+    ).encode("utf-8")
+
+
+def _review_finding_line(
+    candidate: dict, stable_class: str, evidence: str
+) -> str:
+    return (
+        f"FINDING {candidate['severity']} {candidate['ref']} :: "
+        f"{candidate['claim']} :: class={stable_class} :: "
+        f"verify={candidate['verify']} :: evidence={evidence}"
+    )
+
+
+def _prior_open_findings(
+    run: Path, round_number: int, lenses: tuple[str, ...]
+) -> dict[str, dict]:
+    if round_number == 1:
+        return {}
+    for historical_round in range(1, round_number):
+        _validate_saturation_receipt(
+            run, historical_round, lenses, current_plan=False
+        )
+    _validate_plan_saturation_ledger(
+        run, round_number - 1, require_active_pin=True
+    )
+    receipt = _load_json(run, f"plan-review-saturation/r{round_number - 1}.json")
+    class_to_family = {
+        stable_class: family["id"]
+        for family in receipt["families"]
+        for stable_class in family["classes"]
+    }
+    result: dict[str, dict] = {}
+    for lens in lenses:
+        payload = _read_regular(
+            run, f"findings/r{round_number - 1}-{lens}.md", MAX_TEXT_BYTES
+        )
+        findings, _resolved = _parse_findings(payload, lens)
+        for stable_class, finding in findings.items():
+            result[stable_class] = {
+                **finding,
+                "lens": lens,
+                "family": class_to_family[stable_class],
+            }
+    return result
+
+
+def _append_round_basis(
+    recovery_lines: list[str],
+    *,
+    round_number: int,
+    plan_sha256: str,
+    prior_plan_sha256: str | None,
+) -> list[str]:
+    if round_number == 1:
+        strategy_lines = [
+            line for line in recovery_lines if line.startswith("<!-- kimiflow:strategy gate=plan ")
+        ]
+        expected = (
+            "<!-- kimiflow:strategy gate=plan epoch-start=1 "
+            f"fingerprint={plan_sha256} -->"
+        )
+        if strategy_lines and strategy_lines != [expected]:
+            raise ValidationError("plan-strategy-marker-conflict")
+        if not strategy_lines:
+            recovery_lines.append(expected)
+        return recovery_lines
+
+    if prior_plan_sha256 == plan_sha256:
+        return recovery_lines
+    expected = (
+        "<!-- kimiflow:recovery gate=plan "
+        f"source-round={round_number - 1} epoch-start={round_number} cap=3 "
+        f"before={prior_plan_sha256} after={plan_sha256} -->"
+    )
+    same_source = [
+        line
+        for line in recovery_lines
+        if line.startswith(
+            "<!-- kimiflow:recovery gate=plan "
+            f"source-round={round_number - 1} "
+        )
+    ]
+    if same_source and same_source != [expected]:
+        raise ValidationError("plan-recovery-marker-conflict", f"r{round_number}")
+    if not same_source:
+        recovery_lines.append(expected)
+    return recovery_lines
+
+
+def _update_review_state(
+    run: Path, *, round_number: int, plan_sha256: str, material: bool
+) -> None:
+    state_path = run / "STATE.md"
+    try:
+        lines = state_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as exc:
+        raise ValidationError("review-state-invalid", str(exc)) from exc
+    replacements = {
+        "review gate": ("Review gate", "plan"),
+        "review epoch start": ("Review epoch start", str(round_number)),
+        "review epoch cap": ("Review epoch cap", "3"),
+        "strategy fingerprint": ("Strategy fingerprint", plan_sha256),
+        "recovery": ("Recovery", "active" if material else "clean"),
+    }
+    seen: set[str] = set()
+    updated: list[str] = []
+    for line in lines:
+        plain = re.sub(r"^[ \t]*-[ \t]*", "", line.replace("**", ""))
+        label = plain.partition(":")[0].strip().lower()
+        if label in replacements:
+            if label in seen:
+                raise ValidationError("review-state-selector-duplicate", label)
+            seen.add(label)
+            canonical, value = replacements[label]
+            updated.append(f"{canonical}: {value}")
+        else:
+            updated.append(line)
+    for label, (canonical, value) in replacements.items():
+        if label not in seen:
+            updated.append(f"{canonical}: {value}")
+    _atomic_write(state_path, ("\n".join(updated) + "\n").encode("utf-8"))
+
+
+def seal_round(
+    run: Path, round_number: int, lenses: tuple[str, ...], *, write: bool
+) -> GateResult:
+    run = Path(run)
+    try:
+        if not write:
+            raise ValidationError("seal-write-required")
+        if round_number not in (1, 2, 3):
+            raise ValidationError("review-limit-reached", str(round_number))
+        expected_lenses = _expected_lenses(run)
+        if lenses != expected_lenses:
+            raise ValidationError(
+                "review-topology-mismatch",
+                f"expected={','.join(expected_lenses)},actual={','.join(lenses)}",
+            )
+        if not run.is_dir() or run.is_symlink():
+            raise ValidationError("unsafe-artifact", run.as_posix())
+
+        plan_sha256 = _plan_digest(run)
+        candidate_payloads: dict[str, bytes] = {}
+        candidates: list[dict] = []
+        coverage: set[str] = set()
+        for lens in lenses:
+            relative = f"plan-review-candidates/r{round_number}-{lens}.md"
+            payload = _read_regular(run, relative, MAX_TEXT_BYTES)
+            candidate_payloads[lens] = payload
+            parsed, lens_coverage = _parse_candidate(payload, lens, plan_sha256)
+            coverage.update(lens_coverage)
+            for candidate in parsed:
+                candidate["lens"] = lens
+                candidates.append(candidate)
+        if coverage != REQUIRED_DOMAINS:
+            missing = ",".join(sorted(REQUIRED_DOMAINS - coverage))
+            raise ValidationError("coverage-missing", missing)
+        material_candidates = [
+            candidate
+            for candidate in candidates
+            if candidate["severity"] in {"BLOCKER", "HIGH"}
+        ]
+        if round_number == 3 and material_candidates:
+            raise ValidationError("closeout-new-candidate")
+
+        prior_open = _prior_open_findings(run, round_number, lenses)
+        prior_by_family: dict[str, list[str]] = {}
+        for stable_class, finding in prior_open.items():
+            prior_by_family.setdefault(finding["family"], []).append(stable_class)
+        for classes in prior_by_family.values():
+            classes.sort()
+
+        used_classes: set[str] = set()
+        current_rows: list[tuple[dict, str]] = []
+        for candidate in material_candidates:
+            available = [
+                stable_class
+                for stable_class in prior_by_family.get(candidate["family"], [])
+                if stable_class not in used_classes
+            ]
+            stable_class = available[0] if available else _review_class(candidate, used_classes)
+            if stable_class in used_classes:
+                raise ValidationError("generated-review-class-duplicate", stable_class)
+            used_classes.add(stable_class)
+            current_rows.append((candidate, stable_class))
+        resolved_classes = sorted(set(prior_open) - used_classes)
+
+        evidence_payloads: dict[str, bytes] = {}
+        finding_lines: dict[str, list[str]] = {lens: [] for lens in lenses}
+        dispositions: list[dict] = []
+        class_to_family: dict[str, str] = {}
+        family_claims: dict[str, list[str]] = {}
+
+        for candidate, stable_class in current_rows:
+            relative = f"review-evidence/plan-r{round_number}-{stable_class}.txt"
+            payload = _review_evidence_payload(
+                stable_class, candidate["verify"], "reproduced", candidate["claim"]
+            )
+            evidence_payloads[relative] = payload
+            evidence = f"{relative}@{_digest_bytes(payload)}"
+            finding_lines[candidate["lens"]].append(
+                _review_finding_line(candidate, stable_class, evidence)
+            )
+            dispositions.append(
+                {
+                    "candidate_id": candidate["candidate_id"],
+                    "outcome": "promoted",
+                    "stable_class": stable_class,
+                    "evidence": evidence,
+                }
+            )
+            class_to_family[stable_class] = candidate["family"]
+            family_claims.setdefault(candidate["family"], []).append(candidate["claim"])
+
+        for stable_class in resolved_classes:
+            prior = prior_open[stable_class]
+            relative = f"review-evidence/plan-r{round_number}-{stable_class}.txt"
+            detail = (
+                f"Fresh frozen-basis review by lenses {','.join(lenses)} emitted no "
+                f"remaining candidate for family {prior['family']}."
+            )
+            payload = _review_evidence_payload(
+                stable_class, prior["verify"], "not_reproduced", detail
+            )
+            evidence_payloads[relative] = payload
+            evidence = f"{relative}@{_digest_bytes(payload)}"
+            finding_lines[prior["lens"]].append(
+                f"RESOLVED class={stable_class} :: verify={prior['verify']} :: "
+                f"evidence={evidence}"
+            )
+            class_to_family[stable_class] = prior["family"]
+
+        finding_payloads: dict[str, bytes] = {}
+        for lens in lenses:
+            lines = finding_lines[lens] or ["NONE"]
+            finding_payloads[lens] = ("\n".join(lines) + "\n").encode("utf-8")
+
+        check_domains = {
+            "upstream-requirements": "intent-trace",
+            "sibling-states": "state-space",
+            "downstream-outputs": "aggregation-verdict",
+            "boundary-values": "time-lifecycle",
+            "failure-classification": "evidence-safety",
+        }
+        families = []
+        for family_id in sorted(set(class_to_family.values())):
+            classes = sorted(
+                stable_class
+                for stable_class, mapped_family in class_to_family.items()
+                if mapped_family == family_id
+            )
+            claims = family_claims.get(family_id)
+            root_cause = (
+                "Reviewer family: " + " ".join(claims or [])[:900]
+                if claims
+                else "Fresh frozen-basis review found no remaining candidate in this family."
+            )
+            families.append(
+                {
+                    "id": family_id,
+                    "classes": classes,
+                    "root_cause": root_cause,
+                    "checks": {
+                        check: {
+                            "status": "checked",
+                            "evidence": (
+                                f"Round {round_number} frozen-basis lenses "
+                                f"{','.join(lenses)} covered {domain}."
+                            ),
+                        }
+                        for check, domain in check_domains.items()
+                    },
+                }
+            )
+
+        receipt = {
+            "schema_version": 1,
+            "round": round_number,
+            "plan_sha256": plan_sha256,
+            "lenses": list(lenses),
+            "candidate_files": [
+                {"lens": lens, "sha256": _digest_bytes(candidate_payloads[lens])}
+                for lens in lenses
+            ],
+            "finding_files": [
+                {"lens": lens, "sha256": _digest_bytes(finding_payloads[lens])}
+                for lens in lenses
+            ],
+            "dispositions": dispositions,
+            "families": families,
+        }
+        receipt_payload = (
+            json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8")
+
+        recovery_path = run / "RECOVERY.md"
+        recovery_payload = recovery_path.read_bytes() if recovery_path.exists() else b""
+        try:
+            recovery_lines = recovery_payload.decode("utf-8").splitlines()
+        except UnicodeError as exc:
+            raise ValidationError("plan-saturation-ledger-encoding") from exc
+        prior_plan_sha256 = None
+        previous_receipt = "none"
+        if round_number > 1:
+            prior_receipt_path = run / f"plan-review-saturation/r{round_number - 1}.json"
+            prior_receipt = _load_json(
+                run, f"plan-review-saturation/r{round_number - 1}.json"
+            )
+            prior_plan_sha256 = prior_receipt["plan_sha256"]
+            previous_receipt = _digest_bytes(prior_receipt_path.read_bytes())
+        recovery_lines = _append_round_basis(
+            recovery_lines,
+            round_number=round_number,
+            plan_sha256=plan_sha256,
+            prior_plan_sha256=prior_plan_sha256,
+        )
+        existing_round_markers = [
+            line
+            for line in recovery_lines
+            if line.startswith(
+                f"<!-- kimiflow:plan-saturation round={round_number} "
+            )
+        ]
+        receipt_digest = _digest_bytes(receipt_payload)
+        round_marker = (
+            f"<!-- kimiflow:plan-saturation round={round_number} "
+            f"receipt={receipt_digest} plan={plan_sha256} previous={previous_receipt} -->"
+        )
+        if existing_round_markers and existing_round_markers != [round_marker]:
+            raise ValidationError("plan-saturation-ledger-marker-conflict")
+        if not existing_round_markers:
+            recovery_lines.append(round_marker)
+        new_recovery_payload = ("\n".join(recovery_lines) + "\n").encode("utf-8")
+
+        for relative, payload in evidence_payloads.items():
+            _write_exact(run / relative, payload)
+        for lens, payload in finding_payloads.items():
+            _write_exact(run / f"findings/r{round_number}-{lens}.md", payload)
+        _write_exact(
+            run / f"plan-review-saturation/r{round_number}.json", receipt_payload
+        )
+        if recovery_path.exists() and recovery_path.read_bytes() != recovery_payload:
+            raise ValidationError("sealed-artifact-conflict", "RECOVERY.md")
+        _atomic_write(recovery_path, new_recovery_payload)
+
+        review_path = run / "REVIEW.md"
+        review_payload = review_path.read_bytes() if review_path.exists() else b""
+        try:
+            review_lines = review_payload.decode("utf-8").splitlines()
+        except UnicodeError as exc:
+            raise ValidationError("review-summary-encoding-invalid") from exc
+        summary_prefix = f"<!-- kimiflow:plan-review-summary round={round_number} "
+        summary_marker = (
+            f"{summary_prefix}plan={plan_sha256} material={len(material_candidates)} -->"
+        )
+        existing_summaries = [
+            line for line in review_lines if line.startswith(summary_prefix)
+        ]
+        if existing_summaries and existing_summaries != [summary_marker]:
+            raise ValidationError("review-summary-conflict", f"r{round_number}")
+        if not existing_summaries:
+            review_lines.extend(
+                [
+                    summary_marker,
+                    (
+                        f"Round {round_number}: lenses {','.join(lenses)} sealed "
+                        f"{len(material_candidates)} material candidate(s) across "
+                        f"{len(families)} root family/families."
+                    ),
+                ]
+            )
+            _atomic_write(
+                review_path, ("\n".join(review_lines) + "\n").encode("utf-8")
+            )
+
+        _update_review_state(
+            run,
+            round_number=round_number,
+            plan_sha256=plan_sha256,
+            material=bool(material_candidates),
+        )
+
+        result, _pins = prepare_saturation_pins(run, round_number, lenses)
+        if not result.is_open:
+            return result
+        return GateResult(True, "sealed", f"material={len(material_candidates)}")
+    except ValidationError as exc:
+        return _closed(exc.reason, exc.detail)
+    except (KeyError, TypeError, OSError) as exc:
+        return _closed("seal-shape-invalid", str(exc))
 
 
 def _verify_evidence(
@@ -943,6 +1397,11 @@ def _parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     matrix = subparsers.add_parser("matrix")
     matrix.add_argument("--run", required=True)
+    seal = subparsers.add_parser("seal")
+    seal.add_argument("--run", required=True)
+    seal.add_argument("--round", required=True, type=int)
+    seal.add_argument("--expect", required=True)
+    seal.add_argument("--write", action="store_true")
     saturation = subparsers.add_parser("saturation")
     saturation.add_argument("--run", required=True)
     saturation.add_argument("--round", required=True, type=int)
@@ -955,6 +1414,10 @@ def main(argv: Iterable[str] | None = None) -> int:
     if args.command == "matrix":
         return _emit(validate_matrix(Path(args.run)))
     lenses = tuple(part for part in args.expect.split(",") if part)
+    if args.command == "seal":
+        return _emit(
+            seal_round(Path(args.run), args.round, lenses, write=args.write)
+        )
     return _emit(validate_saturation(Path(args.run), args.round, lenses))
 
 

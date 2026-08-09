@@ -5,7 +5,7 @@
       "id": 0,
       "name": "setup",
       "file": "phases/phase-0-setup.md",
-      "reference_sections": ["Launcher mode (empty/vague invocation)", "Workspace preflight (Phase 0 · resume)", "Active Session Contract", "Display verbosity (all phases)", "Model routing (per-role) (all phases)"],
+      "reference_sections": ["Workspace preflight (Phase 0 · resume)"],
       "context": {"required": ["STATE.md"], "feature": [], "fix": [], "audit": [], "optional": ["WORKSPACE-PREFLIGHT.json"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     },
     {
@@ -19,21 +19,21 @@
       "id": 2,
       "name": "understand",
       "file": "phases/phase-2-understand.md",
-      "reference_sections": ["Understand & research (Phase 2)", "Adaptive Architecture Deliberation", "Project memory & standards (Phase 2 read · Phase 7 append)", "Memory recall (Phase 2)", "Current-State Pulse / Gate (Phase 2)", "Vault conventions (Phase 2)"],
+      "reference_sections": ["Understand & research (Phase 2)", "Adaptive Architecture Deliberation"],
       "context": {"required": ["STATE.md"], "feature": ["INTENT.md"], "fix": ["PROBLEM.md", "BUG-REPRO.md"], "audit": ["AUDIT-INTENT.md"], "optional": ["CURRENT-STATE.md", "RECALL.md", "STANDARDS-CONTEXT.md", "PROJECT-DELTA-CONTEXT.md", "ADAPTIVE-CLASSIFICATION.json", "VAULT-RECALL.md"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     },
     {
       "id": 3,
       "name": "plan",
       "file": "phases/phase-3-plan.md",
-      "reference_sections": ["Acceptance-criteria template (Phase 3)", "Code mandate (Phase 3 directive · Phase 5 build · Phase 7 review)", "Fix mode (diagnosis) (Phase 1–2)"],
+      "reference_sections": ["Acceptance-criteria template (Phase 3)", "Code mandate (Phase 3 directive · Phase 5 build · Phase 7 review)"],
       "context": {"required": ["STATE.md"], "feature": ["INTENT.md"], "fix": ["PROBLEM.md", "DIAGNOSIS.md"], "audit": ["AUDIT-INTENT.md", "AUDIT.md"], "optional": ["RESEARCH.md", "RECALL.md", "STANDARDS-CONTEXT.md", "ADAPTIVE-CLASSIFICATION.json", "VAULT-RECALL.md"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     },
     {
       "id": 4,
       "name": "review-approval",
       "file": "phases/phase-4-review-approval.md",
-      "reference_sections": ["Build Preview / Risk Gate (Phase 4 → Phase 5)", "Review rubric (Phase 4 plan-gate · Phase 7 code-review)"],
+      "reference_sections": ["Build Preview / Risk Gate (Phase 4 → Phase 5)"],
       "context": {"required": ["STATE.md"], "feature": ["INTENT.md", "PLAN.md", "ACCEPTANCE.md"], "fix": ["PROBLEM.md", "DIAGNOSIS.md", "PLAN.md", "ACCEPTANCE.md"], "audit": ["AUDIT-INTENT.md", "AUDIT.md"], "optional": ["RESEARCH.md", "RECOVERY.md"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     },
     {
@@ -54,7 +54,7 @@
       "id": 7,
       "name": "review-commit",
       "file": "phases/phase-7-review-commit.md",
-      "reference_sections": ["Review rubric (Phase 4 plan-gate · Phase 7 code-review)", "Commit hygiene (Phase 7 atomic local commit)", "Memory Router & Learning Loop (Phase 2 recall · Phase 7 learn)"],
+      "reference_sections": ["Commit hygiene (Phase 7 atomic local commit)"],
       "context": {"required": ["STATE.md"], "feature": ["INTENT.md", "PLAN.md", "ACCEPTANCE.md"], "fix": ["PROBLEM.md", "DIAGNOSIS.md", "BUG-REPRO.md", "PLAN.md", "ACCEPTANCE.md"], "audit": ["AUDIT-INTENT.md", "AUDIT.md"], "optional": ["VERIFICATION.md", "CODE-REVIEW.md", "RECOVERY.md", "ITEMS.jsonl", "EXECUTION-TRACE.json", "ADAPTIVE-CLASSIFICATION.json"], "max_file_bytes": 262144, "max_total_bytes": 1048576}
     }
   ],

@@ -227,6 +227,17 @@ err="$("$SCRIPT" start --root "$missing_root" --run .kimiflow/demo --write 2>&1 
 if [ "$rc" = "2" ]; then pass "invalid_root_write_fails_closed"; else fail "invalid_root_write_fails_closed"; fi
 assert_contains "$err" "cannot resolve root" "invalid_root_write_reports_resolution_error"
 
+out="$(run_active init-state --run .kimiflow/bootstrap --mode full --scope trivial --language de --title "Deterministischer Start" --write)"
+assert_jq "$out" '.status == "initialized" and .mode == "feature" and .scope == "large" and .alias == "full"' "init_state_normalizes_full_alias"
+assert_contains "$(cat "$REPO/.kimiflow/bootstrap/STATE.md")" "Intent contract: 4" "init_state_writes_contract4"
+assert_contains "$(cat "$REPO/.kimiflow/bootstrap/STATE.md")" "Frontend quality contract: 1" "init_state_writes_frontend_selector"
+if run_active init-state --run .kimiflow/bootstrap --mode feature --scope large --language de --title "Overwrite" --write >/dev/null 2>&1; then
+  fail "init_state_refuses_existing_state"
+else
+  pass "init_state_refuses_existing_state"
+fi
+rm -rf "$REPO/.kimiflow/bootstrap"
+
 out="$(run_active start --run .kimiflow/demo --write)"
 assert_jq "$out" '.present == true and .run == ".kimiflow/demo" and .stale_risk == "current" and .item_counts.open == 0 and .owner.host == "codex" and .owner.session_id == "owner-session"' "start_creates_owned_active_session"
 [ -f "$REPO/.kimiflow/session/ACTIVE_RUN.json" ] && pass "start_writes_active_file" || fail "start_writes_active_file"
@@ -464,8 +475,9 @@ write_phase_manifest
 out="$(run_active start --run .kimiflow/demo --write)"
 assert_jq "$out" '.phase_reads_required == true' "start_with_manifest_sets_phase_reads"
 grep -q '^Phase reads required: yes' "$REPO/.kimiflow/demo/STATE.md" && pass "start_with_manifest_marks_state" || fail "start_with_manifest_marks_state"
-out="$(run_active phase-read --run .kimiflow/demo --phase 0 --file phases/phase-0.md --write)"
-assert_jq "$out" '.status == "phase_read_recorded" and .record.phase == 0 and .record.file == "phases/phase-0.md"' "phase_read_records_phase"
+out="$(run_active phase-read --run .kimiflow/demo --phase 0 --file phases/phase-0.md --packet --write)"
+assert_jq "$out" '.status == "phase_read_recorded" and (.record | not) and (.context_shadow | not) and (.context_rollover | not)' "phase_read_packet_omits_persisted_admin"
+assert_jq "$out" '.phase_packet.phase == 0 and .phase_packet.file == "phases/phase-0.md" and .phase_packet.content == "phase 0\n" and .phase_packet.reference_sections == [] and .phase_packet.estimated_tokens > 0' "phase_read_packet_returns_bound_context"
 out="$(run_active phase-read-status --run .kimiflow/demo --json)"
 assert_jq "$out" '.phase_reads_required == true and .records.reads["0"].file == "phases/phase-0.md"' "phase_read_status_reports_record"
 out="$(run_active phase-read-gate --run .kimiflow/demo --through-phase 1)"
@@ -496,18 +508,41 @@ reset_repo
 write_phase_manifest
 sed -i.bak \
   -e 's/Phase 0: done/Phase 0: in-progress/' \
-  -e 's/Phase 1: done/Phase 1: in-progress/' \
+  -e 's/Phase 1: done/Phase 1: open/' \
   -e 's/Phase 2: done/Phase 2: open/' \
   -e 's/Phase 3: done/Phase 3: open/' \
   -e 's/Phase 4: done/Phase 4: open/' \
   -e 's/Phase 5: in-progress/Phase 5: open/' \
   "$REPO/.kimiflow/demo/STATE.md" && rm "$REPO/.kimiflow/demo/STATE.md.bak"
 run_active start --run .kimiflow/demo --write >/dev/null
+run_active phase-read --run .kimiflow/demo --phase 0 --file phases/phase-0.md --write >/dev/null
 out="$(run_active phase-read --run .kimiflow/demo --phase 1 --file phases/phase-1.md --write)"
-assert_jq "$out" '.phase_progress_repaired == true' "phase_read_repairs_adjacent_in_progress_handoff"
+assert_jq "$out" '.phase_progress_repaired == true' "phase_read_advances_recorded_phase_handoff"
 grep -q '^Phase 0: done$' "$REPO/.kimiflow/demo/STATE.md" \
   && pass "phase_read_closes_previous_phase" \
   || fail "phase_read_closes_previous_phase"
+grep -q '^Phase 1: in-progress$' "$REPO/.kimiflow/demo/STATE.md" \
+  && pass "phase_read_opens_current_phase" \
+  || fail "phase_read_opens_current_phase"
+
+reset_repo
+write_phase_manifest
+rm "$REPO/.kimiflow/demo/STATE.md"
+run_active init-state --run .kimiflow/demo --mode feature --scope large --language en --title "Phase boundary" --write >/dev/null
+sed -i.bak '/^Execution contract:/d' "$REPO/.kimiflow/demo/STATE.md" && rm "$REPO/.kimiflow/demo/STATE.md.bak"
+run_active start --run .kimiflow/demo --mode feature --scope large --write >/dev/null
+run_active phase-read --run .kimiflow/demo --phase 0 --file phases/phase-0.md --write >/dev/null
+run_active phase-read --run .kimiflow/demo --phase 1 --file phases/phase-1.md --write >/dev/null
+if run_active phase-read --run .kimiflow/demo --phase 2 --file phases/phase-2.md --write >/dev/null 2>&1; then
+  fail "phase_read_blocks_phase2_before_confirmed_intent_lock"
+else
+  pass "phase_read_blocks_phase2_before_confirmed_intent_lock"
+fi
+printf '{"schema_version":2,"contract":4}\n' > "$REPO/.kimiflow/demo/INTENT-LOCK.json"
+lock_digest="sha256:$(shasum -a 256 "$REPO/.kimiflow/demo/INTENT-LOCK.json" | awk '{print $1}')"
+run_active pin-intent-lock --run .kimiflow/demo --digest "$lock_digest" --write >/dev/null
+out="$(run_active phase-read --run .kimiflow/demo --phase 2 --file phases/phase-2.md --write)"
+assert_jq "$out" '.status == "phase_read_recorded"' "phase_read_allows_phase2_after_pinned_intent_lock"
 
 reset_repo
 write_phase_manifest

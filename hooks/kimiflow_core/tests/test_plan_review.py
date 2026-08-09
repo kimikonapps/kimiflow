@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -221,6 +223,211 @@ class PlanReviewTests(unittest.TestCase):
         )
         active_path.write_text(json.dumps(active) + "\n", encoding="utf-8")
 
+    def pin_generated_saturation(
+        self, run: Path, round_number: int, lenses: tuple[str, ...]
+    ) -> None:
+        result, pins = plan_review.prepare_saturation_pins(
+            run, round_number, lenses
+        )
+        self.assertTrue(result.is_open, result)
+        active_path = run.parent / "session" / "ACTIVE_RUN.json"
+        active = json.loads(active_path.read_text(encoding="utf-8"))
+        active["plan_saturation_receipts"] = pins
+        active_path.write_text(json.dumps(active) + "\n", encoding="utf-8")
+
+    def write_standard_candidates(
+        self, run: Path, round_number: int, *candidate_lines: str
+    ) -> None:
+        self.candidate_file(
+            run,
+            "a",
+            ("intent-trace", "state-space", "scope-subtraction"),
+            *candidate_lines,
+            round_number=round_number,
+        )
+        self.candidate_file(
+            run,
+            "b",
+            (
+                "identity-binding",
+                "evidence-safety",
+                "time-lifecycle",
+                "aggregation-verdict",
+            ),
+            round_number=round_number,
+        )
+
+    def test_seal_round_generates_and_validates_review_administration(self) -> None:
+        run = self.make_run()
+        lenses = ("a", "b")
+        self.write_standard_candidates(
+            run,
+            1,
+            "CANDIDATE HIGH AC-1 :: Missing zero-row boundary. :: "
+            "family=zero-row-boundary :: verify=verifier:check zero-row result",
+        )
+
+        result = plan_review.seal_round(run, 1, lenses, write=True)
+
+        self.assertTrue(result.is_open, result)
+        self.assertEqual("sealed", result.reason)
+        self.assertIn("FINDING HIGH", (run / "findings/r1-a.md").read_text())
+        self.assertEqual("NONE\n", (run / "findings/r1-b.md").read_text())
+        self.assertTrue((run / "review-evidence/plan-r1-zero-row-boundary.txt").is_file())
+        self.assertTrue((run / "plan-review-saturation/r1.json").is_file())
+        self.assertIn(
+            "kimiflow:plan-review-summary round=1",
+            (run / "REVIEW.md").read_text(),
+        )
+        self.pin_generated_saturation(run, 1, lenses)
+        saturated = plan_review.validate_saturation(run, 1, lenses)
+        self.assertTrue(saturated.is_open, saturated)
+
+    def test_contract_profile_seals_three_lenses_without_matrix(self) -> None:
+        run = self.make_run()
+        state_path = run / "STATE.md"
+        state_path.write_text(
+            state_path.read_text().replace(
+                "Plan review profile: standard", "Plan review profile: contract"
+            )
+        )
+        self.candidate_file(
+            run, "a", ("intent-trace", "scope-subtraction"), round_number=1
+        )
+        self.candidate_file(
+            run, "b", ("identity-binding", "evidence-safety"), round_number=1
+        )
+        self.candidate_file(
+            run,
+            "c",
+            ("state-space", "time-lifecycle", "aggregation-verdict"),
+            round_number=1,
+        )
+
+        result = plan_review.seal_round(
+            run, 1, ("a", "b", "c"), write=True
+        )
+
+        self.assertTrue(result.is_open, result)
+        self.assertFalse((run / "CONTRACT-MATRIX.json").exists())
+        self.pin_generated_saturation(run, 1, ("a", "b", "c"))
+        saturated = plan_review.validate_saturation(run, 1, ("a", "b", "c"))
+        self.assertTrue(saturated.is_open, saturated)
+
+    def test_seal_shell_composes_generation_pin_validation_and_resolver(self) -> None:
+        run = self.make_run()
+        lenses = ("a", "b")
+        self.write_standard_candidates(
+            run,
+            1,
+            "CANDIDATE HIGH AC-1 :: Missing zero-row boundary. :: "
+            "family=zero-row-boundary :: verify=verifier:check zero-row result",
+        )
+        script = Path(__file__).resolve().parents[2] / "plan-review-gate.sh"
+        environment = os.environ.copy()
+        environment["KIMIFLOW_HOST"] = "codex"
+
+        completed = subprocess.run(
+            [
+                str(script),
+                "seal",
+                "--run",
+                ".kimiflow/demo",
+                "--round",
+                "1",
+                "--expect",
+                "a,b",
+                "--write",
+            ],
+            cwd=run.parent.parent,
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertIn("reason=sealed", completed.stdout)
+        self.assertIn("\topen-findings\t", completed.stdout)
+        saturated = plan_review.validate_saturation(run, 1, lenses)
+        self.assertTrue(saturated.is_open, saturated)
+
+        (run / "PLAN.md").write_text("# Plan\nAC-1 fixed zero-row boundary\n")
+        self.write_standard_candidates(run, 2)
+        closeout = subprocess.run(
+            [
+                str(script),
+                "seal",
+                "--run",
+                ".kimiflow/demo",
+                "--round",
+                "2",
+                "--expect",
+                "a,b",
+                "--write",
+            ],
+            cwd=run.parent.parent,
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(0, closeout.returncode, closeout.stderr)
+        self.assertIn("reason=sealed", closeout.stdout)
+        self.assertIn("OPEN\t0\tclean\t", closeout.stdout)
+        saturated = plan_review.validate_saturation(run, 2, lenses)
+        self.assertTrue(saturated.is_open, saturated)
+
+    def test_seal_round_two_resolves_absent_prior_family(self) -> None:
+        run = self.make_run()
+        lenses = ("a", "b")
+        self.write_standard_candidates(
+            run,
+            1,
+            "CANDIDATE HIGH AC-1 :: Missing zero-row boundary. :: "
+            "family=zero-row-boundary :: verify=verifier:check zero-row result",
+        )
+        first = plan_review.seal_round(run, 1, lenses, write=True)
+        self.assertTrue(first.is_open, first)
+        self.pin_generated_saturation(run, 1, lenses)
+
+        (run / "PLAN.md").write_text("# Plan\nAC-1 fixed zero-row boundary\n")
+        self.write_standard_candidates(run, 2)
+        second = plan_review.seal_round(run, 2, lenses, write=True)
+
+        self.assertTrue(second.is_open, second)
+        self.pin_generated_saturation(run, 2, lenses)
+        saturated = plan_review.validate_saturation(run, 2, lenses)
+        self.assertTrue(saturated.is_open, saturated)
+        findings = "".join(
+            (run / f"findings/r2-{lens}.md").read_text() for lens in lenses
+        )
+        self.assertIn("RESOLVED class=zero-row-boundary", findings)
+        self.assertIn(
+            "outcome=not_reproduced",
+            (run / "review-evidence/plan-r2-zero-row-boundary.txt").read_text(),
+        )
+
+    def test_seal_round_three_rejects_new_material_candidate(self) -> None:
+        run = self.make_run()
+        self.write_standard_candidates(
+            run,
+            3,
+            "CANDIDATE HIGH AC-1 :: Late material defect. :: "
+            "family=late-defect :: verify=verifier:check late defect",
+        )
+
+        result = plan_review.seal_round(run, 3, ("a", "b"), write=True)
+
+        self.assertFalse(result.is_open)
+        self.assertEqual("closeout-new-candidate", result.reason)
+
+    def test_seal_requires_explicit_write(self) -> None:
+        run = self.make_run()
+        result = plan_review.seal_round(run, 1, ("a", "b"), write=False)
+        self.assertFalse(result.is_open)
+        self.assertEqual("seal-write-required", result.reason)
+
     def test_contract_matrix_requires_pairwise_state_coverage(self) -> None:
         run = self.make_run()
         self.write_matrix(run)
@@ -246,6 +453,43 @@ class PlanReviewTests(unittest.TestCase):
 
         self.assertFalse(result.is_open)
         self.assertEqual("stale-plan", result.reason)
+
+    def test_contract_matrix_accepts_prefixed_plan_digest(self) -> None:
+        run = self.make_run()
+        self.write_matrix(run)
+        matrix_path = run / "CONTRACT-MATRIX.json"
+        matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
+        matrix["plan_sha256"] = "sha256:" + matrix["plan_sha256"]
+        matrix_path.write_text(json.dumps(matrix) + "\n", encoding="utf-8")
+
+        result = plan_review.validate_matrix(run)
+
+        self.assertTrue(result.is_open, result)
+
+    def test_contract_matrix_accepts_safe_human_readable_identifiers(self) -> None:
+        run = self.make_run()
+        self.write_matrix(run)
+        matrix_path = run / "CONTRACT-MATRIX.json"
+        matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
+        matrix["dimensions"][0]["name"] = "input_state"
+        for case in matrix["cases"]:
+            case["values"]["input_state"] = case["values"].pop("measurement")
+        case_ids = {}
+        for index, case in enumerate(matrix["cases"], start=1):
+            case_ids[case["id"]] = f"C{index}"
+            case["id"] = f"C{index}"
+        matrix["invariants"][0]["id"] = "I1"
+        matrix["invariants"][0]["accept_case"] = case_ids[
+            matrix["invariants"][0]["accept_case"]
+        ]
+        matrix["invariants"][0]["reject_case"] = case_ids[
+            matrix["invariants"][0]["reject_case"]
+        ]
+        matrix_path.write_text(json.dumps(matrix) + "\n", encoding="utf-8")
+
+        result = plan_review.validate_matrix(run)
+
+        self.assertTrue(result.is_open, result)
 
     def test_contract_matrix_rejects_unknown_acceptance_id(self) -> None:
         run = self.make_run()

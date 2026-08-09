@@ -269,8 +269,8 @@ if [ -n "$conformance_contract" ]; then
 fi
 
 # New plan reviews opt into one mechanically broad, globally bounded contract. Legacy runs
-# remain resumable. Contract-heavy plans additionally prove a PLAN-bound pairwise state matrix
-# before reviewer tokens are spent.
+# remain resumable. Contract-heavy plans receive the third state/aggregation lens; they do not
+# duplicate the plan into a model-authored cross-product artifact before review.
 plan_review_contract_count="$(kimiflow_state_value_count "$state" "Plan review contract")"
 plan_review_contract_count="${plan_review_contract_count:-0}"
 plan_review_contract="$(kimiflow_state_value "$state" "Plan review contract" | awk '{print $1}')"
@@ -307,23 +307,7 @@ elif [ "$plan_review_contract_count" -eq 1 ]; then
     add_blocker "plan_review_profile_missing"
   else
     case "$plan_review_profile" in
-      standard) ;;
-      contract)
-        plan_review_gate="$SCRIPT_DIR/plan-review-gate.sh"
-        if [ ! -x "$plan_review_gate" ]; then
-          add_blocker "plan_review_gate_missing"
-        else
-          plan_review_out="$("$plan_review_gate" matrix --run "$run_dir" 2>/dev/null)"
-          plan_review_rc=$?
-          plan_review_status="$(printf '%s\n' "$plan_review_out" | cut -f2)"
-          plan_review_reason="$(printf '%s\n' "$plan_review_out" | cut -f3 | sed 's/^reason=//')"
-          if [ "$plan_review_rc" -ne 0 ]; then
-            add_blocker "plan_review_matrix_error"
-          elif [ "$plan_review_status" != "OPEN" ]; then
-            add_blocker "plan_review_matrix_closed:${plan_review_reason:-invalid}"
-          fi
-        fi
-        ;;
+      standard|contract) ;;
       *) add_blocker "plan_review_profile_invalid" ;;
     esac
   fi
@@ -385,33 +369,35 @@ if [ -n "$architecture_contract" ]; then
           *) add_blocker "architecture_principle_count_invalid" ;;
         esac
 
-        [ "$(grep -c '^## Adaptive Architecture Deliberation[[:space:]]*$' "$understanding" 2>/dev/null || true)" -eq 1 ] \
-          || add_blocker "architecture_section_missing"
+        architecture_section_count="$(grep -c '^## Adaptive Architecture Deliberation[[:space:]]*$' "$understanding" 2>/dev/null || true)"
+        [ "$architecture_section_count" -eq 1 ] \
+          || add_blocker "architecture_section_count_invalid:${architecture_section_count}"
+        architecture_note="$(awk '
+          /^## Adaptive Architecture Deliberation[[:space:]]*$/ { in_note=1; next }
+          in_note && /^## / { exit }
+          in_note { print }
+        ' "$understanding" 2>/dev/null)"
 
         for label in \
           'Problem behind request:' 'Operating envelope:' 'Architecture status:' \
           'Quality drivers:' 'Project principles:' 'Preferred approach:' \
           'Strongest alternative:' 'Trade-off / debt:' \
           'Reversibility / evolution trigger:' 'Falsification check:'; do
-          [ "$(grep -cF "$label" "$understanding" 2>/dev/null || true)" -eq 1 ] \
-            || add_blocker "architecture_field_missing:$(printf '%s' "$label" | tr '[:upper:] /' '[:lower:]__' | tr -cd '[:alnum:]_:_-')"
+          field_count="$(printf '%s\n' "$architecture_note" | grep -cF "$label" 2>/dev/null || true)"
+          [ "$field_count" -eq 1 ] \
+            || add_blocker "architecture_field_count_invalid:$(printf '%s' "$label" | tr '[:upper:] /' '[:lower:]__' | tr -cd '[:alnum:]_:_-'):${field_count}"
         done
-        grep -Eq '^Architecture status: (fit|evolve|replace)$' "$understanding" 2>/dev/null \
+        printf '%s\n' "$architecture_note" | grep -Eq '^Architecture status: (fit|evolve|replace)$' \
           || add_blocker "architecture_status_invalid"
 
-        note_words="$(awk '
-          /^## Adaptive Architecture Deliberation[[:space:]]*$/ { in_note=1; next }
-          in_note && /^## / { in_note=0 }
-          in_note { count += NF }
-          END { print count + 0 }
-        ' "$understanding" 2>/dev/null)"
+        note_words="$(printf '%s\n' "$architecture_note" | awk '{ count += NF } END { print count + 0 }')"
         [ "$note_words" -le 450 ] || add_blocker "architecture_note_over_budget:${note_words}"
 
-        principle_lines="$(awk '
+        principle_lines="$(printf '%s\n' "$architecture_note" | awk '
           /^Project principles:[[:space:]]*$/ { in_principles=1; next }
           in_principles && /^Preferred approach:/ { in_principles=0 }
           in_principles && /^- Type:/ { print }
-        ' "$understanding" 2>/dev/null)"
+        ')"
         principle_count="$(printf '%s\n' "$principle_lines" | grep -c .)"
         [ "$principle_count" -eq "$marker_principles" ] \
           || add_blocker "architecture_principle_marker_mismatch"
