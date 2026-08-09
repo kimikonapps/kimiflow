@@ -22,7 +22,7 @@ checks the current codebase, and binds important claims to executable evidence.
 
 <p align="center">
   <a href="https://kimikonapps.github.io/kimiflow/">
-    <img src="docs/kimiflow-graph.svg" alt="Kimiflow workflow: confirm product intent, inspect current code, execute evidence, expand material findings through five bug-cascade probes, repair one proved root, retain verified learning in human-readable memory, and commit locally.">
+    <img src="docs/kimiflow-graph.svg" alt="Kimiflow 0.4 workflow: confirm product intent, inspect current code, plan large Codex work in one fresh context, seal at most three global plan-review rounds, execute evidence, repair one proved cascade root, retain verified learning, and commit locally.">
   </a>
   <br>
   <sub><a href="https://kimikonapps.github.io/kimiflow/">Explore the interactive graph</a></sub>
@@ -34,20 +34,24 @@ checks the current codebase, and binds important claims to executable evidence.
 reviewable local **findings**, including mechanically bounded bug-cascade analysis.
 <!-- capabilities:end -->
 
-## What is new
+## How Kimiflow 0.4 works
 
-- **Decision-bearing prose now gets one bounded same-pass quality check.** The existing author or reviewer
-  preserves meaning and evidence, corrects generic or inflated wording in place, and never adds another
-  model call or gate. The approach adapts the minimum-effective-edit idea from
-  [petergyang/no-ai-slop](https://github.com/petergyang/no-ai-slop); it is not an AI-authorship detector.
-- **Bug cascades are repaired as one cause, not many symptoms.** Every material review class must check
-  direct callers, data flow, shared state, assumption users, and error consequences. Related findings share
-  one proved root cause, one repair, and retained regression evidence.
-- **Cross-project memory no longer needs Obsidian.** Verified portable learnings become ordinary Markdown
-  notes under `~/.kimiflow/memory/`, with a human-readable `INDEX.md`, bounded related-note links, and
-  revocable project bindings. Ask the model when you want to query that graph; no database UI is required.
-- **Nothing is promoted merely because a run produced it.** Project learnings still need current evidence and
-  repeated verified use before they can enter global memory. A contradiction or stale source revokes trust.
+- **Plan review is finite and has three distinct jobs.** Round 1 runs independent A/B/C discovery, round 2
+  uses one fresh whole-contract verifier after repairs, and round 3 only proves resolution. A plan or model
+  change cannot restart the global limit.
+- **Contract review checks the full state space directly.** Reviewers challenge
+  legal, invalid, missing, boundary, lifecycle, identity, counting, threshold, and precedence cases directly
+  against the confirmed contract. One deterministic seal binds their candidates, evidence, findings, and
+  resolution before the gate can open.
+- **Large Codex planning starts once in a fresh context.** After confirmation, one top-tier planning worker
+  receives the durable contract and current code evidence and owns the plan through review. A second
+  independent plan is reserved for a genuine architecture or irreversible-contract fork.
+- **Context loading is digest-bound and pressure-aware.** Each phase receives one bounded packet, and a large
+  context rolls over only when measured pressure requires it. Review, tests, and executable evidence remain
+  mandatory where their contracts apply.
+- **Token and quality claims can be compared honestly.** A local, model-free evaluator validates recorded
+  Plain-vs-Kimiflow evidence and reports paired differences. It never starts either arm and is intended only
+  for disposable benchmark projects—not private or production projects.
 
 The execution runtime is model-agnostic. Codex and Claude Code are built-in terminal adapters, while
 other coding agents can implement the same versioned JSON-stdio contract. Strict read-only Work-Units
@@ -205,9 +209,11 @@ does not reimplement Calm. Main may run several Ships only for disjoint, self-co
 A tightly coupled build intentionally starts one Ship.
 Independent research and semantic review use separate visible Scouts; `small` code review uses two review axes
 and `large`/release-critical review uses three when the FirstMate crew is available.
-Plan review freezes one PLAN version and runs its lenses as one batch. Contract-heavy plans add a pairwise state
-matrix and family-wide counterexample checks. The plan gate has three global rounds maximum—discovery, repair
-verification, and resolution-only closeout—so a changed plan or model cannot restart the loop.
+Plan review freezes one PLAN version and runs its independent lenses as one bounded batch. Contract-heavy plans
+challenge A/B/C state-space and family-wide counterexamples directly against the confirmed artifacts. The plan
+gate has three global rounds maximum—independent discovery, one fresh
+whole-contract repair verifier, and resolution-only closeout. A deterministic seal binds candidates, evidence,
+findings, hashes, and resolution, so a changed plan or model cannot restart or talk past the loop.
 
 The adapter mechanically restricts which crew actions each role can call; it is not an OS sandbox around Pi's
 shell. Brief boundaries plus Kimiflow's integration/final Git and evidence gates detect forbidden product writes.
@@ -385,10 +391,10 @@ remains compatible.
 
 ## Demo
 
-![Kimiflow feature flow from confirmed intent through executable evidence, bug-cascade repair, human-readable memory, and an atomic local commit](docs/demo/kimiflow.gif)
+![Kimiflow 0.4 feature flow from confirmed intent and current code through fresh large-run planning, sealed three-round plan review, executable evidence, root-cause review, and an atomic local commit](docs/demo/kimiflow.gif)
 
-> Scripted illustration of the current feature conversation, codebase check, evidence classes,
-> relevance-aware review, and local commit. The source and real-recording guide
+> Scripted 0.4 illustration of the feature conversation, fresh large-run planning boundary,
+> three-round sealed plan review, executable evidence, root-cause review, and local commit. The source and real-recording guide
 > live in [`docs/demo/`](docs/demo/).
 
 ## Modes
@@ -476,8 +482,10 @@ mechanizes the evidence boundaries without pretending a tool can prove that no b
 - Research may correct implementation choices, but only `required` constraints may expand scope.
 - Conformance records at most five material decisions; `small` adds no model call and `large` reuses its existing independent verifier.
 - Execution uses three fixed quality profiles with an explicit selection reason and one compact local trace; hard pressure removes optional breadth, not verification quality.
-- A second planner appears only for a real architecture or irreversible contract fork, not because a
-  task merely looks large.
+- One planner is the default. On large Codex runs it works in one fresh worker after confirmation, using the
+  durable run artifacts as its context.
+- A second independent plan appears only for a real architecture or irreversible contract fork, not because
+  a task merely looks large.
 - The top model owns orchestration, synthesis, planning, review verdicts, and risky diagnosis.
 - A deterministic classifier elevates scope from subsystem, data, security, integration, and irreversibility
   evidence, but never invents a missing product decision.

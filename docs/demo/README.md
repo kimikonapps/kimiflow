@@ -1,9 +1,9 @@
 # docs/demo — the kimiflow demo GIF
 
-The README's short demo links here. The committed clip is a scripted overview of the current feature
-flow: product dialogue → explicit scope readiness → current-code inspection → focused research →
-evidence-first planning and verification → five-surface bug-cascade review → root-cause repair →
-human-readable memory → atomic local commit.
+The README's short demo links here. The committed clip is a scripted overview of the 0.4 feature
+flow: product dialogue → explicit scope readiness → current-code inspection → fresh large-run planning →
+sealed three-round plan review → executable verification → five-surface bug-cascade review →
+root-cause repair → paired-outcome measurement boundary → atomic local commit.
 
 Two ways to produce it. **Prefer A** — a real recording is the honest, credible artifact. B is a
 cosmetic placeholder, clearly labelled.
@@ -32,16 +32,17 @@ agg --theme monokai --font-size 18 kimiflow.cast kimiflow.gif
 ```
 
 **Tips:** terminal ~100×30, a high-contrast theme, and include the scope discussion, both explicit
-confirmations, one executable-evidence gate, relevance classification, and the final local commit.
+confirmations, the fresh planning boundary for a large Codex run, the three bounded review roles, one
+executable-evidence gate, relevance classification, and the final local commit.
 `kimiflow.cast` is plain JSON; trim dead air before converting if a phase ran long. A current capture should
-show one material finding expanding through the five cascade probes and the final verified learning entering
-the local Markdown graph.
+show one material finding expanding through the five cascade probes. If paired outcome evidence is mentioned,
+make clear that its evaluator only reads separately recorded disposable-project runs and never starts them.
 
 ## B — branded illustration (placeholder, clearly labelled)
 
 A deterministic, scripted reconstruction for a clean branded loop **before** a real capture exists.
-It is **not** a model run — [`play.sh`](play.sh) walks the current confirmed-intent, evidence-first,
-bug-cascade, and human-readable-memory flow with pacing and ANSI colour. Edit `play.sh` to change wording;
+It is **not** a model run — [`play.sh`](play.sh) walks the current confirmed-intent, compact-context,
+sealed-review, executable-evidence, and bug-cascade flow with pacing and ANSI colour. Edit `play.sh` to change wording;
 re-run the tape to re-render.
 ([`play-refusals.sh`](play-refusals.sh) holds an alternative *"four moments the gates refuse"* montage
 — point the tape's `bash play.sh` at it to render that instead.)

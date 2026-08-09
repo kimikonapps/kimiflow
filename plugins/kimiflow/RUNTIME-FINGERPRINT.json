@@ -26,16 +26,16 @@
       "sha256": "sha256:b796986e145d409f27c8ec0edaaf223ee51bdbbc2fa4477fe2d6c0984d5adf5b"
     },
     {
-      "bytes": 40464,
+      "bytes": 41349,
       "mode": "0644",
       "path": "README.de.md",
-      "sha256": "sha256:bf03d09ded21b1247e10609245226b9677226f06e2c5f3ee86d15974165f1b0a"
+      "sha256": "sha256:3e23df627b5b749e110978e829acf85a6f0638d5b16f24533798e5337184cd04"
     },
     {
-      "bytes": 46487,
+      "bytes": 47181,
       "mode": "0644",
       "path": "README.md",
-      "sha256": "sha256:78a4d818d102579a9d8face906bd1587cd2e7c266c289e6546a101494c45ff7d"
+      "sha256": "sha256:01216bea35c2ef371b136bfcc87c200ba26c3351cbf3857a21cfc8638a9a77ba"
     },
     {
       "bytes": 16995,
@@ -50,22 +50,22 @@
       "sha256": "sha256:8454a2f0e9209b16f66ca482f2ac61ed3123a76c51c57cdeb461722b43587fcc"
     },
     {
-      "bytes": 3360,
+      "bytes": 3576,
       "mode": "0644",
       "path": "docs/demo/README.md",
-      "sha256": "sha256:060bc833741512a3cb59945ff56459030c62c50ed1236740d68a46787aeb0a39"
+      "sha256": "sha256:1f7cf94f3d0d5bbaa42ae23df930bf8834e654af1146660355426739d61cbaaf"
     },
     {
-      "bytes": 853,
+      "bytes": 847,
       "mode": "0644",
       "path": "docs/demo/kimiflow-demo.tape",
-      "sha256": "sha256:57e897cef5b54d971cb174c8691b0c86f2a745b26ebe2dc8e7106aeef80b9d8e"
+      "sha256": "sha256:99ec1d766ebfd5310f765c217f1817d8c68c2a7f9eed940df1e84e6f74ed5c9c"
     },
     {
-      "bytes": 213701,
+      "bytes": 229313,
       "mode": "0644",
       "path": "docs/demo/kimiflow.gif",
-      "sha256": "sha256:9ebfac0ebf71c6a3250a22a639bf7c4a4db85f52bf4d5d04d89f72018d5e1891"
+      "sha256": "sha256:a7af96ec35ac93dc8a92685886035deebf943595018b1468a46a442f7e989381"
     },
     {
       "bytes": 2050,
@@ -74,16 +74,16 @@
       "sha256": "sha256:b4fde47c8d8d2d6a5b95d586e95012d6539ca44d31836b1d4c53a3dca7eedc77"
     },
     {
-      "bytes": 2993,
+      "bytes": 3280,
       "mode": "0755",
       "path": "docs/demo/play.sh",
-      "sha256": "sha256:e8fa94380e649335736f573aca6ae47772527db2e083e2dd49178bbac4eab1f1"
+      "sha256": "sha256:5589799e736a9190c922b8b2fb0469e09a14b9b243e90dc321ed24c8b6a8ad5e"
     },
     {
-      "bytes": 11746,
+      "bytes": 11434,
       "mode": "0644",
       "path": "docs/kimiflow-graph.svg",
-      "sha256": "sha256:c33fb6f701205283277189e25c4006810e40bc0697357e9711400a20e225ef06"
+      "sha256": "sha256:c94d8745eb13fb210c98eb26778e7813029452bd5b934905bb993259c4d86189"
     },
     {
       "bytes": 4459,
@@ -1094,6 +1094,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:de1283f717ac8752f3dc31fb57c3786110a6f3d4b74f67683d37ad29c2302390",
+  "runtime_fingerprint": "sha256:175b9000a005283ee7bddf331ad6339b03c2d81f377d9eb8d1884b18060a351d",
   "schema_version": 1
 }

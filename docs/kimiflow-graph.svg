@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" role="img" aria-labelledby="title desc">
   <title id="title">Kimiflow confirmed-intent and evidence-first workflow</title>
-  <desc id="desc">An eight-phase engineering workflow that confirms product intent, inspects current code, verifies executable evidence, expands material findings into bounded bug cascades, writes safe durable learnings into human-readable cross-project memory, and creates an atomic local commit.</desc>
+  <desc id="desc">Kimiflow 0.4 is an eight-phase engineering workflow that confirms product intent, plans large Codex work in one fresh context, seals at most three global plan-review rounds, verifies executable evidence, repairs a proved bug-cascade root, and creates an atomic local commit.</desc>
   <style>
     text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #1f2328; }
     .title { font-size: 24px; font-weight: 600; letter-spacing: .8px; }
@@ -54,8 +54,8 @@
   </defs>
 
   <rect class="background" width="1200" height="820" rx="18"/>
-  <text class="title" x="600" y="32" text-anchor="middle">KIMIFLOW · CONFIRMED INTENT → EXECUTABLE EVIDENCE</text>
-  <text class="subtitle" x="600" y="55" text-anchor="middle">Confirm intent · prove current behavior · repair one cascade root · retain only verified learning.</text>
+  <text class="title" x="600" y="32" text-anchor="middle">KIMIFLOW 0.4 · FINITE REVIEW → EXECUTABLE EVIDENCE</text>
+  <text class="subtitle" x="600" y="55" text-anchor="middle">Confirm intent · plan once in fresh context · seal ≤3 review rounds · prove current behavior.</text>
 
   <g aria-hidden="true">
     <path class="spoke" d="M600 408L600 190"/>
@@ -140,10 +140,10 @@
     <text class="node-sub" x="257" y="720" text-anchor="middle">checks → evidence-bound learning</text>
 
     <rect class="node evidence" x="42" y="350" width="193" height="112" rx="14"/>
-    <text class="node-title" x="138.5" y="377" text-anchor="middle">Evidence contracts</text>
-    <text class="node-sub" x="138.5" y="400" text-anchor="middle">review · spike · runtime</text>
-    <text class="node-sub" x="138.5" y="421" text-anchor="middle">plan ↔ verification</text>
-    <text class="node-sub" x="138.5" y="444" text-anchor="middle">no prose-only pass</text>
+    <text class="node-title" x="138.5" y="377" text-anchor="middle">Bounded plan review</text>
+    <text class="node-sub" x="138.5" y="400" text-anchor="middle">R1 · independent A / B / C</text>
+    <text class="node-sub" x="138.5" y="421" text-anchor="middle">R2 repair · R3 resolution</text>
+    <text class="node-sub" x="138.5" y="444" text-anchor="middle">deterministic seal · direct checks</text>
   </g>
 
   <g>
@@ -166,11 +166,11 @@
 
     <ellipse class="phase" cx="790" cy="565" rx="66" ry="42"/>
     <text class="phase-label" x="790" y="560" text-anchor="middle">3 · Plan</text>
-    <text class="phase-sub" x="790" y="580" text-anchor="middle">evidence + ACs</text>
+    <text class="phase-sub" x="790" y="580" text-anchor="middle">fresh worker + ACs</text>
 
     <ellipse class="phase" cx="600" cy="630" rx="66" ry="42"/>
     <text class="phase-label" x="600" y="625" text-anchor="middle">4 · Plan review</text>
-    <text class="phase-sub" x="600" y="645" text-anchor="middle">falsifiers</text>
+    <text class="phase-sub" x="600" y="645" text-anchor="middle">A/B/C · ≤3 rounds</text>
 
     <ellipse class="phase" cx="410" cy="565" rx="66" ry="42"/>
     <text class="phase-label" x="410" y="560" text-anchor="middle">5 · Build</text>
@@ -185,12 +185,5 @@
     <text class="phase-sub" x="410" y="255" text-anchor="middle">cascade + commit</text>
   </g>
 
-  <g transform="translate(414 790)">
-    <line class="legend-line" x1="0" y1="0" x2="34" y2="0" stroke="#0969da"/>
-    <text class="edge-label" x="42" y="4">normal phase edge</text>
-    <line class="legend-line" x1="185" y1="0" x2="219" y2="0" stroke="#bc4c00" stroke-dasharray="8 7"/>
-    <text class="edge-label" x="227" y="4">automatic feedback</text>
-    <line class="legend-line" x1="380" y1="0" x2="414" y2="0" stroke="#6e7781" stroke-dasharray="3 6"/>
-    <text class="edge-label" x="422" y="4">context / evidence</text>
-  </g>
+  <text class="edge-label" x="600" y="794" text-anchor="middle">0.4 · digest-bound phase packets · measured context rollover · paired outcome evidence from disposable benchmark runs</text>
 </svg>

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # kimiflow demo — SCRIPTED ILLUSTRATION of the current feature workflow, NOT a
-# captured model run. It shows feature dialogue, current-code inspection,
-# evidence-first planning, bug-cascade review, human-readable memory, and a local commit. Rendered to
+# captured model run. It shows feature dialogue, current-code inspection, fresh large-run planning,
+# sealed three-round review, executable evidence, bug-cascade review, and a local commit. Rendered to
 # a GIF by kimiflow-demo.tape. For a REAL run, see docs/demo/README.md.
 set -euo pipefail
 
@@ -34,8 +34,11 @@ e "  Compare ············ code × primary sources × confirmed scope
 e "  Final product flow ·· 4 visible steps" 0.5
 e "${Y}  User: confirmed${Z}" 0.7
 e "" 0.2
-e "⚫ 3 · plan ········· ${D}ACs + review_only | spike_required | runtime_required${Z}" 0.7
-e "🟡 4 · plan review ·· ${D}falsify material assumptions →${Z} ${G}ready${Z}" 0.7
+e "⚫ 3 · plan ········· ${D}compact packet → fresh worker on large Codex runs${Z}" 0.7
+e "  Evidence classes ·· ${D}review_only | spike_required | runtime_required${Z}" 0.6
+e "🟡 4 · plan review ·· ${D}R1 independent A/B/C discovery${Z}" 0.6
+e "  R2 / R3 ··········· ${D}whole-contract repair check → resolution only${Z}" 0.6
+e "  Deterministic seal · ${G}≤3 global rounds · direct state-space checks${Z}" 0.7
 e "🟠 5 · implement ···· ${D}smallest accepted change · no parallel overlap${Z}" 0.7
 e "🟤 6 · verify ······· ${D}execute acceptance, regression, spike, runtime evidence${Z}" 0.8
 e "🟢 7 · review ······· ${D}contract · supported path · impact · proportionality${Z}" 0.8
@@ -45,6 +48,6 @@ e "  Edge finding ······· ${G}non-blocking: immaterial, no repair loop${Z
 e "  Protected impact ··· ${G}still blocks: security · privacy · data loss${Z}" 0.6
 e "  ${B}${G}named run-owned paths committed locally · push stays explicit${Z}" 0.9
 e "↺ learn ············ ${D}only verified, path-bound evidence becomes memory${Z}" 0.7
-e "  Global graph ······· ${G}Markdown index + related notes + revocable binding${Z}" 0.7
+e "  Compare outcomes ··· ${G}recorded Plain ↔ Kimiflow evidence · disposable repos only${Z}" 0.7
 e "" 0.3
-e "${B}Discuss. Inspect. Prove. Repair the root. Retain only verified learning.${Z}" 1.2
+e "${B}One fresh plan. Three review roles. Executable evidence. A finite loop.${Z}" 1.2

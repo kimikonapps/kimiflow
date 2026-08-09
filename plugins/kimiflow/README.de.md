@@ -14,27 +14,30 @@ bindet wichtige Behauptungen an ausführbare Evidence.
 
 <p align="center">
   <a href="https://kimikonapps.github.io/kimiflow/">
-    <img src="docs/kimiflow-graph.svg" alt="Kimiflow-Workflow: Produktintent bestätigen, aktuellen Code prüfen, Evidence ausführen, materielle Findings über fünf Bug-Kaskaden-Probes untersuchen, eine belegte Ursache reparieren, verifiziertes Wissen menschenlesbar speichern und lokal committen.">
+    <img src="docs/kimiflow-graph.svg" alt="Kimiflow-0.4-Workflow: Produktintent bestätigen, aktuellen Code prüfen, Large-Planung in Codex in einem frischen Kontext ausführen, höchstens drei globale Plan-Review-Runden versiegeln, Evidence ausführen, eine belegte Kaskadenursache reparieren, verifiziertes Wissen speichern und lokal committen.">
   </a>
   <br>
   <sub><a href="https://kimikonapps.github.io/kimiflow/">Interaktiven Graph öffnen</a></sub>
 </p>
 
-## Neu in diesem Release
+## So arbeitet Kimiflow 0.4
 
-- **Entscheidungstragende Prosa erhält eine begrenzte Same-pass-Qualitätsprüfung.** Der bestehende Autor
-  oder Reviewer bewahrt Bedeutung und Evidence, korrigiert generische oder aufgeblähte Formulierungen
-  direkt und erzeugt keinen weiteren Modellaufruf oder Gate. Adaptiert ist die Minimum-effective-edit-Idee
-  von [petergyang/no-ai-slop](https://github.com/petergyang/no-ai-slop), kein AI-Urheberschaftsdetektor.
-- **Bug-Kaskaden werden an der Ursache repariert, nicht Symptom für Symptom.** Jede materielle
-  Review-Klasse prüft direkte Aufrufer, Datenfluss, gemeinsamen Zustand, Annahme-Nutzer und
-  Fehlerfolgen. Zusammengehörige Findings teilen eine belegte Root Cause, einen Fix und erhaltene
-  Regression-Evidence.
-- **Projektübergreifendes Memory braucht kein Obsidian mehr.** Verifizierte portable Learnings werden
-  normale Markdown-Notizen unter `~/.kimiflow/memory/`, mit lesbarem `INDEX.md`, begrenzten
-  Verknüpfungen und widerrufbaren Projekt-Bindings. Fragen an das Modell reichen, um den Graphen zu nutzen.
-- **Ein Run darf Wissen nicht einfach selbst zur Wahrheit erklären.** Erst aktuelle Evidence und wiederholt
-  verifizierter Nutzen erlauben die Promotion. Widerspruch oder stale Quellen entziehen das Vertrauen.
+- **Das Plan-Review ist endlich und hat drei unterschiedliche Aufgaben.** Runde 1 startet unabhängige
+  A/B/C-Discovery, Runde 2 verwendet nach Reparaturen einen frischen Whole-Contract-Verifier und Runde 3
+  belegt nur noch die Auflösung. Ein neuer Plan oder Modellwechsel startet das globale Limit nicht neu.
+- **Contract-Review prüft den vollständigen Zustandsraum direkt.** Reviewer prüfen
+  gültige, ungültige, fehlende und begrenzende Fälle sowie Lifecycle, Identität, Zählung, Schwellen und
+  Prioritäten direkt gegen den bestätigten Vertrag. Ein deterministisches Seal bindet Candidates, Evidence,
+  Findings und Resolution, bevor das Gate öffnen kann.
+- **Large-Planung in Codex startet einmal in einem frischen Kontext.** Nach der Bestätigung erhält ein
+  Top-Tier-Planungs-Worker den dauerhaften Vertrag und aktuelle Code-Evidence und besitzt den Plan bis zum
+  Review. Ein zweiter unabhängiger Plan ist einer echten Architektur- oder irreversiblen Contract-Gabel vorbehalten.
+- **Kontext-Laden ist Digest-gebunden und druckabhängig.** Jede Phase erhält ein begrenztes Paket; große
+  Kontexte rollen nur bei gemessenem Druck um. Reviews, Tests und ausführbare Evidence bleiben verpflichtend,
+  sobald ihr jeweiliger Vertrag aktiv ist.
+- **Token- und Qualitätsaussagen lassen sich ehrlich vergleichen.** Ein lokaler modellfreier Evaluator
+  validiert aufgezeichnete Plain-vs-Kimiflow-Evidence und zeigt paarweise Unterschiede. Er startet keinen Arm
+  selbst und ist ausschließlich für Wegwerf-Benchmarkprojekte gedacht—nie für private oder produktive Projekte.
 
 Kimiflow kann konkrete Umsetzungsauftraege fuer substanzielle Feature-Arbeit automatisch routen.
 Diskussionen, Ideen, Empfehlungen, Erklaerungen, Statusfragen und Wunschformulierungen bleiben direkt
@@ -178,10 +181,12 @@ Kimiflow fuehrt keinen konkurrierenden Worker-State und baut Calm nicht nach. Ma
 fuer getrennte, eigenstaendige Schreibpakete. Ein eng gekoppelter Build verwendet bewusst einen Ship.
 Unabhaengige Recherche und semantische Reviews verwenden eigene sichtbare Scouts; ein `small`-
 Code-Review nutzt zwei Review-Achsen und `large`/release-critical drei, wenn die FirstMate-Crew verfuegbar ist.
-Das Plan-Review friert eine PLAN-Version ein und prueft alle Linsen als ein Paket. Vertragsreiche Plaene erhalten
-zusaetzlich eine paarweise Zustandsmatrix und familienweite Gegenbeispiele. Das Plan-Gate hat global hoechstens
-drei Runden: Entdeckung, Reparaturpruefung und reinen Abschluss; ein neuer Plan oder ein Modellwechsel startet
-die Schleife nicht neu.
+Das Plan-Review friert eine PLAN-Version ein und prüft seine unabhängigen Linsen als begrenztes Paket.
+Vertragsreiche Pläne prüfen A/B/C-State-Space und familienweite Gegenbeispiele direkt gegen die bestätigten
+Artefakte. Das Plan-Gate hat global höchstens drei Runden:
+unabhängige Discovery, einen frischen Whole-Contract-Verifier nach Reparaturen und reinen Resolution-Abschluss.
+Ein deterministisches Seal bindet Candidates, Evidence, Findings, Hashes und Resolution; ein neuer Plan oder
+Modellwechsel kann den Loop weder neu starten noch überreden.
 
 Der Adapter begrenzt mechanisch, welche Crew-Aktionen jede Rolle aufrufen darf; er ist keine OS-Sandbox um Pis
 Shell. Brief-Grenzen plus Kimiflows Git-/Evidence-Gates bei Integration und Abschluss erkennen unerlaubte
@@ -305,10 +310,10 @@ v1-Ausführung bleibt kompatibel.
 
 ## Demo
 
-![Kimiflow-Feature-Flow von bestätigtem Intent über ausführbare Evidence und Bug-Kaskaden-Reparatur bis zu menschenlesbarem Memory und atomarem lokalem Commit](docs/demo/kimiflow.gif)
+![Kimiflow-0.4-Feature-Flow von bestätigtem Intent und aktuellem Code über frische Large-Planung, versiegeltes Drei-Runden-Plan-Review und ausführbare Evidence bis zu Root-Cause-Review und atomarem lokalem Commit](docs/demo/kimiflow.gif)
 
-> Geskriptete Illustration von Feature-Gespräch, Codebasis-Prüfung, Evidence-Klassen,
-> relevanzbewusstem Review und lokalem Commit. Quelle und Anleitung für einen
+> Geskriptete 0.4-Illustration von Feature-Gespräch, frischer Large-Planungsgrenze,
+> versiegeltem Drei-Runden-Plan-Review, ausführbarer Evidence, Root-Cause-Review und lokalem Commit. Quelle und Anleitung für einen
 > echten Mitschnitt liegen unter [`docs/demo/`](docs/demo/).
 
 ## Modi
@@ -396,7 +401,9 @@ mechanisiert die Evidence-Grenzen, ohne Allwissenheit vorzutäuschen.
 - Recherche darf die Umsetzung korrigieren; nur `required` Constraints dürfen Scope hinzufügen.
 - Conformance speichert höchstens fünf materielle Entscheidungen; `small` braucht keinen zusätzlichen Modell-Call, `large` nutzt den bestehenden unabhängigen Verifier mit.
 - Execution nutzt drei feste Qualitätsprofile mit expliziter Auswahlbegründung und einen kompakten lokalen Trace; bei hartem Druck fällt optionale Breite weg, nicht Verifikationsqualität.
-- Ein zweiter Planner erscheint nur bei echter Architektur- oder irreversibler Contract-Gabel.
+- Ein Planner ist der Default. Bei Large-Runs in Codex arbeitet er nach der Bestätigung in genau einem
+  frischen Worker mit den dauerhaften Run-Artefakten als Kontext.
+- Ein zweiter unabhängiger Plan erscheint nur bei echter Architektur- oder irreversibler Contract-Gabel.
 - Das Top-Modell behält Orchestrierung, Synthese, Planung, Review-Verdicts und riskante Diagnose.
 - Ein deterministischer Classifier erhöht den Scope anhand von Subsystem-, Daten-, Security-, Integrations- und
   Irreversibilitäts-Evidence, beantwortet aber niemals eine offene Produktentscheidung.
