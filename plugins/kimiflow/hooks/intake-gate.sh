@@ -191,6 +191,10 @@ def allowed_setup_command(text,allow_scope_research=False):
         if args in (["--help"],["-h"]): return True
         if args[0] in ("status","next-action","phase-read","phase-read-status","phase-read-gate"):
             return True
+        if args[0] in ("abort","park","fail"):
+            parsed,flags=bounded_options(args[1:],{"--root","--reason"},{"--write","--pretty"})
+            if parsed is None or not parsed.get("--reason") or "--write" not in flags: return False
+            return "--root" not in parsed or os.path.realpath(parsed["--root"])==os.path.realpath(root)
         if args[0]=="await-user":
             return "--kind" in args and args[args.index("--kind")+1:args.index("--kind")+2]==["intake"] and "--round" in args and args[args.index("--round")+1:args.index("--round")+2] in (["1"],["2"])
     if script=="frontend-quality-gate.sh" and len(args)==3:

@@ -6,7 +6,27 @@ Versions before 0.4.0 were internal development snapshots. **0.4.0 is the first 
 
 ## Unreleased
 
-No unreleased changes.
+### Fixed
+
+- Fresh Contract-4 features now resolve only real material unknowns before planning and ask exactly one final
+  product-contract confirmation after `PLAN.md` exists. Existing schema-2 runs remain resumable.
+- Pending intake no longer traps the owner: exact `abort`, `park`, and `fail` commands always pass the intake
+  guard, and the Stop test gate serializes expensive checks instead of overlapping the same build outputs.
+- Local Codex development installs now keep the cachebuster inside the marketplace candidate and its runtime
+  fingerprint, preventing app restart from resolving the plugin back to the unsuffixed release identity.
+- The development installer prefers the CLI bundled with the Codex app, verifies the configured local
+  marketplace and installed bytes, and never starts a background restart or retry loop.
+
+## 0.4.1
+
+Local reliability update for Codex hook lifecycle detection.
+
+### Fixed
+
+- Embedded Codex Product Intake now binds each wait to one task- and plugin-version-bound `UserPromptSubmit`
+  observation. The observation is single-use but remains valid for the complete model turn instead of expiring
+  after ten minutes, so long intake research cannot discard the final confirmation or ask for it twice. Missing
+  or untrusted lifecycle hooks still fail before the question with the exact `/hooks` recovery.
 
 ## 0.4.0
 

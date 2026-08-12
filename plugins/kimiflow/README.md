@@ -145,18 +145,32 @@ user-level wrapper installation is required. The marketplace publishes only the 
 maintainer state, eval inputs, and private workflow artifacts are excluded and the candidate carries a
 reproducible content fingerprint.
 
+Kimiflow verifies actual `UserPromptSubmit` execution before it registers Product Intake. The proof is bound to
+the current task and installed plugin version, can register exactly one intake wait, and remains valid for the
+complete model turn without a wall-clock timeout. Long research therefore cannot make the final contract require
+a second confirmation. If the hook is not observed, the run stops before showing the question with the exact
+`/hooks` recovery. Trust is normally needed once per installation or changed hook definition, not once per
+Kimiflow run.
+
 That candidate is also published as a deterministic `kimiflow-runtime-<version>.zip` with
 `kimiflow-update-v1.json`. Independent hosts read one stable manifest, verify the official immutable GitHub
 release, check the pinned source/artifact digests and their named host profile, then install the same Kimiflow
 bytes. Offline or caller-supplied metadata proves artifact integrity only; it can never impersonate an official
 compatible update. See [`references/runtime-distribution.md`](references/runtime-distribution.md).
 
-For local development, register this checkout instead:
+For local development, register this checkout once, then use the verified development installer for every
+iteration:
 
 ```bash
 codex plugin marketplace add .
-bash hooks/install-codex-hooks.sh --check
+bash hooks/install-codex-plugin-dev.sh
 ```
+
+The installer builds the clean marketplace candidate with one persistent cachebuster identity, refreshes its
+runtime fingerprint, prefers the CLI bundled with the running Codex app over older PATH installations, and
+byte-verifies the installed hook runtime. It never restarts Codex itself. Restart Codex after it succeeds, review
+the hooks under `/hooks`, open a new task, submit a prompt, and use
+`hooks/active-run.sh hook-health --require --pretty` for that live check.
 
 ### Optional provider-neutral terminal runner
 
@@ -429,24 +443,22 @@ Useful explicit forms:
 /kimiflow release
 ```
 
-Every non-trivial feature—including an already prepared plan—starts with a short product discussion in
-the user's language. Kimiflow inspects current code, then shows the understood problem, observable
-success, boundary, two to five relevant options, and what is included, later, or excluded. The user can
-discuss and correct that draft before choosing `scope_ready`. Focused research then compares the current
-code, primary sources, and confirmed scope. A final two-to-seven-step product flow is accepted only through
-`confirmed` or replaced through `corrected`; generic chat or a timeout confirms nothing. The user owns
-WHAT/WHY, while architecture, libraries, data models, tests, and other technical HOW stay with the agent.
-Exact trivial work and fixes keep their direct routes.
+For every non-trivial feature, Kimiflow first resolves only genuinely missing product facts. Complete requests
+continue directly into current-code/current-source research and a minimum-complete plan. Once that plan exists,
+Kimiflow shows one compact final product contract in the user's language and asks for exactly one confirmation.
+A material correction updates the plan; generic inference or a timeout confirms nothing. The user owns WHAT/WHY,
+while architecture, libraries, data models, tests, and other technical HOW stay with the agent. Existing
+schema-2 runs remain resumable; exact trivial work and fixes keep their direct routes.
 
 ## Eight Phases
 
 | Phase | What happens |
 |---|---|
 | 0 Setup | Inventory every worktree; route clean primary directly or up to three busy-primary runs into the owned Fleet before FIFO queueing. |
-| 1 Clarify | Show a code-informed problem/success/options draft, let the user discuss it, then lock the corrected final product flow through explicit structured actions. |
+| 1 Clarify | Resolve only material unknowns; complete product requests continue without a confirmation checkpoint. |
 | 2 Understand | Snapshot current affected paths and bytes, check `reuse → evolve → new`, and compare focused research with the confirmed scope. Fixes reproduce and prove the cause. |
 | 3 Plan | Write a flat minimum-complete plan, testable acceptance criteria, and up to five decisions classified as `review_only`, `spike_required`, or `runtime_required`. |
-| 4 Review | Resolve plan blockers and pause only for a material authority, scope, risk, privacy, cost, or irreversible decision. |
+| 4 Review | Confirm the final product contract once after the plan exists, then resolve plan blockers; pause again only for a new material decision. |
 | 5 Implement | Apply the smallest accepted change, normally sequentially; fixes preserve red evidence before production code. |
 | 6 Verify | Execute the required acceptance, regression, spike, and runtime evidence and prove that every locked requirement is covered. |
 | 7 Review and commit | Classify findings by contract, supported path, impact, and proportionality; scan material findings for a five-surface bug cascade, repair each proved root once, then create and prove the named-path local commit. |
@@ -458,7 +470,7 @@ Exact trivial work and fixes keep their direct routes.
 | Gate | Enforced boundary |
 |---|---|
 | Workspace preflight | Every linked tree and dirty path is classified; up to three owned Fleet trees receive exclusive leases, revalidation, serialized candidate-first integration, and ancestry-gated archive. |
-| Product Intake, Clarify and Discovery gates | Planning and writes stay blocked until the user explicitly marks scope ready and confirms the final product flow; generic chat, defaults, and timeouts never confirm it. |
+| Product Intake, Clarify and Discovery gates | Research and planning run read-only; product writes stay blocked until one final plan-bound product-flow confirmation. Generic inference, defaults, and timeouts never confirm it. |
 | Current-code and plan gates | Every affected path is bound to current HEAD/type/bytes; discovery proves `reuse → evolve → new`, and material decisions declare their required evidence class. |
 | Plan-blocker and review gates | Acceptance mappings and evidenced `BLOCKER/HIGH` findings are resolved within a bounded budget; every material review class carries one root-cause cascade with five evidence-bound probes, while immaterial edges stop before repair and protected impacts cannot be waived. |
 | Implementation-conformance gate | Researched decisions, invariants, affected paths, exact checks, and every locked product requirement converge in Phase 6; finish additionally proves the committed delivery matches. |

@@ -210,6 +210,7 @@ Commands:
 
 ```bash
 hooks/active-run.sh status --pretty
+hooks/active-run.sh hook-health --require --pretty
 hooks/active-run.sh next-action --pretty
 hooks/active-run.sh next-action --event verification_failed --pretty
 hooks/active-run.sh init-state --run .kimiflow/<slug> --mode <feature|fix|audit|full> --scope <tier> --language <BCP-47> --title "..." --write
@@ -232,6 +233,12 @@ hooks/active-run.sh park --reason "waiting for user validation" --write
 hooks/active-run.sh fail --reason "verification failed" --write
 hooks/active-run.sh abort --reason "user switched workflow" --write
 ```
+
+Fresh non-trivial Contract-4 features initialize STATE in Phase 0 but defer the returned `start` command until
+the single final Phase-4 question is ready. Their read-only phase ledger may advance through Phase 4 without an
+active pointer; Phase 5 requires the receipt-backed intent lock. Existing active/schema-2 runs retain their
+earlier boundary. Exact `abort|park|fail --reason ... --write` commands are terminal escapes even while intake
+is pending.
 
 Post-R2 runs may return `phase_reads_required: true` from `start`/`status`. For those runs, the orchestrator reads
 the phase file named in `phases/PHASES.json` plus only that row's exact `reference_sections` (through
@@ -283,7 +290,16 @@ malformed, oversized, exchanged, or selector-mismatched state fails closed as `r
 requires valid controller evidence. No daemon, provider, telemetry, free graph rewriting, extra user gate, or
 paid dependency is introduced.
 
-**Prompt behavior:** the `UserPromptSubmit` hook calls `active-run.sh prompt-context`. In the owner session it
+**Prompt behavior:** the `UserPromptSubmit` hook calls `active-run.sh prompt-context`. Each embedded Codex event
+first writes a content-free, single-use observation bound to the current task plus the installed hook and plugin
+manifest digests. `hook-health --require` and fresh Contract-4/schema-2 intake registration fail closed when that
+observation is missing, already consumed by an intake wait, or belongs to another installed version. The
+observation remains valid for the complete current model turn without a wall-clock timeout; successful intake
+registration consumes it atomically, so long research cannot lose the action and one prompt cannot register two
+questions. Recovery for a missing/untrusted hook is one `/hooks` review/trust action followed by a fresh prompt;
+the orchestrator must not register intake or show an action before health is OPEN. This detects actual lifecycle
+execution—`install-codex-hooks.sh --check` validates only the declared files.
+In the owner session the hook
 injects a small reminder to keep the follow-up inside Kimiflow unless the user explicitly exits/parks/fails/
 aborts/switches, plus the same exact action/node returned by `next-action`. Other Codex or Claude sessions are not adopted into the run: they may read, answer, analyze,
 and plan normally, and receive only a compact advisory to run `conflict-check` before shared-checkout edits.
@@ -645,17 +661,15 @@ Goal: establish source-backed product intent BEFORE research/plan. Kimiflow perf
 
 Goal, visible behavior, and success require `user_explicit|user_confirmed|project_evidence`; the agent may not invent them. `inferred` and generic `confirmed` are not Contract-4 provenance. Every concrete flow field requires `user_confirmed`; a generic “yes” counts only when the receipt-bound intake request visibly proposed all five concrete values and `INTENT.md` reproduces them exactly. Project evidence can settle a dimension only when it is current and cited, not because the existing implementation happens to do something.
 
-**Selective elicitation:** rank product candidates by **Impact x Uncertainty**. Ask only the highest-value product facts in **one compact batch**: `quick` ≤2, `small` ≤3, `large`/critical ≤5. When coverage is already complete, use the batch to confirm the compact Goal/Included/Excluded/Done contract instead of asking filler. Order dependencies first, use everyday language, one thought per item, and offer a recommended product default/choices. "I don't know" selects the smallest safe reversible default; paid/privacy/irreversible behavior defaults to excluded rather than silently accepted. A second compact batch is legal only when the first response itself creates a new material product conflict; mark it `cause=first_response_conflict`. Never ask sequential technical questions.
+**Selective elicitation:** rank product candidates by **Impact x Uncertainty**. Ask only the highest-value missing product facts in **one compact batch**: `quick` ≤2, `small` ≤3, `large`/critical ≤5. When coverage is already complete, continue to research and planning without a checkpoint. Order dependencies first, use everyday language, one thought per item, and offer a recommended product default/choices. "I don't know" selects the smallest safe reversible default; paid/privacy/irreversible behavior defaults to excluded rather than silently accepted. Another batch is legal only when the response itself creates a genuinely new material product conflict. Never ask sequential technical questions.
 
 **Bounded Intent Critic:** `large`/critical runs use exactly one independent fresh-context critic inside the existing agent budget. Packet: request + compact coverage draft, ≤900 words. Output: only `COVERAGE_OK` or ≤5 missing **user-owned** product facts; no research, code, or HOW. This is verification, not implementation delegation. Use the host's verified subagent/fresh-worker route and record a clean result as `critic=passed`; a missing leaf route uses the existing fresh-context fallback and never creates another user round. Small runs may fold the identical check locally and record `critic=folded`.
 
-**Fresh Contract-4 schema 2 — deliberate, research, confirm:** Phase 0 records one `Interaction language` from the user's opening request; all visible labels remain in that language while internal action tokens stay stable. `INTAKE.md` uses `contract=4 schema=2 stage=scope round=1 confirmation=scope_deliberation user_language=<tag>` and exactly one `Problem`, `Observable success`, `Boundary`, `Included`, `Later`, `Excluded`, `Counter perspective`, `Completeness check`, 2–5 ordered distinct `Option N`, plus localized `Action scope_ready` and `Action discuss` labels. Options include useful adjacent functions and the strongest smaller/counter approach, but remain inside the proposed scope. `discuss` replaces the current draft without a receipt; only the exact localized `scope_ready` label writes a content-free stage/action/request/contract/language-bound receipt.
+**Fresh Contract-4 — plan first, confirm once:** Phase 0 records one `Interaction language` from the user's opening request. Phase 1 asks only for `unknown_material`; otherwise it writes a provisional `INTENT.md` and continues read-only through current-code/current-source research and PLAN. The Active Session is deliberately started only when PLAN exists and the final question is ready. `INTAKE.md` then uses `contract=4 round=1 questions=1 selection=impact_uncertainty technical_questions=0 confirmation=concrete_product_flow` and the five concrete `Product flow entry`, `User interaction`, `Visible delegation outcome`, `Unchanged path`, and `Done scenario` rows. The visible summary includes Included, Excluded, and Done. One explicit confirmation binds the request digest; a correction replaces the unconfirmed plan/contract and returns only for a genuinely new material product decision. Generic inference, timeout, cancel, error, auto-resolution, and non-owner answers never confirm. Receipts contain no prompt or answer text.
 
-The supported host hook records the exact chat/native action before the resumed model turn. On resume, read `active-run.sh status` once and trust `intake_action`/`intake_stage`; an orchestrator never inspects hook internals or manufactures a response receipt.
+The supported host hook records that response before the resumed model turn. On resume, read `active-run.sh status` once and trust it; an orchestrator never inspects hook internals or manufactures a response receipt. Update the five INTENT flow provenance values to `user_confirmed`, record the intent lock, and enter implementation. The later risk preview continues automatically when risk is `none` and is never a second routine confirmation.
 
-After scope readiness, run `codebase-basis.sh create ... --write`; it captures current HEAD and affected path bytes/types in `CODEBASE-BASIS.json` and returns the complete `scope_research_marker`. Copy that marker as the first line of `RESEARCH.md` without calculating either digest, compare project evidence and current research, and preserve `Scope result: non_expanded`. Then `INTAKE-2.md` uses `stage=final round=2 confirmation=final_contract cause=scope_ready` with exactly one `Problem`, `Roles and boundaries`, `Included`, `Excluded`, `Observable success`, `End-to-end example`, 2–7 ordered distinct `Step N`, 1–20 ordered `Requirement Rn`, plus localized `Action confirmed` and `Action corrected`. `corrected` replaces the unconfirmed final draft without a receipt; only the exact localized `confirmed` label locks intent. `INTENT.md` uses `question_rounds=2` and reproduces every final field, step, and requirement byte-equivalently, but omits both action rows; actions authorize the receipt and are not part of the intent contract. Generic “yes/okay”, inferred assent, defaults, timeout, cancel, error, auto-resolution, and non-owner answers never confirm either stage. Receipts contain no prompt or answer text.
-
-**Contract-4 schema-1 compatibility:** existing runs retain the single concrete flow request with `confirmation=concrete_product_flow`, the five entry/interaction/delegation/unchanged/done rows, and its optional causal conflict round. They are never silently upgraded mid-run.
+**Existing Contract-4 schema-2 compatibility:** active or prepared two-stage runs retain their exact scope (`scope_ready|discuss`) and final (`confirmed|corrected`) documents, current codebase-basis binding, hook-health lease, and two receipts. They are never silently upgraded mid-run. Existing Contract-3 runs keep schema 1 compatibility.
 
 **Mechanical clarify gate:** fresh schema-5 nontrivial feature runs declare `Intent contract: 4` and `INTENT.md` includes:
 
@@ -663,7 +677,7 @@ After scope readiness, run `codebase-basis.sh create ... --write`; it captures c
 <!-- kimiflow:intent-coverage contract=4 goal=user_explicit actor=user_confirmed behavior=user_explicit boundaries=user_confirmed success=user_explicit constraints=not_applicable unknown_material=0 question_rounds=1 technical_questions=0 critic=folded authority=explicit summary=present source=current-run entry=user_confirmed interaction=user_confirmed delegation=user_confirmed unchanged=user_confirmed done=user_confirmed -->
 ```
 
-Schema-2 Contract 4 always has the two stages above and exactly `question_rounds=2`. `technical_questions` and `unknown_material` stay zero; actual builds require current authority. `INTENT.md` reproduces the confirmed final structured contract and bounded requirements exactly except for the two forbidden action rows. `clarify-gate.sh <run> --record-intent-lock` validates both stage grammars, receipt/action/language/contract digests, current codebase basis, non-expanded scope research, final-contract equality, and the one-shot Active-Run pin. Schema-1 Contract 4 retains the legacy 1–2 causal-round and five-flow-row rules. Supported PreToolUse hooks protect run authority files; hosts that omit those hook events cannot claim the same guardrail.
+Fresh Contract 4 uses schema 1 with exactly `question_rounds=1`; `technical_questions` and `unknown_material` are zero when the final question is registered. `INTENT.md` reproduces the five confirmed flow rows and bounded requirements. `clarify-gate.sh <run> --record-intent-lock` validates the receipt, final flow equality, authority, and one-shot Active-Run pin. Existing schema-2 Contract 4 retains its two-stage grammar, current codebase basis, non-expanded research scope, final-contract equality, and `question_rounds=2`. Supported PreToolUse hooks protect run authority files after the Active Session starts.
 
 Every dimension marked `project_evidence` also needs one exact body line `Intent evidence: <dimension> :: <repo-path>:<line>` (or a current `https://...` source). Missing citations close the gate; a provenance word alone never substitutes for evidence.
 

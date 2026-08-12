@@ -51,7 +51,7 @@ You are the **orchestrator**. Run phases as a state machine; load each phase fro
 - **Phase colors:** announce ⚪0 Setup · 🔵1 Clarify · 🟣2 Understand · ⚫3 Plan · 🟡4 Plan-gate · 🟠5 Implement · 🟤6 Verify · 🟢7 Review/Commit; keep the marker on STATE/status lines.
 - **Self-contained.** Gates/thresholds live here + reference.md, never global `CLAUDE.md`; project `CLAUDE.md` is only a Phase-2 hint.
 - **Minimum-complete.** User owns product WHAT/WHY; the agent owns technical HOW. Every task/file/test maps to approved behavior or verified `required` constraints. Research corrects HOW, never expands WHAT; keep `optional` out and defaults reversible.
-- **Confirm, inspect, then build.** Preserve user language; discuss scope/options and explicitly confirm the final flow. Bind research to current HEAD/path bytes and inspect `reuse → evolve → new`; research may correct HOW, never expand WHAT.
+- **Clarify, inspect, plan, confirm once, then build.** Ask only for material product facts that are actually missing. Bind research to current HEAD/path bytes and inspect `reuse → evolve → new`; once the reviewed plan exists, obtain one final product-contract confirmation in the user's language. Research may correct HOW, never expand WHAT.
 - **Anti-hallucination.** Only claims you can back. "Not verifiable" is valid. Severity never higher than provable by a code reference.
 - **Evidence-before-assertion.** Never claim "done/green/root cause found" without showing the actual command + output / the `file:line`.
 - **Agent budget.** Default 1 implementer + 1–2 reviewers; use ~5–10 only when useful, >10 asks first. Substitutions reuse a seat; external CLI counts as one. Fold work unless an independent counter-perspective or semantic review matters.
@@ -66,17 +66,17 @@ You are the **orchestrator**. Run phases as a state machine; load each phase fro
 
 ## Phase Files (on-demand)
 
-Bootstrap: run `workspace-preflight.sh route --run .kimiflow/<slug> --write`; in its root call `active-run.sh init-state --run .kimiflow/<slug> --mode <feature|fix|audit|full> --scope <trivial|small|large> --language <BCP-47> --title "<one line>" --write` alone, then its exact `next_command`—never chain or guess mode/scope. Each phase calls `active-run.sh phase-read --run .kimiflow/<slug> --phase <N> --file phases/<phase-file> --packet --write`. Trust packets; resume via `next-action`.
+Bootstrap: run `workspace-preflight.sh route --run .kimiflow/<slug> --write`, then `active-run.sh init-state --run .kimiflow/<slug> --mode <mode> --scope <scope> --language <BCP-47> --title "<title>" --write` alone. Fresh non-trivial Contract-4 features retain its `next_command` until the Phase-4 confirmation; other modes execute it now. Never chain or guess selectors. Enter phases with `active-run.sh phase-read --run .kimiflow/<slug> --phase <N> --file phases/<phase-file> --packet --write`.
 
-Contracts/helpers: Contract-4 two-stage Product Intake with Contract-3/schema-1 resume compatibility; Current Codebase Basis; Current-State Pulse / Gate; Memory Router & Learning Loop; `clarify-gate.sh`, `codebase-basis.sh`, `discovery-gate.sh`, `lsp-diagnostics.sh`, `suggest-affected-sections.sh`, and P7 `refresh --changed`.
+Contracts/helpers: Contract-4 single final Product Intake after planning; schema-2 runs remain resumable. Current Codebase Basis; Current-State Pulse / Gate; Memory Router & Learning Loop; `clarify-gate.sh`, `codebase-basis.sh`, `discovery-gate.sh`, `lsp-diagnostics.sh`, `suggest-affected-sections.sh`, P7 `refresh --changed`.
 
 | Phase | File | Always-loaded boundary cues |
 |---|---|---|
 | 0 Setup, Routing & Scope-Gate | `phases/phase-0-setup.md` | model/session; `workspace-preflight.sh` then clean gate; frontend Contract-1 start receipt; scope/verbosity. |
-| 1 Clarify | `phases/phase-1-clarify.md` | Contract-4 scope discussion + final confirmation in the preserved user language; no HOW; intent lock. |
+| 1 Clarify | `phases/phase-1-clarify.md` | Resolve only material unknowns; no routine confirmation and no HOW questions. |
 | 2 Understand / diagnose | `phases/phase-2-understand.md` | Current-State/Discovery gates; selective Vault context; scoped standards; conditional architecture/domain/operations. |
 | 3 Plan | `phases/phase-3-plan.md` | acceptance criteria; conditional architecture/domain/operations checks; Red/cause proof for fixes. |
-| 4 Plan-gate / approval | `phases/phase-4-review-approval.md` | plan/review resolvers; plain-language build summary; material-risk CONTINUE/STOP/PARK. |
+| 4 Plan-gate / approval | `phases/phase-4-review-approval.md` | one final product-contract confirmation on the plan; review resolvers; material-risk CONTINUE/STOP/PARK. |
 | 5 Implement / fix | `phases/phase-5-build.md` | TDD; Red/clean-tree verification checkpoints; caller-grep; failure escalation. |
 | 6 Verify | `phases/phase-6-verify.md` | goal-backward; red/green; conditional contract checks; conformance; frontend/regression evidence. |
 | 7 Review / commit | `phases/phase-7-review-commit.md` | preflights; review; Memory/Learning; model outcome; bounded retention; commit. |
@@ -85,10 +85,10 @@ Contracts/helpers: Contract-4 two-stage Product Intake with Contract-3/schema-1 
 
 These operative rules stay in the driver until a later approved packet proves an earlier mechanical gate for the target phase. Phase files may elaborate, but this section is always loaded.
 
-- **Phase 1 protected rules:** Fresh Contract-4 has scope (`scope_ready|discuss`) then final (`confirmed|corrected`) in the preserved user language; generic assent never confirms. The host hook records the action; on resume trust one `status`—never inspect/forge a response. After `scope_ready`, stay in Phase 1, run the basis helper, and copy its marker. Before INTENT, large/critical visibly runs one `fork_turns=none` critic with every confirmed `Requirement Rn` verbatim in its ≤900-word brief; local judgment cannot set `critic=passed`. Small may fold. Phase 2 stays locked until final confirmation/intent lock; HOW is agent-owned.
+- **Phase 1 protected rules:** Ask one compact batch only for a missing material WHAT/WHY fact; complete requests continue. Write provisional `INTENT.md`, run the bounded critic, and keep HOW agent-owned. No Phase-1 confirmation. Active schema-2 runs resume their pinned contract.
 - **Phase 2 protected rules:** top owns Discovery/synthesis/triage/fit; memory is bounded. Before external research, capture the current affected-path basis and inspect `reuse → evolve → new`; a new file does not select `new` when existing behavior evolves. RESEARCH must carry the exact discovery, scope, coherent reuse, and architecture markers/fields, then pass `discovery-gate.sh` before Phase 3. Technical gaps recover; only product/policy choices ask.
 - **Phase 3 protected rules:** one flat minimum-complete, subtracted, AC-mapped plan. Material decisions declare `review_only|spike_required|runtime_required`; required spikes are digest-bound. Contract 1 adds checkable slices/failure classes. New reviews mark `standard|contract`; contract adds the independent state/aggregation lens, not a matrix. Managed trees bind paths/contracts to its digest.
-- **Phase 4 held rule:** only independently evidenced BLOCKER/HIGH revises. All `fork_turns=none` lenses share one frozen PLAN; one `plan-review-gate.sh seal` call pins the ledger before one family repair. Rounds are fixed: discovery, repair verification, resolution-only; no change resets them. Architecture changes need an executable failure/invariant violation; only material risk pauses.
+- **Phase 4 held rule:** With PLAN complete and no missing user fact, record exactly one final product-contract confirmation. Return only for a new material product decision. Then only evidenced BLOCKER/HIGH revises; lenses share one frozen PLAN and one seal per round. Risk `none` never asks again.
 - **Phase 5 protected rules:** require the PLAN-digest write gate; execute required spike/runtime evidence and slices. Stage named paths only, preserve foreign staging, and scan weakening/secrets/paths. Red commits tests only; deletion needs proof; failures change approach.
 - **Phase 6 protected rules:** fixes require `red-green-gate.sh`. Execute declared checks; record each decision's evidence result plus the whole-intent sweep, and trace every Contract-3/4 Requirement. Code gaps → Phase 5; strategy/research drift → Phase 2.
 - **Phase 7 protected rules:** review the stable PLAN once, then exact deltas. Schema-4 saturation binds cascades; only source-bound schema-3 repairs pass. Protected impacts stay gated. Recovery is class-scoped; three rounds plus zero-carry closeout are absolute.

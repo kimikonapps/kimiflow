@@ -6,7 +6,7 @@ subagent contracts. If a host moves one of these primitives, parts of kimiflow c
 kimiflow concretely uses, what breaks if it changes, and a smoke checklist to run at each version bump.
 
 **Last verified against:** Claude Code **2.1.202** · Codex CLI **0.142.5** · Pi **0.83.0** · kimiflow
-**0.4.0** · 2026-08-09.
+**0.4.1** · 2026-08-09.
 
 > **0.x expectation.** These primitives are NOT a stable public contract. Treat breakage as *expected*
 > across Claude Code or Codex minor versions until a version is explicitly pinned — keep the README's
@@ -105,6 +105,7 @@ loop still runs.
 | Hook event `PreToolUse` | bundled contract → intake, active-run, commit-secret, state and test gates across Bash/edit/plan/intake tools | **Load-bearing** — matcher or command drift silently removes enforcement |
 | Hook event `PostToolUse` / `Stop` | bundled contract → native intake receipt plus test and map-staleness gates | **Load-bearing** — response capture or terminal gates stop firing |
 | Hook trust review (`/hooks`) | Codex requires non-managed plugin command hooks to be trusted and re-reviews changed definitions | **Load-bearing for safety** — untrusted hooks are skipped until reviewed; this is a one-time install/update security action, never a per-run continuation gate |
+| Task/version-bound `UserPromptSubmit` observation | `active-run.sh prompt-context` records one single-use current-turn lease; `hook-health --require` and intake registration require it | **Load-bearing for intake reliability** — absent/already-consumed/wrong-version observation fails before the question; the lease has no wall-clock expiry inside the turn, and the structural installer check alone cannot prove that a lifecycle event fired |
 | Hook JSON-on-stdin contract (`cwd`, command fields, stop-active fields) | hook scripts parse Codex-shaped payloads plus Claude-shaped payloads | **Load-bearing** — scripts may misparse; gate-critical paths fail safe where possible |
 | Hook deny/block output contract | `emit_deny` and `test-gate.sh` block output | **Load-bearing** — blocks stop taking effect |
 | `KIMIFLOW_HOST=codex` | Codex skill and bundled hook commands invoke helpers with Codex-specific global config paths | Graceful-ish — without it global verbosity writes to Claude default; project gates still work |
@@ -143,8 +144,8 @@ Run on every Claude Code or Codex upgrade (and at each kimiflow release):
 3. **Claude hooks fire installed** — in a repo with a `.kimiflow/` dir, confirm `commit-secret-gate.sh` blocks
    a `git add .` and the `Stop` test-gate engages (path resolves through `${CLAUDE_PLUGIN_ROOT}`).
 4. **Codex plugin install/invocation** — add the repo marketplace, run
-   `bash hooks/install-codex-hooks.sh --check`, install kimiflow through the Codex plugin browser/app, start
-   a new thread, and run `$kimiflow <tiny fix>`.
+   `bash hooks/install-codex-hooks.sh --check`, install kimiflow through the Codex plugin browser/app, review/trust
+   it under `/hooks`, start a new thread, submit one prompt, and require `active-run.sh hook-health --require` OPEN.
 5. **Codex hooks fire installed** — in a repo with a `.kimiflow/` dir, confirm `commit-secret-gate.sh`
    blocks `git add .` and the `Stop` test-gate engages through the manifest-declared bundled hooks.
 6. **One trivial Claude end-to-end** — `/kimiflow <tiny fix>`: the Phase-0 task widget appears, workspace preflight is compact, and schema 4 commits named paths locally without a routine second OK; the opt-in policy holds — kimiflow launches when asked ("with kimiflow")

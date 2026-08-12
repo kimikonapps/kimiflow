@@ -25,6 +25,10 @@ MAX_ARG_BYTES = 2048
 MAX_PATH_BYTES = 4096
 MAX_PLAN_BYTES = 1048576
 MAX_BROKER_BYTES = 262144
+MAX_PRIMARY_BASIS_BYTES = 1048576
+MAX_PRIMARY_BASIS_FILE_BYTES = 67108864
+PRIMARY_DIRTY_CONTRACT = "primary-dirty-authoritative"
+PRIMARY_DIRTY_BASIS_NAME = "PRIMARY-DIRTY-BASIS.md"
 SHA_RE = re.compile(r"^[0-9a-f]{40,64}$")
 BRANCH_RE = re.compile(r"^codex/[A-Za-z0-9][A-Za-z0-9._-]*(?:-[0-9]+)?$")
 CONTRACT_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
@@ -1355,14 +1359,211 @@ def _plan_matches(root, run, basis):
         return False
 
 
+def _single_state_value(source, label):
+    values = []
+    for raw in source.splitlines():
+        line = raw.strip().lstrip("-").strip().replace("**", "")
+        current, separator, value = line.partition(":")
+        if separator and current.strip().lower() == label.lower():
+            values.append(value.strip())
+    return values[0] if len(values) == 1 else ""
+
+
+def _primary_basis_manifest(root, run):
+    base_path = os.path.join(root, ".kimiflow")
+    run_name = _slug(run)
+    directory_flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        directory_flags |= os.O_DIRECTORY
+    file_flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        directory_flags |= os.O_NOFOLLOW
+        file_flags |= os.O_NOFOLLOW
+    descriptors = []
+    try:
+        base_descriptor = os.open(base_path, directory_flags)
+        descriptors.append(base_descriptor)
+        run_descriptor = os.open(run_name, directory_flags, dir_fd=base_descriptor)
+        descriptors.append(run_descriptor)
+        manifest_descriptor = os.open(
+            PRIMARY_DIRTY_BASIS_NAME,
+            file_flags,
+            dir_fd=run_descriptor,
+        )
+        descriptors.append(manifest_descriptor)
+        base_info = os.fstat(base_descriptor)
+        run_info = os.fstat(run_descriptor)
+        manifest_info = os.fstat(manifest_descriptor)
+        if (
+            not stat.S_ISDIR(base_info.st_mode)
+            or not stat.S_ISDIR(run_info.st_mode)
+            or not stat.S_ISREG(manifest_info.st_mode)
+        ):
+            return None
+        payload = os.read(manifest_descriptor, MAX_PRIMARY_BASIS_BYTES + 1)
+        if len(payload) > MAX_PRIMARY_BASIS_BYTES:
+            return None
+        named_base = os.lstat(base_path)
+        named_run = os.stat(run_name, dir_fd=base_descriptor, follow_symlinks=False)
+        named_manifest = os.stat(
+            PRIMARY_DIRTY_BASIS_NAME,
+            dir_fd=run_descriptor,
+            follow_symlinks=False,
+        )
+        final_manifest = os.fstat(manifest_descriptor)
+        if (
+            (named_base.st_dev, named_base.st_ino)
+            != (base_info.st_dev, base_info.st_ino)
+            or (named_run.st_dev, named_run.st_ino)
+            != (run_info.st_dev, run_info.st_ino)
+            or (
+                named_manifest.st_dev,
+                named_manifest.st_ino,
+                named_manifest.st_size,
+                named_manifest.st_mtime_ns,
+                named_manifest.st_ctime_ns,
+            )
+            != (
+                manifest_info.st_dev,
+                manifest_info.st_ino,
+                manifest_info.st_size,
+                manifest_info.st_mtime_ns,
+                manifest_info.st_ctime_ns,
+            )
+            or (
+                final_manifest.st_dev,
+                final_manifest.st_ino,
+                final_manifest.st_size,
+                final_manifest.st_mtime_ns,
+                final_manifest.st_ctime_ns,
+            )
+            != (
+                manifest_info.st_dev,
+                manifest_info.st_ino,
+                manifest_info.st_size,
+                manifest_info.st_mtime_ns,
+                manifest_info.st_ctime_ns,
+            )
+        ):
+            return None
+        source = payload.decode("utf-8")
+        entries = {}
+        for raw in source.splitlines():
+            match = re.fullmatch(r"([0-9a-f]{64})  (.+)", raw)
+            if not match:
+                continue
+            path = _normalize_path(match.group(2))
+            if path in entries:
+                return None
+            entries[path] = match.group(1)
+        return entries if entries and len(entries) <= MAX_PATHS else None
+    except (OSError, UnicodeError, wp.WorkspaceError):
+        return None
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
+def _regular_file_sha256(root, path):
+    absolute = os.path.join(root, path)
+    if os.path.realpath(absolute) != absolute:
+        return ""
+    descriptor = None
+    try:
+        named = os.lstat(absolute)
+        if (
+            not stat.S_ISREG(named.st_mode)
+            or named.st_size > MAX_PRIMARY_BASIS_FILE_BYTES
+        ):
+            return ""
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        descriptor = os.open(absolute, flags)
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+        ):
+            return ""
+        digest = hashlib.sha256()
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+        final = os.fstat(descriptor)
+        if (
+            final.st_dev,
+            final.st_ino,
+            final.st_size,
+            final.st_mtime_ns,
+            final.st_ctime_ns,
+        ) != (
+            opened.st_dev,
+            opened.st_ino,
+            opened.st_size,
+            opened.st_mtime_ns,
+            opened.st_ctime_ns,
+        ):
+            return ""
+        return digest.hexdigest()
+    except OSError:
+        return ""
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def _primary_dirty_adoption_valid(primary, task, primary_paths=None):
+    if (
+        PRIMARY_DIRTY_CONTRACT not in task["contracts"]
+        or not task["path"]
+        or not task["basis"]
+        or not _primary_snapshot_valid(task)
+    ):
+        return False
+    source = wp.safe_run_source(task["path"], task["run"])
+    expected_root = _single_state_value(source, "Primary dirty basis")
+    expected_head = _single_state_value(source, "Primary dirty basis head")
+    if (
+        not expected_root
+        or os.path.realpath(expected_root) != primary
+        or expected_head != task["declared_main"]
+        or expected_head != _head(primary)
+    ):
+        return False
+    manifest = _primary_basis_manifest(task["path"], task["run"])
+    if manifest is None:
+        return False
+    peers = normalize_paths(
+        task["primary_paths"] if primary_paths is None else primary_paths
+    )
+    adopted = [
+        peer
+        for peer in peers
+        if any(_path_relation(path, peer) == "serialize" for path in task["paths"])
+    ]
+    if not adopted:
+        return False
+    return all(
+        peer in manifest
+        and _regular_file_sha256(primary, peer) == manifest[peer]
+        for peer in adopted
+    )
+
+
 def _peer_envelope(primary, state, task, descriptor, include_primary=True):
     status = wp.build_status(primary, descriptor)
     active = _active_run(primary)
+    live_tasks = _lease_tasks(primary, state)
+    live_tasks_by_path = {
+        other["path"]: other for other in live_tasks if other["path"]
+    }
     known_tree_paths = {
         other["path"]
-        for other in state["tasks"]
+        for other in live_tasks
         if other is not task
-        and other["state"] != "retired"
         and other["path"]
     }
     peer_paths = list(status["dirty_paths"]) if include_primary else []
@@ -1372,6 +1573,16 @@ def _peer_envelope(primary, state, task, descriptor, include_primary=True):
     unknown_peer = False
     for tree in status["worktrees"]:
         if tree["primary"] or tree["path"] == task["path"]:
+            continue
+        registered_task = next(
+            (
+                other
+                for other in state["tasks"]
+                if other["path"] == tree["path"]
+            ),
+            None,
+        )
+        if registered_task is not None and tree["path"] not in live_tasks_by_path:
             continue
         tree_paths = list(tree["dirty_paths"])
         if tree["head"] and SHA_RE.fullmatch(tree["head"]):
@@ -1406,10 +1617,9 @@ def _peer_envelope(primary, state, task, descriptor, include_primary=True):
         peer_paths.extend(active_paths)
         if not active_paths:
             unknown_peer = True
-    for other in state["tasks"]:
+    for other in live_tasks:
         if (
             other is task
-            or other["state"] in {"integrated", "retired"}
             or other["action"] != "disjoint"
         ):
             continue
@@ -1452,11 +1662,13 @@ def _current_peer_collision(
     return receipt
 
 
-def _lease_tasks(state):
+def _lease_tasks(primary, state):
     return [
         task
         for task in state["tasks"]
-        if task["state"] not in {"integrated", "retired"}
+        if task["state"] not in {"queued", "integrated", "retired"}
+        and wp.run_status(primary, task["run"], task["path"])
+        not in wp.TERMINAL_RUN_STATUS
     ]
 
 
@@ -1468,7 +1680,7 @@ def _lease_collision(paths, contracts, peer_paths, peer_contracts):
 
 def _recompute_leases(primary, state, descriptor):
     """Recompute worktree lease winners in stable Fleet order."""
-    tasks = _lease_tasks(state)
+    tasks = _lease_tasks(primary, state)
     for index, task in enumerate(tasks):
         if not task["paths"] or not task["basis"]:
             task["blocked_by"] = []
@@ -1480,13 +1692,16 @@ def _recompute_leases(primary, state, descriptor):
         blockers = []
         reasons = []
         verdict = "disjoint"
-        primary_receipt = _lease_collision(
+        adopted_primary = _primary_dirty_adoption_valid(primary, task)
+        primary_receipt = None if adopted_primary else _lease_collision(
             task["paths"],
             task["contracts"],
             task["primary_paths"],
             task["primary_contracts"],
         )
         if (
+            not adopted_primary
+            and
             not task["primary_paths"]
             and task["primary_owner"] != _active_owner_digest(None)
         ):
@@ -1879,7 +2094,7 @@ def write_gate(root, run, basis):
                 }
             status = wp.build_status(primary, descriptor)
             blockers = []
-            for other in _lease_tasks(state):
+            for other in _lease_tasks(primary, state):
                 if other["state"] == "queued":
                     continue
                 if (
@@ -1981,7 +2196,16 @@ def write_gate(root, run, basis):
             primary_tree["dirty_paths"],
             infer_contracts(primary_tree["dirty_paths"]),
         )
-        if primary_tree["dirty_paths"] and primary_dirty["action"] != "disjoint":
+        adopted_primary = _primary_dirty_adoption_valid(
+            primary,
+            task,
+            primary_paths=primary_tree["dirty_paths"],
+        )
+        if (
+            primary_tree["dirty_paths"]
+            and primary_dirty["action"] != "disjoint"
+            and not adopted_primary
+        ):
             return {
                 "schema_version": BROKER_SCHEMA,
                 "status": "CLOSED",

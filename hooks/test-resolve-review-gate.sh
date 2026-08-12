@@ -554,6 +554,22 @@ put r1-B.md "FINDING HIGH src/a:1 :: first ref :: class=rollback-atomicity :: ve
 put r2-B.md "FINDING HIGH src/b:9 :: moved ref :: class=rollback-atomicity :: verify=command:test -f rollback.log :: evidence=$r2_ev"
 af "$(run --round 2 --expect B --cap 5 --finding-contract 1)" 3 root-class-repeated "contracted_repeated_root_class_resets_strategy"
 
+# A later frozen-basis reproduction may replace the authoritative verifier for the
+# same stable class. The newest authenticated method must then resolve the debt;
+# resolving with the superseded method remains fail-closed.
+reset
+enable_finding_contract
+r1_ev="$(evidence verifier-evolution-r1.txt rollback-atomicity 'verifier:inspect original transaction trace' reproduced)"
+r2_ev="$(evidence verifier-evolution-r2.txt rollback-atomicity 'verifier:inspect strengthened transaction and cleanup trace' reproduced)"
+r3_ev="$(evidence verifier-evolution-r3.txt rollback-atomicity 'verifier:inspect strengthened transaction and cleanup trace' not_reproduced 'fresh strengthened review no longer reproduces the defect')"
+put r1-B.md "FINDING HIGH src/a:1 :: original ref :: class=rollback-atomicity :: verify=verifier:inspect original transaction trace :: evidence=$r1_ev"
+put r2-B.md "FINDING HIGH src/b:2 :: strengthened ref :: class=rollback-atomicity :: verify=verifier:inspect strengthened transaction and cleanup trace :: evidence=$r2_ev"
+put r3-B.md "RESOLVED class=rollback-atomicity :: verify=verifier:inspect strengthened transaction and cleanup trace :: evidence=$r3_ev"
+af "$(run --round 3 --expect B --cap 5 --finding-contract 1)" 1 OPEN "contracted_reproduced_class_accepts_latest_authenticated_verifier"
+stale_r3_ev="$(evidence verifier-evolution-r3-stale.txt rollback-atomicity 'verifier:inspect original transaction trace' not_reproduced 'old verifier is no longer authoritative')"
+put r3-B.md "RESOLVED class=rollback-atomicity :: verify=verifier:inspect original transaction trace :: evidence=$stale_r3_ev"
+af "$(run --round 3 --expect B --cap 5 --finding-contract 1)" 3 malformed "contracted_reproduced_class_rejects_superseded_verifier"
+
 reset
 enable_finding_contract
 r1_ev="$(evidence resolve-r1.txt rollback-atomicity 'command:test -f rollback.log' reproduced)"

@@ -561,11 +561,19 @@ if [ "$contracted" = true ] && [ "$prev" -ge 1 ]; then
               [ -z "$(pair_value "$history_round_resolved_pairs" "$prior_class")" ] \
                 || emit CLOSED - malformed "prior class both reproduced and resolved ${prior_class}"
               debt_verify="$(pair_value "$debt_pairs" "$prior_class")"
-              [ -z "$debt_verify" ] || [ "$debt_verify" = "$prior_verify" ] \
-                || emit CLOSED - malformed "prior finding method mismatch ${prior_class}"
               history_round_pairs="${history_round_pairs}${prior_class}	${prior_verify}
 "
               if [ -z "$debt_verify" ]; then
+                debt_pairs="${debt_pairs}${prior_class}	${prior_verify}
+"
+              elif [ "$debt_verify" != "$prior_verify" ]; then
+                # A later independently reproduced finding may strengthen or replace the
+                # authoritative verifier for the same stable class. Keep the class debt,
+                # but require every subsequent reproduction/resolution to use the newest
+                # authenticated method instead of making the sealed history unrecoverable.
+                debt_pairs="$(pairs_without "$debt_pairs" "$prior_class")"
+                [ -z "$debt_pairs" ] || debt_pairs="${debt_pairs}
+"
                 debt_pairs="${debt_pairs}${prior_class}	${prior_verify}
 "
               fi

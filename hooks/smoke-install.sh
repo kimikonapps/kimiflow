@@ -95,9 +95,9 @@ for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'k
   grep -q "$term" "$ROOT/README.md" && ok "README documents mode alias: $term" || bad "README missing mode alias: $term"
 done
 grep -q 'full.*does not create an approval stop' "$ROOT/SKILL.md" && ok "full mode follows material-risk decisions" || bad "full mode still forces approval"
-grep -q 'Contract-4 two-stage Product Intake with Contract-3/schema-1 resume compatibility' "$ROOT/SKILL.md" && ok "canonical skill bounds intent interaction" || bad "canonical skill missing bounded intent interaction"
+grep -q 'Contract-4 single final Product Intake after planning' "$ROOT/SKILL.md" && ok "canonical skill bounds intent interaction" || bad "canonical skill missing bounded intent interaction"
 grep -q 'Intent Coverage Scan (Contract 4)' "$ROOT/reference.md" && ok "reference documents provenance-aware intent coverage" || bad "reference missing provenance-aware intent coverage"
-grep -q 'starts with a short product discussion' "$ROOT/README.md" && ok "README documents two-stage feature dialogue" || bad "README missing two-stage feature dialogue"
+grep -q 'asks for exactly one confirmation' "$ROOT/README.md" && ok "README documents single final feature confirmation" || bad "README missing single final feature confirmation"
 grep -q 'git commit --only' "$ROOT/phases/phase-7-review-commit.md" && grep -q 'foreign staged' "$ROOT/phases/phase-7-review-commit.md" \
   && ok "atomic commit isolates foreign staged paths" || bad "atomic commit foreign-staging isolation missing"
 grep -q 'Vault Pulse' "$ROOT/SKILL.md" && ok "canonical skill requires scope=large Vault Pulse semantics" || bad "canonical skill missing Vault Pulse"
@@ -325,9 +325,10 @@ grep -q 'automatisch geroutete' "$ROOT/docs/architecture.md" && grep -q 'automat
 if [ -x "$ROOT/hooks/clarify-gate.sh" ] && bash -n "$ROOT/hooks/clarify-gate.sh" 2>/dev/null; then ok "clarify gate helper ok"; else bad "clarify gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-clarify-gate.sh" ] && bash -n "$ROOT/hooks/test-clarify-gate.sh" 2>/dev/null; then ok "clarify gate test ok"; else bad "clarify gate test missing/not-exec/bad"; fi
 if grep -q 'Intent contract: 4' "$ROOT/phases/phase-0-setup.md" \
-  && grep -q 'Action scope_ready' "$ROOT/reference.md" \
-  && grep -q 'Action confirmed' "$ROOT/reference.md" \
+  && grep -q 'One final product-contract confirmation' "$ROOT/phases/phase-4-review-approval.md" \
+  && grep -q 'Product flow entry' "$ROOT/reference.md" \
   && grep -q 'Interaction language:' "$ROOT/phases/phase-0-setup.md" \
+  && grep -q 'question_rounds=1' "$ROOT/reference.md" \
   && grep -q 'technical_questions=0' "$ROOT/reference.md" \
   && grep -q 'intent_coverage_missing' "$ROOT/hooks/clarify-gate.sh" \
   && grep -q 'contract4_schema2_lock_binds_scope_final_and_language' "$ROOT/hooks/test-clarify-gate.sh" \

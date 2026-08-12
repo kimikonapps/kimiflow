@@ -13,6 +13,7 @@ ADAPTIVE="$DIR/adaptive-control.sh"
 CODEBASE_BASIS="$DIR/codebase-basis.sh"
 WORK="$(mktemp -d)"
 REPO="$WORK/repo"
+export CODEX_HOME="$WORK/codex-home"
 trap 'rm -rf "$WORK"' EXIT
 fails=0
 pass() { printf 'PASS: %s\n' "$1"; }
@@ -345,6 +346,9 @@ Action scope_ready: Continue to bounded research and the final product contract.
 Action discuss: Discuss or revise this scope draft.
 EOF
 KIMIFLOW_HOST=codex KIMIFLOW_SESSION_ID=owner-session "$ACTIVE" await-user --root "$REPO" --run .kimiflow/demo --kind intake --round 1 --request .kimiflow/demo/INTAKE.md --reason scope_deliberation --write >/dev/null
+payload="$(jq -nc --arg d "$REPO" --arg c "env KIMIFLOW_PLUGIN_ROOT=\"$PLUGIN_ROOT\" KIMIFLOW_HOST=codex \"$ACTIVE\" abort --root \"$REPO\" --reason user_requested --write" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "pending_intake_allows_exact_terminal_abort"
 printf '{"cwd":"%s","session_id":"owner-session","prompt":"Continue to bounded research and the final product contract."}' "$REPO" | KIMIFLOW_HOST=codex "$ACTIVE" prompt-context >/dev/null
 status_out="$(KIMIFLOW_HOST=codex KIMIFLOW_SESSION_ID=owner-session "$ACTIVE" status --root "$REPO")"
 assert "printf '%s' '$status_out' | jq -e '.intake_stage == \"scope\" and .intake_action == \"scope_ready\" and (.intake_response_at | type == \"string\")' >/dev/null" "schema2_status_exposes_recorded_scope_action"

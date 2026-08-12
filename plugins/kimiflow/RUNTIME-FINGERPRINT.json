@@ -5,19 +5,19 @@
       "bytes": 510,
       "mode": "0644",
       "path": ".claude-plugin/plugin.json",
-      "sha256": "sha256:9723edeb968ed55661ff390d204d6710348cbe209ad7ccdcd717abe9fe14c6ff"
+      "sha256": "sha256:72131275ea549fcc31c4c3721e64beec797d2a1d7be6dc54bda7328b1b2e2c92"
     },
     {
-      "bytes": 3613,
+      "bytes": 3643,
       "mode": "0644",
       "path": ".codex-plugin/plugin.json",
-      "sha256": "sha256:ad494cb7f62274d09dddede78674a0fd74d538b6cece07e643071cbb7ec4b867"
+      "sha256": "sha256:e211730655616b7640b42448f461457c58b3ac100e8594c2469256da30e52751"
     },
     {
-      "bytes": 21034,
+      "bytes": 21556,
       "mode": "0644",
       "path": "COMPATIBILITY.md",
-      "sha256": "sha256:7b94863736875875b6adecac29b874d58e9e2cd85f8c5c791869dd345fe80af6"
+      "sha256": "sha256:d7400b2ba27cb85b567c0a3626601ca8e852c782e72d56ce1813761d75be038c"
     },
     {
       "bytes": 1064,
@@ -26,22 +26,22 @@
       "sha256": "sha256:b796986e145d409f27c8ec0edaaf223ee51bdbbc2fa4477fe2d6c0984d5adf5b"
     },
     {
-      "bytes": 41769,
+      "bytes": 42856,
       "mode": "0644",
       "path": "README.de.md",
-      "sha256": "sha256:f41b3900bda2e5f03411ba8cad97b70cd613247f838ab9c28163041a844f89fe"
+      "sha256": "sha256:df8ffe55775d03fd9059970e8a7cf61655bb49460f9c989dfb63e92715b0678e"
     },
     {
-      "bytes": 47569,
+      "bytes": 48496,
       "mode": "0644",
       "path": "README.md",
-      "sha256": "sha256:cd15788a370afea6a3382bee72a7019ce279cb372d4298740189236e127934f3"
+      "sha256": "sha256:2bae809da7ec11e80aa870e361f757f4571bc69e908e4a0a990c1567c80f6fc2"
     },
     {
-      "bytes": 16995,
+      "bytes": 16641,
       "mode": "0644",
       "path": "SKILL.md",
-      "sha256": "sha256:0c697b97e8fc47d5b653a8782d7a2e0c2b9acf85006c55cbee33f3b12626d3ad"
+      "sha256": "sha256:f0ddf0adea6cfcc5c8ff8bedce94a07a8cbaf92afe06cc89278faff6946463ac"
     },
     {
       "bytes": 5051,
@@ -200,10 +200,10 @@
       "sha256": "sha256:210e410a967ad67edfb2ac36a7a29b8be87532f94ee20cf1403821c21fcddcd2"
     },
     {
-      "bytes": 18694,
+      "bytes": 19041,
       "mode": "0755",
       "path": "hooks/intake-gate.sh",
-      "sha256": "sha256:c0663e035c7841e6b4644ba285b985da94167ce76a69a004b6188d5445d6e1b7"
+      "sha256": "sha256:85ceacf80a814c4418f8e728371f0035eaa5c39b5ff30eb2dc328015249b4293"
     },
     {
       "bytes": 2547,
@@ -236,10 +236,10 @@
       "sha256": "sha256:0a7f95d4ea04bd64f22a08a92f1845d79cc05d220da8612179b369b17c68080e"
     },
     {
-      "bytes": 206901,
+      "bytes": 218439,
       "mode": "0644",
       "path": "hooks/kimiflow_core/active_run.py",
-      "sha256": "sha256:4648e241ffb83a4049750e89c80d56278848329f731037b1b4a9d2f8971fd76c"
+      "sha256": "sha256:a082c063f8f33c0fe6e066e957797e4838cc9575946c0e83d39c5ee51d4f5b52"
     },
     {
       "bytes": 11285,
@@ -830,10 +830,10 @@
       "sha256": "sha256:a1749d1db8b31ef1cbad41b7185d6cc4b711c8d06d8d801d4702e9d00d8ad6c3"
     },
     {
-      "bytes": 3569,
+      "bytes": 4421,
       "mode": "0755",
       "path": "hooks/test-gate.sh",
-      "sha256": "sha256:55ab83281461b9e591a039601aab978c119204f596fa4673ae9df464653bde59"
+      "sha256": "sha256:8ae9ee89c825575b36f0b448cc9b48d5331e418305381f79af47c0906ae34ccf"
     },
     {
       "bytes": 2467,
@@ -887,7 +887,7 @@
       "bytes": 332,
       "mode": "0644",
       "path": "package.json",
-      "sha256": "sha256:17e788d9af1485e9b03cc79569bc0bd592099d1bbcdc854ef4ff7b3a355ad58a"
+      "sha256": "sha256:beebc72d29b9d9179617426524440376e5415f66fe5f9ea4f29603de7c3b9b37"
     },
     {
       "bytes": 8413,
@@ -896,16 +896,16 @@
       "sha256": "sha256:80a4ab70d2770f35c86d8f87125ccefa0cfed49ec9d70d002936c022a6a18a04"
     },
     {
-      "bytes": 19560,
+      "bytes": 18452,
       "mode": "0644",
       "path": "phases/phase-0-setup.md",
-      "sha256": "sha256:9c0c4c6231c54211d96e6d841cba8a8a6f7f7958785de64c67b7736d414fab71"
+      "sha256": "sha256:14b5f3fd56ddd43021a5bcb81bdaba39c1221a1e8f1b2cf7de7ce57cfd17536a"
     },
     {
-      "bytes": 11015,
+      "bytes": 6073,
       "mode": "0644",
       "path": "phases/phase-1-clarify.md",
-      "sha256": "sha256:986ca8c4426a5fab433b05c7f56ea59f6b3ea8713b6e3882abe2748770fadbbb"
+      "sha256": "sha256:c1f3e355ea757a2fb0caf696d8aca9271ff986f557d7abfbed70c2573787b18a"
     },
     {
       "bytes": 19876,
@@ -920,10 +920,10 @@
       "sha256": "sha256:ef45eeaf925fb2d7c0bafd25ca5ca6f3abeef423d0762484ea5baffa646648a9"
     },
     {
-      "bytes": 8156,
+      "bytes": 9673,
       "mode": "0644",
       "path": "phases/phase-4-review-approval.md",
-      "sha256": "sha256:9211ba14d5a56121d2ad78454bc7b8020ac182ca5a0a29c43bf62065f953c84e"
+      "sha256": "sha256:be7ef80c3eac35ecc6b33f5de21a49a5e39d856d9bb8a7df969202752bacab19"
     },
     {
       "bytes": 7889,
@@ -944,10 +944,10 @@
       "sha256": "sha256:e1ba6b4e45b9de6479cb956204d2102c33f1095485af0ebec72204440cf08da0"
     },
     {
-      "bytes": 248186,
+      "bytes": 248541,
       "mode": "0644",
       "path": "reference.md",
-      "sha256": "sha256:d7fa4759cf2777b0b5d022ff7a6ecc3dcff54bd0a9905fa4aaebadecc3cab88e"
+      "sha256": "sha256:efd9ea07e120988ca186c5d7f63601dedf1acdd955d5788d6d30dd34126ca49a"
     },
     {
       "bytes": 2024,
@@ -1082,10 +1082,10 @@
       "sha256": "sha256:5ffcff6e88e49520d7b642a690df390dd704a9ad182857a8ef6672d56655351c"
     },
     {
-      "bytes": 14942,
+      "bytes": 14918,
       "mode": "0644",
       "path": "skills/kimiflow/SKILL.md",
-      "sha256": "sha256:d061dc96f0c864fc812070128cd8537d35cdef2dd9e7fe5cf7101e87705c747c"
+      "sha256": "sha256:2c86262cfe6dac692cf84dcd1b9317702163815d0f02c7aaf5b44bb2c1e8e85b"
     },
     {
       "bytes": 244,
@@ -1094,6 +1094,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:2ddb496b024e52aef3d03bfca21dccf6b035e1d5b8d4e4ba67efcee3d3df1e39",
+  "runtime_fingerprint": "sha256:7b3e188afaf1d8cc9e62641b42558db8defc0a6d3820d6b63697aed58b62a2db",
   "schema_version": 1
 }

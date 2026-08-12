@@ -125,12 +125,27 @@ Wrapper im User-Verzeichnis nötig. Der Marketplace veröffentlicht nur den saub
 Maintainer-State, Eval-Eingaben und private Workflow-Artefakte bleiben draußen. Ein reproduzierbarer
 Inhalts-Fingerprint bindet die ausgelieferten Dateien.
 
-Für lokale Entwicklung kann der deklarierte Vertrag geprüft werden:
+Kimiflow prüft die tatsächliche Ausführung von `UserPromptSubmit`, bevor es den Product Intake registriert. Der
+Nachweis ist an die aktuelle Task und die installierte Plugin-Version gebunden, registriert genau eine
+Intake-Warteposition und bleibt ohne Uhrzeit-Timeout für den vollständigen Modell-Turn gültig. Lange Recherche
+kann daher keine zweite Bestätigung des finalen Vertrags auslösen. Wird der Hook nicht beobachtet, stoppt der Run
+vor der Anzeige der Frage mit der exakten `/hooks`-Anweisung. Die Freigabe ist normalerweise einmal pro
+Installation bzw. geänderter Hook-Definition nötig, nicht pro Run.
+
+Für lokale Entwicklung dieses Checkout einmal registrieren und danach für jede Iteration den verifizierten
+Entwicklungs-Installer verwenden:
 
 ```bash
 codex plugin marketplace add .
-bash hooks/install-codex-hooks.sh --check
+bash hooks/install-codex-plugin-dev.sh
 ```
+
+Der Installer baut den sauberen Marketplace-Kandidaten mit einer persistenten Cachebuster-Identität, erneuert
+den Runtime-Fingerprint, bevorzugt die in der laufenden Codex-App gebündelte CLI vor älteren PATH-Installationen
+und vergleicht die installierte Hook-Runtime bytegenau. Er startet Codex nie selbst neu. Nach erfolgreicher
+Installation Codex neu starten, die Hooks unter `/hooks` freigeben, eine neue Task öffnen, einen Prompt senden
+und den Live-Check mit
+`hooks/active-run.sh hook-health --require --pretty` ausführen.
 
 ### Optionaler provider-neutraler Terminal-Runner
 
@@ -348,25 +363,23 @@ Explizite Formen:
 /kimiflow release
 ```
 
-Jedes nicht-triviale Feature—auch ein bereits vorbereiteter Plan—beginnt mit einem kurzen
-Produktgespräch in der Sprache des Users. Kimiflow prüft aktuellen Code und zeigt danach das verstandene
-Problem, beobachtbaren Erfolg, Grenze, zwei bis fünf relevante Optionen sowie `enthalten`, `später` und
-`nicht enthalten`. Der User kann den Entwurf besprechen und korrigieren, bevor er `scope_ready` wählt.
-Danach vergleicht gezielte Recherche aktuelle Codebasis, Primärquellen und bestätigten Scope. Der finale
-Produktablauf mit zwei bis sieben Schritten wird nur über `confirmed` akzeptiert oder über `corrected`
-ersetzt; generischer Chat und Timeouts bestätigen nichts. Der User entscheidet WHAT/WHY, der Agent
-Architektur, Libraries, Datenmodell, Tests und anderes technisches HOW. Fixes und exakt triviale Arbeit
-behalten ihre direkten Routen.
+Für jedes nicht-triviale Feature klärt Kimiflow zuerst nur tatsächlich fehlende materielle Produktfakten.
+Vollständige Aufträge gehen ohne Bestätigungsstopp direkt in aktuelle Code-/Primärquellenprüfung und einen
+minimum-complete Plan. Sobald der Plan steht, zeigt Kimiflow genau einen kompakten finalen Produktvertrag in
+der Sprache des Users und fragt genau einmal nach Bestätigung. Eine materielle Korrektur aktualisiert den Plan;
+generische Ableitung und Timeouts bestätigen nichts. Der User entscheidet WHAT/WHY, der Agent Architektur,
+Libraries, Datenmodell, Tests und anderes technisches HOW. Bestehende Schema-2-Runs bleiben fortsetzbar;
+Fixes und exakt triviale Arbeit behalten ihre direkten Routen.
 
 ## Acht Phasen
 
 | Phase | Ablauf |
 |---|---|
 | 0 Setup | Alle Worktrees inventarisieren, dauerhaften Run-State anlegen, sichere Aufräumentscheidung einmal bündeln. |
-| 1 Klären | Code-informierten Problem-/Erfolgs-/Optionsentwurf zeigen, besprechen lassen und danach den korrigierten Produktablauf über explizite strukturierte Aktionen sperren. |
+| 1 Klären | Nur materielle Unklarheiten auflösen; vollständige Produktaufträge laufen ohne Bestätigungsstopp weiter. |
 | 2 Verstehen | Aktuelle betroffene Pfade und Bytes erfassen, `reuse → evolve → new` prüfen und gezielte Recherche mit dem bestätigten Scope vergleichen. Fixes reproduzieren und belegen die Ursache. |
 | 3 Planen | Flachen minimum-complete Plan, testbare Akzeptanzkriterien und höchstens fünf Entscheidungen mit `review_only`, `spike_required` oder `runtime_required` schreiben. |
-| 4 Review | Plan-Blocker lösen; nur bei Autorität, materiellem Scope/Risiko, Privacy/Kosten oder Irreversibilität pausieren. |
+| 4 Review | Finalen Produktvertrag nach fertigem Plan genau einmal bestätigen und dann Plan-Blocker lösen; erneut nur bei einer neuen materiellen Entscheidung pausieren. |
 | 5 Umsetzen | Kleinste akzeptierte Änderung bauen; Fixes sichern Red-Evidence vor Production-Code. |
 | 6 Verifizieren | Erforderliche Akzeptanz-, Regressions-, Spike- und Runtime-Evidence ausführen und jede gesperrte Anforderung nachweisen. |
 | 7 Review und Commit | Findings nach Vertrag, unterstütztem Pfad, Impact und Verhältnismäßigkeit einstufen, materielle Klassen über fünf Flächen auf Bug-Kaskaden prüfen, jede belegte Ursache einmal reparieren und danach den lokalen Commit beweisen. |
@@ -378,7 +391,7 @@ behalten ihre direkten Routen.
 | Gate | Gesicherte Grenze |
 |---|---|
 | Workspace-Preflight | Alle Worktrees und Dirty-Pfade werden klassifiziert; bis zu drei eigene Fleet-Trees erhalten exklusive Leases, Revalidierung, serialisierte Candidate-first-Integration und Ancestry-gesichertes Archivieren. |
-| Product-Intake-/Clarify-/Discovery-Gates | Planung und Writes bleiben gesperrt, bis der User den Scope explizit bereit markiert und den finalen Produktablauf bestätigt; generischer Chat, Defaults und Timeouts bestätigen nichts. |
+| Product-Intake-/Clarify-/Discovery-Gates | Recherche und Planung laufen read-only; Produkt-Writes bleiben bis zur einen finalen planbasierten Produktablauf-Bestätigung gesperrt. Generische Ableitung, Defaults und Timeouts bestätigen nichts. |
 | Aktueller Code und Plan | Jeder betroffene Pfad wird an aktuellen HEAD, Typ und Bytes gebunden; Discovery belegt `reuse → evolve → new`, materielle Entscheidungen deklarieren ihre Evidence-Klasse. |
 | Plan-/Review-Gates | AC-Mapping und belegte BLOCKER/HIGHs werden begrenzt gelöst; jede materielle Review-Klasse trägt eine Root-Cause-Kaskade mit fünf Evidence-gebundenen Probes, immaterielle Randfälle stoppen vor Repair und geschützte Auswirkungen können nicht weggewischt werden. |
 | Implementation-Conformance-Gate | Rechercheentscheidungen, Invarianten, Pfade, Checks und jede gesperrte Produktanforderung konvergieren in Phase 6; beim Abschluss muss zusätzlich der Commit exakt dem geprüften Stand entsprechen. |

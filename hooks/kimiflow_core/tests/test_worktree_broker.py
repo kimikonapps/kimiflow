@@ -695,6 +695,79 @@ class WorktreeBrokerCase(unittest.TestCase):
         self.assertEqual(broker.write_gate(target_a, run_a, basis_a)["status"], "OPEN")
         self.assertEqual(broker.write_gate(target_b, run_b, basis_b)["status"], "OPEN")
 
+    def test_terminal_run_releases_its_declared_lease(self):
+        self.write_active(affected=("primary-only.txt",))
+        run_a = ".kimiflow/run-a"
+        run_b = ".kimiflow/run-b"
+        target_a = broker.route(self.repo, run_a, write=True)["root"]
+        target_b = broker.route(self.repo, run_b, write=True)["root"]
+        basis_a = self.write_plan(target_a, run_a)
+        basis_b = self.write_plan(target_b, run_b)
+
+        broker.declare(
+            target_a, run_a, basis_a, paths=["src/shared.py"], write=True
+        )
+        blocked = broker.declare(
+            target_b, run_b, basis_b, paths=["src/shared.py"], write=True
+        )
+        self.assertEqual(blocked["action"], "serialize")
+
+        self.write_terminal(target_a, run_a, status="aborted")
+        released = broker.declare(
+            target_b, run_b, basis_b, paths=["src/shared.py"], write=True
+        )
+
+        self.assertEqual((released["action"], released["blocked_by"]), ("disjoint", []))
+        self.assertEqual(broker.write_gate(target_b, run_b, basis_b)["status"], "OPEN")
+
+    def test_exact_authoritative_dirty_primary_manifest_can_open_fleet_gate(self):
+        run = ".kimiflow/run-a"
+        target = self.allocate(run, affected=("primary-only.txt",))
+        self.clear_active()
+        primary_file = os.path.join(self.repo, "tracked.txt")
+        with open(primary_file, "w", encoding="utf-8") as handle:
+            handle.write("authoritative dirty bytes\n")
+        basis = self.write_plan(target, run)
+        primary_head = self.git(self.repo, "rev-parse", "HEAD").stdout.strip()
+        with open(primary_file, "rb") as handle:
+            primary_digest = hashlib.sha256(handle.read()).hexdigest()
+        run_root = os.path.join(target, run)
+        with open(os.path.join(run_root, "STATE.md"), "w", encoding="utf-8") as handle:
+            handle.write("Flow schema: 5\nStatus: active\n")
+            handle.write("Primary dirty basis: %s\n" % self.repo)
+            handle.write("Primary dirty basis head: %s\n" % primary_head)
+        with open(
+            os.path.join(run_root, "PRIMARY-DIRTY-BASIS.md"),
+            "w",
+            encoding="utf-8",
+        ) as handle:
+            handle.write("# Authoritative Primary Dirty Basis\n\n")
+            handle.write("```text\n%s  tracked.txt\n```\n" % primary_digest)
+
+        declaration = broker.declare(
+            target,
+            run,
+            basis,
+            paths=["tracked.txt"],
+            contracts=["primary-dirty-authoritative"],
+            write=True,
+        )
+
+        self.assertEqual(
+            (declaration["action"], declaration["blocked_by"]),
+            ("disjoint", []),
+        )
+        gate = broker.write_gate(target, run, basis)
+        self.assertEqual((gate["status"], gate["reason"]), ("OPEN", "declared-disjoint"))
+
+        with open(primary_file, "w", encoding="utf-8") as handle:
+            handle.write("drifted dirty bytes\n")
+        drifted = broker.write_gate(target, run, basis)
+        self.assertEqual(
+            (drifted["status"], drifted["reason"]),
+            ("CLOSED", "serialize"),
+        )
+
     def test_winning_lease_integrates_while_overlapping_loser_waits(self):
         self.write_active(affected=("primary-only.txt",))
         run_a = ".kimiflow/run-a"

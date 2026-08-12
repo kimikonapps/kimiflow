@@ -60,6 +60,22 @@ elif [ -f ".kimiflow/session/ACTIVE_RUN.json" ]; then
   exit 0
 fi
 
+# Serialize expensive project checks. An interrupted Stop hook may leave its
+# child build alive; the directory lock prevents a later Stop from starting a
+# second build against the same DerivedData/output paths. A stale lock is
+# intentionally explicit and recoverable instead of guessed away.
+lock_dir=".kimiflow/test-gate.running"
+if ! mkdir "$lock_dir" 2>/dev/null; then
+  reason="kimiflow test-gate: another test-gate command is already running; wait for it to finish or remove $lock_dir after verifying that no test/build process remains."
+  if command -v jq >/dev/null 2>&1; then
+    printf '%s' "$reason" | jq -Rs '{decision:"block", reason:.}'
+  else
+    printf '{"decision":"block","reason":"kimiflow test-gate: another test-gate command is already running."}'
+  fi
+  exit 0
+fi
+trap 'rmdir "$lock_dir" 2>/dev/null || true' EXIT HUP INT TERM
+
 # Run the project's test command.
 if out="$(eval "$cmd" 2>&1)"; then
   exit 0

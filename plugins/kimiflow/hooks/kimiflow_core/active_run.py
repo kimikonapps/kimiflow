@@ -30,6 +30,7 @@ USAGE = """#!/usr/bin/env bash
 #
 # Orchestrator commands:
 #   active-run.sh status [--root <path>] [--pretty]
+#   active-run.sh hook-health [--require] [--pretty]
 #   active-run.sh next-action [--root <path>] [--event <event>] [--pretty]
 #   active-run.sh observe [--root <path>] [--event <event>] [--outcome <outcome>] [--evidence <run-artifact>] [--model-calls N] [--tool-calls N] [--input-tokens N] [--output-tokens N] [--write] [--pretty]
 #   active-run.sh init-state --run <path> --mode <feature|fix|audit|full> --scope <trivial|small|large> --language <BCP-47> --title <text> [--root <path>] [--write] [--pretty]
@@ -104,6 +105,9 @@ HOST_USAGE_RECEIPT = "HOST-USAGE.json"
 MAX_HOST_USAGE_BYTES = 64 * 1024
 MEMORY_CURATION_TIMEOUT_SECONDS = 30
 MEMORY_CURATION_DEADLINE_SECONDS = 20
+HOOK_HEALTH_SCHEMA = 2
+HOOK_HEALTH_MAX_BYTES = 16 * 1024
+HOOK_HEALTH_MAX_FILES = 64
 
 
 def usage():
@@ -588,6 +592,9 @@ def status_json(root, event=""):
     owner = valid_owner(active.get("owner"))
     if owner:
         result["owner"] = owner
+        current_thread = codex_thread_identity()
+        if same_session(owner, current_thread):
+            result["hook_health"] = codex_hook_health_status(current_thread)
     return result
 
 
@@ -3082,12 +3089,33 @@ def cmd_await_user(args):
     intake_round = None
     intake_request = ""
     intake_digest = ""
+    intake_hook_identity = None
     if kind == "intake":
         intake_contract = active.get("intent_contract")
         if intake_contract not in ("3", "4") or active.get("mode") != "feature" or active.get("scope") == "trivial":
             die("await-user: intake requires a pinned Contract-3/4 non-trivial feature", 2)
         if opts["--round"] not in ("1", "2") or not opts["--request"]:
             die("await-user: intake requires --round 1|2 and --request", 2)
+        if (
+            opts["--write"]
+            and intake_contract == "4"
+            and os.environ.get("CODEX_THREAD_ID")
+            and not os.environ.get("KIMIFLOW_SESSION_ID")
+        ):
+            intake_hook_identity = codex_thread_identity()
+            hook_health = codex_hook_health_status(intake_hook_identity)
+            if hook_health.get("status") != "open":
+                if hook_health.get("reason") == "user_prompt_hook_already_consumed":
+                    die(
+                        "await-user: this prompt already registered one Product Intake wait; "
+                        "do not display another intake action before a fresh user prompt",
+                        1,
+                    )
+                die(
+                    "await-user: Codex UserPromptSubmit hook was not observed for this task and plugin version; "
+                    "open /hooks, review and trust the Kimiflow command hooks, then submit a new prompt",
+                    1,
+                )
         intake_round = int(opts["--round"])
         intake_contract_number = int(intake_contract)
         intake_schema = int(active.get("intake_schema") or 1)
@@ -3172,6 +3200,18 @@ def cmd_await_user(args):
             write_active(root, updated)
         except (OSError, ValueError) as exc:
             die("cannot persist active workspace wait: %s" % exc, 2)
+        if intake_hook_identity:
+            consumption = consume_codex_hook_health(intake_hook_identity)
+            if consumption.get("status") != "consumed":
+                try:
+                    write_active(root, prior_active)
+                except (OSError, ValueError) as exc:
+                    die("cannot roll back intake wait after hook lease failure: %s" % exc, 2)
+                die(
+                    "await-user: current UserPromptSubmit observation could not be bound to the intake wait; "
+                    "do not display the intake action before a fresh user prompt",
+                    1,
+                )
         if schema_number >= 4 and kind == "workspace":
             try:
                 update_state_value(run_dir, "Workspace decision used at", now)
@@ -3334,14 +3374,12 @@ def repair_adjacent_phase_overlap(run_dir, phase):
 
 
 def require_phase_entry_prerequisites(root, run_dir, phase, write):
-    """Keep fresh Contract-4 features in Phase 1 until intent is locked."""
+    """Require the intent lock before an active run advances past planning."""
     if not write:
         return
     try:
         phase_number = int(phase)
     except (TypeError, ValueError):
-        return
-    if phase_number < 2:
         return
     state_path = os.path.join(run_dir, "STATE.md")
     flow_schema = state.state_value(state_path, "Flow schema").strip().split(" ", 1)[0]
@@ -3357,6 +3395,12 @@ def require_phase_entry_prerequisites(root, run_dir, phase, write):
     ):
         return
     active = _active_for_run(root, rel_path(root, run_dir))
+    # Fresh Contract-4 features deliberately plan read-only before the Active
+    # Session starts. Existing active runs retain their fail-closed Phase-2
+    # boundary; a newly planned run must be locked before implementation.
+    required_phase = 2 if active else 5
+    if phase_number < required_phase:
+        return
     lock_path = os.path.join(run_dir, "INTENT-LOCK.json")
     pinned = str((active or {}).get("intent_lock_digest") or "")
     if (
@@ -3367,8 +3411,8 @@ def require_phase_entry_prerequisites(root, run_dir, phase, write):
         or file_sha256(lock_path) != pinned
     ):
         die(
-            "phase-read refused: Phase 2 requires the confirmed and pinned Contract-4 intent lock; "
-            "finish INTAKE-2.md and run clarify-gate.sh --record-intent-lock while Phase 1 remains in progress",
+            "phase-read refused: implementation requires the confirmed and pinned Contract-4 intent lock; "
+            "finish the single final INTAKE.md confirmation and run clarify-gate.sh --record-intent-lock",
             1,
         )
 
@@ -4644,6 +4688,203 @@ def parse_hook_input(input_text):
     return data if isinstance(data, dict) else {}
 
 
+def codex_thread_identity():
+    session_id = os.environ.get("CODEX_THREAD_ID", "")
+    if not session_id:
+        return None
+    return {"host": "codex", "session_id": session_id}
+
+
+def hook_manifest_path():
+    plugin_root = os.environ.get("KIMIFLOW_PLUGIN_ROOT", "").strip()
+    if not plugin_root:
+        plugin_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    return os.path.join(os.path.realpath(os.path.expanduser(plugin_root)), "hooks", "hooks.json")
+
+
+def plugin_manifest_path():
+    plugin_root = os.environ.get("KIMIFLOW_PLUGIN_ROOT", "").strip()
+    if not plugin_root:
+        plugin_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    return os.path.join(
+        os.path.realpath(os.path.expanduser(plugin_root)),
+        ".codex-plugin",
+        "plugin.json",
+    )
+
+
+def hook_health_directory():
+    codex_home = os.path.realpath(os.path.expanduser(os.environ.get("CODEX_HOME", "~/.codex")))
+    return os.path.join(codex_home, "kimiflow", "hook-health")
+
+
+def hook_health_session_digest(identity):
+    if not identity:
+        return ""
+    value = "%s\0%s" % (identity.get("host", ""), identity.get("session_id", ""))
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def hook_health_path(identity):
+    digest = hook_health_session_digest(identity)
+    return os.path.join(hook_health_directory(), "%s.json" % digest) if digest else ""
+
+
+def hook_manifest_digest():
+    path = hook_manifest_path()
+    try:
+        info = os.lstat(path)
+        if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
+            return ""
+        return file_sha256(path)
+    except (OSError, ActiveError):
+        return ""
+
+
+def plugin_manifest_digest():
+    path = plugin_manifest_path()
+    try:
+        info = os.lstat(path)
+        if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
+            return ""
+        return file_sha256(path)
+    except (OSError, ActiveError):
+        return ""
+
+
+def _hook_health_age_seconds(value):
+    try:
+        recorded = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+    return (datetime.now(timezone.utc) - recorded).total_seconds()
+
+
+def codex_hook_health_status(identity=None):
+    identity = identity or codex_thread_identity()
+    if not identity or identity.get("host") != "codex":
+        return {"schema_version": HOOK_HEALTH_SCHEMA, "status": "not_required", "reason": "not_codex_thread"}
+    expected_manifest = hook_manifest_digest()
+    if not expected_manifest:
+        return {"schema_version": HOOK_HEALTH_SCHEMA, "status": "closed", "reason": "hook_manifest_missing"}
+    expected_plugin = plugin_manifest_digest()
+    if not expected_plugin:
+        return {"schema_version": HOOK_HEALTH_SCHEMA, "status": "closed", "reason": "plugin_manifest_missing"}
+    path = hook_health_path(identity)
+    try:
+        info = os.lstat(path)
+        if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_size > HOOK_HEALTH_MAX_BYTES:
+            raise ValueError("invalid marker")
+        with open(path, "r", encoding="utf-8") as handle:
+            marker = json.load(handle)
+    except FileNotFoundError:
+        return {"schema_version": HOOK_HEALTH_SCHEMA, "status": "closed", "reason": "user_prompt_hook_not_observed"}
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {"schema_version": HOOK_HEALTH_SCHEMA, "status": "closed", "reason": "hook_health_invalid"}
+    if not isinstance(marker, dict) or marker.get("schema_version") != HOOK_HEALTH_SCHEMA:
+        return {"schema_version": HOOK_HEALTH_SCHEMA, "status": "closed", "reason": "hook_health_invalid"}
+    if marker.get("session_digest") != hook_health_session_digest(identity):
+        return {"schema_version": HOOK_HEALTH_SCHEMA, "status": "closed", "reason": "session_mismatch"}
+    if marker.get("hook_manifest_digest") != expected_manifest:
+        return {"schema_version": HOOK_HEALTH_SCHEMA, "status": "closed", "reason": "hook_manifest_changed"}
+    if marker.get("plugin_manifest_digest") != expected_plugin:
+        return {"schema_version": HOOK_HEALTH_SCHEMA, "status": "closed", "reason": "plugin_manifest_changed"}
+    observation_id = marker.get("observation_id")
+    if not isinstance(observation_id, str) or re.fullmatch(r"[0-9a-f]{32}", observation_id) is None:
+        return {"schema_version": HOOK_HEALTH_SCHEMA, "status": "closed", "reason": "hook_health_invalid"}
+    age = _hook_health_age_seconds(marker.get("recorded_at"))
+    if age is None or age < -60:
+        return {"schema_version": HOOK_HEALTH_SCHEMA, "status": "closed", "reason": "hook_health_invalid"}
+    if marker.get("consumed_at"):
+        return {
+            "schema_version": HOOK_HEALTH_SCHEMA,
+            "status": "closed",
+            "reason": "user_prompt_hook_already_consumed",
+            "recorded_at": marker["recorded_at"],
+            "observation_id": observation_id,
+        }
+    return {
+        "schema_version": HOOK_HEALTH_SCHEMA,
+        "status": "open",
+        "reason": "user_prompt_hook_observed",
+        "recorded_at": marker["recorded_at"],
+        "observation_id": observation_id,
+        "hook_manifest_digest": expected_manifest,
+        "plugin_manifest_digest": expected_plugin,
+    }
+
+
+def consume_codex_hook_health(identity=None):
+    identity = identity or codex_thread_identity()
+    health = codex_hook_health_status(identity)
+    if health.get("status") != "open":
+        return health
+    path = hook_health_path(identity)
+    try:
+        info = os.lstat(path)
+        if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_size > HOOK_HEALTH_MAX_BYTES:
+            raise ValueError("invalid marker")
+        with open(path, "r", encoding="utf-8") as handle:
+            marker = json.load(handle)
+        if marker.get("observation_id") != health.get("observation_id"):
+            return {"schema_version": HOOK_HEALTH_SCHEMA, "status": "closed", "reason": "hook_health_changed"}
+        marker["consumed_at"] = iso_now()
+        atomic_write(path, json_pretty(marker) + "\n", mode=0o600, refuse_symlink=True)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {"schema_version": HOOK_HEALTH_SCHEMA, "status": "closed", "reason": "hook_health_invalid"}
+    return {
+        "schema_version": HOOK_HEALTH_SCHEMA,
+        "status": "consumed",
+        "reason": "intake_wait_registered",
+        "observation_id": health["observation_id"],
+    }
+
+
+def record_codex_hook_health(data):
+    identity = hook_session_identity(data)
+    if not identity or identity.get("host") != "codex":
+        return
+    manifest_digest = hook_manifest_digest()
+    plugin_digest = plugin_manifest_digest()
+    if not manifest_digest or not plugin_digest:
+        return
+    directory = hook_health_directory()
+    try:
+        os.makedirs(directory, mode=0o700, exist_ok=True)
+        directory_info = os.lstat(directory)
+        if not stat.S_ISDIR(directory_info.st_mode) or stat.S_ISLNK(directory_info.st_mode):
+            return
+        marker = {
+            "schema_version": HOOK_HEALTH_SCHEMA,
+            "host": "codex",
+            "session_digest": hook_health_session_digest(identity),
+            "hook_manifest_digest": manifest_digest,
+            "plugin_manifest_digest": plugin_digest,
+            "hook_event": "UserPromptSubmit",
+            "observation_id": secrets.token_hex(16),
+            "recorded_at": iso_now(),
+        }
+        atomic_write(hook_health_path(identity), json_pretty(marker) + "\n", mode=0o600, refuse_symlink=True)
+        candidates = []
+        for name in os.listdir(directory):
+            if re.fullmatch(r"[0-9a-f]{64}\.json", name) is None:
+                continue
+            candidate = os.path.join(directory, name)
+            try:
+                info = os.lstat(candidate)
+            except OSError:
+                continue
+            if stat.S_ISREG(info.st_mode) and not stat.S_ISLNK(info.st_mode):
+                candidates.append((info.st_mtime, candidate))
+        for _, candidate in sorted(candidates, reverse=True)[HOOK_HEALTH_MAX_FILES:]:
+            try:
+                os.unlink(candidate)
+            except OSError:
+                pass
+    except (OSError, ValueError):
+        return
+
+
 def hook_root(input_text, data=None):
     data = parse_hook_input(input_text) if data is None else data
     tool_input = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
@@ -4711,6 +4952,7 @@ def cmd_owner_check():
 def cmd_prompt_context():
     input_text = sys.stdin.read()
     data = parse_hook_input(input_text)
+    record_codex_hook_health(data)
     root = hook_root(input_text, data)
     status = status_json(root)
     if not (status.get("present") is True and status.get("terminal") is False):
@@ -4873,6 +5115,24 @@ def cmd_intake_response():
             if contract4 and intake_schema == 2 else None
         ),
     )
+
+
+def cmd_hook_health(args):
+    opts = parse_options(args, "hook-health", {"--require": False, "--pretty": False})
+    health = codex_hook_health_status()
+    json_print(health, opts["--pretty"])
+    if opts["--require"] and health.get("status") != "open":
+        if health.get("reason") == "user_prompt_hook_already_consumed":
+            die(
+                "hook-health: this prompt already registered one Product Intake wait; "
+                "continue only after the user's next prompt",
+                1,
+            )
+        die(
+            "hook-health: Codex UserPromptSubmit hook was not observed for this task and plugin version; "
+            "open /hooks, review and trust the Kimiflow command hooks, then submit a new prompt",
+            1,
+        )
     return 0
 
 
@@ -4989,6 +5249,8 @@ def main(argv=None):
             return cmd_prompt_context()
         elif command == "intake-response":
             return cmd_intake_response()
+        elif command == "hook-health":
+            return cmd_hook_health(args)
         elif command == "stop-gate":
             return cmd_stop_gate()
         elif command in ("--help", "-h", "help"):

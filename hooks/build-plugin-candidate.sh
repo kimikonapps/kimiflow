@@ -6,29 +6,40 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
 ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 OUTPUT="$ROOT/plugins/kimiflow"
 MODE=""
+CODEX_CACHEBUSTER=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --write|--check) MODE="${1#--}"; shift ;;
     --output) [ "$#" -ge 2 ] || { echo "build-plugin-candidate: --output requires a path" >&2; exit 2; }; OUTPUT="$2"; shift 2 ;;
-    -h|--help) echo "Usage: hooks/build-plugin-candidate.sh --write|--check [--output PATH]"; exit 0 ;;
+    --codex-cachebuster) [ "$#" -ge 2 ] || { echo "build-plugin-candidate: --codex-cachebuster requires a token" >&2; exit 2; }; CODEX_CACHEBUSTER="$2"; shift 2 ;;
+    -h|--help) echo "Usage: hooks/build-plugin-candidate.sh --write|--check [--output PATH] [--codex-cachebuster TOKEN]"; exit 0 ;;
     *) echo "build-plugin-candidate: unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 [ -n "$MODE" ] || { echo "build-plugin-candidate: choose --write or --check" >&2; exit 2; }
 
-python3 - "$ROOT" "$OUTPUT" "$MODE" <<'PY'
+python3 - "$ROOT" "$OUTPUT" "$MODE" "$CODEX_CACHEBUSTER" <<'PY'
 import hashlib
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
 import sys
 
-root, output, mode = sys.argv[1:]
+root, output, mode, codex_cachebuster = sys.argv[1:]
 root = os.path.realpath(root)
 output = os.path.abspath(output)
+if codex_cachebuster and (
+    len(codex_cachebuster) > 128
+    or re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", codex_cachebuster) is None
+):
+    raise SystemExit(
+        "build-plugin-candidate: invalid Codex cachebuster "
+        "(use lowercase letters, digits, and single hyphens)"
+    )
 canonical_output = os.path.join(root, "plugins", "kimiflow")
 try:
     inside_root = os.path.commonpath((root, output)) == root
@@ -54,6 +65,7 @@ def included(path):
         or path.startswith("hooks/smoke-")
         or path in {
             "hooks/build-plugin-candidate.sh",
+            "hooks/install-codex-plugin-dev.sh",
             "hooks/build-runtime-release.sh",
             "hooks/ci-test-plan.sh",
             "hooks/publish-runtime-release.sh",
@@ -122,6 +134,18 @@ def source_rows():
             raise SystemExit("build-plugin-candidate: unsafe tracked source: %s" % rel)
         with open(source, "rb") as handle:
             payload = handle.read()
+        if rel == ".codex-plugin/plugin.json" and codex_cachebuster:
+            plugin_manifest = json.loads(payload.decode("utf-8"))
+            version = plugin_manifest.get("version")
+            if not isinstance(version, str) or not version.strip():
+                raise SystemExit(
+                    "build-plugin-candidate: Codex manifest version must be a non-empty string"
+                )
+            plugin_manifest["version"] = "%s+codex.%s" % (
+                version.split("+", 1)[0],
+                codex_cachebuster,
+            )
+            payload = (json.dumps(plugin_manifest, indent=2) + "\n").encode("utf-8")
         file_mode = "0755" if info.st_mode & 0o111 else "0644"
         rows.append((rel, file_mode, payload))
     return rows
@@ -142,6 +166,11 @@ def fingerprint(rows):
     return "sha256:%s" % digest.hexdigest(), files
 
 rows = source_rows()
+plugin_version = next(
+    json.loads(payload.decode("utf-8"))["version"]
+    for rel, _file_mode, payload in rows
+    if rel == ".codex-plugin/plugin.json"
+)
 runtime_fingerprint, files = fingerprint(rows)
 manifest = {
     "schema_version": 1,
@@ -191,7 +220,7 @@ def inventory(target):
 
 if mode == "write":
     write_candidate(output)
-    print(json.dumps({"status": "written", "output": output, "runtime_fingerprint": runtime_fingerprint, "file_count": len(files)}, sort_keys=True))
+    print(json.dumps({"status": "written", "output": output, "version": plugin_version, "runtime_fingerprint": runtime_fingerprint, "file_count": len(files)}, sort_keys=True))
 else:
     if not os.path.isdir(output) or os.path.islink(output):
         raise SystemExit("build-plugin-candidate: candidate missing")
@@ -228,5 +257,5 @@ else:
     forbidden = (".git/", ".kimiflow/", ".superpowers/", "docs/superpowers/", "__pycache__/")
     if any(rel.startswith(forbidden) or rel.endswith((".pyc", ".pyo")) for rel in actual):
         raise SystemExit("build-plugin-candidate: forbidden private or generated path")
-    print(json.dumps({"status": "current", "output": output, "runtime_fingerprint": runtime_fingerprint, "file_count": len(files)}, sort_keys=True))
+    print(json.dumps({"status": "current", "output": output, "version": plugin_version, "runtime_fingerprint": runtime_fingerprint, "file_count": len(files)}, sort_keys=True))
 PY

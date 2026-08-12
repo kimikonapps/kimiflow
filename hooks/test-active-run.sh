@@ -7,6 +7,7 @@ SCRIPT="$(cd "$(dirname "$0")" && pwd)/active-run.sh"
 WORK="$(mktemp -d)"
 REPO="$WORK/repo"
 PLUGIN="$WORK/plugin"
+export CODEX_HOME="$WORK/codex-home"
 FAKE_ROUTER="$WORK/fake-memory-router.sh"
 ROUTER_LOG="$WORK/router.log"
 trap 'rm -rf "$WORK"' EXIT
@@ -543,6 +544,22 @@ lock_digest="sha256:$(shasum -a 256 "$REPO/.kimiflow/demo/INTENT-LOCK.json" | aw
 run_active pin-intent-lock --run .kimiflow/demo --digest "$lock_digest" --write >/dev/null
 out="$(run_active phase-read --run .kimiflow/demo --phase 2 --file phases/phase-2.md --write)"
 assert_jq "$out" '.status == "phase_read_recorded"' "phase_read_allows_phase2_after_pinned_intent_lock"
+
+reset_repo
+write_phase_manifest
+rm "$REPO/.kimiflow/demo/STATE.md"
+run_active init-state --run .kimiflow/demo --mode feature --scope large --language en --title "Plan before confirmation" --write >/dev/null
+run_active phase-read --run .kimiflow/demo --phase 0 --file phases/phase-0.md --write >/dev/null
+run_active phase-read --run .kimiflow/demo --phase 1 --file phases/phase-1.md --write >/dev/null
+run_active phase-read --run .kimiflow/demo --phase 2 --file phases/phase-2.md --write >/dev/null
+run_active phase-read --run .kimiflow/demo --phase 3 --file phases/phase-3.md --write >/dev/null
+out="$(run_active phase-read --run .kimiflow/demo --phase 4 --file phases/phase-4.md --write)"
+assert_jq "$out" '.status == "phase_read_recorded"' "fresh_feature_allows_readonly_plan_before_active_session"
+if run_active phase-read --run .kimiflow/demo --phase 5 --file phases/phase-5.md --write >/dev/null 2>&1; then
+  fail "fresh_feature_blocks_phase5_before_final_confirmation"
+else
+  pass "fresh_feature_blocks_phase5_before_final_confirmation"
+fi
 
 reset_repo
 write_phase_manifest

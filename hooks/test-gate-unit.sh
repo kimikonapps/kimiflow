@@ -26,7 +26,7 @@ fi
 # Resolve with `command -v` inside the script (alias-free in non-interactive bash).
 REALBASH="$(command -v bash)"
 NOJQ="$WORK/nojq-bin"; mkdir -p "$NOJQ"
-for t in cat head git tail grep touch; do s="$(command -v "$t")"; [ -n "$s" ] && ln -s "$s" "$NOJQ/$t"; done
+for t in cat dirname head git grep mkdir rmdir tail touch; do s="$(command -v "$t")"; [ -n "$s" ] && ln -s "$s" "$NOJQ/$t"; done
 
 reset_repo() {
   rm -rf "$REPO"; git init -q "$REPO"
@@ -103,6 +103,16 @@ assert_noblock "$out" "other_session_ignores_active_test_gate"
 assert_nofile  "$REPO/SENTINEL.flag" "other_session_test_gate_does_not_eval"
 out="$(run_jq_session owner-session)"
 assert_block "$out" "owner_session_keeps_active_test_gate"
+
+# B8 — a running gate blocks a duplicate invocation instead of overlapping the
+# same build/test outputs.
+reset_repo; set_marker "touch \"$REPO/SENTINEL.flag\""
+mkdir "$REPO/.kimiflow/test-gate.running"
+out="$(run_jq false)"
+assert_block "$out" "concurrent_test_gate_blocks_duplicate"
+assert_has "$out" "already running" "concurrent_test_gate_explains_lock"
+assert_nofile "$REPO/SENTINEL.flag" "concurrent_test_gate_does_not_eval"
+rmdir "$REPO/.kimiflow/test-gate.running"
 
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi

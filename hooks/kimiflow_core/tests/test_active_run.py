@@ -1878,12 +1878,19 @@ class TestAwaitUser(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.root)
-        plugin = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, plugin)
+        self.plugin = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.plugin)
+        os.makedirs(os.path.join(self.plugin, "hooks"))
+        os.makedirs(os.path.join(self.plugin, ".codex-plugin"))
+        with open(os.path.join(self.plugin, "hooks", "hooks.json"), "w", encoding="utf-8") as handle:
+            handle.write("{}\n")
+        with open(os.path.join(self.plugin, ".codex-plugin", "plugin.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"name":"kimiflow","version":"test"}\n')
         patcher = mock.patch.dict(os.environ, {
-            "KIMIFLOW_PLUGIN_ROOT": plugin,
+            "KIMIFLOW_PLUGIN_ROOT": self.plugin,
             "KIMIFLOW_HOST": "codex",
             "CODEX_THREAD_ID": "owner-session",
+            "CODEX_HOME": os.path.join(self.root, ".codex-test"),
         })
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -1899,8 +1906,11 @@ class TestAwaitUser(unittest.TestCase):
         with open(os.path.join(run_dir, "STATE.md"), "w", encoding="utf-8") as handle:
             handle.write("Status: active\nMode: feature\nScope: small\nAffected files: src/a.txt\n" + extra)
 
-    def hook_payload(self):
-        return json.dumps({"cwd": self.root, "session_id": "owner-session"})
+    def hook_payload(self, prompt=None):
+        payload = {"cwd": self.root, "session_id": "owner-session"}
+        if prompt is not None:
+            payload["prompt"] = prompt
+        return json.dumps(payload)
 
     def read_active(self):
         with open(os.path.join(self.root, ".kimiflow", "session", "ACTIVE_RUN.json"), "r", encoding="utf-8") as handle:
@@ -1912,6 +1922,120 @@ class TestAwaitUser(unittest.TestCase):
             args.extend(["--kind", kind])
         return run_main(args)
 
+    def write_scope_intake(self):
+        request = (
+            "<!-- kimiflow:intake contract=4 schema=2 stage=scope round=1 "
+            "questions=2 selection=impact_uncertainty technical_questions=0 "
+            "confirmation=scope_deliberation user_language=de -->\n"
+            "Problem: Feature requests can be implemented from an unverified assumption.\n"
+            "Observable success: The user sees and corrects the understood product flow.\n"
+            "Boundary: Product intent is discussed before research, planning, or writes.\n"
+            "Option 1: Reuse the current intake gate.\n"
+            "Option 2: Evolve the current contract with structured actions.\n"
+            "Included: One replaceable scope draft.\n"
+            "Later: Optional richer product discovery.\n"
+            "Excluded: Automatic scope expansion.\n"
+            "Counter perspective: A smaller change may solve the actual problem.\n"
+            "Completeness check: No material user-visible capability is missing.\n"
+            "Action scope_ready: Umfang ist bereit\n"
+            "Action discuss: Weiter besprechen\n"
+        )
+        path = os.path.join(self.root, ".kimiflow", "demo", "INTAKE.md")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(request)
+        active = active_run.load_active(self.root)
+        active.update({
+            "flow_schema": "5",
+            "intent_contract": "4",
+            "intake_schema": 2,
+            "interaction_language": "de",
+        })
+        active.pop("present", None)
+        active_run.write_active(self.root, active)
+
+    def await_scope_intake(self):
+        return run_main([
+            "await-user",
+            "--run", ".kimiflow/demo",
+            "--kind", "intake",
+            "--round", "1",
+            "--request", ".kimiflow/demo/INTAKE.md",
+            "--reason", "scope gate",
+            "--root", self.root,
+            "--write",
+        ])
+
+    def write_final_intake(self):
+        request = (
+            "<!-- kimiflow:intake contract=4 schema=2 stage=final round=2 "
+            "confirmation=final_contract cause=scope_ready user_language=de -->\n"
+            "Problem: Feature requests can be implemented from an unverified assumption.\n"
+            "Roles and boundaries: The user owns what and why; the model owns how.\n"
+            "Included: One bounded implementation.\n"
+            "Excluded: Automatic scope expansion.\n"
+            "Observable success: The selected behavior works without unrelated changes.\n"
+            "End-to-end example: The user confirms once and planning starts.\n"
+            "Step 1: Reuse the current intake gate.\n"
+            "Step 2: Verify the bounded behavior.\n"
+            "Requirement R1: Preserve behavior outside the selected scope.\n"
+            "Action confirmed: Vertrag bestätigen\n"
+            "Action corrected: Korrektur erforderlich\n"
+        )
+        path = os.path.join(self.root, ".kimiflow", "demo", "INTAKE-2.md")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(request)
+
+    def await_final_intake(self):
+        return run_main([
+            "await-user",
+            "--run", ".kimiflow/demo",
+            "--kind", "intake",
+            "--round", "2",
+            "--request", ".kimiflow/demo/INTAKE-2.md",
+            "--reason", "final contract",
+            "--root", self.root,
+            "--write",
+        ])
+
+    def write_schema1_intake(self):
+        self.write_state(
+            "Flow schema: 5\nIntent contract: 4\nInteraction language: de\n"
+        )
+        request = (
+            "<!-- kimiflow:intake contract=4 round=1 questions=1 "
+            "selection=impact_uncertainty technical_questions=0 "
+            "confirmation=concrete_product_flow -->\n"
+            "Product flow entry: Der User startet den geplanten Feature-Run.\n"
+            "User interaction: Kimiflow fragt nach dem fertigen Plan genau einmal.\n"
+            "Visible delegation outcome: Der bestätigte Plan wird lokal umgesetzt.\n"
+            "Unchanged path: Unbeteiligte Produktpfade bleiben unverändert.\n"
+            "Done scenario: Build, Tests und Smokes sind grün.\n"
+        )
+        path = os.path.join(self.root, ".kimiflow", "demo", "INTAKE.md")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(request)
+        active = active_run.load_active(self.root)
+        active.update({
+            "flow_schema": "5",
+            "intent_contract": "4",
+            "intake_schema": 1,
+            "interaction_language": "de",
+        })
+        active.pop("present", None)
+        active_run.write_active(self.root, active)
+
+    def await_schema1_intake(self):
+        return run_main([
+            "await-user",
+            "--run", ".kimiflow/demo",
+            "--kind", "intake",
+            "--round", "1",
+            "--request", ".kimiflow/demo/INTAKE.md",
+            "--reason", "final contract",
+            "--root", self.root,
+            "--write",
+        ])
+
     def test_await_user_sets_flag_reason_and_timestamp(self):
         rc, out = self.await_user()
         self.assertEqual(rc, 0)
@@ -1920,6 +2044,129 @@ class TestAwaitUser(unittest.TestCase):
         self.assertIs(active.get("awaiting_user"), True)
         self.assertEqual(active.get("awaiting_reason"), "engine gate question")
         self.assertTrue(active.get("awaiting_since"))
+
+    def test_codex_intake_requires_current_hook_observation(self):
+        self.write_scope_intake()
+        health = active_run.codex_hook_health_status()
+        self.assertEqual(health["status"], "closed")
+        self.assertEqual(health["reason"], "user_prompt_hook_not_observed")
+        rc, out = run_main(["hook-health", "--require"])
+        self.assertEqual(rc, 1)
+        self.assertEqual(json.loads(out)["reason"], "user_prompt_hook_not_observed")
+
+        rc, _ = self.await_scope_intake()
+        self.assertEqual(rc, 1)
+        self.assertNotIn("awaiting_user", self.read_active())
+
+        rc, _ = run_main(["prompt-context"], stdin_text=self.hook_payload())
+        self.assertEqual(rc, 0)
+        health = active_run.codex_hook_health_status()
+        self.assertEqual(health["status"], "open")
+        self.assertEqual(health["reason"], "user_prompt_hook_observed")
+        rc, out = run_main(["hook-health", "--require"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["status"], "open")
+        self.assertEqual(active_run.status_json(self.root)["hook_health"]["status"], "open")
+
+        rc, out = self.await_scope_intake()
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["status"], "awaiting_user")
+        health = active_run.codex_hook_health_status()
+        self.assertEqual(health["status"], "closed")
+        self.assertEqual(health["reason"], "user_prompt_hook_already_consumed")
+
+        rc, _ = self.await_scope_intake()
+        self.assertEqual(rc, 1)
+
+    def test_single_confirmation_intake_requires_one_hook_observation(self):
+        self.write_schema1_intake()
+        rc, _ = self.await_schema1_intake()
+        self.assertEqual(rc, 1)
+        self.assertNotIn("awaiting_user", self.read_active())
+
+        rc, _ = run_main(["prompt-context"], stdin_text=self.hook_payload("Plan ready"))
+        self.assertEqual(rc, 0)
+        rc, out = self.await_schema1_intake()
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["status"], "awaiting_user")
+        self.assertEqual(
+            active_run.codex_hook_health_status()["reason"],
+            "user_prompt_hook_already_consumed",
+        )
+        self.assertTrue(self.read_active().get("awaiting_user"))
+
+    def test_long_intake_turn_keeps_one_single_use_hook_observation(self):
+        self.write_scope_intake()
+        rc, _ = run_main(["prompt-context"], stdin_text=self.hook_payload("Start"))
+        self.assertEqual(rc, 0)
+        rc, _ = self.await_scope_intake()
+        self.assertEqual(rc, 0)
+
+        rc, _ = run_main(
+            ["prompt-context"],
+            stdin_text=self.hook_payload("Umfang ist bereit"),
+        )
+        self.assertEqual(rc, 0)
+        self.assertTrue(os.path.isfile(os.path.join(
+            self.root, ".kimiflow", "demo", "INTAKE-RECEIPT-1.json"
+        )))
+
+        marker_path = active_run.hook_health_path(active_run.codex_thread_identity())
+        with open(marker_path, "r", encoding="utf-8") as handle:
+            marker = json.load(handle)
+        marker["recorded_at"] = "2000-01-01T00:00:00Z"
+        with open(marker_path, "w", encoding="utf-8") as handle:
+            json.dump(marker, handle)
+
+        health = active_run.codex_hook_health_status()
+        self.assertEqual(health["status"], "open")
+        self.write_final_intake()
+        rc, out = self.await_final_intake()
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["status"], "awaiting_user")
+        self.assertEqual(
+            active_run.codex_hook_health_status()["reason"],
+            "user_prompt_hook_already_consumed",
+        )
+
+        rc, _ = run_main(
+            ["prompt-context"],
+            stdin_text=self.hook_payload("Vertrag bestätigen"),
+        )
+        self.assertEqual(rc, 0)
+        receipt_path = os.path.join(
+            self.root, ".kimiflow", "demo", "INTAKE-RECEIPT-2.json"
+        )
+        with open(receipt_path, "r", encoding="utf-8") as handle:
+            receipt = json.load(handle)
+        self.assertEqual(receipt["action"], "confirmed")
+        self.assertFalse(self.read_active().get("awaiting_user", False))
+
+    def test_intake_wait_rolls_back_when_hook_observation_cannot_be_consumed(self):
+        self.write_scope_intake()
+        rc, _ = run_main(["prompt-context"], stdin_text=self.hook_payload("Start"))
+        self.assertEqual(rc, 0)
+        with mock.patch.object(
+            active_run,
+            "consume_codex_hook_health",
+            return_value={"status": "closed", "reason": "hook_health_changed"},
+        ):
+            rc, _ = self.await_scope_intake()
+        self.assertEqual(rc, 1)
+        active = self.read_active()
+        self.assertNotIn("awaiting_user", active)
+        self.assertNotIn("intake_request", active)
+
+    def test_hook_health_is_bound_to_plugin_version(self):
+        rc, _ = run_main(["prompt-context"], stdin_text=self.hook_payload())
+        self.assertEqual(rc, 0)
+        self.assertEqual(active_run.codex_hook_health_status()["status"], "open")
+
+        with open(os.path.join(self.plugin, ".codex-plugin", "plugin.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"name":"kimiflow","version":"next"}\n')
+        health = active_run.codex_hook_health_status()
+        self.assertEqual(health["status"], "closed")
+        self.assertEqual(health["reason"], "plugin_manifest_changed")
 
     def test_schema3_requires_known_kind(self):
         self.write_state("Flow schema: 3\n")

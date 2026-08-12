@@ -11,6 +11,30 @@ CANDIDATE="$WORK/kimiflow"
 [ -f "$CANDIDATE/RUNTIME-FINGERPRINT.json" ]
 jq -e '.schema_version == 1 and (.runtime_fingerprint | test("^sha256:[0-9a-f]{64}$")) and .file_count == (.files | length)' "$CANDIDATE/RUNTIME-FINGERPRINT.json" >/dev/null
 
+test_codex_cachebuster_is_part_of_candidate_identity() {
+  overlay="$WORK/cachebuster/kimiflow"
+  source_version="$(jq -r '.version' "$ROOT/.codex-plugin/plugin.json")"
+  source_digest="$(shasum -a 256 "$ROOT/.codex-plugin/plugin.json" | awk '{print $1}')"
+  "$ROOT/hooks/build-plugin-candidate.sh" \
+    --write --output "$overlay" --codex-cachebuster local-test-1 >/dev/null
+  [ "$(jq -r '.version' "$overlay/.codex-plugin/plugin.json")" = "${source_version%%+*}+codex.local-test-1" ]
+  [ "$(shasum -a 256 "$ROOT/.codex-plugin/plugin.json" | awk '{print $1}')" = "$source_digest" ]
+  "$ROOT/hooks/build-plugin-candidate.sh" \
+    --check --output "$overlay" --codex-cachebuster local-test-1 >/dev/null
+  manifest_digest="$(shasum -a 256 "$overlay/.codex-plugin/plugin.json" | awk '{print $1}')"
+  [ "$(jq -r '.files[] | select(.path == ".codex-plugin/plugin.json") | .sha256' "$overlay/RUNTIME-FINGERPRINT.json")" = "sha256:$manifest_digest" ]
+  if "$ROOT/hooks/build-plugin-candidate.sh" --check --output "$overlay" >/dev/null 2>&1; then
+    echo "candidate checker ignored the Codex cachebuster identity" >&2
+    exit 1
+  fi
+  if "$ROOT/hooks/build-plugin-candidate.sh" \
+    --write --output "$WORK/invalid/kimiflow" --codex-cachebuster 'BAD+token' >/dev/null 2>&1; then
+    echo "candidate builder accepted an invalid Codex cachebuster" >&2
+    exit 1
+  fi
+}
+test_codex_cachebuster_is_part_of_candidate_identity
+
 for rel in \
   docs/kimiflow-graph.svg \
   docs/demo/README.md \
@@ -83,6 +107,7 @@ test_required_runtime_paths_must_be_git_indexed
 
 [ ! -e "$CANDIDATE/hooks/build-runtime-release.sh" ]
 [ ! -e "$CANDIDATE/hooks/publish-runtime-release.sh" ]
+[ ! -e "$CANDIDATE/hooks/install-codex-plugin-dev.sh" ]
 [ ! -e "$CANDIDATE/hooks/kimiflow_core/runtime_release.py" ]
 printf 'must not ship\n' > "$tracked_source"
 "$ROOT/hooks/build-plugin-candidate.sh" --write --output "$CANDIDATE" >/dev/null
@@ -217,3 +242,4 @@ printf 'ok   candidate_fingerprint_is_reproducible\n'
 printf 'ok   candidate_output_is_non_destructive\n'
 printf 'ok   test_pi_package_has_one_optional_crew_adapter\n'
 printf 'ok   test_required_runtime_paths_must_be_git_indexed\n'
+printf 'ok   test_codex_cachebuster_is_part_of_candidate_identity\n'
