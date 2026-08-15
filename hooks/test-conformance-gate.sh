@@ -101,6 +101,16 @@ EOF
   printf 'changed\n' > "$REPO/src/a.txt"
 }
 
+add_second_acceptance_criterion() {
+  cat >> "$RUN/ACCEPTANCE.md" <<'EOF'
+## AC-2
+When the decision spans two outcomes, the system shall preserve both outcomes.
+Example: one decision -> two verified acceptance outcomes.
+Verification: automated command test -s src/a.txt.
+AC-2 -> decision_two_test
+EOF
+}
+
 enable_routine_convergence() {
   cat >> "$RUN/STATE.md" <<'EOF'
 Convergence contract: 1
@@ -283,6 +293,35 @@ reset_repo
 write_contract small
 out="$(run_gate --plan)"
 assert_status "$out" OPEN "valid_plan_contract_opens"
+
+reset_repo
+write_contract small
+add_second_acceptance_criterion
+sed -i.bak 's/AC D1: AC-1/AC D1: AC-1, AC-2/' "$RUN/PLAN.md" && rm "$RUN/PLAN.md.bak"
+out="$(run_gate --plan)"
+assert_status "$out" OPEN "decision_accepts_multiple_declared_criteria"
+
+sed -i.bak 's/AC D1: AC-1, AC-2/AC D1: AC-1, AC-9/' "$RUN/PLAN.md" && rm "$RUN/PLAN.md.bak"
+out="$(run_gate --plan)"
+assert_status "$out" CLOSED "decision_rejects_missing_criterion_in_list"
+assert_contains "$out" "ac_D1_missing:AC-9" "decision_missing_criterion_in_list_detail"
+
+reset_repo
+original_start="$START"
+printf 'preserved pre-run work\n' > "$REPO/preserved.txt"
+git_repo add preserved.txt
+git_repo commit -q -m 'preserve pre-run work'
+implementation_base="$(git_repo rev-parse HEAD)"
+START="$original_start"
+write_contract small
+sed -i.bak "/^Run started head:/a\\
+Implementation base head: $implementation_base" "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+mkdir -p "$REPO/.kimiflow/session"
+cat > "$REPO/.kimiflow/session/ACTIVE_RUN.json" <<EOF
+{"run":".kimiflow/demo","mode":"feature","scope":"small","started_head":"$original_start","implementation_base_head":"$implementation_base","conformance_contract":"1"}
+EOF
+out="$(run_gate --record --write)"
+assert_status "$out" OPEN "implementation_base_excludes_preserved_pre_run_commit"
 
 reset_repo
 write_contract small

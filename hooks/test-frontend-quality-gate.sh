@@ -186,6 +186,40 @@ test_frontend_quality_contract_routing() {
   assert_has "$out" $'FRONTEND_QUALITY_GATE\tOPEN' "ui_standard_records"
 }
 
+test_behavior_only_ui_uses_runtime_verification_without_screenshot() {
+  repo="$(new_repo behavior-only-ui)"
+  write_active "$repo"
+  write_state "$repo"
+  record_start "$repo" >/dev/null
+  mkdir -p "$repo/src/ui"
+  printf 'export default 1\n' > "$repo/src/ui/App.tsx"
+  set_affected "$repo/.kimiflow/run/STATE.md" src/ui/App.tsx
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality evidence" "ui-surface=behavior-only; ref=verification:VERIFICATION.md"
+
+  out="$(record_routing "$repo")"
+  assert_has "$out" $'FRONTEND_QUALITY_GATE\tOPEN' "behavior_only_ui_route_records"
+  out="$("$GATE" "$repo/.kimiflow/run")"
+  assert_has "$out" 'behavior_verification_missing' "behavior_only_ui_requires_runtime_verification"
+
+  cat > "$repo/.kimiflow/run/VERIFICATION.md" <<'EOF'
+# Verification
+<!-- kimiflow:verification outcome=passed criteria=passed regression=passed -->
+EOF
+  out="$("$GATE" "$repo/.kimiflow/run")"
+  assert_has "$out" $'FRONTEND_QUALITY_GATE\tOPEN' "behavior_only_ui_opens_without_screenshot"
+  if [ ! -e "$repo/.kimiflow/run/DESIGN-QA.md" ]; then
+    pass "behavior_only_ui_does_not_require_design_qa"
+  else
+    fail "behavior_only_ui_does_not_require_design_qa"
+  fi
+
+  printf 'Polish and redesign the UI.\n' > "$repo/.kimiflow/run/INTENT.md"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality routing" "provisional"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality basis" "pending"
+  out="$(record_routing "$repo")"
+  assert_has "$out" 'flagship_route_mismatch' "visual_intent_cannot_downgrade_to_behavior_only"
+}
+
 test_readonly_audit_off_route() {
   repo="$(new_repo readonly-audit)"
   write_active "$repo"
@@ -841,8 +875,10 @@ PY
   assert_has "$out" $'FRONTEND_QUALITY_GATE\tOPEN' "post_disposition_start_opens"
   assert_has "$(grep '^Frontend quality start:' "$repo/.kimiflow/run/STATE.md")" "clean@$disposition_head" "frontend_start_uses_post_disposition_head"
   assert_has "$(cat "$repo/.kimiflow/session/ACTIVE_RUN.json")" "\"started_head\":\"$original_head\"" "review_start_head_stays_original"
+  assert_has "$(cat "$repo/.kimiflow/session/ACTIVE_RUN.json")" "\"implementation_base_head\":\"$disposition_head\"" "implementation_base_is_pinned_in_active_run"
   assert_has "$(cat "$repo/.kimiflow/session/ACTIVE_RUN.json")" "\"frontend_quality_start_head\":\"$disposition_head\"" "frontend_start_is_pinned_in_active_run"
   assert_has "$(grep '^Workspace disposition head:' "$repo/.kimiflow/run/STATE.md")" "$disposition_head" "workspace_disposition_survives_active_run_retirement"
+  assert_has "$(grep '^Implementation base head:' "$repo/.kimiflow/run/STATE.md")" "$disposition_head" "implementation_base_survives_active_run_retirement"
 }
 
 test_workspace_disposition_receipt_is_one_shot() {
@@ -1074,6 +1110,7 @@ if [ ! -x "$GATE" ]; then
 fi
 
 test_frontend_quality_contract_routing
+test_behavior_only_ui_uses_runtime_verification_without_screenshot
 test_readonly_audit_off_route
 test_canonical_git_delta_sources
 test_bugfix_and_flagship_routing
