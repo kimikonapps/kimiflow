@@ -27,7 +27,14 @@ except Exception:
     raise SystemExit(0)
 if not isinstance(data,dict): raise SystemExit(0)
 ti=data.get("tool_input") if isinstance(data.get("tool_input"),dict) else {}
-root=git_root(data.get("cwd") or ti.get("cwd") or data.get("working_directory") or os.getcwd())
+reported_root=git_root(data.get("cwd") or ti.get("cwd") or data.get("working_directory") or os.getcwd())
+try:
+    hooks_dir=os.path.realpath(os.environ.get("KIMIFLOW_INTAKE_HOOKS_DIR", ""))
+    if hooks_dir not in sys.path: sys.path.insert(0,hooks_dir)
+    from kimiflow_core import active_run as active_run_contract
+    root=active_run_contract.hook_root(json.dumps(data,separators=(",",":")),data)
+except Exception:
+    root=reported_root
 if not root: raise SystemExit(0)
 active_path=os.path.join(root,".kimiflow/session/ACTIVE_RUN.json")
 try:
@@ -189,6 +196,8 @@ def allowed_setup_command(text,allow_scope_research=False):
         return parsed,flags
     if script=="active-run.sh" and args:
         if args in (["--help"],["-h"]): return True
+        if args[0]=="hook-health":
+            return args[1:] in ([],["--require"],["--pretty"],["--require","--pretty"],["--pretty","--require"])
         if args[0] in ("status","next-action","phase-read","phase-read-status","phase-read-gate"):
             return True
         if args[0] in ("abort","park","fail"):

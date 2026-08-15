@@ -285,6 +285,132 @@ class ActiveRunContractTests(unittest.TestCase):
         self.assertEqual(receipt["action"], "confirmed")
         self.assertEqual(receipt["channel"], "chat")
 
+    def test_codex_prompt_from_primary_routes_to_owned_registered_worktree(self):
+        linked = os.path.realpath(os.path.join(self.temp, "registered-worktree"))
+        subprocess.run(
+            [
+                "git", "-C", self.root, "worktree", "add", "-q", "-b",
+                "codex/registered-intake", linked,
+            ],
+            check=True,
+        )
+        run_rel = ".kimiflow/registered-intake"
+        run_dir = os.path.join(linked, run_rel)
+        os.makedirs(run_dir)
+        request = (
+            "<!-- kimiflow:intake contract=4 round=1 questions=1 "
+            "selection=impact_uncertainty technical_questions=0 "
+            "confirmation=concrete_product_flow -->\n"
+            "Product flow entry: Open the approved chat workspace.\n"
+            "User interaction: Manage chats while the composer stays visible.\n"
+            "Visible delegation outcome: Running chats keep their visible status.\n"
+            "Unchanged path: Existing chat input contracts remain unchanged.\n"
+            "Done scenario: The approved workspace plan is implemented and verified.\n"
+        )
+        with open(os.path.join(run_dir, "INTAKE.md"), "w", encoding="utf-8") as handle:
+            handle.write(request)
+        with open(os.path.join(run_dir, "STATE.md"), "w", encoding="utf-8") as handle:
+            handle.write(
+                "Status: active\nMode: feature\nScope: large\n"
+                "Affected files: tracked.txt\nPhase 1: in-progress\n"
+            )
+        run_info = os.lstat(run_dir)
+        active_run.write_active(linked, {
+            "schema_version": 1,
+            "status": "active",
+            "run": run_rel,
+            "mode": "feature",
+            "scope": "large",
+            "host": "codex",
+            "intent_contract": "4",
+            "intake_schema": 1,
+            "owner": {"host": "codex", "session_id": "owner-session"},
+            "awaiting_user": True,
+            "awaiting_kind": "intake",
+            "awaiting_reason": "final_contract",
+            "intake_round": 1,
+            "intake_request": run_rel + "/INTAKE.md",
+            "intake_request_digest": "sha256:" + hashlib.sha256(
+                request.encode("utf-8")
+            ).hexdigest(),
+            "run_device": run_info.st_dev,
+            "run_inode": run_info.st_ino,
+        })
+        identity = "a" * 64
+        entry = {"path": linked, "run": run_rel, "identity": identity}
+        workspace_preflight.write_registry(
+            self.root,
+            {"schema_version": 1, "entries": [entry]},
+        )
+        with open(
+            workspace_preflight.owner_receipt_path(linked),
+            "w",
+            encoding="utf-8",
+        ) as handle:
+            json.dump(workspace_preflight.receipt_data(entry), handle)
+
+        payload = json.dumps({
+            "cwd": self.root,
+            "session_id": "owner-session",
+            "prompt": "Ja, genau diesen Plan umsetzen.",
+        })
+        other_payload = json.dumps({
+            "cwd": self.root,
+            "session_id": "other-session",
+            "prompt": "Ja, genau diesen Plan umsetzen.",
+        })
+        codex_home = os.path.join(self.temp, "codex-home")
+        with mock.patch.dict(
+            os.environ,
+            {
+                "KIMIFLOW_HOST": "codex",
+                "CODEX_HOME": codex_home,
+            },
+            clear=False,
+        ):
+            rc, other_output = run_main(
+                ["prompt-context"], stdin_text=other_payload,
+            )
+
+        self.assertEqual(rc, 0)
+        self.assertIn("This prompt is not part of that run", other_output)
+        self.assertFalse(
+            os.path.exists(os.path.join(run_dir, "INTAKE-RECEIPT-1.json"))
+        )
+        self.assertTrue(active_run.load_active(linked)["awaiting_user"])
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "KIMIFLOW_HOST": "codex",
+                "CODEX_HOME": codex_home,
+            },
+            clear=False,
+        ):
+            rc, output = run_main(["prompt-context"], stdin_text=payload)
+
+        self.assertEqual(rc, 0)
+        self.assertIn("Kimiflow active session is open", output)
+        receipt_path = os.path.join(run_dir, "INTAKE-RECEIPT-1.json")
+        self.assertTrue(os.path.isfile(receipt_path))
+        self.assertFalse(active_run.load_active(linked).get("awaiting_user", False))
+        with open(receipt_path, "rb") as handle:
+            first_receipt = handle.read()
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "KIMIFLOW_HOST": "codex",
+                "CODEX_HOME": codex_home,
+            },
+            clear=False,
+        ):
+            rc, _ = run_main(["prompt-context"], stdin_text=payload)
+
+        self.assertEqual(rc, 0)
+        with open(receipt_path, "rb") as handle:
+            self.assertEqual(handle.read(), first_receipt)
+
     def test_contract4_schema2_rejects_language_drift(self):
         run_rel = ".kimiflow/schema2-language"
         run_dir = os.path.join(self.root, run_rel)
@@ -895,6 +1021,33 @@ class TestExecutionControlIntegration(unittest.TestCase):
         rc, _ = self.start()
         self.assertEqual(rc, 0)
         self.assertEqual(active_run.status_json(self.root)["execution_control"]["work_units"], sequence)
+        self.assertEqual(
+            active_run.state.state_value(os.path.join(self.run_dir, "STATE.md"), "Status"),
+            "active",
+        )
+        rc, out = run_main([
+            "append-item", "--root", self.root, "--title", "resume item", "--write",
+        ])
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["item"]["title"], "resume item")
+
+    def test_same_active_restart_repairs_legacy_backlog_state_before_item_mutation(self):
+        rc, _ = self.start()
+        self.assertEqual(rc, 0)
+        active_run.update_state_status(self.run_dir, "backlog")
+
+        rc, _ = self.start()
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            active_run.state.state_value(os.path.join(self.run_dir, "STATE.md"), "Status"),
+            "active",
+        )
+        rc, out = run_main([
+            "append-item", "--root", self.root, "--title", "legacy resume item", "--write",
+        ])
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["item"]["title"], "legacy resume item")
 
     def test_rescope_only_elevates_from_current_run_classification(self):
         state_path = os.path.join(self.run_dir, "STATE.md")
@@ -2167,6 +2320,10 @@ class TestAwaitUser(unittest.TestCase):
         health = active_run.codex_hook_health_status()
         self.assertEqual(health["status"], "closed")
         self.assertEqual(health["reason"], "plugin_manifest_changed")
+        self.assertEqual(
+            health["next_action"],
+            "restart_codex_and_start_new_task",
+        )
 
     def test_schema3_requires_known_kind(self):
         self.write_state("Flow schema: 3\n")

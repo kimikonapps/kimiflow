@@ -1899,6 +1899,161 @@ class WorktreeBrokerCase(unittest.TestCase):
             "retired",
         )
 
+    def test_recover_integrated_adopts_exact_external_fast_forward_with_fresh_checks(self):
+        run = ".kimiflow/run-a"
+        target = self.allocate(run)
+        self.clear_active()
+        basis = self.write_plan(target, run)
+        broker.declare(target, run, basis, paths=["feature.txt"], write=True)
+        expected = self.commit_file(target, "feature.txt", "task\n", "task change")
+        branch = self.git(target, "branch", "--show-current").stdout.strip()
+        self.git(self.repo, "merge", "--ff-only", branch)
+        self.write_plan(target, run, "# Terminal plan drift\n")
+        self.write_terminal(target, run)
+        check = json.dumps(
+            [
+                sys.executable,
+                "-c",
+                "from pathlib import Path; assert Path('feature.txt').read_text() == 'task\\n'",
+            ]
+        )
+
+        preview = broker.recover_integrated(
+            self.repo,
+            run,
+            expected,
+            checks=[check],
+            write=False,
+        )
+
+        self.assertEqual(
+            (
+                preview["status"],
+                preview["action"],
+                preview["integrated_head"],
+                preview["plan_drift"],
+            ),
+            ("preview", "recover-integrated", expected, True),
+        )
+        self.assertEqual(
+            broker._task_for(broker.read_broker(self.repo), run)["state"],
+            "allocated",
+        )
+
+        recovered = broker.recover_integrated(
+            self.repo,
+            run,
+            expected,
+            checks=[check],
+            write=True,
+        )
+
+        self.assertEqual(
+            (
+                recovered["status"],
+                recovered["integrated_head"],
+                recovered["recovered"],
+                recovered["plan_drift"],
+            ),
+            ("integrated", expected, True, True),
+        )
+        stored = broker._task_for(broker.read_broker(self.repo), run)
+        self.assertEqual(
+            (
+                stored["state"],
+                stored["task_head"],
+                stored["verified_main"],
+                stored["verified_task"],
+                stored["integrated_head"],
+            ),
+            ("integrated", expected, expected, expected, expected),
+        )
+        self.assertTrue(stored["check_results"])
+        self.assertTrue(all(row["exit_code"] == 0 for row in stored["check_results"]))
+        self.assertEqual(broker.retire(self.repo, run, write=True)["status"], "retired")
+
+    def test_recover_integrated_requires_exact_approval_for_external_delta(self):
+        run = ".kimiflow/run-a"
+        target = self.allocate(run)
+        self.clear_active()
+        basis = self.write_plan(target, run)
+        broker.declare(target, run, basis, paths=["declared.txt"], write=True)
+        expected = self.commit_file(
+            target,
+            "undeclared.txt",
+            "task\n",
+            "undeclared task change",
+        )
+        branch = self.git(target, "branch", "--show-current").stdout.strip()
+        self.git(self.repo, "merge", "--ff-only", branch)
+        self.write_terminal(target, run)
+        check = json.dumps([sys.executable, "-c", "raise SystemExit(0)"])
+
+        with self.assertRaisesRegex(
+            wp.WorkspaceError,
+            "undeclared task delta",
+        ):
+            broker.recover_integrated(
+                self.repo,
+                run,
+                expected,
+                checks=[check],
+                write=True,
+            )
+
+        stored = broker._task_for(broker.read_broker(self.repo), run)
+        self.assertEqual((stored["state"], stored["integrated_head"]), ("allocated", ""))
+        self.assertTrue(os.path.isdir(target))
+
+        recovered = broker.recover_integrated(
+            self.repo,
+            run,
+            expected,
+            checks=[check],
+            approved_paths=["undeclared.txt"],
+            write=True,
+        )
+
+        self.assertEqual(
+            (recovered["status"], recovered["approved_paths"]),
+            ("integrated", ["undeclared.txt"]),
+        )
+        stored = broker._task_for(broker.read_broker(self.repo), run)
+        self.assertEqual(
+            stored["paths"],
+            ["declared.txt", "undeclared.txt"],
+        )
+
+    def test_recover_integrated_records_failed_check_without_forging_receipt(self):
+        run = ".kimiflow/run-a"
+        target = self.allocate(run)
+        self.clear_active()
+        basis = self.write_plan(target, run)
+        broker.declare(target, run, basis, paths=["feature.txt"], write=True)
+        expected = self.commit_file(target, "feature.txt", "task\n", "task change")
+        branch = self.git(target, "branch", "--show-current").stdout.strip()
+        self.git(self.repo, "merge", "--ff-only", branch)
+        self.write_terminal(target, run)
+        failing = json.dumps(["kimiflow-test-command-that-does-not-exist"])
+
+        result = broker.recover_integrated(
+            self.repo,
+            run,
+            expected,
+            checks=[failing],
+            write=True,
+        )
+
+        self.assertEqual((result["status"], result["stage"]), ("verification-failed", "pre"))
+        stored = broker._task_for(broker.read_broker(self.repo), run)
+        self.assertEqual(
+            (stored["state"], stored["integrated_head"], stored["verified_task"]),
+            ("verification-failed", "", ""),
+        )
+        self.assertNotEqual(stored["check_results"][0]["exit_code"], 0)
+        with self.assertRaisesRegex(wp.WorkspaceError, "complete integrated receipt"):
+            broker.retire(self.repo, run, write=True)
+
     def test_failed_integration_check_preserves_main_and_refuses_retirement(self):
         run = ".kimiflow/run-a"
         target = self.allocate(run)

@@ -31,7 +31,36 @@ if command -v jq >/dev/null 2>&1; then
 fi
 [ -n "$proj" ] && cd "$proj" 2>/dev/null || true
 
-marker=".kimiflow/test-gate"
+test_root="$(pwd -P)"
+marker_root="$test_root"
+
+if command -v jq >/dev/null 2>&1; then
+  owner_status="$(printf '%s' "$input" | "$ACTIVE_RUN" owner-check 2>/dev/null || true)"
+  relation="$(printf '%s' "$owner_status" | jq -r '.relation // "unknown"' 2>/dev/null || true)"
+  case "$relation" in
+    other|unknown) exit 0 ;;
+    owner)
+      resolved_root="$(printf '%s' "$owner_status" | jq -r '.root // empty' 2>/dev/null || true)"
+      [ -n "$resolved_root" ] && [ -d "$resolved_root" ] && test_root="$(cd "$resolved_root" && pwd -P)"
+      ;;
+    none) ;;
+    *) exit 0 ;;
+  esac
+elif [ -f ".kimiflow/session/ACTIVE_RUN.json" ]; then
+  # Without jq the hook cannot compare session identities safely. Preserve
+  # no-jq gating only when no active run exists; active runs fail open for Stop.
+  exit 0
+fi
+
+# A Fleet run keeps the local opt-in marker in the primary checkout but executes
+# the command in the resolved active worktree.
+if [ "${relation:-none}" = "owner" ]; then
+  primary_root="$(git -C "$test_root" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | head -n 1)"
+  if [ -n "$primary_root" ] && [ -d "$primary_root" ] && [ ! -f "$test_root/.kimiflow/test-gate" ]; then
+    marker_root="$(cd "$primary_root" && pwd -P)"
+  fi
+fi
+marker="$marker_root/.kimiflow/test-gate"
 # No opt-in marker → do nothing (allow stop).
 [ -f "$marker" ] || exit 0
 
@@ -41,30 +70,17 @@ cmd="$(head -n 1 "$marker" 2>/dev/null || true)"
 # Security: only run a LOCAL, untracked marker. A git-TRACKED (committed) `.kimiflow/test-gate`
 # could be a drive-by from a cloned repo — its first line is eval'd. An untracked marker
 # can only have been created locally (by you or by kimiflow); refuse to run a tracked one.
-if git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
-   && git ls-files --error-unmatch "$marker" >/dev/null 2>&1; then
+if git -C "$marker_root" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+   && git -C "$marker_root" ls-files --error-unmatch .kimiflow/test-gate >/dev/null 2>&1; then
   printf 'kimiflow test-gate: refusing to run a git-tracked .kimiflow/test-gate (drive-by risk) — keep it local/untracked to enable.\n' >&2
    exit 0
-fi
-
-if command -v jq >/dev/null 2>&1; then
-  relation="$(printf '%s' "$input" | "$ACTIVE_RUN" owner-check 2>/dev/null | jq -r '.relation // "unknown"' 2>/dev/null || true)"
-  case "$relation" in
-    other|unknown) exit 0 ;;
-    owner|none) ;;
-    *) exit 0 ;;
-  esac
-elif [ -f ".kimiflow/session/ACTIVE_RUN.json" ]; then
-  # Without jq the hook cannot compare session identities safely. Preserve
-  # no-jq gating only when no active run exists; active runs fail open for Stop.
-  exit 0
 fi
 
 # Serialize expensive project checks. An interrupted Stop hook may leave its
 # child build alive; the directory lock prevents a later Stop from starting a
 # second build against the same DerivedData/output paths. A stale lock is
 # intentionally explicit and recoverable instead of guessed away.
-lock_dir=".kimiflow/test-gate.running"
+lock_dir="$marker_root/.kimiflow/test-gate.running"
 if ! mkdir "$lock_dir" 2>/dev/null; then
   reason="kimiflow test-gate: another test-gate command is already running; wait for it to finish or remove $lock_dir after verifying that no test/build process remains."
   if command -v jq >/dev/null 2>&1; then
@@ -77,7 +93,7 @@ fi
 trap 'rmdir "$lock_dir" 2>/dev/null || true' EXIT HUP INT TERM
 
 # Run the project's test command.
-if out="$(eval "$cmd" 2>&1)"; then
+if out="$(cd "$test_root" && eval "$cmd" 2>&1)"; then
   exit 0
 fi
 

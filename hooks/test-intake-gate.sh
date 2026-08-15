@@ -152,6 +152,9 @@ assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"
 payload="$(jq -nc --arg d "$REPO" --arg c "env KIMIFLOW_PLUGIN_ROOT=\"$PLUGIN_ROOT\" KIMIFLOW_HOST=codex \"$ACTIVE\" next-action --root \"$REPO\" --pretty" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
 out="$(printf '%s' "$payload" | hook)"
 assert "[ -z '$out' ]" "trusted_next_action_allowed_before_intake"
+payload="$(jq -nc --arg d "$REPO" --arg c "env KIMIFLOW_PLUGIN_ROOT=\"$PLUGIN_ROOT\" KIMIFLOW_HOST=codex \"$ACTIVE\" hook-health --require --pretty" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "trusted_hook_health_allowed_before_intake"
 payload="$(jq -nc --arg d "$REPO" --arg c "env KIMIFLOW_PLUGIN_ROOT=\"$PLUGIN_ROOT\" KIMIFLOW_HOST=codex \"$ADAPTIVE\" classify --run .kimiflow/demo --write" '{cwd:$d,session_id:"owner-session",tool_name:"Bash",tool_input:{command:$c}}')"
 out="$(printf '%s' "$payload" | hook)"
 assert "[ -z '$out' ]" "trusted_adaptive_classification_allowed_before_intake"
@@ -397,6 +400,49 @@ assert "[ -z '$out' ]" "schema2_final_receipt_allows_fresh_worker_multiline_read
 payload="$(jq -nc --arg d "$REPO" '{cwd:$d,session_id:"owner-session",tool_name:"Write",tool_input:{file_path:".kimiflow/demo/INTENT-LOCK.json",content:"replacement"}}')"
 out="$(printf '%s' "$payload" | hook)"
 assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"deny\"' >/dev/null" "schema2_final_receipt_keeps_authority_files_protected"
+
+FLEET_PRIMARY="$WORK/fleet-primary"
+FLEET_TREE="$WORK/fleet-tree"
+mkdir -p "$FLEET_PRIMARY"
+git -C "$FLEET_PRIMARY" init -q
+git -C "$FLEET_PRIMARY" config user.email test@example.test
+git -C "$FLEET_PRIMARY" config user.name test
+printf 'base\n' > "$FLEET_PRIMARY/app.txt"
+git -C "$FLEET_PRIMARY" add app.txt
+git -C "$FLEET_PRIMARY" commit -qm base
+git -C "$FLEET_PRIMARY" worktree add -q -b codex/fleet-intake "$FLEET_TREE"
+FLEET_PRIMARY="$(cd "$FLEET_PRIMARY" && pwd -P)"
+FLEET_TREE="$(cd "$FLEET_TREE" && pwd -P)"
+mkdir -p "$FLEET_PRIMARY/.kimiflow/session" "$FLEET_TREE/.kimiflow/demo" "$FLEET_TREE/.kimiflow/session"
+identity="$(printf 'a%.0s' {1..64})"
+jq -nc --arg p "$FLEET_TREE" --arg i "$identity" '{schema_version:1,entries:[{path:$p,run:".kimiflow/demo",identity:$i}]}' \
+  > "$FLEET_PRIMARY/.kimiflow/session/WORKTREE_REGISTRY.json"
+admin_dir="$(git -C "$FLEET_TREE" rev-parse --absolute-git-dir)"
+jq -nc --arg p "$FLEET_TREE" --arg i "$identity" '{schema_version:1,path:$p,run:".kimiflow/demo",identity:$i}' \
+  > "$admin_dir/kimiflow-owner.json"
+cat > "$FLEET_TREE/.kimiflow/demo/STATE.md" <<'EOF'
+Status: active
+Mode: feature
+Scope: large
+Affected files: app.txt
+EOF
+cat > "$FLEET_TREE/.kimiflow/demo/INTAKE.md" <<'EOF'
+<!-- kimiflow:intake contract=4 round=1 questions=1 selection=impact_uncertainty technical_questions=0 confirmation=concrete_product_flow -->
+Product flow entry: Open the registered worktree feature.
+User interaction: Confirm the feature before implementation.
+Visible delegation outcome: The active run remains visible.
+Unchanged path: Existing direct behavior remains unchanged.
+Done scenario: The registered run completes after confirmation.
+EOF
+request_digest="sha256:$(shasum -a 256 "$FLEET_TREE/.kimiflow/demo/INTAKE.md" | awk '{print $1}')"
+jq -nc --arg d "$request_digest" '{schema_version:1,status:"active",run:".kimiflow/demo",mode:"feature",scope:"large",host:"codex",intent_contract:"4",intake_schema:1,owner:{host:"codex",session_id:"owner-session"},awaiting_user:true,awaiting_kind:"intake",intake_round:1,intake_request:".kimiflow/demo/INTAKE.md",intake_request_digest:$d}' \
+  > "$FLEET_TREE/.kimiflow/session/ACTIVE_RUN.json"
+payload="$(jq -nc --arg d "$FLEET_PRIMARY" '{cwd:$d,session_id:"owner-session",tool_name:"update_plan",tool_input:{plan:[]}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"deny\"' >/dev/null" "registered_worktree_intake_gate_blocks_primary_cwd_planning"
+payload="$(jq -nc --arg d "$FLEET_PRIMARY" '{cwd:$d,session_id:"other-session",tool_name:"update_plan",tool_input:{plan:[]}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "registered_worktree_intake_gate_never_blocks_other_session"
 
 echo "----"
 if [ "$fails" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$fails FAILED"; exit 1; fi

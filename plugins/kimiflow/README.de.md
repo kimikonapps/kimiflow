@@ -112,9 +112,9 @@ codex plugin marketplace add kimikonapps/kimiflow
 codex plugin add kimiflow@kimiflow
 ```
 
-Danach Codex neu starten, unter `/hooks` die gebündelten Kimiflow-Hooks einmal prüfen und freigeben und eine neue
-Task öffnen. Codex verlangt diese Sicherheitsfreigabe absichtlich erneut, wenn ein Plugin-Update eine Hook-Definition
-ändert. Update:
+Danach Codex neu starten und eine neue Task öffnen. Codex hat keinen Slash-Befehl `/hooks`; Kimiflow verlangt
+keinen separaten manuellen Trust-Schritt für Hooks. Nach einem Update Codex neu starten und in einer neuen Task
+fortsetzen, damit das neue Plugin- und Hook-Manifest geladen wird. Update:
 
 ```bash
 codex plugin marketplace upgrade kimiflow
@@ -125,12 +125,21 @@ Wrapper im User-Verzeichnis nötig. Der Marketplace veröffentlicht nur den saub
 Maintainer-State, Eval-Eingaben und private Workflow-Artefakte bleiben draußen. Ein reproduzierbarer
 Inhalts-Fingerprint bindet die ausgelieferten Dateien.
 
+Hat eine ältere Entwicklungsinstallation Kimiflow-Command-Hooks noch in `~/.codex/hooks.json` registriert,
+sollten sie einmalig migriert werden. Die Migration entfernt nur veraltete Kimiflow-Einträge, erhält alle
+fremden Hooks und legt ein Backup mit Zeitstempel an:
+
+```bash
+bash hooks/install-codex-hooks.sh --migrate-legacy
+```
+
 Kimiflow prüft die tatsächliche Ausführung von `UserPromptSubmit`, bevor es den Product Intake registriert. Der
 Nachweis ist an die aktuelle Task und die installierte Plugin-Version gebunden, registriert genau eine
 Intake-Warteposition und bleibt ohne Uhrzeit-Timeout für den vollständigen Modell-Turn gültig. Lange Recherche
 kann daher keine zweite Bestätigung des finalen Vertrags auslösen. Wird der Hook nicht beobachtet, stoppt der Run
-vor der Anzeige der Frage mit der exakten `/hooks`-Anweisung. Die Freigabe ist normalerweise einmal pro
-Installation bzw. geänderter Hook-Definition nötig, nicht pro Run.
+vor der Anzeige der Frage und verlangt einen Codex-Neustart mit Fortsetzung in einer neuen Task. Kann auch eine
+frische Task den Hook nicht beobachten, wird das installierte Manifest diagnostiziert, statt einen nicht
+existierenden manuellen Trust-Schritt zu verlangen.
 
 Für lokale Entwicklung dieses Checkout einmal registrieren und danach für jede Iteration den verifizierten
 Entwicklungs-Installer verwenden:
@@ -142,9 +151,11 @@ bash hooks/install-codex-plugin-dev.sh
 
 Der Installer baut den sauberen Marketplace-Kandidaten mit einer persistenten Cachebuster-Identität, erneuert
 den Runtime-Fingerprint, bevorzugt die in der laufenden Codex-App gebündelte CLI vor älteren PATH-Installationen
-und vergleicht die installierte Hook-Runtime bytegenau. Er startet Codex nie selbst neu. Nach erfolgreicher
-Installation Codex neu starten, die Hooks unter `/hooks` freigeben, eine neue Task öffnen, einen Prompt senden
-und den Live-Check mit
+und vergleicht die installierte Hook-Runtime bytegenau. Er startet Codex nie selbst neu. In einer laufenden
+Codex-Task verweigert er die Installation, solange nicht ausdrücklich
+`--acknowledge-new-thread-required` übergeben wird; dieser Override ist nur für die letzte Aktion der Task
+bestimmt, weil die alte Task an ihr ursprüngliches Hook-Manifest gebunden bleibt. Nach erfolgreicher Installation
+Codex neu starten, eine neue Task öffnen, einen Prompt senden und den Live-Check mit
 `hooks/active-run.sh hook-health --require --pretty` ausführen.
 
 ### Optionaler provider-neutraler Terminal-Runner

@@ -17,7 +17,9 @@ in a path; a combined `git add <secret> && git commit` is also caught.
 
 In Claude Code and Codex the hook ships through the plugin's manifest-declared
 `hooks/hooks.json`; `hooks/install-codex-hooks.sh --check` validates that loaded contract and
-writes no unregistered user-level wrappers. Commits in repos without
+writes no unregistered user-level wrappers. Wrapper-era Codex development installs can be cleaned once with
+`hooks/install-codex-hooks.sh --migrate-legacy`; it backs up the global file and removes only obsolete Kimiflow
+command hooks. Commits in repos without
 `.kimiflow/` are knowingly unprotected (the hook is auto-active only where a `.kimiflow/`
 directory exists at the git root, so it never polices unrelated repos).
 

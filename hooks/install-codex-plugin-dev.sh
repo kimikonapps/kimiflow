@@ -9,6 +9,7 @@ MARKETPLACE_FILE="$ROOT/.agents/plugins/marketplace.json"
 CACHEBUSTER="$(date -u +%Y%m%d%H%M%S)"
 CODEX_CLI=""
 MODE="install"
+ACKNOWLEDGE_NEW_THREAD_REQUIRED="no"
 
 usage() {
   cat <<'EOF'
@@ -20,6 +21,9 @@ Options:
   --output PATH        Build a candidate at PATH (requires --prepare-only).
   --prepare-only       Build and verify the candidate without installing it.
   --resolve-cli        Print the selected Codex CLI and exit.
+  --acknowledge-new-thread-required
+                       Allow installation from a live Codex task only as its
+                       final action; the updated plugin requires a new task.
 EOF
 }
 
@@ -36,6 +40,7 @@ while [ "$#" -gt 0 ]; do
       CANDIDATE="$2"; shift 2 ;;
     --prepare-only) MODE="prepare"; shift ;;
     --resolve-cli) MODE="resolve"; shift ;;
+    --acknowledge-new-thread-required) ACKNOWLEDGE_NEW_THREAD_REQUIRED="yes"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "install-codex-plugin-dev: unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -72,6 +77,18 @@ fi
 if [ "$CANDIDATE" != "$ROOT/plugins/kimiflow" ] && [ "$MODE" != "prepare" ]; then
   echo "install-codex-plugin-dev: --output is allowed only with --prepare-only" >&2
   exit 2
+fi
+
+if [ "$MODE" != "install" ] && [ "$ACKNOWLEDGE_NEW_THREAD_REQUIRED" = "yes" ]; then
+  echo "install-codex-plugin-dev: --acknowledge-new-thread-required is valid only for installation" >&2
+  exit 2
+fi
+
+if [ "$MODE" = "install" ] && [ -n "${CODEX_THREAD_ID:-}" ] \
+  && [ "$ACKNOWLEDGE_NEW_THREAD_REQUIRED" != "yes" ]; then
+  echo "install-codex-plugin-dev: refusing a silent reinstall inside a live Codex task" >&2
+  echo "install-codex-plugin-dev: prepare and test first, then use --acknowledge-new-thread-required only as the task's final action and continue in a new task" >&2
+  exit 1
 fi
 
 builder_args=(--write --output "$CANDIDATE" --codex-cachebuster "$CACHEBUSTER")
@@ -119,4 +136,11 @@ jq -n \
   --arg version "$installed_version" \
   --arg installedPath "$installed_path" \
   --arg codexCli "$selected_cli" \
-  '{status: $status, version: $version, installedPath: $installedPath, codexCli: $codexCli}'
+  '{
+    status: $status,
+    version: $version,
+    installedPath: $installedPath,
+    codexCli: $codexCli,
+    restartRequired: true,
+    nextAction: "start_new_codex_task"
+  }'

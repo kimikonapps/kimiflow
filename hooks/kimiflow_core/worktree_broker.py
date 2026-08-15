@@ -2446,6 +2446,241 @@ def _delivery_results(root, expected, expected_ref):
     return all(row["exit_code"] == 0 for row in results), results
 
 
+def _recovered_integration_boundary_matches(
+    primary,
+    state,
+    task,
+    descriptor,
+    expected_head,
+    delivered_paths,
+    recovery_contracts,
+):
+    try:
+        status = wp.build_status(primary, descriptor)
+        if (
+            _primary_ref(primary) != task["primary_ref"]
+            or _head(primary) != expected_head
+            or _head(task["path"]) != expected_head
+            or _foreign_worktree_present(status)
+            or any(tree.get("active") for tree in status["worktrees"])
+            or wp.run_status(primary, task["run"], task["path"]) != "done"
+        ):
+            return False
+        primary_tree = next(tree for tree in status["worktrees"] if tree["primary"])
+        task_tree = wp.find_tree(status, task["path"])
+        entry = _registered_task_entry(primary, descriptor, task)
+        collision = _current_peer_collision(
+            primary,
+            state,
+            task,
+            descriptor,
+            delivered_paths,
+            infer_contracts(delivered_paths, recovery_contracts),
+            include_primary=False,
+        )
+        return bool(
+            not primary_tree["dirty"]
+            and not task_tree["dirty"]
+            and _kimiflow_only_ignored(task["path"], task_tree)
+            and entry
+            and wp.owner_receipt_matches(entry["path"], entry)
+            and _matching_owned_tree(primary, task, expected_head)
+            and not _ignored_delivery_conflicts(primary, delivered_paths)
+            and collision["action"] == "disjoint"
+        )
+    except (OSError, StopIteration, wp.WorkspaceError):
+        return False
+
+
+def recover_integrated(
+    root,
+    run,
+    expected_head,
+    checks=(),
+    approved_paths=(),
+    write=False,
+):
+    """Adopt an exact Fleet head already fast-forwarded outside the broker."""
+    if not SHA_RE.fullmatch(expected_head or ""):
+        raise wp.WorkspaceError("recover-integrated requires an exact commit")
+    commands = parse_check_arguments(checks)
+    approved = normalize_paths(approved_paths)
+    current = wp.repo_root(root)
+    with wp.registry_operation(current, write) as descriptor:
+        status = wp.build_status(current, descriptor)
+        primary = status["primary_root"]
+        if current != primary:
+            raise wp.WorkspaceError("integration recovery must run from the primary worktree")
+        state = read_broker(primary, descriptor)
+        task = _task_for(state, run)
+        if not task or task["state"] in {"queued", "allocating", "retired"}:
+            raise wp.WorkspaceError("run is not recoverable as integrated")
+        if task["state"] == "integrated":
+            _validate_terminal_ref_receipt(task)
+            if task["integrated_head"] != expected_head:
+                raise wp.WorkspaceError("integrated receipt does not match expected head")
+            return {
+                "schema_version": BROKER_SCHEMA,
+                "status": "integrated",
+                "integrated_head": task["integrated_head"],
+                "checks": list(task["check_results"]),
+                "idempotent": True,
+                "recovered": True,
+            }
+        if task["state"] not in {
+            "allocated",
+            "waiting",
+            "ready-to-integrate",
+            "verification-failed",
+            "needs-reconcile",
+        } or task["journal"] is not None:
+            raise wp.WorkspaceError("run is not recoverable as integrated")
+        if task["action"] != "disjoint" or not task["basis"] or not task["paths"]:
+            raise wp.WorkspaceError("integration recovery requires a complete declaration")
+        if not task["primary_ref"] or _primary_ref(primary) != task["primary_ref"]:
+            raise wp.WorkspaceError("integration recovery primary ref mismatch")
+        main_now = _head(primary)
+        task_now = _head(task["path"])
+        if main_now != expected_head or task_now != expected_head:
+            raise wp.WorkspaceError("integration recovery requires the exact delivered head")
+        if wp.run_status(primary, run, task["path"]) != "done":
+            raise wp.WorkspaceError("integration recovery requires a completed run")
+        if _foreign_worktree_present(status) or any(
+            tree.get("active") for tree in status["worktrees"]
+        ):
+            raise wp.WorkspaceError("integration recovery requires an idle owned workspace")
+        primary_tree = next(tree for tree in status["worktrees"] if tree["primary"])
+        task_tree = wp.find_tree(status, task["path"])
+        entry = _registered_task_entry(primary, descriptor, task)
+        if (
+            primary_tree["dirty"]
+            or task_tree["dirty"]
+            or not _kimiflow_only_ignored(task["path"], task_tree)
+            or not entry
+            or not wp.owner_receipt_matches(entry["path"], entry)
+            or not _matching_owned_tree(primary, task, expected_head)
+        ):
+            raise wp.WorkspaceError("integration recovery ownership or workspace proof failed")
+        delivered_paths = _changed_paths(primary, task["base"], expected_head)
+        undeclared_paths = [
+            path
+            for path in delivered_paths
+            if not _paths_within_declaration([path], task["paths"])
+        ]
+        if not delivered_paths or approved != undeclared_paths:
+            raise wp.WorkspaceError("integration recovery found an undeclared task delta")
+        recovery_paths = normalize_paths(task["paths"] + approved)
+        recovery_contracts = infer_contracts(recovery_paths, task["contracts"])
+        if _ignored_delivery_conflicts(primary, delivered_paths):
+            raise wp.WorkspaceError("integration recovery found an ignored path collision")
+        collision = _current_peer_collision(
+            primary,
+            state,
+            task,
+            descriptor,
+            delivered_paths,
+            infer_contracts(delivered_paths, recovery_contracts),
+            include_primary=False,
+        )
+        if collision["action"] != "disjoint":
+            raise wp.WorkspaceError("integration recovery found a peer collision")
+        if commands:
+            task["check_commands"] = commands
+        if not task["check_commands"]:
+            raise wp.WorkspaceError("integration recovery requires at least one no-shell check")
+
+        ok, pre_results = _run_checks(primary, task["check_commands"], "pre")
+        task["check_results"] = pre_results
+        task["verified_main"] = ""
+        task["verified_task"] = ""
+        if not ok:
+            task["state"] = "verification-failed"
+            if write:
+                _write_broker(descriptor, state)
+            return {
+                "schema_version": BROKER_SCHEMA,
+                "status": "verification-failed",
+                "stage": "pre",
+                "checks": pre_results,
+            }
+        if not _recovered_integration_boundary_matches(
+            primary,
+            state,
+            task,
+            descriptor,
+            expected_head,
+            delivered_paths,
+            recovery_contracts,
+        ):
+            task["state"] = "verification-failed"
+            if write:
+                _write_broker(descriptor, state)
+            return {
+                "schema_version": BROKER_SCHEMA,
+                "status": "verification-failed",
+                "stage": "pre",
+                "reason": "recovery-boundary-changed",
+                "checks": pre_results,
+            }
+        post_ok, post_results = _delivery_results(
+            primary,
+            expected_head,
+            task["primary_ref"],
+        )
+        task["check_results"] = pre_results + post_results
+        if not post_ok:
+            task["state"] = "verification-failed"
+            if write:
+                _write_broker(descriptor, state)
+            return {
+                "schema_version": BROKER_SCHEMA,
+                "status": "verification-failed",
+                "stage": "post",
+                "checks": post_results,
+            }
+        task["verified_main"] = expected_head
+        task["verified_task"] = expected_head
+        task["integrated_head"] = expected_head
+        task["task_head"] = expected_head
+        task["paths"] = recovery_paths
+        task["contracts"] = recovery_contracts
+        task["journal"] = None
+        task["state"] = "integrated"
+        if not write:
+            return {
+                "schema_version": BROKER_SCHEMA,
+                "status": "preview",
+                "action": "recover-integrated",
+                "integrated_head": expected_head,
+                "checks": task["check_results"],
+                "plan_drift": not _plan_matches(task["path"], run, task["basis"]),
+                "approved_paths": approved,
+            }
+        _write_broker(
+            descriptor,
+            state,
+            publication_guard=lambda: _recovered_integration_boundary_matches(
+                primary,
+                state,
+                task,
+                descriptor,
+                expected_head,
+                delivered_paths,
+                recovery_contracts,
+            ),
+            publication_error="integration recovery boundary changed during publication",
+        )
+        return {
+            "schema_version": BROKER_SCHEMA,
+            "status": "integrated",
+            "integrated_head": expected_head,
+            "checks": task["check_results"],
+            "plan_drift": not _plan_matches(task["path"], run, task["basis"]),
+            "approved_paths": approved,
+            "recovered": True,
+        }
+
+
 def _recover_integration(primary, state, task, descriptor, write):
     journal = task["journal"]
     if not journal or journal["kind"] in {"allocation", "retirement"}:
@@ -3436,6 +3671,15 @@ def add_parsers(sub):
     integration_parser.add_argument("--write", action="store_true")
     integration_parser.add_argument("--pretty", action="store_true")
 
+    recovery_parser = sub.add_parser("recover-integrated")
+    recovery_parser.add_argument("--root")
+    recovery_parser.add_argument("--run", required=True)
+    recovery_parser.add_argument("--expected-head", required=True)
+    recovery_parser.add_argument("--check-json", action="append", default=[])
+    recovery_parser.add_argument("--approved-path", action="append", default=[])
+    recovery_parser.add_argument("--write", action="store_true")
+    recovery_parser.add_argument("--pretty", action="store_true")
+
     retirement_parser = sub.add_parser("retire")
     retirement_parser.add_argument("--root")
     retirement_parser.add_argument("--run", required=True)
@@ -3461,6 +3705,15 @@ def dispatch(command, args):
         return write_gate(args.root, args.run, args.basis)
     if command == "integrate":
         return integrate(args.root, args.run, args.check_json, args.write)
+    if command == "recover-integrated":
+        return recover_integrated(
+            args.root,
+            args.run,
+            args.expected_head,
+            args.check_json,
+            args.approved_path,
+            args.write,
+        )
     if command == "retire":
         return retire(args.root, args.run, args.write)
     return broker_status(args.root)

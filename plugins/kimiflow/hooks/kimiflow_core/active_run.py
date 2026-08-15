@@ -108,6 +108,7 @@ MEMORY_CURATION_DEADLINE_SECONDS = 20
 HOOK_HEALTH_SCHEMA = 2
 HOOK_HEALTH_MAX_BYTES = 16 * 1024
 HOOK_HEALTH_MAX_FILES = 64
+HOOK_ACTIVE_MAX_BYTES = 64 * 1024
 
 
 def usage():
@@ -1337,10 +1338,31 @@ CONFIRMATION_POSITIVE = {
     "yes",
 }
 
+CONFIRMATION_PHRASES = {
+    "diesen plan umsetzen",
+    "freigeben",
+    "freigegeben",
+    "genehmigt",
+    "genau diesen plan umsetzen",
+    "ja diesen plan umsetzen",
+    "ja genau diesen plan implementieren",
+    "ja genau diesen plan umsetzen",
+    "ja genau so umsetzen",
+}
+
 
 def explicit_confirmation(value):
     if not isinstance(value, str) or not value.strip():
         return False
+    normalized = re.sub(
+        r"[^\w\s]+",
+        " ",
+        normalized_product_flow_value(value),
+        flags=re.UNICODE,
+    )
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    if normalized in CONFIRMATION_PHRASES:
+        return True
     words = set(re.findall(r"[^\W_]+", value.casefold(), flags=re.UNICODE))
     return bool(words) and words <= CONFIRMATION_POSITIVE
 
@@ -2888,7 +2910,16 @@ def cmd_start(args, _workspace_locked=False):
                 execution_control.initialize(root, run_dir, status, counts, transition, write=True)
             except execution_control.ExecutionControlError as exc:
                 die("cannot initialize execution control: %s" % exc, 2)
-        write_active(root, status)
+        resumed_state_status = state.state_value(state_path, "Status").strip()
+        state_status_repaired = resumed_state_status.lower().split(" ", 1)[0] != "active"
+        if state_status_repaired:
+            update_state_status(run_dir, "active")
+        try:
+            write_active(root, status)
+        except (OSError, ValueError, ActiveError):
+            if state_status_repaired and resumed_state_status:
+                update_state_status(run_dir, resumed_state_status)
+            raise
     json_print(status_json(root), opts["--pretty"])
 
 
@@ -3113,7 +3144,7 @@ def cmd_await_user(args):
                     )
                 die(
                     "await-user: Codex UserPromptSubmit hook was not observed for this task and plugin version; "
-                    "open /hooks, review and trust the Kimiflow command hooks, then submit a new prompt",
+                    "restart Codex and continue in a new Codex task",
                     1,
                 )
         intake_round = int(opts["--round"])
@@ -4786,9 +4817,19 @@ def codex_hook_health_status(identity=None):
     if marker.get("session_digest") != hook_health_session_digest(identity):
         return {"schema_version": HOOK_HEALTH_SCHEMA, "status": "closed", "reason": "session_mismatch"}
     if marker.get("hook_manifest_digest") != expected_manifest:
-        return {"schema_version": HOOK_HEALTH_SCHEMA, "status": "closed", "reason": "hook_manifest_changed"}
+        return {
+            "schema_version": HOOK_HEALTH_SCHEMA,
+            "status": "closed",
+            "reason": "hook_manifest_changed",
+            "next_action": "restart_codex_and_start_new_task",
+        }
     if marker.get("plugin_manifest_digest") != expected_plugin:
-        return {"schema_version": HOOK_HEALTH_SCHEMA, "status": "closed", "reason": "plugin_manifest_changed"}
+        return {
+            "schema_version": HOOK_HEALTH_SCHEMA,
+            "status": "closed",
+            "reason": "plugin_manifest_changed",
+            "next_action": "restart_codex_and_start_new_task",
+        }
     observation_id = marker.get("observation_id")
     if not isinstance(observation_id, str) or re.fullmatch(r"[0-9a-f]{32}", observation_id) is None:
         return {"schema_version": HOOK_HEALTH_SCHEMA, "status": "closed", "reason": "hook_health_invalid"}
@@ -4889,7 +4930,73 @@ def hook_root(input_text, data=None):
     data = parse_hook_input(input_text) if data is None else data
     tool_input = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
     cwd = data.get("cwd") or tool_input.get("cwd") or data.get("working_directory") or ""
-    return resolve_root(cwd or os.getcwd(), strict=False)
+    root = os.path.realpath(resolve_root(cwd or os.getcwd(), strict=False))
+    if os.path.isfile(active_file(root)):
+        return root
+    return registered_hook_root(root, data)
+
+
+def registered_hook_root(root, data):
+    """Resolve a hook from the primary checkout to its trusted active worktree.
+
+    Codex hook payloads keep the conversation workspace as ``cwd`` even after
+    Kimiflow moves a run into a registered Fleet worktree.  The registry and
+    linked-worktree owner receipt are the two authorities for that redirect;
+    an absent, stale, unsafe, or ambiguous mapping leaves the hook at ``root``.
+    """
+    try:
+        current = workspace_preflight.repo_root(root)
+        records = workspace_preflight.worktree_records(current)
+        primary = records[0]["path"]
+        registry = workspace_preflight.read_registry(primary)
+    except (OSError, ValueError, workspace_preflight.WorkspaceError):
+        return root
+    worktrees = {
+        record["path"]: record
+        for record in records
+        if not record.get("prunable")
+    }
+    candidates = []
+    caller = hook_session_identity(data)
+    for entry in registry["entries"]:
+        path = entry["path"]
+        if path not in worktrees or not workspace_preflight.owner_receipt_matches(path, entry):
+            continue
+        control = os.path.join(path, ".kimiflow")
+        session = os.path.join(control, "session")
+        active_path = active_file(path)
+        try:
+            control_info = os.lstat(control)
+            session_info = os.lstat(session)
+            active_info = os.lstat(active_path)
+        except OSError:
+            continue
+        if (
+            stat.S_ISLNK(control_info.st_mode)
+            or not stat.S_ISDIR(control_info.st_mode)
+            or stat.S_ISLNK(session_info.st_mode)
+            or not stat.S_ISDIR(session_info.st_mode)
+            or stat.S_ISLNK(active_info.st_mode)
+            or not stat.S_ISREG(active_info.st_mode)
+            or active_info.st_size <= 0
+            or active_info.st_size > HOOK_ACTIVE_MAX_BYTES
+        ):
+            continue
+        active = load_active(path)
+        if (
+            active.get("present") is not True
+            or active.get("status") != "active"
+            or active.get("run") != entry["run"]
+            or valid_owner(active.get("owner")) is None
+        ):
+            continue
+        candidates.append((path, valid_owner(active["owner"])))
+    owned = [path for path, owner in candidates if same_session(owner, caller)]
+    if len(owned) == 1:
+        return owned[0]
+    if len(owned) > 1:
+        return root
+    return candidates[0][0] if len(candidates) == 1 else root
 
 
 def transition_summary(transition):
@@ -4945,7 +5052,12 @@ def cmd_owner_check():
         relation = "none"
     else:
         relation = hook_owner_relation(status, data)
-    json_print({"schema_version": 1, "relation": relation, "run": status.get("run")})
+    json_print({
+        "schema_version": 1,
+        "relation": relation,
+        "run": status.get("run"),
+        "root": root,
+    })
     return 0
 
 
@@ -5128,9 +5240,15 @@ def cmd_hook_health(args):
                 "continue only after the user's next prompt",
                 1,
             )
+        if health.get("reason") in {"hook_manifest_changed", "plugin_manifest_changed"}:
+            die(
+                "hook-health: Kimiflow was reinstalled or its hook manifest changed during this "
+                "Codex task; restart Codex and continue in a new Codex task",
+                1,
+            )
         die(
             "hook-health: Codex UserPromptSubmit hook was not observed for this task and plugin version; "
-            "open /hooks, review and trust the Kimiflow command hooks, then submit a new prompt",
+            "restart Codex and continue in a new Codex task",
             1,
         )
     return 0

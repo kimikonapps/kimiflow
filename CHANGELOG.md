@@ -6,6 +6,10 @@ Versions before 0.4.0 were internal development snapshots. **0.4.0 is the first 
 
 ## Unreleased
 
+## 0.4.2
+
+Codex lifecycle, Fleet recovery, and local plugin-update reliability release.
+
 ### Fixed
 
 - Fresh Contract-4 features now resolve only real material unknowns before planning and ask exactly one final
@@ -16,6 +20,14 @@ Versions before 0.4.0 were internal development snapshots. **0.4.0 is the first 
   fingerprint, preventing app restart from resolving the plugin back to the unsuffixed release identity.
 - The development installer prefers the CLI bundled with the Codex app, verifies the configured local
   marketplace and installed bytes, and never starts a background restart or retry loop.
+- Live Codex tasks now reject silent development reinstalls before the marketplace candidate changes. An explicit
+  final-action acknowledgement is required, and successful installs report that a fresh Codex task is mandatory.
+- `install-codex-hooks.sh --migrate-legacy` now removes only obsolete global Kimiflow command hooks, preserves
+  unrelated registrations, creates a timestamped backup, and verifies the migration idempotently.
+- Codex-facing documentation and lifecycle errors no longer refer to the nonexistent `/hooks` slash command or a
+  manual hook-trust step. Install/update recovery now says to restart Codex and continue in a new task.
+- A plugin-manifest change during an active task now reports the precise recovery: restart Codex and continue in
+  a new task instead of retrying the intake prompt in the stale task.
 
 ## 0.4.1
 
@@ -26,7 +38,7 @@ Local reliability update for Codex hook lifecycle detection.
 - Embedded Codex Product Intake now binds each wait to one task- and plugin-version-bound `UserPromptSubmit`
   observation. The observation is single-use but remains valid for the complete model turn instead of expiring
   after ten minutes, so long intake research cannot discard the final confirmation or ask for it twice. Missing
-  or untrusted lifecycle hooks still fail before the question with the exact `/hooks` recovery.
+  lifecycle observation still fails before the question and requires a Codex restart plus a new task.
 
 ## 0.4.0
 

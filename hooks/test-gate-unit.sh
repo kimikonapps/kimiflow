@@ -114,5 +114,36 @@ assert_has "$out" "already running" "concurrent_test_gate_explains_lock"
 assert_nofile "$REPO/SENTINEL.flag" "concurrent_test_gate_does_not_eval"
 rmdir "$REPO/.kimiflow/test-gate.running"
 
+# B9 — a Stop hook reported from the primary checkout resolves the owner run in
+# its registered Fleet worktree, while retaining the primary checkout's local
+# opt-in marker.
+reset_repo
+printf 'base\n' > "$REPO/tracked.txt"
+git -C "$REPO" add tracked.txt
+git -C "$REPO" commit -qm base
+FLEET_TREE="$WORK/fleet-tree"
+git -C "$REPO" worktree add -q -b codex/test-gate-fleet "$FLEET_TREE"
+PRIMARY_ROOT="$(cd "$REPO" && pwd -P)"
+FLEET_TREE="$(cd "$FLEET_TREE" && pwd -P)"
+mkdir -p "$PRIMARY_ROOT/.kimiflow/session" "$FLEET_TREE/.kimiflow/demo" "$FLEET_TREE/.kimiflow/session"
+identity="$(printf 'b%.0s' {1..64})"
+jq -nc --arg p "$FLEET_TREE" --arg i "$identity" '{schema_version:1,entries:[{path:$p,run:".kimiflow/demo",identity:$i}]}' \
+  > "$PRIMARY_ROOT/.kimiflow/session/WORKTREE_REGISTRY.json"
+admin_dir="$(git -C "$FLEET_TREE" rev-parse --absolute-git-dir)"
+jq -nc --arg p "$FLEET_TREE" --arg i "$identity" '{schema_version:1,path:$p,run:".kimiflow/demo",identity:$i}' \
+  > "$admin_dir/kimiflow-owner.json"
+printf 'Status: active\nAffected files: tracked.txt\n' > "$FLEET_TREE/.kimiflow/demo/STATE.md"
+printf '{"schema_version":1,"status":"active","run":".kimiflow/demo","host":"codex","owner":{"host":"codex","session_id":"owner-session"},"started_head":"NOT VERIFIED","last_checked_head":"NOT VERIFIED"}\n' \
+  > "$FLEET_TREE/.kimiflow/session/ACTIVE_RUN.json"
+set_marker '[ "$PWD" = "'"$FLEET_TREE"'" ] || { echo wrong-root; exit 1; }; echo fleet-red; exit 1'
+out="$(run_jq_session owner-session)"
+assert_block "$out" "registered_worktree_red_marker_blocks_owner"
+assert_has "$out" "fleet-red" "registered_worktree_test_runs_in_active_tree"
+if printf '%s' "$out" | grep -qF "wrong-root"; then
+  fail "registered_worktree_test_avoids_primary_checkout"
+else
+  pass "registered_worktree_test_avoids_primary_checkout"
+fi
+
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi

@@ -5,8 +5,8 @@ subagent contracts. If a host moves one of these primitives, parts of kimiflow c
 (a hook that stops firing looks identical to a hook that passed). This file lists every primitive
 kimiflow concretely uses, what breaks if it changes, and a smoke checklist to run at each version bump.
 
-**Last verified against:** Claude Code **2.1.202** · Codex CLI **0.142.5** · Pi **0.83.0** · kimiflow
-**0.4.1** · 2026-08-09.
+**Last verified against:** Claude Code **2.1.202** · Codex CLI **0.148.0-alpha.9** · Pi **0.82.0** · kimiflow
+**0.4.2** · 2026-08-15.
 
 > **0.x expectation.** These primitives are NOT a stable public contract. Treat breakage as *expected*
 > across Claude Code or Codex minor versions until a version is explicitly pinned — keep the README's
@@ -99,13 +99,15 @@ loop still runs.
 | Skill frontmatter `name` / `description` | `skills/kimiflow/SKILL.md` | **Load-bearing** — skill not discoverable or smart-routing boundary not visible |
 | Skill metadata `skills/kimiflow/agents/openai.yaml` | Codex app/plugin presentation metadata | Graceful — display metadata degrades, engine unaffected |
 | Explicit skill invocation `$kimiflow` / `@kimiflow` / named request | user entry point | **Load-bearing** — if explicit skill invocation changes, users need new invocation docs |
-| Manifest hook path `.codex-plugin/plugin.json` → `./hooks/hooks.json` | Codex loads the bundled lifecycle contract directly | **Load-bearing** — missing/path/schema drift means the safety hooks are not registered; `install-codex-hooks.sh --check` validates without writing user files |
+| Manifest hook path `.codex-plugin/plugin.json` → `./hooks/hooks.json` | Codex loads the bundled lifecycle contract directly | **Load-bearing** — missing/path/schema drift means the safety hooks are not registered; `install-codex-hooks.sh --check` validates the contract and rejects obsolete global Kimiflow registrations |
+| Legacy global `~/.codex/hooks.json` migration | `install-codex-hooks.sh --migrate-legacy` removes only obsolete Kimiflow command hooks, preserves unrelated hooks, and writes a timestamped backup | **Load-bearing during upgrades from wrapper-era development installs** — duplicate/stale registrations can keep missing cache paths trusted or make hook ownership ambiguous; migration is explicit, surgical, and idempotent |
 | Hook command root pin `KIMIFLOW_PLUGIN_ROOT` | bundled commands delegate to scripts inside the installed plugin | **Load-bearing** — stale/missing root means the declared commands cannot find the tested scripts |
 | Root compatibility mirror `hooks.json` | legacy/experimental host wiring outside the manifest-declared Codex path | Graceful — the load-bearing Codex path is `hooks/hooks.json`; tests keep the shared command contract aligned |
 | Hook event `PreToolUse` | bundled contract → intake, active-run, commit-secret, state and test gates across Bash/edit/plan/intake tools | **Load-bearing** — matcher or command drift silently removes enforcement |
 | Hook event `PostToolUse` / `Stop` | bundled contract → native intake receipt plus test and map-staleness gates | **Load-bearing** — response capture or terminal gates stop firing |
-| Hook trust review (`/hooks`) | Codex requires non-managed plugin command hooks to be trusted and re-reviews changed definitions | **Load-bearing for safety** — untrusted hooks are skipped until reviewed; this is a one-time install/update security action, never a per-run continuation gate |
-| Task/version-bound `UserPromptSubmit` observation | `active-run.sh prompt-context` records one single-use current-turn lease; `hook-health --require` and intake registration require it | **Load-bearing for intake reliability** — absent/already-consumed/wrong-version observation fails before the question; the lease has no wall-clock expiry inside the turn, and the structural installer check alone cannot prove that a lifecycle event fired |
+| Task pickup after plugin install/update | Codex loads the installed plugin and hook manifest into a task; there is no `/hooks` slash command or separate manual hook-trust step | **Load-bearing for lifecycle identity** — after installing changed plugin bytes, restart Codex and continue in a new task; if lifecycle observation still fails there, diagnose the installed manifest |
+| Live-task development reinstall guard | `install-codex-plugin-dev.sh` refuses installation when `CODEX_THREAD_ID` is set unless the maintainer explicitly acknowledges that this is the task's final action | **Load-bearing for lifecycle identity** — a running task stays bound to the manifest it started with; after any acknowledged install, restart Codex and continue in a new task |
+| Task/version-bound `UserPromptSubmit` observation | `active-run.sh prompt-context` records one single-use current-turn lease; `hook-health --require` and intake registration require it | **Load-bearing for intake reliability** — absent/already-consumed/wrong-version observation fails before the question; the lease has no wall-clock expiry inside the turn, and the structural installer check alone cannot prove that a lifecycle event fired. A changed plugin manifest reports `restart_codex_and_start_new_task`, not a same-task retry |
 | Hook JSON-on-stdin contract (`cwd`, command fields, stop-active fields) | hook scripts parse Codex-shaped payloads plus Claude-shaped payloads | **Load-bearing** — scripts may misparse; gate-critical paths fail safe where possible |
 | Hook deny/block output contract | `emit_deny` and `test-gate.sh` block output | **Load-bearing** — blocks stop taking effect |
 | `KIMIFLOW_HOST=codex` | Codex skill and bundled hook commands invoke helpers with Codex-specific global config paths | Graceful-ish — without it global verbosity writes to Claude default; project gates still work |
@@ -144,8 +146,11 @@ Run on every Claude Code or Codex upgrade (and at each kimiflow release):
 3. **Claude hooks fire installed** — in a repo with a `.kimiflow/` dir, confirm `commit-secret-gate.sh` blocks
    a `git add .` and the `Stop` test-gate engages (path resolves through `${CLAUDE_PLUGIN_ROOT}`).
 4. **Codex plugin install/invocation** — add the repo marketplace, run
-   `bash hooks/install-codex-hooks.sh --check`, install kimiflow through the Codex plugin browser/app, review/trust
-   it under `/hooks`, start a new thread, submit one prompt, and require `active-run.sh hook-health --require` OPEN.
+   `bash hooks/install-codex-hooks.sh --check` (or the one-time `--migrate-legacy` when it reports old global
+   registrations), install kimiflow through the Codex plugin browser/app, restart Codex, start a new thread,
+   submit one prompt, and require `active-run.sh hook-health --require` OPEN. A development reinstall
+   attempted inside a live task without the explicit final-action acknowledgement must fail before candidate bytes
+   change.
 5. **Codex hooks fire installed** — in a repo with a `.kimiflow/` dir, confirm `commit-secret-gate.sh`
    blocks `git add .` and the `Stop` test-gate engages through the manifest-declared bundled hooks.
 6. **One trivial Claude end-to-end** — `/kimiflow <tiny fix>`: the Phase-0 task widget appears, workspace preflight is compact, and schema 4 commits named paths locally without a routine second OK; the opt-in policy holds — kimiflow launches when asked ("with kimiflow")

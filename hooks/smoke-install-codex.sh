@@ -591,11 +591,18 @@ else
 fi
 rm -rf "$tmp1" "$tmp2" "$tmp3" "$tmp_home"
 
+if grep -Eiq 'open [`]?/hooks|under [`]?/hooks|unter [`]?/hooks|review/trust.*?/hooks|start_new_codex_task_after_hook_review' \
+  "$ROOT/README.md" "$ROOT/README.de.md" "$ROOT/COMPATIBILITY.md" "$ROOT/reference.md" \
+  "$ROOT/hooks/kimiflow_core/active_run.py"; then
+  bad "Codex docs still instruct a nonexistent /hooks workflow"
+else
+  ok "Codex docs use restart plus new-task recovery"
+fi
+
 echo "== MANUAL (needs Codex app/CLI plugin browser) =="
 cat <<'MANUAL'
   [ ] Add the Git marketplace (`codex plugin marketplace add kimikonapps/kimiflow`), then install kimiflow.
-  [ ] Open `/hooks`, review and trust the Kimiflow plugin hooks once after install/update.
-  [ ] Start a new Codex thread and invoke "$kimiflow <tiny change>".
+  [ ] Restart Codex after install/update, start a new thread, and invoke "$kimiflow <tiny change>".
   [ ] Confirm an actionable implementation request for a substantial cross-surface/integration/data/security/API/architecture/discovery feature auto-routes into Kimiflow.
   [ ] Confirm a discussion, idea, recommendation, explanation/status request, or wish formulation stays direct and read-only.
   [ ] Confirm a normal fix, review, refactor, cleanup, docs/config task, or small low-risk feature stays direct unless Kimiflow is explicit.

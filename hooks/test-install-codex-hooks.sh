@@ -11,6 +11,59 @@ printf '%s\n' "$out" | grep -Fq 'Codex plugin hook contract verified'
 [ ! -e "$WORK/codex-home/hooks" ]
 printf 'ok   bundled_contract_needs_no_unregistered_wrappers\n'
 
+mkdir -p "$WORK/legacy-home"
+cat >"$WORK/legacy-home/hooks.json" <<'EOF'
+{
+  "hooks": {
+    "SessionStart": [
+      {"hooks": [
+        {"type": "command", "command": "gh-axi"},
+        {"name": "Kimiflow custom user hook", "type": "command", "command": "custom-kimiflow-helper"}
+      ]}
+    ],
+    "UserPromptSubmit": [
+      {"hooks": [
+        {"name": "Kimiflow active session", "type": "command", "command": "KIMIFLOW_HOST=codex /obsolete/kimiflow/hooks/active-run.sh prompt-context"},
+        {"name": "Unrelated prompt hook", "type": "command", "command": "other-prompt-hook"}
+      ]}
+    ],
+    "PreToolUse": [
+      {"matcher": "Bash", "hooks": [
+        {"name": "Kimiflow Product Intake", "type": "command", "command": "KIMIFLOW_HOST=codex /obsolete/kimiflow/hooks/intake-gate.sh"},
+        {"name": "Unrelated gate", "type": "command", "command": "other-gate"}
+      ]}
+    ],
+    "Stop": [
+      {"hooks": [
+        {"name": "Kimiflow test gate", "type": "command", "command": "KIMIFLOW_HOST=codex /obsolete/kimiflow/hooks/test-gate.sh"}
+      ]}
+    ]
+  }
+}
+EOF
+
+if CODEX_HOME="$WORK/legacy-home" "$ROOT/hooks/install-codex-hooks.sh" --check >"$WORK/legacy-check.out" 2>&1; then
+  printf 'obsolete global Kimiflow hooks passed validation\n' >&2
+  exit 1
+fi
+grep -Fq 'found 3 obsolete global Kimiflow hook(s)' "$WORK/legacy-check.out"
+migration="$(CODEX_HOME="$WORK/legacy-home" "$ROOT/hooks/install-codex-hooks.sh" --migrate-legacy)"
+printf '%s\n' "$migration" | grep -Fq 'removed=3'
+backup="$(printf '%s\n' "$migration" | sed -n 's/.* backup=\(.*\)$/\1/p')"
+[ -f "$backup" ]
+jq -e '
+  .hooks.SessionStart[0].hooks[0].command == "gh-axi"
+  and .hooks.SessionStart[0].hooks[1].command == "custom-kimiflow-helper"
+  and .hooks.UserPromptSubmit[0].hooks[0].command == "other-prompt-hook"
+  and .hooks.PreToolUse[0].hooks[0].command == "other-gate"
+  and (.hooks | has("Stop") | not)
+' "$WORK/legacy-home/hooks.json" >/dev/null
+jq -e '.hooks.Stop[0].hooks[0].name == "Kimiflow test gate"' "$backup" >/dev/null
+CODEX_HOME="$WORK/legacy-home" "$ROOT/hooks/install-codex-hooks.sh" --check >/dev/null
+second="$(CODEX_HOME="$WORK/legacy-home" "$ROOT/hooks/install-codex-hooks.sh" --migrate-legacy)"
+printf '%s\n' "$second" | grep -Fq 'already clean'
+printf 'ok   legacy_global_hooks_migrate_surgically_and_idempotently\n'
+
 mkdir -p "$WORK/plugin/.codex-plugin" "$WORK/plugin/hooks"
 cp "$ROOT/.codex-plugin/plugin.json" "$WORK/plugin/.codex-plugin/plugin.json"
 cp "$ROOT/hooks/hooks.json" "$WORK/plugin/hooks/hooks.json"

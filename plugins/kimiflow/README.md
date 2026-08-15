@@ -132,9 +132,9 @@ codex plugin marketplace add kimikonapps/kimiflow
 codex plugin add kimiflow@kimiflow
 ```
 
-Restart Codex, open `/hooks`, review and trust the bundled Kimiflow hooks once, then open a new task and invoke
-`$kimiflow`. Codex intentionally re-requests this trust review when a plugin update changes a hook definition. To
-update:
+Restart Codex, open a new task, and invoke `$kimiflow`. Codex has no `/hooks` slash command and Kimiflow requires
+no separate manual hook-trust step. After an update, restart Codex and continue in a new task so it loads the new
+plugin and hook manifest. To update:
 
 ```bash
 codex plugin marketplace upgrade kimiflow
@@ -145,12 +145,20 @@ user-level wrapper installation is required. The marketplace publishes only the 
 maintainer state, eval inputs, and private workflow artifacts are excluded and the candidate carries a
 reproducible content fingerprint.
 
+If an older development install still registered Kimiflow command hooks in `~/.codex/hooks.json`, migrate them
+once before trusting the bundled hooks. The migration removes only obsolete Kimiflow entries, preserves every
+unrelated hook, and writes a timestamped backup:
+
+```bash
+bash hooks/install-codex-hooks.sh --migrate-legacy
+```
+
 Kimiflow verifies actual `UserPromptSubmit` execution before it registers Product Intake. The proof is bound to
 the current task and installed plugin version, can register exactly one intake wait, and remains valid for the
 complete model turn without a wall-clock timeout. Long research therefore cannot make the final contract require
-a second confirmation. If the hook is not observed, the run stops before showing the question with the exact
-`/hooks` recovery. Trust is normally needed once per installation or changed hook definition, not once per
-Kimiflow run.
+a second confirmation. If the hook is not observed, the run stops before showing the question and tells the user
+to restart Codex and continue in a new task. If a fresh task still cannot observe the hook, diagnose the installed
+manifest instead of asking the user for a nonexistent manual trust step.
 
 That candidate is also published as a deterministic `kimiflow-runtime-<version>.zip` with
 `kimiflow-update-v1.json`. Independent hosts read one stable manifest, verify the official immutable GitHub
@@ -168,8 +176,10 @@ bash hooks/install-codex-plugin-dev.sh
 
 The installer builds the clean marketplace candidate with one persistent cachebuster identity, refreshes its
 runtime fingerprint, prefers the CLI bundled with the running Codex app over older PATH installations, and
-byte-verifies the installed hook runtime. It never restarts Codex itself. Restart Codex after it succeeds, review
-the hooks under `/hooks`, open a new task, submit a prompt, and use
+byte-verifies the installed hook runtime. It never restarts Codex itself. A live Codex task refuses installation
+unless the maintainer explicitly passes `--acknowledge-new-thread-required`; that override is reserved for the
+task's final action because the old task remains bound to its original hook manifest. Restart Codex after a
+successful install, open a new task, submit a prompt, and use
 `hooks/active-run.sh hook-health --require --pretty` for that live check.
 
 ### Optional provider-neutral terminal runner
@@ -613,7 +623,12 @@ merge-tree preflight, no-shell project checks on the combined candidate before m
 reconciliation commit when needed, and an ff-only primary update followed only by mechanical Git
 integrity receipts. Conflicts remain recoverable as `needs-reconcile`. Retirement requires
 terminal state, green receipts and ancestry, then crash-recoverably archives the complete checkout and
-matched Git metadata. Manual and Codex-managed trees are never mutated.
+matched Git metadata. If an operator has already fast-forwarded the exact owned Fleet head outside
+the broker, the explicit `recover-integrated` path can adopt only that identical terminal head after
+fresh no-shell checks and full ownership/workspace revalidation; divergent, dirty, active, foreign,
+or check-failing states remain untouched. An externally delivered path outside the declaration needs
+an exact `--approved-path` entry for every such path and no others. Manual and Codex-managed trees are
+never mutated.
 
 Prepared and parked runs can resume from `.kimiflow/<slug>/`. If affected files changed or the plan
 basis is unknown, Kimiflow revalidates before implementation instead of building a stale plan.
