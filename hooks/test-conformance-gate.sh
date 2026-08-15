@@ -835,6 +835,25 @@ assert_status "$out" CLOSED "extra_untracked_path_closes"
 assert_contains "$out" "affected_files_mismatch" "extra_untracked_detail"
 
 reset_repo
+printf 'inspected, unchanged\n' > "$REPO/src/inspected.txt"
+git_repo add src/inspected.txt
+git_repo commit -q -m 'add inspected fixture'
+START="$(git_repo rev-parse HEAD)"
+write_contract small
+enable_routine_convergence
+sed -i.bak \
+  -e '/^- src\/a.txt/a\
+- src/inspected.txt' \
+  "$RUN/STATE.md" && rm "$RUN/STATE.md.bak"
+sed -i.bak \
+  -e 's/Affected files: src\/a.txt/Affected files: src\/a.txt, src\/inspected.txt/' \
+  -e 's/Paths D1: src\/a.txt/Paths D1: src\/a.txt, src\/inspected.txt/' \
+  -e 's/Paths S1: src\/a.txt/Paths S1: src\/a.txt, src\/inspected.txt/' \
+  "$RUN/PLAN.md" && rm "$RUN/PLAN.md.bak"
+out="$(run_gate --record --write)"
+assert_status "$out" OPEN "authorized_unchanged_plan_path_opens"
+
+reset_repo
 write_contract small
 printf 'hidden commit\n' > "$REPO/src/hidden.txt"
 git_repo add src/hidden.txt

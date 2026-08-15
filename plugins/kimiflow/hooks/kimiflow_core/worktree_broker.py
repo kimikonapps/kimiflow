@@ -586,12 +586,22 @@ def _receipt_repository(task):
 
 def _validate_terminal_ref_receipt(task):
     repository = _receipt_repository(task)
+    branch_head = _task_branch_head(repository, task) if repository else ""
+    branch_matches = branch_head == task["integrated_head"]
+    if task["state"] == "retired":
+        branch_matches = branch_head in {"", task["integrated_head"]}
+    archive_matches = task["state"] != "retired" or (
+        task["archive"]
+        and _safe_archive_directory(task["archive"]["checkout"])
+        and _safe_archive_directory(task["archive"]["metadata"])
+    )
     if (
         not repository
         or not os.path.isdir(repository)
         or not task["integrated_head"]
         or not task["primary_ref"]
-        or _task_branch_head(repository, task) != task["integrated_head"]
+        or not branch_matches
+        or not archive_matches
         or not _ancestor(
             repository,
             task["integrated_head"],
@@ -3626,6 +3636,7 @@ def broker_status(root=None):
     current = wp.repo_root(root)
     primary = wp.worktree_records(current)[0]["path"]
     state = read_broker(primary)
+    _validate_terminal_receipts(state)
     return {
         "schema_version": BROKER_SCHEMA,
         "status": "current",

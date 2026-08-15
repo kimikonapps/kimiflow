@@ -8,6 +8,10 @@ Versions before 0.4.0 were internal development snapshots. **0.4.0 is the first 
 
 ### Fixed
 
+- Conformance and frontend gates now treat `Affected files` as the authorized path set: every delivered Git
+  path must be declared, while planned paths that were inspected but left unchanged no longer block a run.
+- Retired Fleet receipts remain valid after their already-integrated task branch is deleted; missing branches
+  are accepted only for archived retired runs, while recreated mismatching refs and lost archives still fail.
 - Codex Product Intake now accepts explicit goal confirmations such as `Ja, genau dieses Ziel`, keeps pending
   intake state across same-run restarts, preserves correction state through park/resume, and conservatively
   recovers older parked schema-1 runs whose causal receipt had lost that distinction.

@@ -1870,6 +1870,34 @@ class WorktreeBrokerCase(unittest.TestCase):
             0,
         )
 
+    def test_retired_receipt_allows_integrated_task_branch_deletion(self):
+        run = ".kimiflow/run-a"
+        target, _, _ = self.integrated_task(run)
+        branch = self.git(target, "branch", "--show-current").stdout.strip()
+        self.write_terminal(target, run)
+        self.assertEqual(broker.retire(self.repo, run, write=True)["status"], "retired")
+
+        self.git(self.repo, "branch", "-D", branch)
+        self.assertFalse(self.git(self.repo, "branch", "--list", branch).stdout.strip())
+        self.write_active(run=".kimiflow/run-primary", affected=("primary.txt",))
+
+        routed = broker.route(self.repo, ".kimiflow/run-b", write=True)
+
+        self.assertEqual(routed["status"], "allocated")
+
+    def test_broker_status_rejects_recreated_retired_branch_at_wrong_head(self):
+        run = ".kimiflow/run-a"
+        target, _, _ = self.integrated_task(run)
+        branch = self.git(target, "branch", "--show-current").stdout.strip()
+        self.write_terminal(target, run)
+        self.assertEqual(broker.retire(self.repo, run, write=True)["status"], "retired")
+        self.git(self.repo, "branch", "-D", branch)
+        self.commit_file(self.repo, "later.txt", "later\n", "later main change")
+        self.git(self.repo, "branch", branch, "HEAD")
+
+        with self.assertRaisesRegex(wp.WorkspaceError, "terminal receipt"):
+            broker.broker_status(self.repo)
+
     def test_integrate_returns_terminal_receipt_idempotently(self):
         run = ".kimiflow/run-a"
         target, _, delivered = self.integrated_task(run)

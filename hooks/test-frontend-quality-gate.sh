@@ -314,6 +314,25 @@ test_canonical_git_delta_sources() {
   assert_has "$(finish_off_delta "$repo" "$separator_name")" $'FRONTEND_QUALITY_GATE\tOPEN' "delta_unicode_separator_is_preserved"
 }
 
+test_authorized_unchanged_frontend_path_opens() {
+  repo="$(new_repo authorized-unchanged)"
+  mkdir -p "$repo/src/ui"
+  printf 'export const helper = 1\n' > "$repo/src/ui/helper.ts"
+  git -C "$repo" add src/ui/helper.ts
+  git -C "$repo" commit -qm 'add inspected helper'
+  write_active "$repo"
+  write_state "$repo"
+  record_start "$repo" >/dev/null
+  printf 'export default 1\n' > "$repo/src/ui/App.tsx"
+  set_affected "$repo/.kimiflow/run/STATE.md" src/ui/App.tsx src/ui/helper.ts
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality" "standard"
+  replace_line "$repo/.kimiflow/run/STATE.md" "Frontend quality evidence" "ui-surface=yes; ref=path:src/ui/App.tsx"
+
+  out="$(record_routing "$repo")"
+
+  assert_has "$out" $'FRONTEND_QUALITY_GATE\tOPEN' "authorized_unchanged_frontend_path_opens"
+}
+
 test_bugfix_and_flagship_routing() {
   repo="$(new_repo fix-ui)"
   write_active "$repo"
@@ -1113,6 +1132,7 @@ test_frontend_quality_contract_routing
 test_behavior_only_ui_uses_runtime_verification_without_screenshot
 test_readonly_audit_off_route
 test_canonical_git_delta_sources
+test_authorized_unchanged_frontend_path_opens
 test_bugfix_and_flagship_routing
 test_off_and_legacy_open_without_artifact
 test_declared_lane_missing_or_invalid_closes

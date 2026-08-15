@@ -11,7 +11,7 @@
       "bytes": 3634,
       "mode": "0644",
       "path": ".codex-plugin/plugin.json",
-      "sha256": "sha256:8839e011278d08548adfc168702c25c99b222387ea6ca152375008d6f0342463"
+      "sha256": "sha256:5abd67d3e4a22f1c48feb485cfc2ccf12ee16521ef88c46bd12717e39e1bdceb"
     },
     {
       "bytes": 22808,
@@ -152,10 +152,10 @@
       "sha256": "sha256:3f796193923d1d7fbd4eb7badcb250a20bcc3a702747dee679784ae2ac725b07"
     },
     {
-      "bytes": 68155,
+      "bytes": 67954,
       "mode": "0755",
       "path": "hooks/conformance-gate.sh",
-      "sha256": "sha256:1318379ee0071679009d217192160b392e5bee913bd254fdfa39e4948d62d89a"
+      "sha256": "sha256:e70225b5d9c9cc77bbe87b7634959366653beea872ac0ea653f50f8b6d40449c"
     },
     {
       "bytes": 325,
@@ -176,10 +176,10 @@
       "sha256": "sha256:bd8668c2349aa61d5811c97c9cde93c7ad8003241706d7c2431675b95b662109"
     },
     {
-      "bytes": 51626,
+      "bytes": 51637,
       "mode": "0755",
       "path": "hooks/frontend-quality-gate.sh",
-      "sha256": "sha256:a72fff27e9bb03bdf19876e2fe3f53c29d927c173ea97e60941b6e71b4725778"
+      "sha256": "sha256:d9ae913b51904cb83adb36f86e977b00646106ceea65b346c4db98f9f0bad86e"
     },
     {
       "bytes": 2314,
@@ -458,10 +458,10 @@
       "sha256": "sha256:ce8b7b537753203b7f402ba737e75b5636b85f0c8006945ee0a74ecbc88ea62b"
     },
     {
-      "bytes": 139762,
+      "bytes": 140243,
       "mode": "0644",
       "path": "hooks/kimiflow_core/worktree_broker.py",
-      "sha256": "sha256:b58e58b660e8d9c4f758bcb1cd1c71cef799711e46c6e874bd17fdeb69ea8f84"
+      "sha256": "sha256:ec7558b74d4ec4cedb13d8b6800597887e630955095f1e741ad4e82b0b29f1eb"
     },
     {
       "bytes": 418,
@@ -932,10 +932,10 @@
       "sha256": "sha256:22d05c1858304b807c7cd295ac52503e4748c36db232281bac8e291406481261"
     },
     {
-      "bytes": 11234,
+      "bytes": 11446,
       "mode": "0644",
       "path": "phases/phase-6-verify.md",
-      "sha256": "sha256:1b16a0db303438dd21d1999c9ee65aacc6b7e0f985082ed2e458bd8098c63787"
+      "sha256": "sha256:69fcd5c02f39c2991b6121374107577e8b4462d11b015165daaaca0041ed99de"
     },
     {
       "bytes": 19822,
@@ -1094,6 +1094,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:54fbb36d428c165ffabe2e692816612d4bb17b4195bf6eea14f84896681f602d",
+  "runtime_fingerprint": "sha256:447c4f99658bc74c3cd5e7aa3f1036ad4e14c6df96ffed7b6c5784e249b15372",
   "schema_version": 1
 }

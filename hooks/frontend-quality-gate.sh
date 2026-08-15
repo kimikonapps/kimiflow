@@ -1068,7 +1068,7 @@ audit_readonly_off = (
     mode == "audit" and lane == "off" and not actual_paths
     and head_now == frontend_started_head
 )
-if not audit_readonly_off and set(affected) != actual_paths:
+if not audit_readonly_off and not actual_paths.issubset(set(affected)):
     emit("CLOSED", "affected_files_mismatch", ["affected_files_mismatch"])
 
 # Contract 1 predates the ACTIVE_RUN copy of the immutable frontend start.
