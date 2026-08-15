@@ -8,10 +8,10 @@
       "sha256": "sha256:e8a0a5dce01c57c16a40b3b512c9a3999980f056dfe89e20c5f6c4a9dcd9dc88"
     },
     {
-      "bytes": 3613,
+      "bytes": 3634,
       "mode": "0644",
       "path": ".codex-plugin/plugin.json",
-      "sha256": "sha256:961c8ecc1bc25499204078616f59f762a7170ed07679946aed72e680426ea5db"
+      "sha256": "sha256:5c529d0f528cd33f203dc2b7b7fb33087a5aab73739feb68f02fb49536936182"
     },
     {
       "bytes": 22808,
@@ -1094,6 +1094,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:1e8710a935bcd1e321271bbc1cb540717c02d03a6d83a94ffec43d96f596ac8c",
+  "runtime_fingerprint": "sha256:73b223cd1b01c0c84602c79f298119f3fa21c721879721f66f8335f3962e9d91",
   "schema_version": 1
 }
