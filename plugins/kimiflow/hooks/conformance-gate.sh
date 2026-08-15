@@ -297,6 +297,18 @@ def declared_acceptance_criteria(lines):
     return declared
 
 
+def acceptance_references(value):
+    references = [part.strip() for part in value.split(",")]
+    if (
+        not references
+        or any(not reference for reference in references)
+        or len(references) != len(set(references))
+        or any(re.fullmatch(r"AC-[0-9]+", reference) is None for reference in references)
+    ):
+        return None
+    return references
+
+
 def git_root(run_dir):
     proc = run(["git", "-C", run_dir, "rev-parse", "--show-toplevel"])
     if proc.returncode != 0:
@@ -828,6 +840,10 @@ mode = one_state(state_lines, "Mode", errors).lower().split(" ", 1)[0]
 scope = one_state(state_lines, "Scope", errors).lower().split(" ", 1)[0]
 basis = one_state(state_lines, "Conformance basis", errors)
 started_head = one_state(state_lines, "Run started head", errors, required=not plan_only)
+implementation_base_head = one_state(
+    state_lines, "Implementation base head", errors, required=False
+)
+delta_head = implementation_base_head or started_head
 architecture_state = one_state(state_lines, "Architecture deliberation", errors, required=False).lower().split(" ", 1)[0]
 build_risk = one_state(state_lines, "Build risk", errors, required=False).lower().split(" ", 1)[0]
 intent_contract = one_state(state_lines, "Intent contract", errors, required=False).strip()
@@ -989,11 +1005,13 @@ if decision_count:
                 errors.append("path_D%s_invalid" % ident)
             elif rel not in affected:
                 errors.append("path_D%s_not_affected" % ident)
-        ac = row.get("AC", "")
-        if not re.fullmatch(r"AC-[0-9]+", ac):
+        ac_values = acceptance_references(row.get("AC", ""))
+        if ac_values is None:
             errors.append("ac_D%s_invalid" % ident)
-        elif ac not in acceptance_criteria:
-            errors.append("ac_D%s_missing" % ident)
+        else:
+            for ac in ac_values:
+                if ac not in acceptance_criteria:
+                    errors.append("ac_D%s_missing:%s" % (ident, ac))
         if decision_evidence_active and row.get("Evidence class") not in (
             "review_only", "spike_required", "runtime_required",
         ):
@@ -1185,18 +1203,15 @@ if convergence_contract == "1":
             else:
                 row[label] = values[0]
         slice_rows[ident] = row
-        ac_values = [
-            value.strip()
-            for value in row.get("AC", "").split(",")
-            if value.strip()
-        ]
-        if not ac_values or len(ac_values) != len(set(ac_values)):
+        ac_values = acceptance_references(row.get("AC", ""))
+        if ac_values is None:
             errors.append("ac_S%s_invalid" % ident)
-        for ac in ac_values:
-            if not re.fullmatch(r"AC-[0-9]+", ac) or ac not in acceptance_criteria:
-                errors.append("ac_S%s_missing:%s" % (ident, ac or "empty"))
-            else:
-                covered_acceptance.add(ac)
+        else:
+            for ac in ac_values:
+                if ac not in acceptance_criteria:
+                    errors.append("ac_S%s_missing:%s" % (ident, ac))
+                else:
+                    covered_acceptance.add(ac)
         paths = [
             value.strip()
             for value in row.get("Paths", "").split(",")
@@ -1275,9 +1290,13 @@ if convergence_contract == "1":
             errors.append("failure_class_F%s_duplicate" % ident)
         else:
             failure_classes.add(failure_class)
-        ac = row.get("AC", "")
-        if not re.fullmatch(r"AC-[0-9]+", ac) or ac not in acceptance_criteria:
-            errors.append("ac_F%s_missing" % ident)
+        ac_values = acceptance_references(row.get("AC", ""))
+        if ac_values is None:
+            errors.append("ac_F%s_invalid" % ident)
+        else:
+            for ac in ac_values:
+                if ac not in acceptance_criteria:
+                    errors.append("ac_F%s_missing:%s" % (ident, ac))
         if not re.fullmatch(
             r"(?:command|verifier) :: .+",
             row.get("Falsifier", ""),
@@ -1563,6 +1582,8 @@ if os.path.lexists(active_path):
             "scope": scope,
             "started_head": started_head,
         }
+        if implementation_base_head:
+            selectors["implementation_base_head"] = implementation_base_head
         if "conformance_contract" in active:
             selectors["conformance_contract"] = contract_values[0].strip()
         if "convergence_contract" in active or convergence_contract:
@@ -1577,7 +1598,7 @@ if os.path.lexists(active_path):
             active_inode,
         ) != (run_info.st_dev, run_info.st_ino):
             errors.append("active_run_identity_mismatch")
-delta = actual_delta(root, started_head, errors)
+delta = actual_delta(root, delta_head, errors)
 if set(affected) != delta:
     errors.append("affected_files_mismatch")
 for ident, row in decision_rows.items():
@@ -1592,7 +1613,7 @@ if status != "converged":
 
 expected_basis = content_basis(
     root,
-    started_head,
+    delta_head,
     mode,
     affected,
     [

@@ -327,14 +327,16 @@ def meaningful(value):
 
 
 def evidence_value(value, mode, lane, errors):
-    match = re.match(r"^ui-surface=(yes|no|excluded-by-mode); ref=(.+)$", value)
+    match = re.match(r"^ui-surface=(yes|no|behavior-only|excluded-by-mode); ref=(.+)$", value)
     if not match or not meaningful(match.group(2)):
         errors.append("evidence_invalid")
         return None
     ui, ref = match.group(1), match.group(2).strip()
-    valid = ((mode == "feature" and lane == "off" and ui == "no") or
+    valid = ((mode == "feature" and lane == "off" and ui in ("no", "behavior-only")) or
              (mode == "feature" and lane in ("standard", "flagship") and ui == "yes") or
              (mode in ("fix", "audit") and lane == "off" and ui == "excluded-by-mode"))
+    if ui == "behavior-only" and ref != "verification:VERIFICATION.md":
+        valid = False
     if not valid:
         errors.append("evidence_mode_mismatch")
     return (ui, ref)
@@ -411,6 +413,27 @@ def flagship_intent(text):
         if coordinated and not prior_flagship:
             return True
     return False
+
+
+def behavior_verification_error(run_dir):
+    path = os.path.join(run_dir, "VERIFICATION.md")
+    if not os.path.isfile(path) or os.path.islink(path):
+        return "behavior_verification_missing"
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            lines = handle.read(1024 * 1024 + 1).splitlines()
+    except (OSError, UnicodeError):
+        return "behavior_verification_invalid"
+    if sum(len(line.encode("utf-8")) + 1 for line in lines) > 1024 * 1024:
+        return "behavior_verification_invalid"
+    markers = [line for line in lines if line.startswith("<!-- kimiflow:verification ")]
+    if not markers:
+        return "behavior_verification_missing"
+    if len(markers) != 1:
+        return "behavior_verification_duplicate"
+    if markers[0] != "<!-- kimiflow:verification outcome=passed criteria=passed regression=passed -->":
+        return "behavior_verification_not_passed"
+    return None
 
 
 def file_sha256(path):
@@ -927,6 +950,7 @@ started_head = active.get("started_head", "") if isinstance(active, dict) else "
 if canonical_commit_oid(root, started_head) is None:
     errors.append("started_head_invalid")
 workspace_disposition_head = active.get("workspace_disposition_head", "") if isinstance(active, dict) else ""
+implementation_base_head = active.get("implementation_base_head", "") if isinstance(active, dict) else ""
 frontend_active_start = active.get("frontend_quality_start_head", "") if isinstance(active, dict) else ""
 frontend_start_missing = isinstance(active, dict) and "frontend_quality_start_head" not in active
 
@@ -946,7 +970,9 @@ if record_start_mode:
     if delta:
         emit("CLOSED", "dirty_start", ["dirty_start"])
     if current_head != started_head:
-        recorded_disposition = canonical_commit_oid(root, workspace_disposition_head)
+        recorded_disposition = canonical_commit_oid(
+            root, implementation_base_head or workspace_disposition_head
+        )
         if recorded_disposition != current_head:
             emit("CLOSED", "workspace_disposition_missing", ["workspace_disposition_missing"])
 
@@ -1073,9 +1099,10 @@ except (OSError, UnicodeError):
     emit("CLOSED", "request_file_invalid", ["request_file_invalid"])
 route_errors = []
 route_evidence = evidence_value(evidence, mode, lane, route_errors)
-if mode == "feature" and has_ui_path(actual_paths) and lane == "off":
+if (mode == "feature" and has_ui_path(actual_paths) and lane == "off" and
+        (not route_evidence or route_evidence[0] != "behavior-only")):
     route_errors.append("lane_route_mismatch")
-if (mode == "feature" and route_evidence and route_evidence[0] == "yes" and
+if (mode == "feature" and route_evidence and route_evidence[0] in ("yes", "behavior-only") and
         flagship_intent(request_text) and lane != "flagship"):
     route_errors.append("flagship_route_mismatch")
 if mode in ("fix", "audit") and lane != "off":
@@ -1100,6 +1127,10 @@ if record_routing_mode:
     emit("OPEN", "routing-recorded", [])
 
 base_errors = []
+if route_evidence and route_evidence[0] == "behavior-only":
+    behavior_error = behavior_verification_error(run_dir)
+    if behavior_error:
+        base_errors.append(behavior_error)
 if routing != "final": base_errors.append("routing_not_final")
 if basis != expected_basis: base_errors.append("routing_basis_stale")
 receipt_basis, receipt_error = routing_receipt(routing_path)

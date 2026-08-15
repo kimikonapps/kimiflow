@@ -587,7 +587,12 @@ def status_json(root, event=""):
         result["execution_control"] = {"contract": 1, "status": "invalid", "reason": execution_error}
     if phase_required:
         result["phase_reads_required"] = True
-    for key in ("workspace_wait_used_at", "workspace_disposition_head", "frontend_quality_start_head"):
+    for key in (
+        "workspace_wait_used_at",
+        "workspace_disposition_head",
+        "implementation_base_head",
+        "frontend_quality_start_head",
+    ):
         if active.get(key):
             result[key] = active[key]
     for key in ("intake_action", "intake_stage", "intake_response_at"):
@@ -3087,6 +3092,13 @@ def cmd_start(args, _workspace_locked=False):
     ).strip()
     if git_commit_ok(root, disposition_head):
         status["workspace_disposition_head"] = disposition_head
+    implementation_base_head = str(
+        prior_active.get("implementation_base_head", "")
+    ).strip() if same_active else state.state_value(
+        state_path, "Implementation base head"
+    ).strip()
+    if git_commit_ok(root, implementation_base_head):
+        status["implementation_base_head"] = implementation_base_head
     frontend_start_head = str(prior_active.get("frontend_quality_start_head", "")).strip() if same_active else str(
         resume_pins.get("frontend_quality_start_head", "")
     ).strip()
@@ -3274,12 +3286,23 @@ def cmd_refresh_baseline(args):
         ).strip()
         if recorded_disposition and recorded_disposition != current_head:
             die("workspace disposition receipt is already bound to another head", 1)
+        recorded_implementation_base = str(
+            active.get("implementation_base_head")
+            or state.state_value(os.path.join(run_dir, "STATE.md"), "Implementation base head")
+        ).strip()
+        if recorded_implementation_base and recorded_implementation_base != current_head:
+            die("implementation base receipt is already bound to another head", 1)
         refreshed["workspace_disposition_head"] = current_head
+        refreshed["implementation_base_head"] = current_head
     if opts["--write"]:
         write_active(root, refreshed)
         if opts["--workspace-disposition"]:
             try:
-                update_state_value(run_dir, "Workspace disposition head", current_head)
+                state_path = os.path.join(run_dir, "STATE.md")
+                if not state.state_value(state_path, "Workspace disposition head"):
+                    update_state_value(run_dir, "Workspace disposition head", current_head)
+                if not state.state_value(state_path, "Implementation base head"):
+                    update_state_value(run_dir, "Implementation base head", current_head)
             except ActiveError:
                 write_active(root, active)
                 raise
