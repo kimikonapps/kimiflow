@@ -8,7 +8,7 @@ command -v python3 >/dev/null 2>&1 || exit 0
 KIMIFLOW_INTAKE_HOOKS_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)" || exit 0
 export KIMIFLOW_INTAKE_HOOKS_DIR
 exec python3 -c '
-import hashlib, json, os, re, shlex, stat, subprocess, sys
+import json, os, re, shlex, stat, subprocess, sys
 
 def deny(reason):
     print(json.dumps({"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"kimiflow intake-gate: " + reason}}, separators=(",",":")))
@@ -44,9 +44,6 @@ except (OSError,ValueError):
     raise SystemExit(0)
 if not isinstance(active,dict) or active.get("status") != "active" or active.get("intent_contract") not in ("3","4") or active.get("mode") != "feature" or active.get("scope") == "trivial":
     raise SystemExit(0)
-intent_contract=int(active["intent_contract"])
-try: intake_schema=int(active.get("intake_schema") or 1)
-except (TypeError,ValueError): intake_schema=1
 owner=active.get("owner") if isinstance(active.get("owner"),dict) else None
 session=data.get("session_id")
 host=os.environ.get("KIMIFLOW_HOST","") or ("codex" if os.environ.get("CODEX_THREAD_ID") or os.environ.get("PLUGIN_ROOT") else "claude")
@@ -59,39 +56,11 @@ if not run_dir.startswith(os.path.join(root,".kimiflow")+os.sep): deny("pinned r
 expected_real_run=os.path.join(os.path.realpath(root),os.path.relpath(run_dir,root))
 if os.path.realpath(run_dir)!=expected_real_run: deny("pinned run path is aliased")
 
-def digest(path):
-    h=hashlib.sha256()
-    with open(path,"rb") as f:
-        for chunk in iter(lambda:f.read(65536),b""): h.update(chunk)
-    return "sha256:"+h.hexdigest()
-
-def valid_receipt(round_no):
-    request_name="INTAKE.md" if round_no == 1 else "INTAKE-2.md"
-    rp=os.path.join(run_dir,"INTAKE-RECEIPT-%d.json"%round_no)
-    qp=os.path.join(run_dir,request_name)
-    try:
-        if os.path.islink(rp) or os.path.islink(qp): return False
-        receipt_info=os.lstat(rp); request_info=os.lstat(qp)
-        if not stat.S_ISREG(receipt_info.st_mode) or receipt_info.st_nlink!=1: return False
-        if not stat.S_ISREG(request_info.st_mode) or request_info.st_nlink!=1: return False
-        with open(rp,encoding="utf-8") as f: value=json.load(f)
-        if not isinstance(value,dict): return False
-        if intake_schema==2:
-            expected={"schema_version","contract","round","stage","action","request","request_digest","contract_digest","user_language","channel","responded_at"}
-            expected_stage="scope" if round_no==1 else "final"
-            expected_action="scope_ready" if round_no==1 else "confirmed"
-            return set(value)==expected and value.get("schema_version")==2 and value.get("contract")==4 and value.get("round")==round_no and value.get("stage")==expected_stage and value.get("action")==expected_action and value.get("request")==request_name and value.get("request_digest")==digest(qp) and re.fullmatch(r"sha256:[0-9a-f]{64}",str(value.get("contract_digest") or "")) is not None and value.get("user_language")==active.get("interaction_language") and value.get("channel") in ("chat","native_tool")
-        expected={"schema_version","contract","round","request","request_digest","channel","responded_at"}
-        return set(value)==expected and value.get("schema_version")==1 and value.get("contract")==intent_contract and value.get("round")==round_no and value.get("request")==request_name and value.get("request_digest")==digest(qp) and value.get("channel") in ("chat","native_tool")
-    except (OSError,ValueError): return False
-
-pending_round=active.get("intake_round") if active.get("awaiting_user") is True and active.get("awaiting_kind") == "intake" else None
-round_one_ok=valid_receipt(1)
-round_two_ok=valid_receipt(2) if intake_schema==2 else False
-intake_conflict=active.get("intake_conflict") is True
-required_ok=(round_two_ok if intake_schema==2 else (valid_receipt(pending_round) if pending_round in (1,2) else round_one_ok)) and not intake_conflict
-scope_drafting=intake_schema==2 and round_one_ok and not round_two_ok and pending_round is None and not intake_conflict
-expected_request="INTAKE-2.md" if pending_round == 2 or pending_round == 1 and intake_conflict else "INTAKE.md"
+lifecycle=active_run_contract.intake_lifecycle(root,active)
+pending_round=lifecycle["pending_round"]
+required_ok=lifecycle["required_ok"]
+scope_drafting=lifecycle["scope_drafting"]
+expected_request=lifecycle["expected_request"] or "INTAKE.md"
 tool=data.get("tool_name") or data.get("name") or ""
 if not tool and isinstance(data.get("tool"),dict): tool=data["tool"].get("name","")
 command=ti.get("command") or (ti.get("args") or {}).get("command") if isinstance(ti.get("args"),dict) else ti.get("command")

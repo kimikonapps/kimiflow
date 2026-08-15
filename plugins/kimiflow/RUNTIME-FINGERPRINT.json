@@ -200,10 +200,10 @@
       "sha256": "sha256:210e410a967ad67edfb2ac36a7a29b8be87532f94ee20cf1403821c21fcddcd2"
     },
     {
-      "bytes": 19534,
+      "bytes": 16869,
       "mode": "0755",
       "path": "hooks/intake-gate.sh",
-      "sha256": "sha256:a60b65e49924553c8eea977c0a37a5f1908e3fddab01607b944b993ce6346a9c"
+      "sha256": "sha256:5e64cb9c6854b1bf621ef6d293258457a343fc56d7cbb9e9c6247a10ac1e357a"
     },
     {
       "bytes": 2547,
@@ -236,10 +236,10 @@
       "sha256": "sha256:0a7f95d4ea04bd64f22a08a92f1845d79cc05d220da8612179b369b17c68080e"
     },
     {
-      "bytes": 222611,
+      "bytes": 232879,
       "mode": "0644",
       "path": "hooks/kimiflow_core/active_run.py",
-      "sha256": "sha256:8e3403b26f60f458e8a69fd4ae4718b65038f5165bb7c27ed6b426e652c92228"
+      "sha256": "sha256:5454e717251429e47993f3ddd39254a8803ba9e928b648f2799165dc63390008"
     },
     {
       "bytes": 11285,
@@ -1094,6 +1094,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:c3263c699a5708e4b350e3bffc6315e4d4ae024747ed82d3e38ca545d7bbc4c8",
+  "runtime_fingerprint": "sha256:1e8710a935bcd1e321271bbc1cb540717c02d03a6d83a94ffec43d96f596ac8c",
   "schema_version": 1
 }

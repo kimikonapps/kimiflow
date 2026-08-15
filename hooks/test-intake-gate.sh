@@ -299,11 +299,33 @@ assert "jq -e '.awaiting_user == true and .intake_conflict == true' '$REPO/.kimi
 payload="$(jq -nc --arg d "$REPO" '{cwd:$d,session_id:"owner-session",tool_name:"apply_patch",tool_input:{patch:"*** Begin Patch\n*** Update File: src/app.txt\n@@\n-base\n+changed\n*** End Patch"}}')"
 out="$(printf '%s' "$payload" | hook)"
 assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"deny\"' >/dev/null" "contract4_conflict_does_not_unlock_product_writes"
+jq 'del(.awaiting_user,.awaiting_kind,.awaiting_reason,.awaiting_since,.intake_round,.intake_request,.intake_request_digest)' \
+  "$REPO/.kimiflow/session/ACTIVE_RUN.json" \
+  > "$REPO/.kimiflow/session/ACTIVE_RUN.json.next"
+mv "$REPO/.kimiflow/session/ACTIVE_RUN.json.next" \
+  "$REPO/.kimiflow/session/ACTIVE_RUN.json"
+round_two_patch='*** Begin Patch
+*** Add File: .kimiflow/demo/INTAKE-2.md
+<!-- kimiflow:intake contract=4 round=2 questions=1 selection=impact_uncertainty technical_questions=0 confirmation=concrete_product_flow cause=first_response_conflict -->
+Product flow entry: The developer continues the corrected Kimiflow flow.
+User interaction: The assistant confirms the corrected flow once.
+Visible delegation outcome: The corrected result stays visible.
+Unchanged path: Existing entrypoints remain unchanged.
+Done scenario: Completion follows the corrected contract.
+*** End Patch'
+payload="$(jq -nc --arg d "$REPO" --arg p "$round_two_patch" '{cwd:$d,session_id:"owner-session",tool_name:"apply_patch",tool_input:{patch:$p}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "[ -z '$out' ]" "contract4_parked_conflict_allows_only_round2_recovery_artifact"
 write_request 2
 await_round 2
 printf '{"cwd":"%s","session_id":"owner-session","prompt":"confirmed"}' "$REPO" | KIMIFLOW_HOST=codex "$ACTIVE" prompt-context >/dev/null
 assert "jq -e '.contract == 4 and .round == 2' '$REPO/.kimiflow/demo/INTAKE-RECEIPT-2.json' >/dev/null" "contract4_conflict_allows_one_causal_second_round"
 assert "jq -e 'has(\"awaiting_user\") | not' '$REPO/.kimiflow/session/ACTIVE_RUN.json' >/dev/null" "contract4_second_round_confirmation_releases_wait"
+assert "jq -e '.intake_final_round == 2' '$REPO/.kimiflow/session/ACTIVE_RUN.json' >/dev/null" "contract4_second_round_pins_final_round"
+rm "$REPO/.kimiflow/demo/INTAKE-RECEIPT-2.json"
+payload="$(jq -nc --arg d "$REPO" '{cwd:$d,session_id:"owner-session",tool_name:"apply_patch",tool_input:{patch:"*** Begin Patch\n*** Update File: src/app.txt\n@@\n-base\n+changed\n*** End Patch"}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"deny\"' >/dev/null" "contract4_missing_final_round2_receipt_never_falls_back_to_round1"
 
 reset_repo 4
 write_request 1

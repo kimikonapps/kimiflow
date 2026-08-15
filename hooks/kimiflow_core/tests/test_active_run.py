@@ -571,7 +571,14 @@ class ActiveRunContractTests(unittest.TestCase):
             )
 
     def test_contract4_confirmation_is_explicit_and_rejects_corrections(self):
-        for value in ("Ja", "genau so", "Okay, weiter", "confirmed"):
+        for value in (
+            "Ja",
+            "genau so",
+            "Okay, weiter",
+            "confirmed",
+            "Ja, genau dieses Ziel",
+            "Genau dieses Ziel umsetzen",
+        ):
             with self.subTest(value=value):
                 self.assertTrue(active_run.explicit_confirmation(value))
         for value in (
@@ -585,6 +592,7 @@ class ActiveRunContractTests(unittest.TestCase):
             "I won't approve this flow",
             "Okay, change the unchanged path",
             "Ja, bitte ändere den unveränderten Pfad",
+            "Ja, genau dieses Ziel, aber mit Änderungen",
             "Keinesfalls bestätigt",
         ):
             with self.subTest(value=value):
@@ -2153,6 +2161,7 @@ class TestAwaitUser(unittest.TestCase):
     def write_schema1_intake(self):
         self.write_state(
             "Flow schema: 5\nIntent contract: 4\nInteraction language: de\n"
+            "Conformance contract: 1\nConvergence contract: 1\n"
         )
         request = (
             "<!-- kimiflow:intake contract=4 round=1 questions=1 "
@@ -2173,9 +2182,67 @@ class TestAwaitUser(unittest.TestCase):
             "intent_contract": "4",
             "intake_schema": 1,
             "interaction_language": "de",
+            "conformance_contract": "1",
+            "convergence_contract": "1",
         })
         active.pop("present", None)
         active_run.write_active(self.root, active)
+
+    def write_schema1_round2(self):
+        request = (
+            "<!-- kimiflow:intake contract=4 round=2 questions=1 "
+            "selection=impact_uncertainty technical_questions=0 "
+            "confirmation=concrete_product_flow cause=first_response_conflict -->\n"
+            "Product flow entry: Der User setzt den korrigierten Feature-Run fort.\n"
+            "User interaction: Kimiflow bestätigt den korrigierten Vertrag einmal.\n"
+            "Visible delegation outcome: Der bestätigte korrigierte Plan wird umgesetzt.\n"
+            "Unchanged path: Unbeteiligte Produktpfade bleiben weiterhin unverändert.\n"
+            "Done scenario: Der korrigierte Build und alle Tests sind grün.\n"
+        )
+        path = os.path.join(self.root, ".kimiflow", "demo", "INTAKE-2.md")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(request)
+
+    def await_schema1_round2(self):
+        return run_main([
+            "await-user",
+            "--run", ".kimiflow/demo",
+            "--kind", "intake",
+            "--round", "2",
+            "--request", ".kimiflow/demo/INTAKE-2.md",
+            "--reason", "corrected final contract",
+            "--root", self.root,
+            "--write",
+        ])
+
+    def arm_schema1_intake(self):
+        self.write_schema1_intake()
+        rc, _ = run_main(
+            ["prompt-context"],
+            stdin_text=self.hook_payload("Plan ready"),
+        )
+        self.assertEqual(rc, 0)
+        rc, _ = self.await_schema1_intake()
+        self.assertEqual(rc, 0)
+
+    def simulate_parked_outcome(self, preserve_conflict=True):
+        active = self.read_active()
+        pins = active_run.session_pins(active)
+        if not preserve_conflict:
+            pins.pop("intake_conflict", None)
+        run_dir = os.path.join(self.root, ".kimiflow", "demo")
+        with open(
+            os.path.join(run_dir, "SESSION-OUTCOME.json"),
+            "w",
+            encoding="utf-8",
+        ) as handle:
+            json.dump({
+                "schema_version": 1,
+                "outcome": "parked",
+                "session_pins": pins,
+            }, handle)
+        os.unlink(active_run.active_file(self.root))
+        active_run.update_state_status(run_dir, "backlog")
 
     def await_schema1_intake(self):
         return run_main([
@@ -2247,6 +2314,166 @@ class TestAwaitUser(unittest.TestCase):
             "user_prompt_hook_already_consumed",
         )
         self.assertTrue(self.read_active().get("awaiting_user"))
+
+    def test_schema1_goal_confirmation_phrase_records_receipt(self):
+        self.arm_schema1_intake()
+        self.assertEqual(
+            active_run.status_json(self.root)["intake"]["state"],
+            "waiting",
+        )
+
+        rc, output = run_main(
+            ["prompt-context"],
+            stdin_text=self.hook_payload("Ja, genau dieses Ziel"),
+        )
+
+        self.assertEqual(rc, 0)
+        self.assertIn("Kimiflow active session is open", output)
+        active = self.read_active()
+        self.assertNotIn("awaiting_user", active)
+        self.assertNotIn("intake_conflict", active)
+        self.assertEqual(active.get("intake_final_round"), 1)
+        self.assertEqual(
+            active_run.status_json(self.root)["intake"]["state"],
+            "ready",
+        )
+        self.assertTrue(os.path.isfile(os.path.join(
+            self.root, ".kimiflow", "demo", "INTAKE-RECEIPT-1.json",
+        )))
+
+    def test_schema1_conflict_survives_same_run_restart_and_blocks_stop(self):
+        self.arm_schema1_intake()
+        rc, output = run_main(
+            ["prompt-context"],
+            stdin_text=self.hook_payload("Nein, bitte den unveränderten Pfad korrigieren"),
+        )
+        self.assertEqual(rc, 0)
+        self.assertIn("INTAKE-2.md", output)
+        self.assertTrue(self.read_active().get("intake_conflict"))
+        self.assertEqual(
+            active_run.status_json(self.root)["intake"]["state"],
+            "correction_required",
+        )
+
+        rc, _ = run_main([
+            "start", "--run", ".kimiflow/demo", "--root", self.root, "--write",
+        ])
+        self.assertEqual(rc, 0)
+        restarted = self.read_active()
+        self.assertTrue(restarted.get("awaiting_user"))
+        self.assertTrue(restarted.get("intake_conflict"))
+        self.assertEqual(restarted.get("intake_round"), 1)
+        self.assertTrue(active_run.status_json(self.root).get("intake_conflict"))
+
+        rc, stop_output = run_main(
+            ["stop-gate"],
+            stdin_text=self.hook_payload(),
+        )
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(stop_output)["decision"], "block")
+        self.assertIn("INTAKE-2.md", json.loads(stop_output)["reason"])
+
+        self.write_schema1_round2()
+        rc, _ = self.await_schema1_round2()
+        self.assertEqual(rc, 0)
+        rc, _ = run_main(
+            ["prompt-context"],
+            stdin_text=self.hook_payload("confirmed"),
+        )
+        self.assertEqual(rc, 0)
+        completed = self.read_active()
+        self.assertNotIn("awaiting_user", completed)
+        self.assertNotIn("intake_conflict", completed)
+        self.assertEqual(completed.get("intake_final_round"), 2)
+        self.assertEqual(
+            active_run.status_json(self.root)["intake"]["state"],
+            "ready",
+        )
+
+    def test_invalid_pending_intake_cannot_end_as_silent_user_wait(self):
+        self.arm_schema1_intake()
+        intake_path = os.path.join(
+            self.root, ".kimiflow", "demo", "INTAKE.md",
+        )
+        with open(intake_path, "a", encoding="utf-8") as handle:
+            handle.write("Changed after the wait was registered.\n")
+
+        rc, output = run_main(
+            ["prompt-context"],
+            stdin_text=self.hook_payload("Ja"),
+        )
+        self.assertEqual(rc, 0)
+        self.assertIn("no longer matches its pinned request", output)
+        self.assertTrue(self.read_active().get("awaiting_user"))
+        self.assertEqual(
+            active_run.status_json(self.root)["intake"]["state"],
+            "invalid_wait",
+        )
+        self.assertFalse(os.path.exists(os.path.join(
+            self.root, ".kimiflow", "demo", "INTAKE-RECEIPT-1.json",
+        )))
+
+        rc, stop_output = run_main(
+            ["stop-gate"],
+            stdin_text=self.hook_payload(),
+        )
+        self.assertEqual(rc, 0)
+        stop = json.loads(stop_output)
+        self.assertEqual(stop["decision"], "block")
+        self.assertIn("intake state is invalid", stop["reason"])
+
+    def test_schema1_conflict_survives_park_resume(self):
+        self.arm_schema1_intake()
+        rc, _ = run_main(
+            ["prompt-context"],
+            stdin_text=self.hook_payload("Nein, bitte korrigieren"),
+        )
+        self.assertEqual(rc, 0)
+        self.assertTrue(self.read_active().get("intake_conflict"))
+
+        self.simulate_parked_outcome()
+        rc, _ = run_main([
+            "start", "--run", ".kimiflow/demo", "--root", self.root, "--write",
+        ])
+
+        self.assertEqual(rc, 0)
+        resumed = self.read_active()
+        self.assertTrue(resumed.get("intake_conflict"))
+        self.assertFalse(resumed.get("awaiting_user", False))
+        self.assertEqual(
+            active_run.status_json(self.root)["intake"]["state"],
+            "correction_required",
+        )
+
+    def test_legacy_parked_schema1_receipt_recovers_with_round2(self):
+        self.arm_schema1_intake()
+        rc, _ = run_main(
+            ["prompt-context"],
+            stdin_text=self.hook_payload("Nein, bitte korrigieren"),
+        )
+        self.assertEqual(rc, 0)
+        self.simulate_parked_outcome(preserve_conflict=False)
+
+        rc, _ = run_main([
+            "start", "--run", ".kimiflow/demo", "--root", self.root, "--write",
+        ])
+
+        self.assertEqual(rc, 0)
+        resumed = self.read_active()
+        self.assertTrue(resumed.get("intake_conflict"))
+        self.assertFalse(resumed.get("awaiting_user", False))
+        self.assertEqual(
+            active_run.status_json(self.root)["intake"]["state"],
+            "correction_required",
+        )
+        self.write_schema1_round2()
+        rc, _ = run_main(
+            ["prompt-context"],
+            stdin_text=self.hook_payload("Resume the parked run"),
+        )
+        self.assertEqual(rc, 0)
+        rc, _ = self.await_schema1_round2()
+        self.assertEqual(rc, 0)
 
     def test_long_intake_turn_keeps_one_single_use_hook_observation(self):
         self.write_scope_intake()

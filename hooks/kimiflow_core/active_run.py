@@ -549,6 +549,9 @@ def status_json(root, event=""):
         "terminal": status in ("done", "parked", "failed", "aborted"),
         "next_action": legacy_next_action,
     }
+    intake = intake_lifecycle(root, active)
+    if intake["state"] != "not_applicable":
+        result["intake"] = intake
     awaiting_request = visible_intake_request(root, active)
     if awaiting_request is not None:
         result["awaiting_request"] = awaiting_request
@@ -590,6 +593,10 @@ def status_json(root, event=""):
     for key in ("intake_action", "intake_stage", "intake_response_at"):
         if active.get(key):
             result[key] = active[key]
+    if active.get("intake_final_round") in (1, 2):
+        result["intake_final_round"] = active["intake_final_round"]
+    if active.get("intake_conflict") is True:
+        result["intake_conflict"] = True
     owner = valid_owner(active.get("owner"))
     if owner:
         result["owner"] = owner
@@ -1142,6 +1149,165 @@ def valid_intake_receipt(
     return request_digest is None or digest == request_digest
 
 
+def intake_lifecycle(root, active):
+    """Return one canonical, content-free view of the Product Intake state."""
+    result = {
+        "state": "not_applicable",
+        "pending_round": None,
+        "final_round": None,
+        "round_1_receipt": False,
+        "round_2_receipt": False,
+        "required_ok": True,
+        "scope_drafting": False,
+        "expected_request": None,
+    }
+    if (
+        not isinstance(active, dict)
+        or active.get("status") != "active"
+        or active.get("intent_contract") not in ("3", "4")
+        or active.get("mode") != "feature"
+        or active.get("scope") == "trivial"
+    ):
+        return result
+    try:
+        contract = int(active["intent_contract"])
+        schema = int(active.get("intake_schema") or 1)
+    except (TypeError, ValueError):
+        result.update({"state": "invalid", "required_ok": False})
+        return result
+    if schema not in (1, 2):
+        result.update({"state": "invalid", "required_ok": False})
+        return result
+    pending_round = (
+        active.get("intake_round")
+        if active.get("awaiting_user") is True
+        and active.get("awaiting_kind") == "intake"
+        else None
+    )
+    request_details = {}
+    receipts = {1: False, 2: False}
+    try:
+        run_dir = resolve_run_dir(root, active.get("run", ""))
+        with pinned_intake_run(root, run_dir, active) as pinned:
+            for round_number in (1, 2):
+                request_path = "%s/%s" % (
+                    active.get("run", "").rstrip("/"),
+                    intake_request_name(round_number),
+                )
+                try:
+                    expected_rel, digest, text_value = _strict_intake_document(
+                        root,
+                        run_dir,
+                        request_path,
+                        round_number,
+                        contract,
+                        run_descriptor=pinned["run_descriptor"],
+                        expected_language=(
+                            str(active.get("interaction_language") or "")
+                            if schema == 2 else ""
+                        ),
+                    )
+                    intake = parse_intake_document(
+                        text_value,
+                        contract,
+                        round_number,
+                        expected_language=(
+                            str(active.get("interaction_language") or "")
+                            if schema == 2 else ""
+                        ),
+                    )
+                    if intake["schema"] != schema:
+                        continue
+                    request_details[round_number] = {
+                        "path": expected_rel,
+                        "digest": digest,
+                    }
+                    receipts[round_number] = valid_intake_receipt(
+                        run_dir,
+                        round_number,
+                        digest,
+                        contract,
+                        run_descriptor=pinned["run_descriptor"],
+                        schema=schema,
+                        action=(
+                            "scope_ready" if round_number == 1 else "confirmed"
+                        ) if schema == 2 else "",
+                        user_language=(
+                            str(active.get("interaction_language") or "")
+                            if schema == 2 else ""
+                        ),
+                        contract_digest=(
+                            structured_intake_digest(intake)
+                            if schema == 2 else ""
+                        ),
+                    )
+                except (ActiveError, OSError, TypeError, UnicodeError, ValueError):
+                    continue
+    except (ActiveError, OSError, TypeError, ValueError):
+        pass
+    conflict = active.get("intake_conflict") is True
+    invalid_wait = pending_round not in (None, 1, 2)
+    if pending_round in (1, 2):
+        pending = request_details.get(pending_round)
+        invalid_wait = (
+            pending is None
+            or active.get("intake_request") != pending["path"]
+            or active.get("intake_request_digest") != pending["digest"]
+        )
+    explicit_final = active.get("intake_final_round")
+    if schema == 2:
+        final_round = 2
+    elif explicit_final in (1, 2):
+        final_round = explicit_final
+    elif 2 in request_details or receipts[2]:
+        final_round = 2
+    else:
+        final_round = 1
+    required_round = (
+        2 if schema == 2
+        else pending_round if pending_round in (1, 2)
+        else final_round
+    )
+    required_ok = receipts[required_round] and not conflict and not invalid_wait
+    scope_drafting = (
+        schema == 2
+        and receipts[1]
+        and not receipts[2]
+        and pending_round is None
+        and not conflict
+    )
+    expected_round = (
+        2
+        if pending_round == 2 or conflict or scope_drafting or final_round == 2
+        else 1
+    )
+    if invalid_wait:
+        state_name = "invalid_wait"
+    elif conflict:
+        state_name = "correction_required"
+    elif required_ok:
+        state_name = "ready"
+    elif pending_round in (1, 2):
+        state_name = "waiting"
+    elif scope_drafting:
+        state_name = "scope_drafting"
+    else:
+        state_name = "missing"
+    result.update({
+        "state": state_name,
+        "schema": schema,
+        "contract": contract,
+        "pending_round": pending_round,
+        "final_round": final_round,
+        "round_1_receipt": receipts[1],
+        "round_2_receipt": receipts[2],
+        "required_ok": required_ok,
+        "scope_drafting": scope_drafting,
+        "expected_request": intake_request_name(expected_round),
+    })
+    return result
+
+
 def write_intake_receipt(run_descriptor, name, value):
     temporary = ".%s.%s.tmp" % (name, secrets.token_hex(16))
     descriptor = None
@@ -1310,6 +1476,8 @@ def record_intake_response(root, active, channel, confirmed=False, action=None):
         resumed["intake_action"] = action
         resumed["intake_stage"] = intake["stage"]
         resumed["intake_response_at"] = iso_now()
+    if intake_schema == 1 or round_number == 2:
+        resumed["intake_final_round"] = round_number
     resumed["updated_at"] = iso_now()
     write_active(root, resumed)
     return True
@@ -1340,11 +1508,16 @@ CONFIRMATION_POSITIVE = {
 
 CONFIRMATION_PHRASES = {
     "diesen plan umsetzen",
+    "dieses ziel umsetzen",
     "freigeben",
     "freigegeben",
     "genehmigt",
+    "genau dieses ziel",
+    "genau dieses ziel umsetzen",
     "genau diesen plan umsetzen",
     "ja diesen plan umsetzen",
+    "ja genau dieses ziel",
+    "ja genau dieses ziel umsetzen",
     "ja genau diesen plan implementieren",
     "ja genau diesen plan umsetzen",
     "ja genau so umsetzen",
@@ -2833,6 +3006,20 @@ def cmd_start(args, _workspace_locked=False):
         status["intent_lock_digest"] = prior_active["intent_lock_digest"]
     elif resume_pins.get("intent_lock_digest"):
         status["intent_lock_digest"] = resume_pins["intent_lock_digest"]
+    if same_active and prior_active.get("intake_final_round") in (1, 2):
+        status["intake_final_round"] = prior_active["intake_final_round"]
+    elif resume_pins.get("intake_final_round") in (1, 2):
+        status["intake_final_round"] = resume_pins["intake_final_round"]
+    if same_active:
+        for key in (
+            "awaiting_user", "awaiting_kind", "awaiting_reason", "awaiting_since",
+            "intake_round", "intake_request", "intake_request_digest",
+            "intake_conflict", "intake_action", "intake_stage", "intake_response_at",
+        ):
+            if key in prior_active:
+                status[key] = prior_active[key]
+    elif resume_pins.get("intake_conflict") is True:
+        status["intake_conflict"] = True
     if same_active and isinstance(prior_active.get("plan_saturation_receipts"), list):
         status["plan_saturation_receipts"] = prior_active["plan_saturation_receipts"]
     elif isinstance(resume_pins.get("plan_saturation_receipts"), list):
@@ -2873,6 +3060,23 @@ def cmd_start(args, _workspace_locked=False):
         die("execution contract selector missing for existing controller evidence", 1)
     if execution_was_pinned and selected_execution_contract == "1" and not existing_execution_trace:
         die("execution controller evidence is missing for the pinned run", 1)
+    if (
+        resume_pins
+        and selected_intent == "4"
+        and selected_intake_schema == 1
+        and not status.get("intent_lock_digest")
+        and status.get("intake_conflict") is not True
+    ):
+        parked_intake = intake_lifecycle(root, status)
+        if (
+            parked_intake["round_1_receipt"] is True
+            and parked_intake["round_2_receipt"] is False
+        ):
+            # Older parked runs persisted the causal round-1 receipt but lost
+            # the only flag that distinguished a correction from a
+            # confirmation.  A conservative second confirmation is safe for
+            # both cases and makes those otherwise deadlocked runs resumable.
+            status["intake_conflict"] = True
     workspace_wait = str(prior_active.get("workspace_wait_used_at", "")).strip() if same_active else state.state_value(
         state_path, "Workspace decision used at"
     ).strip()
@@ -3805,6 +4009,7 @@ def session_pins(active):
         "conformance_contract", "convergence_contract", "intent_contract",
         "intent_lock_digest", "intake_schema", "interaction_language",
         "frontend_quality_contract", "frontend_quality_start_head",
+        "intake_conflict", "intake_final_round",
     )
     if "execution_contract" in active:
         keys = keys + ("execution_contract",)
@@ -5122,7 +5327,32 @@ def cmd_prompt_context():
         "Do not route follow-up fixes/features to another skill. Before editing, append or update run items with hooks/active-run.sh append-item/mark-built/mark-accepted/mark-rejected/drop-item. "
         "Open item count: %s. Finish only through hooks/active-run.sh finish --write, or park/fail/abort with a reason." % (run, open_count)
     )
-    if isinstance(status.get("transition"), dict):
+    intake_state = (
+        status.get("intake", {}).get("state")
+        if isinstance(status.get("intake"), dict) else ""
+    )
+    if intake_state == "invalid_wait":
+        context += (
+            " The pending Product Intake artifact no longer matches its pinned request. "
+            "Do not wait silently: repair the exact intake artifact and re-register the same "
+            "round, or park/fail the run with a concrete reason."
+        )
+    elif intake_state == "correction_required":
+        context += (
+            " The last Product Intake response did not explicitly confirm the contract. "
+            "Do not wait silently or repeat round 1: update the product contract, write "
+            "INTAKE-2.md with cause=first_response_conflict, then register intake round 2."
+        )
+    elif (
+        status.get("awaiting_user") is True
+        and status.get("awaiting_kind") == "intake"
+        and intake_state == "waiting"
+    ):
+        context += (
+            " The submitted response did not match an explicit Product Intake action. "
+            "Keep the same wait active and ask the user to choose one exact displayed action."
+        )
+    elif isinstance(status.get("transition"), dict):
         context += " Exact next action: %s." % transition_summary(status["transition"])
     exact_revalidation = (
         isinstance(status.get("transition"), dict)
@@ -5268,7 +5498,24 @@ def cmd_stop_gate():
         return 0
     if hook_owner_relation(status, data) != "owner":
         return 0
-    if status.get("awaiting_user") is True:
+    intake_state = (
+        status.get("intake", {}).get("state")
+        if isinstance(status.get("intake"), dict) else ""
+    )
+    intake_conflict = intake_state == "correction_required"
+    invalid_intake_wait = intake_state == "invalid_wait"
+    legitimate_wait = (
+        status.get("awaiting_user") is True
+        and (
+            status.get("awaiting_kind") != "intake"
+            or intake_state == "waiting"
+        )
+    )
+    if (
+        legitimate_wait
+        and not intake_conflict
+        and not invalid_intake_wait
+    ):
         # The orchestrator is legitimately waiting on a user answer at an engine gate
         # (set via await-user); let the turn end instead of blocking the question.
         return 0
@@ -5294,7 +5541,21 @@ def cmd_stop_gate():
             )
             sys.stdout.write(json_pretty({"decision": "block", "reason": reason}) + "\n")
             return 0
-    if isinstance(status.get("transition"), dict):
+    if invalid_intake_wait:
+        reason = (
+            "kimiflow intake state is invalid: %s no longer has the exact digest-bound "
+            "pending intake artifact. Repair the exact artifact and re-register the same "
+            "round, or park/fail the run with a concrete reason."
+            % status["run"]
+        )
+    elif intake_conflict:
+        reason = (
+            "kimiflow intake conflict: %s already received a non-confirming Product Intake response. "
+            "Do not stop or wait silently; update the product contract, write INTAKE-2.md with "
+            "cause=first_response_conflict, and register intake round 2."
+            % status["run"]
+        )
+    elif isinstance(status.get("transition"), dict):
         reason = (
             "kimiflow active-session gate: %s is still open. Open items: %s. Exact next action: %s. Continue that action, or close it mechanically with hooks/active-run.sh finish --write, park --write --reason <text>, fail --write --reason <text>, or abort --write --reason <text>."
             % (status["run"], status["item_counts"]["open"], transition_summary(status["transition"]))

@@ -6,6 +6,16 @@ Versions before 0.4.0 were internal development snapshots. **0.4.0 is the first 
 
 ## Unreleased
 
+### Fixed
+
+- Codex Product Intake now accepts explicit goal confirmations such as `Ja, genau dieses Ziel`, keeps pending
+  intake state across same-run restarts, preserves correction state through park/resume, and conservatively
+  recovers older parked schema-1 runs whose causal receipt had lost that distinction.
+- A received Product Intake correction no longer looks like a turn that is still waiting on the user: hook
+  context and the Stop gate now require the bounded round-2 recovery instead of allowing a silent stall.
+- A missing or digest-drifted pending intake artifact now blocks with an exact repair/re-registration action
+  instead of being misreported as a legitimate wait for another user response.
+
 ## 0.4.2
 
 Codex lifecycle, Fleet recovery, and local plugin-update reliability release.
