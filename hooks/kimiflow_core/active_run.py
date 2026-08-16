@@ -3347,33 +3347,12 @@ def cmd_await_user(args):
     intake_round = None
     intake_request = ""
     intake_digest = ""
-    intake_hook_identity = None
     if kind == "intake":
         intake_contract = active.get("intent_contract")
         if intake_contract not in ("3", "4") or active.get("mode") != "feature" or active.get("scope") == "trivial":
             die("await-user: intake requires a pinned Contract-3/4 non-trivial feature", 2)
         if opts["--round"] not in ("1", "2") or not opts["--request"]:
             die("await-user: intake requires --round 1|2 and --request", 2)
-        if (
-            opts["--write"]
-            and intake_contract == "4"
-            and os.environ.get("CODEX_THREAD_ID")
-            and not os.environ.get("KIMIFLOW_SESSION_ID")
-        ):
-            intake_hook_identity = codex_thread_identity()
-            hook_health = codex_hook_health_status(intake_hook_identity)
-            if hook_health.get("status") != "open":
-                if hook_health.get("reason") == "user_prompt_hook_already_consumed":
-                    die(
-                        "await-user: this prompt already registered one Product Intake wait; "
-                        "do not display another intake action before a fresh user prompt",
-                        1,
-                    )
-                die(
-                    "await-user: Codex UserPromptSubmit hook was not observed for this task and plugin version; "
-                    "restart Codex and continue in a new Codex task",
-                    1,
-                )
         intake_round = int(opts["--round"])
         intake_contract_number = int(intake_contract)
         intake_schema = int(active.get("intake_schema") or 1)
@@ -3458,18 +3437,6 @@ def cmd_await_user(args):
             write_active(root, updated)
         except (OSError, ValueError) as exc:
             die("cannot persist active workspace wait: %s" % exc, 2)
-        if intake_hook_identity:
-            consumption = consume_codex_hook_health(intake_hook_identity)
-            if consumption.get("status") != "consumed":
-                try:
-                    write_active(root, prior_active)
-                except (OSError, ValueError) as exc:
-                    die("cannot roll back intake wait after hook lease failure: %s" % exc, 2)
-                die(
-                    "await-user: current UserPromptSubmit observation could not be bound to the intake wait; "
-                    "do not display the intake action before a fresh user prompt",
-                    1,
-                )
         if schema_number >= 4 and kind == "workspace":
             try:
                 update_state_value(run_dir, "Workspace decision used at", now)
@@ -5500,8 +5467,8 @@ def cmd_hook_health(args):
                 1,
             )
         die(
-            "hook-health: Codex UserPromptSubmit hook was not observed for this task and plugin version; "
-            "restart Codex and continue in a new Codex task",
+            "hook-health: Codex UserPromptSubmit runtime observation is unavailable (%s); "
+            "this diagnostic does not block Product Intake wait registration" % health.get("reason", "unknown"),
             1,
         )
     return 0

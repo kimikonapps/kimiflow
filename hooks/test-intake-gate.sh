@@ -336,6 +336,38 @@ payload="$(jq -nc --arg d "$REPO" '{cwd:$d,session_id:"owner-session",tool_name:
 out="$(printf '%s' "$payload" | hook)"
 assert "[ -z '$out' ]" "contract4_project_write_allowed_after_receipt"
 
+# A fresh Codex task must be able to arm Product Intake before any runtime
+# observation exists. The next direct owner prompt, not the prompt that started
+# the turn, is what binds the durable wait to a content-free receipt.
+reset_repo 4
+write_request 1
+rm -rf "$CODEX_HOME/kimiflow/hook-health"
+if CODEX_THREAD_ID=owner-session KIMIFLOW_HOST=codex "$ACTIVE" hook-health --require \
+  > "$WORK/hook-health.out" 2> "$WORK/hook-health.err"; then
+  fail "missing_hook_observation_remains_diagnostic_closed"
+else
+  pass "missing_hook_observation_remains_diagnostic_closed"
+fi
+assert "grep -q 'user_prompt_hook_not_observed' '$WORK/hook-health.err'" "missing_hook_diagnostic_names_runtime_state"
+assert "! grep -q 'restart Codex' '$WORK/hook-health.err'" "missing_hook_diagnostic_does_not_prescribe_restart"
+out="$(CODEX_THREAD_ID=owner-session KIMIFLOW_HOST=codex "$ACTIVE" await-user --root "$REPO" --run .kimiflow/demo --kind intake --round 1 --request .kimiflow/demo/INTAKE.md --reason final_contract --write)"
+assert "printf '%s' '$out' | jq -e '.status == \"awaiting_user\" and .written == true and .round == 1' >/dev/null" "contract4_wait_arms_before_hook_observation"
+assert "jq -e '.awaiting_user == true and .awaiting_kind == \"intake\" and .intake_round == 1' '$REPO/.kimiflow/session/ACTIVE_RUN.json' >/dev/null" "armed_wait_is_durable"
+assert "[ ! -e '$REPO/.kimiflow/demo/INTAKE-RECEIPT-1.json' ]" "arming_wait_does_not_forge_receipt"
+printf '{"cwd":"%s","session_id":"other-session","prompt":"confirmed"}' "$REPO" | KIMIFLOW_HOST=codex "$ACTIVE" prompt-context >/dev/null
+assert "jq -e '.awaiting_user == true' '$REPO/.kimiflow/session/ACTIVE_RUN.json' >/dev/null" "foreign_prompt_cannot_release_armed_wait"
+assert "[ ! -e '$REPO/.kimiflow/demo/INTAKE-RECEIPT-1.json' ]" "foreign_prompt_cannot_write_receipt"
+payload="$(jq -nc --arg d "$REPO" '{cwd:$d,session_id:"owner-session",tool_name:"apply_patch",tool_input:{patch:"*** Begin Patch\n*** Update File: src/app.txt\n@@\n-base\n+changed\n*** End Patch"}}')"
+out="$(printf '%s' "$payload" | hook)"
+assert "printf '%s' '$out' | jq -e '.hookSpecificOutput.permissionDecision == \"deny\"' >/dev/null" "armed_wait_keeps_product_writes_blocked"
+printf '{"cwd":"%s","session_id":"owner-session","prompt":"confirmed"}' "$REPO" | KIMIFLOW_HOST=codex "$ACTIVE" prompt-context >/dev/null
+assert "jq -e '.contract == 4 and .round == 1 and .channel == \"chat\"' '$REPO/.kimiflow/demo/INTAKE-RECEIPT-1.json' >/dev/null" "next_direct_owner_prompt_writes_receipt"
+assert "jq -e 'has(\"awaiting_user\") | not' '$REPO/.kimiflow/session/ACTIVE_RUN.json' >/dev/null" "next_direct_owner_prompt_releases_wait"
+receipt_before="$(shasum -a 256 "$REPO/.kimiflow/demo/INTAKE-RECEIPT-1.json" | awk '{print $1}')"
+printf '{"cwd":"%s","session_id":"owner-session","prompt":"confirmed again"}' "$REPO" | KIMIFLOW_HOST=codex "$ACTIVE" prompt-context >/dev/null
+receipt_after="$(shasum -a 256 "$REPO/.kimiflow/demo/INTAKE-RECEIPT-1.json" | awk '{print $1}')"
+assert "[ '$receipt_before' = '$receipt_after' ]" "duplicate_direct_prompt_is_idempotent"
+
 # Fresh Contract-4 schema 2 keeps product bytes read-only after scope readiness,
 # while permitting bounded run-local research until final confirmation.
 rm -rf "$REPO/.kimiflow/session" "$REPO/.kimiflow/demo"

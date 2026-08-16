@@ -290,16 +290,16 @@ malformed, oversized, exchanged, or selector-mismatched state fails closed as `r
 requires valid controller evidence. No daemon, provider, telemetry, free graph rewriting, extra user gate, or
 paid dependency is introduced.
 
-**Prompt behavior:** the `UserPromptSubmit` hook calls `active-run.sh prompt-context`. Each embedded Codex event
-first writes a content-free, single-use observation bound to the current task plus the installed hook and plugin
-manifest digests. `hook-health --require` and fresh Contract-4/schema-2 intake registration fail closed when that
-observation is missing, already consumed by an intake wait, or belongs to another installed version. The
-observation remains valid for the complete current model turn without a wall-clock timeout; successful intake
-registration consumes it atomically, so long research cannot lose the action and one prompt cannot register two
-questions. Codex has no `/hooks` slash command or separate manual hook-trust step. Recovery for a missing hook is
-to restart Codex and continue in a new task; if the first prompt there is still not observed, diagnose the
-installed manifest. The orchestrator must not register intake or show an action before health is OPEN. This
-detects actual lifecycle execution—`install-codex-hooks.sh --check` validates only the declared files.
+**Prompt behavior:** the `UserPromptSubmit` hook calls `active-run.sh prompt-context`. Fresh Contract-4/schema-2
+intake first persists an owner-bound `awaiting_user` record, then shows the exact action and stops. The next direct
+owner prompt or explicit native response validates the pinned request digest, writes the content-free receipt,
+and releases the wait. A missing runtime event cannot create authority: the Intent Lock remains closed and the
+durable wait stays pending. Each embedded Codex event still writes a content-free diagnostic observation bound to
+the current task plus the installed hook and plugin manifest digests. `hook-health --require` reports that runtime
+state but never gates intake registration. Only a changed hook or plugin manifest prescribes restarting Codex in a
+new task; `user_prompt_hook_not_observed` is a diagnostic condition, not evidence that a restart will help. Codex
+has no `/hooks` slash command or separate manual hook-trust step. `install-codex-hooks.sh --check` validates only
+the declared files, while `hook-health` diagnoses actual lifecycle execution.
 In the owner session the hook
 injects a small reminder to keep the follow-up inside Kimiflow unless the user explicitly exits/parks/fails/
 aborts/switches, plus the same exact action/node returned by `next-action`. Other Codex or Claude sessions are not adopted into the run: they may read, answer, analyze,
@@ -670,7 +670,7 @@ Goal, visible behavior, and success require `user_explicit|user_confirmed|projec
 
 The supported host hook records that response before the resumed model turn. On resume, read `active-run.sh status` once and trust it; an orchestrator never inspects hook internals or manufactures a response receipt. Update the five INTENT flow provenance values to `user_confirmed`, record the intent lock, and enter implementation. The later risk preview continues automatically when risk is `none` and is never a second routine confirmation.
 
-**Existing Contract-4 schema-2 compatibility:** active or prepared two-stage runs retain their exact scope (`scope_ready|discuss`) and final (`confirmed|corrected`) documents, current codebase-basis binding, hook-health lease, and two receipts. They are never silently upgraded mid-run. Existing Contract-3 runs keep schema 1 compatibility.
+**Existing Contract-4 schema-2 compatibility:** active or prepared two-stage runs retain their exact scope (`scope_ready|discuss`) and final (`confirmed|corrected`) documents, current codebase-basis binding, owner-bound pending wait, and two receipts. They are never silently upgraded mid-run. Existing Contract-3 runs keep schema 1 compatibility.
 
 **Mechanical clarify gate:** fresh schema-5 nontrivial feature runs declare `Intent contract: 4` and `INTENT.md` includes:
 

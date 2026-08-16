@@ -2217,11 +2217,6 @@ class TestAwaitUser(unittest.TestCase):
 
     def arm_schema1_intake(self):
         self.write_schema1_intake()
-        rc, _ = run_main(
-            ["prompt-context"],
-            stdin_text=self.hook_payload("Plan ready"),
-        )
-        self.assertEqual(rc, 0)
         rc, _ = self.await_schema1_intake()
         self.assertEqual(rc, 0)
 
@@ -2265,7 +2260,7 @@ class TestAwaitUser(unittest.TestCase):
         self.assertEqual(active.get("awaiting_reason"), "engine gate question")
         self.assertTrue(active.get("awaiting_since"))
 
-    def test_codex_intake_requires_current_hook_observation(self):
+    def test_codex_intake_arms_before_current_hook_observation(self):
         self.write_scope_intake()
         health = active_run.codex_hook_health_status()
         self.assertEqual(health["status"], "closed")
@@ -2274,11 +2269,22 @@ class TestAwaitUser(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertEqual(json.loads(out)["reason"], "user_prompt_hook_not_observed")
 
-        rc, _ = self.await_scope_intake()
-        self.assertEqual(rc, 1)
-        self.assertNotIn("awaiting_user", self.read_active())
+        rc, out = self.await_scope_intake()
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out)["status"], "awaiting_user")
+        self.assertTrue(self.read_active().get("awaiting_user"))
+        self.assertFalse(os.path.exists(os.path.join(
+            self.root, ".kimiflow", "demo", "INTAKE-RECEIPT-1.json",
+        )))
+        self.assertEqual(
+            active_run.codex_hook_health_status()["reason"],
+            "user_prompt_hook_not_observed",
+        )
 
-        rc, _ = run_main(["prompt-context"], stdin_text=self.hook_payload())
+        rc, _ = run_main(
+            ["prompt-context"],
+            stdin_text=self.hook_payload("Umfang ist bereit"),
+        )
         self.assertEqual(rc, 0)
         health = active_run.codex_hook_health_status()
         self.assertEqual(health["status"], "open")
@@ -2287,33 +2293,30 @@ class TestAwaitUser(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(json.loads(out)["status"], "open")
         self.assertEqual(active_run.status_json(self.root)["hook_health"]["status"], "open")
+        self.assertFalse(self.read_active().get("awaiting_user", False))
+        self.assertTrue(os.path.isfile(os.path.join(
+            self.root, ".kimiflow", "demo", "INTAKE-RECEIPT-1.json",
+        )))
 
-        rc, out = self.await_scope_intake()
-        self.assertEqual(rc, 0)
-        self.assertEqual(json.loads(out)["status"], "awaiting_user")
-        health = active_run.codex_hook_health_status()
-        self.assertEqual(health["status"], "closed")
-        self.assertEqual(health["reason"], "user_prompt_hook_already_consumed")
-
-        rc, _ = self.await_scope_intake()
-        self.assertEqual(rc, 1)
-
-    def test_single_confirmation_intake_requires_one_hook_observation(self):
+    def test_single_confirmation_intake_uses_next_owner_prompt(self):
         self.write_schema1_intake()
-        rc, _ = self.await_schema1_intake()
-        self.assertEqual(rc, 1)
-        self.assertNotIn("awaiting_user", self.read_active())
-
-        rc, _ = run_main(["prompt-context"], stdin_text=self.hook_payload("Plan ready"))
-        self.assertEqual(rc, 0)
         rc, out = self.await_schema1_intake()
         self.assertEqual(rc, 0)
         self.assertEqual(json.loads(out)["status"], "awaiting_user")
-        self.assertEqual(
-            active_run.codex_hook_health_status()["reason"],
-            "user_prompt_hook_already_consumed",
-        )
         self.assertTrue(self.read_active().get("awaiting_user"))
+        self.assertFalse(os.path.exists(os.path.join(
+            self.root, ".kimiflow", "demo", "INTAKE-RECEIPT-1.json",
+        )))
+
+        rc, _ = run_main(
+            ["prompt-context"],
+            stdin_text=self.hook_payload("Ja, genau dieses Ziel"),
+        )
+        self.assertEqual(rc, 0)
+        self.assertFalse(self.read_active().get("awaiting_user", False))
+        self.assertTrue(os.path.isfile(os.path.join(
+            self.root, ".kimiflow", "demo", "INTAKE-RECEIPT-1.json",
+        )))
 
     def test_schema1_goal_confirmation_phrase_records_receipt(self):
         self.arm_schema1_intake()
@@ -2475,7 +2478,7 @@ class TestAwaitUser(unittest.TestCase):
         rc, _ = self.await_schema1_round2()
         self.assertEqual(rc, 0)
 
-    def test_long_intake_turn_keeps_one_single_use_hook_observation(self):
+    def test_long_intake_turn_does_not_gate_next_wait(self):
         self.write_scope_intake()
         rc, _ = run_main(["prompt-context"], stdin_text=self.hook_payload("Start"))
         self.assertEqual(rc, 0)
@@ -2506,7 +2509,7 @@ class TestAwaitUser(unittest.TestCase):
         self.assertEqual(json.loads(out)["status"], "awaiting_user")
         self.assertEqual(
             active_run.codex_hook_health_status()["reason"],
-            "user_prompt_hook_already_consumed",
+            "user_prompt_hook_observed",
         )
 
         rc, _ = run_main(
@@ -2522,20 +2525,20 @@ class TestAwaitUser(unittest.TestCase):
         self.assertEqual(receipt["action"], "confirmed")
         self.assertFalse(self.read_active().get("awaiting_user", False))
 
-    def test_intake_wait_rolls_back_when_hook_observation_cannot_be_consumed(self):
+    def test_intake_wait_does_not_consume_hook_observation(self):
         self.write_scope_intake()
         rc, _ = run_main(["prompt-context"], stdin_text=self.hook_payload("Start"))
         self.assertEqual(rc, 0)
         with mock.patch.object(
             active_run,
             "consume_codex_hook_health",
-            return_value={"status": "closed", "reason": "hook_health_changed"},
+            side_effect=AssertionError("await-user must not consume hook health"),
         ):
             rc, _ = self.await_scope_intake()
-        self.assertEqual(rc, 1)
+        self.assertEqual(rc, 0)
         active = self.read_active()
-        self.assertNotIn("awaiting_user", active)
-        self.assertNotIn("intake_request", active)
+        self.assertTrue(active.get("awaiting_user"))
+        self.assertEqual(active.get("intake_request"), ".kimiflow/demo/INTAKE.md")
 
     def test_hook_health_is_bound_to_plugin_version(self):
         rc, _ = run_main(["prompt-context"], stdin_text=self.hook_payload())

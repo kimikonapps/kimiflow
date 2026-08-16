@@ -153,12 +153,13 @@ unrelated hook, and writes a timestamped backup:
 bash hooks/install-codex-hooks.sh --migrate-legacy
 ```
 
-Kimiflow verifies actual `UserPromptSubmit` execution before it registers Product Intake. The proof is bound to
-the current task and installed plugin version, can register exactly one intake wait, and remains valid for the
-complete model turn without a wall-clock timeout. Long research therefore cannot make the final contract require
-a second confirmation. If the hook is not observed, the run stops before showing the question and tells the user
-to restart Codex and continue in a new task. If a fresh task still cannot observe the hook, diagnose the installed
-manifest instead of asking the user for a nonexistent manual trust step.
+Kimiflow registers Product Intake durably before it asks the user to confirm it. The pending wait is bound to the
+active run owner; the next direct owner prompt or explicit native response writes the content-free receipt and
+releases the Intent Lock. A missing `UserPromptSubmit` observation therefore cannot forge authority: the wait
+simply remains pending and product writes stay blocked. `hook-health --require` remains available as a runtime
+diagnostic, but it does not gate registration. Restart Codex only when the diagnostic proves that the installed
+plugin or hook manifest changed during the task; otherwise diagnose a missing runtime event without discarding
+the registered run state.
 
 That candidate is also published as a deterministic `kimiflow-runtime-<version>.zip` with
 `kimiflow-update-v1.json`. Independent hosts read one stable manifest, verify the official immutable GitHub
