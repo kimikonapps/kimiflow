@@ -34,31 +34,24 @@ fi
 test_root="$(pwd -P)"
 marker_root="$test_root"
 
-if command -v jq >/dev/null 2>&1; then
-  owner_status="$(printf '%s' "$input" | "$ACTIVE_RUN" owner-check 2>/dev/null || true)"
-  relation="$(printf '%s' "$owner_status" | jq -r '.relation // "unknown"' 2>/dev/null || true)"
-  case "$relation" in
-    other|unknown) exit 0 ;;
-    owner)
-      resolved_root="$(printf '%s' "$owner_status" | jq -r '.root // empty' 2>/dev/null || true)"
-      [ -n "$resolved_root" ] && [ -d "$resolved_root" ] && test_root="$(cd "$resolved_root" && pwd -P)"
-      ;;
-    none) ;;
-    *) exit 0 ;;
-  esac
-elif [ -f ".kimiflow/session/ACTIVE_RUN.json" ]; then
-  # Without jq the hook cannot compare session identities safely. Preserve
-  # no-jq gating only when no active run exists; active runs fail open for Stop.
+if ! command -v jq >/dev/null 2>&1; then
+  # Without jq the hook cannot prove that this Stop belongs to the active run owner.
   exit 0
 fi
 
+owner_status="$(printf '%s' "$input" | "$ACTIVE_RUN" owner-check 2>/dev/null || true)"
+relation="$(printf '%s' "$owner_status" | jq -r '.relation // "unknown"' 2>/dev/null || true)"
+[ "$relation" = "owner" ] || exit 0
+
+resolved_root="$(printf '%s' "$owner_status" | jq -r '.root // empty' 2>/dev/null || true)"
+[ -n "$resolved_root" ] && [ -d "$resolved_root" ] || exit 0
+test_root="$(cd "$resolved_root" && pwd -P)"
+
 # A Fleet run keeps the local opt-in marker in the primary checkout but executes
 # the command in the resolved active worktree.
-if [ "${relation:-none}" = "owner" ]; then
-  primary_root="$(git -C "$test_root" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | head -n 1)"
-  if [ -n "$primary_root" ] && [ -d "$primary_root" ] && [ ! -f "$test_root/.kimiflow/test-gate" ]; then
-    marker_root="$(cd "$primary_root" && pwd -P)"
-  fi
+primary_root="$(git -C "$test_root" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | head -n 1)"
+if [ -n "$primary_root" ] && [ -d "$primary_root" ] && [ ! -f "$test_root/.kimiflow/test-gate" ]; then
+  marker_root="$(cd "$primary_root" && pwd -P)"
 fi
 marker="$marker_root/.kimiflow/test-gate"
 # No opt-in marker → do nothing (allow stop).

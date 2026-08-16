@@ -513,7 +513,7 @@ ACTIVE_HOOK="$ROOT/hooks/active-run.sh"
 
 deny_commit() { jq -nc --arg c "$1" --arg d "$2" '{tool_input:{args:{command:$c}}, cwd:$d, hook_event_name:"PreToolUse"}' | bash "$COMMIT_HOOK" 2>/dev/null | grep -q '"permissionDecision":"deny"'; }
 deny_state()  { jq -nc --arg c "$1" --arg d "$2" '{tool_input:{args:{command:$c}}, cwd:$d, hook_event_name:"PreToolUse"}' | bash "$STATE_HOOK" 2>/dev/null | grep -q '"permissionDecision":"deny"'; }
-block_stop()  { jq -nc --arg d "$1" '{cwd:$d, hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | bash "$TEST_HOOK" 2>/dev/null | grep -qE '"decision"[[:space:]]*:[[:space:]]*"block"'; }
+test_gate_no_active_passes() { out="$(jq -nc --arg d "$1" '{cwd:$d, hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | bash "$TEST_HOOK" 2>/dev/null)"; [ -z "$out" ]; }
 allow_stop_active() { out="$(jq -nc --arg d "$1" '{cwd:$d, hook_input:{stop_hook_active:true}, hook_event_name:"Stop"}' | bash "$TEST_HOOK" 2>/dev/null)"; [ -z "$out" ]; }
 test_gate_owner_blocks() { jq -nc --arg d "$1" '{cwd:$d, session_id:"owner-session", hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | KIMIFLOW_HOST=codex bash "$TEST_HOOK" 2>/dev/null | grep -qE '"decision"[[:space:]]*:[[:space:]]*"block"'; }
 test_gate_other_passes() { out="$(jq -nc --arg d "$1" '{cwd:$d, session_id:"other-session", hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | KIMIFLOW_HOST=codex bash "$TEST_HOOK" 2>/dev/null)"; [ -z "$out" ]; }
@@ -527,8 +527,8 @@ if deny_commit 'git add .' "$tmp1"; then ok "commit-secret-gate blocks git add .
 if deny_commit 'git add .' "$tmp2"; then bad "commit-secret-gate wrongly blocked outside Kimiflow repo"; else ok "commit-secret-gate allows outside Kimiflow repo"; fi
 mkdir -p "$tmp1/.kimiflow/nostate/findings"
 if deny_state './hooks/resolve-review-gate.sh .kimiflow/nostate/findings --round 1 --expect A,B' "$tmp1"; then ok "state-gate blocks missing STATE in Codex payload"; else bad "state-gate did not block missing STATE in Codex payload"; fi
-printf 'false\n' > "$tmp1/.kimiflow/test-gate"
-if block_stop "$tmp1"; then ok "test-gate blocks red tests in Codex payload"; else bad "test-gate did not block red tests in Codex payload"; fi
+printf 'touch .kimiflow/no-active-eval; false\n' > "$tmp1/.kimiflow/test-gate"
+if test_gate_no_active_passes "$tmp1" && [ ! -e "$tmp1/.kimiflow/no-active-eval" ]; then ok "test-gate ignores Codex task without active owner"; else bad "test-gate evaluated marker without active owner"; fi
 if allow_stop_active "$tmp1"; then ok "test-gate allows active stop continuation"; else bad "test-gate did not allow active stop continuation"; fi
 mkdir -p "$tmp1/.kimiflow/demo"
 cat > "$tmp1/.kimiflow/demo/STATE.md" <<'EOF'
@@ -608,7 +608,7 @@ cat <<'MANUAL'
   [ ] Confirm a normal fix, review, refactor, cleanup, docs/config task, or small low-risk feature stays direct unless Kimiflow is explicit.
   [ ] Confirm explicit "direct" or "direkt" bypasses Kimiflow and explicit "with kimiflow" launches it.
   [ ] In a repo with .kimiflow/, attempting `git add .` is blocked by the installed stable Codex hook.
-  [ ] With .kimiflow/test-gate containing a failing command, Codex Stop is blocked.
+  [ ] With an owned active Kimiflow session and .kimiflow/test-gate containing a failing command, that owner's Codex Stop is blocked.
   [ ] With an active Kimiflow session, its owner stays gated while a second project task can read, answer, and plan without any Stop continuation.
 MANUAL
 

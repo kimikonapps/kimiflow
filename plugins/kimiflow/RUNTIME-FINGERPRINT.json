@@ -11,7 +11,7 @@
       "bytes": 3634,
       "mode": "0644",
       "path": ".codex-plugin/plugin.json",
-      "sha256": "sha256:5abd67d3e4a22f1c48feb485cfc2ccf12ee16521ef88c46bd12717e39e1bdceb"
+      "sha256": "sha256:f724ebe84d0f9bb27bf4930761fb8c6106cf8df6c22ca4861385acd07d2c0ac3"
     },
     {
       "bytes": 22808,
@@ -830,10 +830,10 @@
       "sha256": "sha256:a1749d1db8b31ef1cbad41b7185d6cc4b711c8d06d8d801d4702e9d00d8ad6c3"
     },
     {
-      "bytes": 5284,
+      "bytes": 5028,
       "mode": "0755",
       "path": "hooks/test-gate.sh",
-      "sha256": "sha256:49f53eef686ed49dd482e8d56c3cc37327ae01b09fa5f1776a234d78ad9fc94c"
+      "sha256": "sha256:a3ebc33dcf3b4b138b6f04da426d5c087e3f07e5d7a1893f2bea267307bdfc61"
     },
     {
       "bytes": 2467,
@@ -944,10 +944,10 @@
       "sha256": "sha256:7ff3c07ab73a3da07b3a378422a2906cacec6875d62aa491466cf04808c49b15"
     },
     {
-      "bytes": 249695,
+      "bytes": 249825,
       "mode": "0644",
       "path": "reference.md",
-      "sha256": "sha256:3c102adcae6c9dcc3d90820adb9605e2937a8eadae6e40fad143804ee9052d65"
+      "sha256": "sha256:e8074cfd8de65d69b54b502884e0d5b2a7e0daa03b58bdf67cb135b4b7251673"
     },
     {
       "bytes": 2024,
@@ -1094,6 +1094,6 @@
       "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
     }
   ],
-  "runtime_fingerprint": "sha256:447c4f99658bc74c3cd5e7aa3f1036ad4e14c6df96ffed7b6c5784e249b15372",
+  "runtime_fingerprint": "sha256:bfbf0c1afa9f7dae02e57c5a1989285d4ff7d613c5c7a60b06229b14b9e81118",
   "schema_version": 1
 }

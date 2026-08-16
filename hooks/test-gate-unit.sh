@@ -61,19 +61,19 @@ assert_nofile()  { if [ -e "$1" ]; then fail "$2 (eval ran — file exists)"; el
 reset_repo
 assert_noblock "$(run_jq false)" "no_marker_noop"
 
-# B2 — untracked green marker → no block.
-reset_repo; set_marker "true"
-assert_noblock "$(run_jq false)" "green_marker_allows"
-
-# B3 — untracked red marker → block, reason carries the output tail.
-reset_repo; set_marker 'echo fail-tail-marker; exit 1'
+# B2 — no active run means no authority to execute even an untracked marker.
+reset_repo; set_marker "touch \"$REPO/SENTINEL.flag\"; exit 1"
 out="$(run_jq false)"
-assert_block "$out" "red_marker_blocks"
-assert_has   "$out" "fail-tail-marker" "red_marker_block_reason_has_tail"
+assert_noblock "$out" "no_active_run_ignores_test_gate"
+assert_nofile "$REPO/SENTINEL.flag" "no_active_run_test_gate_does_not_eval"
 
-# B4 — git-TRACKED marker → refuse, no eval, no block.
-reset_repo; set_marker "touch \"$REPO/SENTINEL.flag\"; exit 1"; track_marker
-out="$(run_jq false)"
+# B3 — an active owner may execute a green marker.
+reset_repo; set_active_owner; set_marker "true"
+assert_noblock "$(run_jq_session owner-session)" "owner_green_marker_allows"
+
+# B4 — a git-TRACKED marker is refused even for the active owner.
+reset_repo; set_active_owner; set_marker "touch \"$REPO/SENTINEL.flag\"; exit 1"; track_marker
+out="$(run_jq_session owner-session)"
 assert_noblock "$out" "tracked_marker_refused_noblock"
 assert_nofile  "$REPO/SENTINEL.flag" "tracked_marker_no_eval"
 assert_has     "$(cat "$ERR")" "refusing" "tracked_marker_stderr_note"
@@ -84,11 +84,11 @@ out="$(run_jq true)"
 assert_noblock "$out" "stop_hook_active_breaks"
 assert_nofile  "$REPO/SENTINEL.flag" "stop_hook_active_no_eval"
 
-# B6a — no jq + red marker (not a continuation) → still blocks; stderr hints about jq.
-reset_repo; set_marker 'echo rednojq; exit 1'
+# B6a — without jq ownership cannot be proven, so the marker is never evaluated.
+reset_repo; set_marker "touch \"$REPO/SENTINEL.flag\"; exit 1"
 out="$(run_nojq false)"
-assert_block "$out" "nojq_red_blocks"
-assert_has   "$(cat "$ERR")" "jq" "nojq_block_stderr_hint"
+assert_noblock "$out" "nojq_test_gate_noop"
+assert_nofile "$REPO/SENTINEL.flag" "nojq_test_gate_does_not_eval"
 
 # B6b — no jq + stop_hook_active:true → loop-break (no eval, no block) → no infinite re-block.
 reset_repo; set_marker "touch \"$REPO/SENTINEL.flag\"; exit 1"
@@ -97,18 +97,19 @@ assert_noblock "$out" "nojq_continuation_breaks"
 assert_nofile  "$REPO/SENTINEL.flag" "nojq_continuation_no_eval"
 
 # B7 — an active run's red-test gate applies only to its owner session.
-reset_repo; set_active_owner; set_marker "touch \"$REPO/SENTINEL.flag\"; exit 1"
+reset_repo; set_active_owner; set_marker "touch \"$REPO/SENTINEL.flag\"; echo fail-tail-marker; exit 1"
 out="$(run_jq_session other-session)"
 assert_noblock "$out" "other_session_ignores_active_test_gate"
 assert_nofile  "$REPO/SENTINEL.flag" "other_session_test_gate_does_not_eval"
 out="$(run_jq_session owner-session)"
 assert_block "$out" "owner_session_keeps_active_test_gate"
+assert_has "$out" "fail-tail-marker" "owner_red_marker_block_reason_has_tail"
 
 # B8 — a running gate blocks a duplicate invocation instead of overlapping the
 # same build/test outputs.
-reset_repo; set_marker "touch \"$REPO/SENTINEL.flag\""
+reset_repo; set_active_owner; set_marker "touch \"$REPO/SENTINEL.flag\""
 mkdir "$REPO/.kimiflow/test-gate.running"
-out="$(run_jq false)"
+out="$(run_jq_session owner-session)"
 assert_block "$out" "concurrent_test_gate_blocks_duplicate"
 assert_has "$out" "already running" "concurrent_test_gate_explains_lock"
 assert_nofile "$REPO/SENTINEL.flag" "concurrent_test_gate_does_not_eval"

@@ -2009,13 +2009,13 @@ Run each criterion's method and show the command + the decisive output line(s) (
 
 ## Hard test-gate (opt-in, per project) (scaling knob)
 
-kimiflow ships a **Stop hook** (in `hooks/`) that blocks the turn from ending while the project's tests are red — turning "tests green" from self-reported into enforced-by-construction. It is **opt-in and safe by default**: the hook **no-ops unless the project opts in**, so installing kimiflow never imposes a gate on unrelated work.
+kimiflow ships a **Stop hook** (in `hooks/`) that blocks the owning active Kimiflow run from ending while the project's tests are red — turning "tests green" from self-reported into enforced-by-construction. It is **opt-in and safe by default**: the hook **no-ops unless the project opts in and the current session owns an active run**, so installing kimiflow never imposes a gate on unrelated work.
 
 **To enable in a project:** create a **local (untracked)** `.kimiflow/test-gate` containing the test command, e.g.
 ```
 npm test --silent
 ```
-With that file present, the hook runs the command on stop; on failure it blocks with the failing output so the agent keeps working. No file → the hook exits 0 immediately. Keep it tests-only; commit safety and schema-4+ named-path local commits are handled separately in Phase 7.
+With that file present, the hook runs the command only when the owning active Kimiflow session stops; on failure it blocks with the failing output so that run keeps working. No active owned run or no file → the hook exits 0 immediately. Keep it tests-only; commit safety and schema-4+ named-path local commits are handled separately in Phase 7.
 
 **Auto-enabled for `large` scope:** a `large` run writes this marker in Phase 7 from the test command verified green in Phase 6 (idempotent — an existing marker is left untouched) and announces it, so the hardest runs can't silently skip the gate. `small`/`trivial` and unrelated repos stay opt-in (no marker, no gate).
 
