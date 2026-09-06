@@ -1,5 +1,10 @@
 # Codebase
 
+> Managed-workflow compatibility documentation. Fresh tasks follow the short default in `SKILL.md`.
+> The phase, memory and reviewer contracts below apply only to existing Flow-schema runs or
+> explicitly requested managed tools; they are not mandatory for ordinary new work.
+
+
 Diese Datei ist eine publish-safe Orientierung fuer die Kimiflow-Codebase. Konkrete Analyse-Findings und
 Verbesserungs-Backlogs liegen lokal unter `.kimiflow/project/` und werden nicht als Repo-Doku publiziert.
 

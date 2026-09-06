@@ -75,7 +75,7 @@ Foreign staged paths are a hard abort. Do not unstage, overwrite, or include the
   ZIP and manifest byte-for-byte, then run offline artifact verification. The consistency helper performs this.
 - **JSON valid:** `jq -e . > /dev/null` on `hooks/hooks.json`, `hooks.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`.
 - **Shell syntax:** `bash -n` on every `hooks/*.sh`.
-- **Unit tests:** every discovered `hooks/test-*.sh` exits 0, using the CI discovery loop: skip only `hooks/test-gate.sh` and `hooks/test-weakening-scan.sh` because they are production hooks with dedicated `*-unit.sh` suites.
+- **Unit tests:** `bash hooks/ci-test-plan.sh verify full` and `bash hooks/ci-test-plan.sh run full` must exit 0. The canonical plan covers every discovered surface, routes production hooks to their unit suites, and avoids running focused Python wrappers again after package discovery. Do not replace it with a second raw `test-*.sh` loop.
 - **Smoke:** `bash hooks/smoke-install.sh` and `bash hooks/smoke-install-codex.sh` exit 0.
 
 Any non-zero → stop, show the failing command + the decisive line(s), leave the working tree as-is for inspection. Do not proceed to commit.

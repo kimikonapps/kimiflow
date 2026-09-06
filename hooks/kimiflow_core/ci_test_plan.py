@@ -14,8 +14,16 @@ PRODUCTION_SURFACES = {
     "test-weakening-scan.sh": "test-weakening-scan-unit.sh",
 }
 FOCUSED_SURFACES = {
+    # These wrappers only select modules already covered by package discovery.
+    # Wrappers with additional shell/schema checks remain independent surfaces.
+    "test-code-retrieval-eval.sh": "test-kimiflow-core-unit.sh",
+    "test-evidence-eval.sh": "test-kimiflow-core-unit.sh",
     "test-execution-control.sh": "test-kimiflow-core-unit.sh",
+    "test-outcome-comparisons.sh": "test-kimiflow-core-unit.sh",
+    "test-program-engine.sh": "test-kimiflow-core-unit.sh",
+    "test-project-delta.sh": "test-memory-router-unit.sh",
     "test-run-bridge.sh": "test-kimiflow-core-unit.sh",
+    "test-worktree-broker.sh": "test-kimiflow-core-unit.sh",
 }
 LEGACY_LOCAL_SURFACES = {
     "test-memory-router-parity.sh": "test-memory-router-unit.sh",

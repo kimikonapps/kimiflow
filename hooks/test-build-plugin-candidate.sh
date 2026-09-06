@@ -87,12 +87,17 @@ test_required_runtime_paths_must_be_git_indexed() {
     "$fixture/hosts/pi/skills/kimiflow/"
   cp "$ROOT/hosts/pi/extensions/kimiflow-crew.js" \
     "$fixture/hosts/pi/extensions/"
+  mkdir -p "$fixture/references"
+  for rel in hooks/check-change.sh hooks/kimiflow_core/check_change.py references/legacy-workflow.md references/legacy-codex.md references/legacy-pi.md references/optional-tools.md; do
+    cp "$ROOT/$rel" "$fixture/$rel"
+  done
   git -C "$fixture" init -q
   git -C "$fixture" add \
     hooks/build-plugin-candidate.sh package.json \
     hooks/kimiflow_core/worktree_broker.py \
     hosts/pi/extensions/kimiflow-crew.js \
     hosts/pi/skills/kimiflow/SKILL.md
+  git -C "$fixture" add hooks/check-change.sh hooks/kimiflow_core/check_change.py references/legacy-workflow.md references/legacy-codex.md references/legacy-pi.md references/optional-tools.md
   git -C "$fixture" rm --cached -q hosts/pi/skills/kimiflow/SKILL.md
   if "$fixture/hooks/build-plugin-candidate.sh" \
     --write --output "$WORK/untracked-required/kimiflow" \
@@ -159,6 +164,7 @@ hooks/kimiflow_core/ci_test_plan.py
 hooks/memory_router/tests/test_attribution.py
 hooks/memory_router/tests/test_recall.py
 hooks/memory_router/tests/test_standards.py
+hooks/smoke-default.sh
 hooks/smoke-install.sh
 hooks/smoke-install-codex.sh
 hooks/test-active-run.sh

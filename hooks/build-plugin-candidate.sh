@@ -95,6 +95,12 @@ tracked_paths = {
     if path
 }
 required_additive = {
+    "hooks/check-change.sh",
+    "hooks/kimiflow_core/check_change.py",
+    "references/legacy-workflow.md",
+    "references/legacy-codex.md",
+    "references/legacy-pi.md",
+    "references/optional-tools.md",
     "package.json",
     "hosts/pi/extensions/kimiflow-crew.js",
     "hosts/pi/skills/kimiflow/SKILL.md",

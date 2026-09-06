@@ -1,4 +1,4 @@
 interface:
   display_name: "kimiflow"
-  short_description: "Context-aware project launcher, codebase map, and feature/fix gates"
-  default_prompt: "Open Kimiflow's launcher, inspect project status, and route this work through the right gates."
+  short_description: "Lean delivery, current-source checks and optional tools"
+  default_prompt: "Use $kimiflow to understand this task, implement it and verify the current result."

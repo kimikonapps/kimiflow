@@ -1272,10 +1272,14 @@ class SecurityTests(unittest.TestCase):
         )
         self.assertEqual(canonical, canonical_source)
         self.assertEqual(codex, codex_source)
-        self.assertLessEqual(len(canonical.encode("utf-8")), 17000)
-        self.assertLessEqual(len(codex.encode("utf-8")), 15000)
+        self.assertLessEqual(len(canonical.encode("utf-8")), 8500)
+        self.assertLessEqual(len(codex.encode("utf-8")), 2500)
         reference = (repo / "reference.md").read_text(encoding="utf-8")
-        for text in (canonical, codex, reference):
+        # Security is still installed, but its managed contract is loaded on
+        # demand instead of being repeated in every fresh task's prompt.
+        legacy = (repo / "references" / "legacy-workflow.md").read_text(encoding="utf-8")
+        legacy_codex = (repo / "references" / "legacy-codex.md").read_text(encoding="utf-8")
+        for text in (legacy, legacy_codex, reference):
             self.assertIn("security scan", text)
             self.assertIn("security diff", text)
             self.assertIn("local", text.lower())

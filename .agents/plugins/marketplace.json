@@ -2,7 +2,7 @@
   "name": "kimiflow",
   "interface": {
     "displayName": "kimiflow",
-    "shortDescription": "Kimiflow feature, bug-fix & release loop: full/grill/plan/build/quick/review/audit/fix/release, project intelligence, repo docs, findings"
+    "shortDescription": "Lean feature/fix delivery and optional project tools"
   },
   "plugins": [
     {
@@ -18,7 +18,8 @@
           "CODEX"
         ]
       },
-      "category": "Developer Tools"
+      "category": "Developer Tools",
+      "description": "Lean feature/fix delivery; optional project intelligence, repo docs, findings and managed runs."
     }
   ]
 }

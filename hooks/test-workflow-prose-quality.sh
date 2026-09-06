@@ -39,9 +39,9 @@ for phase in phase-3-plan.md phase-4-review-approval.md phase-6-verify.md phase-
     || fail "$phase does not pass prose quality to delegated authors/reviewers"
 done
 
-has "$ROOT/docs/render/kimiflow/canonical/SKILL.md" "workflow-prose-quality.md" "canonical skill lacks lazy prose-quality route"
-has "$ROOT/docs/render/kimiflow/overlays/codex.md" '$KIMIFLOW_PLUGIN_ROOT/references/workflow-prose-quality.md' "Codex overlay lacks plugin-rooted prose-quality route"
-PI_SKILL="$ROOT/hosts/pi/skills/kimiflow/SKILL.md"
+has "$ROOT/references/legacy-workflow.md" "workflow-prose-quality.md" "canonical skill lacks lazy prose-quality route"
+has "$ROOT/references/legacy-codex.md" '$KIMIFLOW_PLUGIN_ROOT/references/workflow-prose-quality.md' "Codex overlay lacks plugin-rooted prose-quality route"
+PI_SKILL="$ROOT/references/legacy-pi.md"
 has "$PI_SKILL" '<loaded-kimiflow-package-root>/references/workflow-prose-quality.md' "Pi skill lacks installed-root prose-quality route"
 has "$PI_SKILL" 'Clarify, Understand, Plan, Plan-Review, Verify, or Review/Commit' "Pi skill lacks all six prose boundaries"
 has "$PI_SKILL" 'same model pass' "Pi skill lacks same-pass boundary"

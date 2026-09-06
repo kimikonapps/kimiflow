@@ -1,5 +1,10 @@
 # KimiFlow vs CLAUDE.md vs Superpowers: where mechanical gates matter
 
+> Managed-workflow compatibility documentation. Fresh tasks follow the short default in `SKILL.md`.
+> The phase, memory and reviewer contracts below apply only to existing Flow-schema runs or
+> explicitly requested managed tools; they are not mandatory for ordinary new work.
+
+
 Three popular ways to make Claude Code more disciplined are a **`CLAUDE.md`**, the **Superpowers**
 skills framework, and a gated loop like **KimiFlow**. They get framed as competitors. They aren't —
 they sit at different layers, and the only interesting question is narrow:

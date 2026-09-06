@@ -1,5 +1,10 @@
 # Kimiflow Scaling Knobs
 
+> Managed-workflow compatibility documentation. Fresh tasks follow the short default in `SKILL.md`.
+> The phase, memory and reviewer contracts below apply only to existing Flow-schema runs or
+> explicitly requested managed tools; they are not mandatory for ordinary new work.
+
+
 Detailed optional capacity knobs for Kimiflow runs. The always-loaded driver keeps only the entry rules; this file carries the expanded contract.
 
 ## Scaling knobs (defaults scale with scope — the cross-family lens is ON when available; extras stay OFF until enabled within the agent budget; record in STATE.md)

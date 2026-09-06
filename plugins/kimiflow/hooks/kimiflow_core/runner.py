@@ -370,13 +370,13 @@ def _read_changed_outcome(root, baseline, run_hint=None):
 def _initial_prompt(task, workflow_aware=False):
     if workflow_aware:
         return (
-            "Execute the canonical Kimiflow workflow supplied by this turn's workflow_context. "
+            "Use this turn's workflow_context entry to load references/legacy-workflow.md for this managed headless run. "
             "Run it autonomously through its mechanical finish. Do not ask for routine continuation or "
             "confirmation; pause only for a material decision through Kimiflow's typed wait/park contract."
             "\n\nRequest:\n" + task.strip()
         )
     return (
-        "Use $kimiflow for the request below. Run it autonomously through its mechanical finish. "
+        "Use $kimiflow and its references/legacy-workflow.md for this headless managed run. Run it autonomously through its mechanical finish. "
         "Do not ask for routine continuation or confirmation; pause only for a material decision through "
         "Kimiflow's typed wait/park contract.\n\nRequest:\n" + task.strip()
     )
@@ -516,7 +516,7 @@ def _continuation_prompt(status):
             parts.append("action=%s" % action[:240])
     exact = ", ".join(parts) or "continue_current_phase"
     return (
-        "Continue the active Kimiflow run autonomously. Exact next action: %s. "
+        "Continue the managed Legacy Kimiflow run using references/legacy-workflow.md. Exact next action: %s. "
         "Do not stop for routine confirmation. Use a typed material wait only for a real user decision; "
         "otherwise complete the work and close the active run mechanically." % exact
     )
@@ -525,7 +525,7 @@ def _continuation_prompt(status):
 def _parked_resume_prompt(run, message, workflow_aware=False):
     slug = os.path.basename(run.rstrip("/"))
     if workflow_aware:
-        return "Resume the canonical Kimiflow run %s using the supplied workflow_context.\n\nUser decision/input: %s" % (
+        return "Resume the managed Legacy Kimiflow run %s; load references/legacy-workflow.md through the supplied workflow_context entry.\n\nUser decision/input: %s" % (
             slug, message.strip(),
         )
     return "$kimiflow --resume %s\n\nUser decision/input: %s" % (slug, message.strip())
@@ -533,8 +533,8 @@ def _parked_resume_prompt(run, message, workflow_aware=False):
 
 def _interrupted_resume_prompt(workflow_aware=False):
     start_instruction = (
-        "start the canonical Kimiflow workflow supplied by workflow_context for the original request now"
-        if workflow_aware else "start $kimiflow for the original request now"
+        "load references/legacy-workflow.md through workflow_context and start the managed headless run for the original request now"
+        if workflow_aware else "load $kimiflow and references/legacy-workflow.md, then start the managed headless run for the original request now"
     )
     return (
         "Continue the explicit Kimiflow task already present in this coding-agent session. If interruption happened "
@@ -908,14 +908,8 @@ def _drive(
                     _active_status(root),
                     adapter,
                     receipt["thread_id"],
-                    (
-                        "Recover the explicit Kimiflow task after a transport/tool failure. If no active run exists yet, "
-                        + (
-                            "start the canonical workflow supplied by workflow_context for the original request; "
-                            if workflow_aware else "start $kimiflow for the original request; "
-                        )
-                        + "otherwise choose another safe in-scope strategy and continue autonomously."
-                    ),
+                    "Recover after the transport/tool failure. "
+                    + _interrupted_resume_prompt(workflow_aware),
                     session_callback,
                 )
             except KeyboardInterrupt:

@@ -1,7 +1,7 @@
 {
   "name": "kimiflow",
-  "version": "0.4.2",
-  "description": "Calm context-aware Kimiflow launcher and active-session feature/fix/release loop for Codex with natural mode aliases, safe workspace preflight, red/green, autonomous recovery, audited project release profiles, code-review, memory, Obsidian, and Vault gates.",
+  "version": "0.4.3",
+  "description": "Lean verified delivery for Codex, Astra and local models, with optional managed-run compatibility.",
   "author": {
     "name": "kimikon",
     "url": "https://github.com/kimikonapps"
@@ -26,8 +26,8 @@
   "hooks": "./hooks/hooks.json",
   "interface": {
     "displayName": "kimiflow",
-    "shortDescription": "Feature, bug-fix & audited release loop with adaptive discovery, local commits, project intelligence, repo docs, and findings",
-    "longDescription": "Kimiflow opens with a calm context-aware launcher showing one recommended action and compact project/memory/run health. It routes into full/grill/plan/build/quick/review/audit/fix/release modes, project mapping, memory/recall, Obsidian/Vault setup, local findings, backlog resume, feature work, fixes, audited project release profiles, improvement analysis, repo docs, or existing-feature review. Actionable feature runs inventory the workspace, batch only missing product facts, show a plain-language contract, and then continue autonomously unless a material product, authority, privacy, cost, external-access, or irreversible decision is required. Technical blockers and review findings change strategy inside the loop; verified named-path changes commit locally without another routine prompt, while push and release stay explicit. Grill, plan, review, and audit do not edit code until build authority or a slice selection exists. Active-session ownership supports safe parallel-session path checks and stale-state revalidation. Fixes preserve red/green evidence, project intelligence maps architecture/conventions/tests/flows, and a focused code-review ensemble plus mechanical Clarify, Discovery, plan, test, secret, and commit gates preserve quality without making the user review internal plans.",
+    "shortDescription": "Lean feature/fix delivery, current-source checks and optional project tools",
+    "longDescription": "Understand the request, build with the selected model and native host tools, then verify current source and deliver. Fresh work needs no routine confirmation, phase ledger, fixed reviewer ensemble or memory write. Existing managed runs resume with their pinned gates. Optional project intelligence, repo docs, findings, memory, security and release tools load only on request. No automatic paid-provider fallback.",
     "developerName": "kimikon",
     "category": "Developer Tools",
     "capabilities": [
@@ -39,22 +39,10 @@
     "privacyPolicyURL": "https://github.com/kimikonapps/kimiflow",
     "termsOfServiceURL": "https://github.com/kimikonapps/kimiflow/blob/main/LICENSE",
     "defaultPrompt": [
-      "Open kimiflow and show project status",
-      "Run kimiflow full for this feature",
-      "Grill this idea with kimiflow",
-      "Plan this change with kimiflow",
-      "Continue the active kimiflow session",
-      "Run kimiflow for this feature",
-      "Use kimiflow --fix for this bug",
-      "Run one audited project release with kimiflow release",
-      "Review this change with the kimiflow ensemble",
-      "Check an already-built feature with kimiflow",
-      "Map and understand this codebase with kimiflow",
-      "Refresh kimiflow project memory and recall",
-      "Open Obsidian MCP Terminal setup with kimiflow",
-      "Connect and check Obsidian memory health with kimiflow",
-      "Find architecture and refactoring opportunities with kimiflow",
-      "Document this project with kimiflow"
+      "Use Kimiflow to implement this feature and verify it",
+      "Use Kimiflow to fix this bug with regression evidence",
+      "Open Kimiflow and show project status",
+      "Resume the existing Kimiflow task"
     ],
     "brandColor": "#1F6FEB",
     "screenshots": []

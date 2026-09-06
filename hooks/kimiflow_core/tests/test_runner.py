@@ -190,6 +190,23 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("$kimiflow", runner._initial_prompt("build it"))
         self.assertNotIn("$kimiflow", runner._initial_prompt("build it", workflow_aware=True))
 
+    def test_managed_start_and_pre_state_recovery_select_legacy(self):
+        resource = "references/legacy-workflow.md"
+        for aware in (False, True):
+            self.assertIn(resource, runner._initial_prompt("build it", workflow_aware=aware))
+            self.assertIn(resource, runner._interrupted_resume_prompt(workflow_aware=aware))
+        self.assertIn(resource, runner._parked_resume_prompt(".kimiflow/demo", "continue", True))
+        self.assertIn(resource, runner._continuation_prompt({}))
+        from pathlib import Path
+        from kimiflow_core import model_adapter
+        context = model_adapter.workflow_context()
+        root = Path(context["plugin_root"])
+        self.assertEqual(context["skill"], "SKILL.md")  # public v1 wire contract
+        entry = (root / context["skill"]).read_text()
+        self.assertIn("**Managed host context:**", entry)
+        self.assertIn("including before an active run exists", entry)
+        self.assertTrue((root / resource).is_file())
+
     def test_exact_numbered_run_uses_only_its_existing_project_plan(self):
         project = os.path.join(self.root, ".kimiflow", "project")
         os.makedirs(project)

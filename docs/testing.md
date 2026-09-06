@@ -11,7 +11,10 @@ bash hooks/ci-test-plan.sh run full
 git diff --check
 ```
 
-Der Plan inventarisiert jede `hooks/test-*.sh`-Oberflaeche genau einmal. Fokussierte Tests duerfen waehrend der
+Der Plan inventarisiert jede `hooks/test-*.sh`-Oberflaeche genau einmal. Reine Modul-Wrapper
+(z. B. Worktree Broker, Outcome Comparisons und Project Delta) bleiben gezielt ausführbar,
+werden im Gesamtplan aber durch die jeweilige Core-/Memory-Discovery abgedeckt. Wrapper mit
+zusätzlichen Shell- oder Schema-Prüfungen behalten ihren eigenen Lauf. Fokussierte Tests duerfen waehrend der
 Entwicklung zusaetzlich laufen, ersetzen den vollstaendigen Plan aber nicht.
 
 ## CI
@@ -25,6 +28,14 @@ Entwicklung zusaetzlich laufen, ersetzen den vollstaendigen Plan aber nicht.
 - JSON-Syntax und Manifeststruktur fuer Claude, Codex und Hook-Manifeste.
 - Claude- und Codex-Smoke-Installationen.
 - ShellCheck-Fehler als hartes Gate; Warnungen bleiben informational.
+
+## Schlanker Standardpfad
+
+`kimiflow_core.tests.test_check_change` prüft echte Exit-Codes, Fail-fast, Timeouts, direkte argv-Ausführung,
+Quell-/Index-Drift, ignorierte Build-Dateien, fremdes Staging und fehlende dauerhafte Run-Artefakte.
+Die Installation-Smokes führen den Helfer zusätzlich aus seinem installierten Pfad in einem
+Wegwerf-Repository aus. Die bestehenden negativen Legacy-Gate-Tests bleiben im vollständigen Testplan.
+Prompt-Größen sind Strukturmessungen; sie belegen keine Laufzeitersparnis eines Modells.
 
 ## Smoke-Tests
 

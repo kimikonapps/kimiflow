@@ -1,3 +1,7 @@
+> Compatibility reference: these are the existing managed-run and optional-tool contracts.
+> New ordinary work follows `SKILL.md` and does not initialize this state machine.
+> Read only the section routed by `references/optional-tools.md` or an existing legacy run.
+
 # kimiflow — reference
 
 Detailed conventions for the orchestrator. Read a section only when its phase calls for it.

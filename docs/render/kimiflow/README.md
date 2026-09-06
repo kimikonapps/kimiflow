@@ -5,10 +5,10 @@
 - `canonical/SKILL.md` renders to repository-root `SKILL.md`.
 - `overlays/codex.md` renders to `skills/kimiflow/SKILL.md`.
 
-The canonical workflow in `canonical/SKILL.md` is intentionally a thin always-loaded driver. Phase detail
-lives in `../../../phases/*.md`, and expanded optional scaling rules live in
-`../../kimiflow-scaling-knobs.md`. Host overlays contain host-specific invocation, path, and tool
-substitutions; they must point back to the canonical workflow instead of forking it.
+The canonical workflow is the lean default for fresh work. Host overlays supply only paths and tool
+substitutions. `references/legacy-workflow.md`, `legacy-codex.md` and `legacy-pi.md` preserve the managed
+workflow for existing Flow-schema runs and explicitly requested controllers. The old phase files and
+scaling rules belong to that compatibility surface; do not preload them for the lean default.
 
 Render after source edits:
 

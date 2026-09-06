@@ -1,12 +1,25 @@
 # Compatibility — host primitives kimiflow depends on
 
+## Lean default and compatibility boundary
+
+Fresh work uses the canonical short skill and `hooks/check-change.sh`; it inherits the host's
+selected model, tools, worktrees and context continuation. GPT-6 Astra, Fable 5.1 and local models
+use the same command contract, with no required external provider or model-routing calibration.
+The verifier requires Git and Python 3.9+, runs explicit argv checks and writes no state.
+
+Existing Flow-schema runs, headless controllers and managed FirstMate crews retain the legacy
+contracts below. Their instructions moved to `references/legacy-workflow.md`, `legacy-codex.md`
+and `legacy-pi.md`. No active run is silently migrated. Ordinary local/Pi work does not start a crew.
+The detailed phase/model primitives below describe that managed compatibility surface only.
+
+
 kimiflow is, at its core, a large prompt-program riding on host plugin / skill / hook /
 subagent contracts. If a host moves one of these primitives, parts of kimiflow can break **silently**
 (a hook that stops firing looks identical to a hook that passed). This file lists every primitive
 kimiflow concretely uses, what breaks if it changes, and a smoke checklist to run at each version bump.
 
 **Last verified against:** Claude Code **2.1.202** · Codex CLI **0.148.0-alpha.9** · Pi **0.82.0** · kimiflow
-**0.4.2** · 2026-08-15.
+**0.4.3** · 2026-09-06.
 
 > **0.x expectation.** These primitives are NOT a stable public contract. Treat breakage as *expected*
 > across Claude Code or Codex minor versions until a version is explicitly pinned — keep the README's

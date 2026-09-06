@@ -32,7 +32,7 @@ run_static() {
   ' "$ROOT/package.json" >/dev/null || fail "package.json does not expose exactly one crew adapter"
 
   extension="$ROOT/hosts/pi/extensions/kimiflow-crew.js"
-  skill="$ROOT/hosts/pi/skills/kimiflow/SKILL.md"
+  skill="$ROOT/references/legacy-pi.md"
   [ -f "$extension" ] || fail "kimiflow crew adapter is missing"
   for rel in \
     hosts/pi/extensions/calm.js \

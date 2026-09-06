@@ -1,5 +1,10 @@
 # examples — what a kimiflow run actually reads like
 
+> Managed-workflow compatibility documentation. Fresh tasks follow the short default in `SKILL.md`.
+> The phase, memory and reviewer contracts below apply only to existing Flow-schema runs or
+> explicitly requested managed tools; they are not mandatory for ordinary new work.
+
+
 Three end-to-end walkthroughs of `/kimiflow` — both modes, across scope bands — so you can see the
 phases, the gates and the artifacts **before** installing.
 

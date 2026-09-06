@@ -36,6 +36,15 @@ class CiTestPlanCase(unittest.TestCase):
         self.assertNotIn("hooks/test-memory-router-parity.sh", paths)
         self.assertNotIn("hooks/test-gate.sh", paths)
         self.assertNotIn("hooks/test-weakening-scan.sh", paths)
+        for duplicate in (
+            "test-code-retrieval-eval.sh", "test-evidence-eval.sh",
+            "test-outcome-comparisons.sh", "test-program-engine.sh",
+            "test-project-delta.sh", "test-worktree-broker.sh",
+        ):
+            with self.subTest(surface=duplicate):
+                self.assertNotIn("hooks/" + duplicate, paths)
+                replacement = ci_test_plan.FOCUSED_SURFACES[duplicate]
+                self.assertEqual(commands.count(("bash", "hooks/" + replacement)), 1)
 
     def test_full_lane_bundles_evidence_surfaces_once(self):
         commands = ci_test_plan.lane_commands(self.root, "full")

@@ -5,13 +5,13 @@
     "name": "kimikon"
   },
   "metadata": {
-    "description": "kimiflow — a feature, bug-fix & release loop with full/grill/plan/build/quick/review/audit/fix/release modes, compact clarification, adaptive discovery, autonomous verified local commits, audited project release profiles, code-review ensembles, project intelligence, repo docs, local findings, memory, Obsidian, and Vault support."
+    "description": "Lean verified delivery with optional managed project tools."
   },
   "plugins": [
     {
       "name": "kimiflow",
-      "description": "Active-session feature, bug-fix & release loop for Claude Code with full/grill/plan/build/quick/review/audit/fix/release modes, compact intent clarification, adaptive discovery, autonomous verified local commits, audited project release profiles, code-review ensembles, project intelligence, repo docs, local findings, memory, Obsidian, and Vault support. Replies in your language.",
-      "version": "0.4.2",
+      "description": "Lean feature/fix delivery; optional project intelligence, repo docs, findings and managed runs.",
+      "version": "0.4.3",
       "author": {
         "name": "kimikon"
       },

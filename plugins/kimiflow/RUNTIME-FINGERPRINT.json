@@ -1,23 +1,23 @@
 {
-  "file_count": 182,
+  "file_count": 188,
   "files": [
     {
-      "bytes": 510,
+      "bytes": 375,
       "mode": "0644",
       "path": ".claude-plugin/plugin.json",
-      "sha256": "sha256:e8a0a5dce01c57c16a40b3b512c9a3999980f056dfe89e20c5f6c4a9dcd9dc88"
+      "sha256": "sha256:1a017c667ca3d37be490dec0341409b4e7504a99145e5759f2396d872a3e34bf"
     },
     {
-      "bytes": 3621,
+      "bytes": 1917,
       "mode": "0644",
       "path": ".codex-plugin/plugin.json",
-      "sha256": "sha256:b849daa1e6001eb00d91360d773cffdb4e475ca6533a72c7723a0da9f40dc2ab"
+      "sha256": "sha256:c93e72d9c44e51e4ebf303d10a5a1a2d478366ef0c94c54d13ec83c91ffe374e"
     },
     {
-      "bytes": 22843,
+      "bytes": 23653,
       "mode": "0644",
       "path": "COMPATIBILITY.md",
-      "sha256": "sha256:4097984c40acec3fdc65b22a9446e75a6738257a859df610668de1226f42df30"
+      "sha256": "sha256:04aceb1eee543fd1a403ca2dd7cca5042676e1c2a3c7c098e9af4f15d0122ebd"
     },
     {
       "bytes": 1064,
@@ -26,22 +26,22 @@
       "sha256": "sha256:b796986e145d409f27c8ec0edaaf223ee51bdbbc2fa4477fe2d6c0984d5adf5b"
     },
     {
-      "bytes": 43580,
+      "bytes": 4570,
       "mode": "0644",
       "path": "README.de.md",
-      "sha256": "sha256:17a9d1e54900f72d8a76109ab66884a66db8e9856dd26259a1d82cc8a4f11242"
+      "sha256": "sha256:5f927b5b7d427274f2eeb712d1c6c3f50708e47f24db20738f47eebdc03aba60"
     },
     {
-      "bytes": 49650,
+      "bytes": 6768,
       "mode": "0644",
       "path": "README.md",
-      "sha256": "sha256:0ba2575b3d3189c55dd87627d706c269b3f0a399de7b6af48f6f83a6109fa05d"
+      "sha256": "sha256:ac7d866e7f8428bceadceb0ed0fa3f5d0649ffb99aca3fe0ff0c21e7c0796a4a"
     },
     {
-      "bytes": 16959,
+      "bytes": 8081,
       "mode": "0644",
       "path": "SKILL.md",
-      "sha256": "sha256:b38cee5826f6d4ebeff9b9a1c49eeb5a5d42bcf57ae735083789722180bc63e4"
+      "sha256": "sha256:a9b5431a727e1339d888a180d509343215f962c044f8d45b2c7b4e5c52608ec3"
     },
     {
       "bytes": 5242,
@@ -86,10 +86,10 @@
       "sha256": "sha256:c94d8745eb13fb210c98eb26778e7813029452bd5b934905bb993259c4d86189"
     },
     {
-      "bytes": 4459,
+      "bytes": 4737,
       "mode": "0644",
       "path": "docs/kimiflow-scaling-knobs.md",
-      "sha256": "sha256:0804f93e545c2b512292a8740b36dc8e87ac17c5ff1b18a3338c2c070321ad51"
+      "sha256": "sha256:cf38fe0bd4039fb6390094c5b7680f7fcb038b15c21d66b8e1d222dd84462a33"
     },
     {
       "bytes": 4157,
@@ -126,6 +126,12 @@
       "mode": "0755",
       "path": "hooks/build-replan.sh",
       "sha256": "sha256:c711d73dbee075fa31a2a52d1b3a7e98d15ff4f22f0a7e807f51c522d93b752b"
+    },
+    {
+      "bytes": 229,
+      "mode": "0755",
+      "path": "hooks/check-change.sh",
+      "sha256": "sha256:740d28fad3b9ebc44b4485da9707b2938d12aab9372fd0535403550ca27464d1"
     },
     {
       "bytes": 38638,
@@ -264,6 +270,12 @@
       "mode": "0644",
       "path": "hooks/kimiflow_core/build_replan.py",
       "sha256": "sha256:cd37de085b12738a662b3b2cd3c8a3d42951edfd3e57a85ab7259e8e62f8d34a"
+    },
+    {
+      "bytes": 8235,
+      "mode": "0644",
+      "path": "hooks/kimiflow_core/check_change.py",
+      "sha256": "sha256:0ae08503c5e1fdb87c9faa36b73daa1fde79643c2b70a2af1e38b5554e151f9b"
     },
     {
       "bytes": 17184,
@@ -410,10 +422,10 @@
       "sha256": "sha256:8259f8f05f45a3239f3a54f6c5f0abe8c454ccf501a48011b365995dcf65ddff"
     },
     {
-      "bytes": 57686,
+      "bytes": 57531,
       "mode": "0644",
       "path": "hooks/kimiflow_core/runner.py",
-      "sha256": "sha256:f29f7136a4afbf57a599ae245cc47f17eed62efc3b9ad4c8b418a56f933b2ea2"
+      "sha256": "sha256:d4aad23e4e95f33f5e34af2a8de1c444e632e9c1db43c07390f0cbc9909d97d9"
     },
     {
       "bytes": 11255,
@@ -878,16 +890,16 @@
       "sha256": "sha256:7abe49ed9997d327231151e17b7a978b607f1987f6d39d457a6c3a5781a05699"
     },
     {
-      "bytes": 6659,
+      "bytes": 1157,
       "mode": "0644",
       "path": "hosts/pi/skills/kimiflow/SKILL.md",
-      "sha256": "sha256:bb210e1abe16c205a003faee5364a933b616ce8f54526c6416aea9772b426210"
+      "sha256": "sha256:7715e9d4f7bf4563f7709567212366fbf57a25560a91080cc497c04496c838eb"
     },
     {
       "bytes": 332,
       "mode": "0644",
       "path": "package.json",
-      "sha256": "sha256:d156886cbd0530011ef1caa5f563557f1447f24e69505fd8ed93bdc08ce10eeb"
+      "sha256": "sha256:315ec5bd77de5327f525228fe110113538be5b50079b59288050f0b1322a002e"
     },
     {
       "bytes": 8413,
@@ -908,10 +920,10 @@
       "sha256": "sha256:c1f3e355ea757a2fb0caf696d8aca9271ff986f557d7abfbed70c2573787b18a"
     },
     {
-      "bytes": 20293,
+      "bytes": 19987,
       "mode": "0644",
       "path": "phases/phase-2-understand.md",
-      "sha256": "sha256:27e59bde1cb14452e40d144ceeb540c8891f217dbb1fe61ba43028768df3ab95"
+      "sha256": "sha256:bec21c985e7899c357a1020946395f3a18948379151abca379657c28780a92d1"
     },
     {
       "bytes": 11585,
@@ -944,10 +956,10 @@
       "sha256": "sha256:7ff3c07ab73a3da07b3a378422a2906cacec6875d62aa491466cf04808c49b15"
     },
     {
-      "bytes": 249832,
+      "bytes": 250099,
       "mode": "0644",
       "path": "reference.md",
-      "sha256": "sha256:7ff799f16d465bb9fce9c7823a4ba408cc6f1504661de17b2b9849bff95bbd90"
+      "sha256": "sha256:0b04585695e44648965d8532950ab187edf8323d5496b748d342e5d9832faadf"
     },
     {
       "bytes": 2024,
@@ -962,10 +974,10 @@
       "sha256": "sha256:d06d5e31135e24e40812778e775fa48ce030694a1d2b12dc21c40237d75bdff1"
     },
     {
-      "bytes": 6264,
+      "bytes": 6521,
       "mode": "0644",
       "path": "references/adapter-protocol.md",
-      "sha256": "sha256:b43500b7e09b25d82df5e3f6de74d5669b0f43a90860c807c8beb7c62e6afaa0"
+      "sha256": "sha256:bf3ab7ea695e3cafccb8a7cc36bf12be49e5c4f16591a645a489d093dd147f7c"
     },
     {
       "bytes": 2388,
@@ -996,6 +1008,30 @@
       "mode": "0644",
       "path": "references/frontend-quality-standard.md",
       "sha256": "sha256:f948700f371b73bca0f5e54d738e89a31e220172be5294c36e361e85851e1c94"
+    },
+    {
+      "bytes": 15037,
+      "mode": "0644",
+      "path": "references/legacy-codex.md",
+      "sha256": "sha256:6034cc7ba781107495a7f928641917ffd6838eeacae105bce3ac96350cf3befe"
+    },
+    {
+      "bytes": 6659,
+      "mode": "0644",
+      "path": "references/legacy-pi.md",
+      "sha256": "sha256:bb210e1abe16c205a003faee5364a933b616ce8f54526c6416aea9772b426210"
+    },
+    {
+      "bytes": 16959,
+      "mode": "0644",
+      "path": "references/legacy-workflow.md",
+      "sha256": "sha256:b38cee5826f6d4ebeff9b9a1c49eeb5a5d42bcf57ae735083789722180bc63e4"
+    },
+    {
+      "bytes": 2026,
+      "mode": "0644",
+      "path": "references/optional-tools.md",
+      "sha256": "sha256:99c42a602022973f781aa5541a4d66daf3aa6bed3ef4e956d85e881d4985dfdd"
     },
     {
       "bytes": 5350,
@@ -1082,18 +1118,18 @@
       "sha256": "sha256:5ffcff6e88e49520d7b642a690df390dd704a9ad182857a8ef6672d56655351c"
     },
     {
-      "bytes": 14995,
+      "bytes": 2060,
       "mode": "0644",
       "path": "skills/kimiflow/SKILL.md",
-      "sha256": "sha256:d0f6a009b403bee172929f74a2851db73f5a36976ae73ca5591844178f747c1d"
+      "sha256": "sha256:f96c2b25342a79eaa0dd9ed96d5a6370dd8e167586eea1d8ea3dfd87cb0bba87"
     },
     {
-      "bytes": 244,
+      "bytes": 220,
       "mode": "0644",
       "path": "skills/kimiflow/agents/openai.yaml",
-      "sha256": "sha256:4d186813091fc22ed2f243e37d99311b9ca7da89f5d489d92db898305a099007"
+      "sha256": "sha256:57dc23b3fd3371622618b47eb90eb9f4d5a655114c33b8fe7a47aacb7930bbec"
     }
   ],
-  "runtime_fingerprint": "sha256:3f3df04eb9fdaec5b91b28519be3aaf3a295f4ff3404dea73ff10251edc34497",
+  "runtime_fingerprint": "sha256:693a47366e477019befe2c5a2de001aa37e7670b9e09738c89788180b86d7a1a",
   "schema_version": 1
 }

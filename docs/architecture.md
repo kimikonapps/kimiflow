@@ -1,5 +1,22 @@
 # Architektur
 
+Neue Aufgaben verwenden den kurzen kanonischen Skill: Verstehen, Bauen, Prüfen und liefern.
+Codex, Claude und lokale Agenten behalten ihre eigenen Plan-/Worktree-/Kontextfunktionen sowie
+Modell- und Effort-Auswahl. Es gibt keinen zweiten neuen Workflow-Controller und kein neues Run-Schema.
+
+`hooks/check-change.sh` / `kimiflow_core/check_change.py` ist der einzige neue Ausführungspfad:
+explizite argv-Checks, begrenzte Fehlerausgabe, Timeout und Vergleich der Quelldaten vor/nach den Checks.
+Er verändert weder Index noch Commit und persistiert keine Receipts. Akzeptanzqualität bleibt eine
+fachliche Prüfung; der Helfer belegt die ausgeführten Befehle und die unveränderte Quellbasis.
+
+Die bisherigen Phasen, Adapter und State-Resolver sind die Kompatibilitätsschicht für aktive
+`Flow schema`-Runs und explizite Spezialwerkzeuge. Sie werden nicht für frische normale Aufgaben
+initialisiert. Ihre Anweisungen liegen in `references/legacy-workflow.md` und `legacy-codex.md`;
+`references/optional-tools.md` enthält die bedarfsgerechten Einstiegspunkte. Ein alter aktiver Run
+wird nicht durch ein Update auf einen anderen Vertrag umgestellt.
+
+## Bestehende verwaltete Engine (Legacy / optionale Werkzeuge)
+
 Kimiflow ist eine Prompt-/Shell-Hybrid-Engine fuer explizit gestartete Laeufe und automatisch geroutete,
 autorisierte substanzielle Feature-Arbeit. Normale Fixes und kleine risikoarme Arbeiten bleiben direkt. Die
 Kernidee: Das Modell fuehrt den Workflow, aber kritische Gates werden durch wiederverwendbare Shell-Skripte

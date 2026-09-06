@@ -6,7 +6,26 @@ Versions before 0.4.0 were internal development snapshots. **0.4.0 is the first 
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.4.3
+
+Lean default delivery with verified checks and preserved managed-run compatibility.
+
+### Changed
+
+- Remove six duplicate Python-module wrapper executions from the full CI plan; package discovery still runs their tests, and focused entry points remain available.
+
+- New tasks use one short Understand → Build → Verify loop, inheriting the host's selected model and effort, including Astra, Fable 5.1 and local models.
+- Remove mandatory phase receipts, final routine confirmation, fixed reviewer seats, adaptive model/review promotion and learning completion from fresh work.
+- Add stateless `check-change.sh`: run explicit argv checks, stop on failure/timeout, limit output, and reject changed source/index/HEAD. No model calls, state writes or staging.
+- Keep existing Flow-schema runs, managed controllers and explicitly requested specialist tools on their existing compatibility contracts; no active-run or memory migration.
+- Reduce the shared and Codex entry instructions; optional and legacy contracts load only on their explicit routes.
+
 ### Fixed
+
+- Reject and stop surviving POSIX check-process groups instead of reporting a completed verification when only the launcher exited.
+- Keep headless start, interruption and transport recovery on the managed Legacy workflow while preserving the adapter-v1 entry contract.
 
 - Conformance and frontend gates now treat `Affected files` as the authorized path set: every delivered Git
   path must be declared, while planned paths that were inspected but left unchanged no longer block a run.

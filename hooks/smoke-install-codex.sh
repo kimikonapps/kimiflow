@@ -6,116 +6,21 @@ set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FAILS=0
+cv="$(jq -r '.version' "$ROOT/.codex-plugin/plugin.json")"
 ok()  { printf '  ok   %s\n' "$1"; }
 bad() { printf '  FAIL %s\n' "$1"; FAILS=$((FAILS + 1)); }
 
 command -v jq  >/dev/null 2>&1 || { echo "smoke-install-codex: jq required"; exit 2; }
 command -v git >/dev/null 2>&1 || { echo "smoke-install-codex: git required"; exit 2; }
 
-echo "== workflow prose quality =="
-prose_ok=true
-[ -f "$ROOT/references/workflow-prose-quality.md" ] || prose_ok=false
-grep -Fq 'same model pass' "$ROOT/references/workflow-prose-quality.md" 2>/dev/null || prose_ok=false
-for phase in phase-1-clarify.md phase-2-understand.md phase-3-plan.md phase-4-review-approval.md phase-6-verify.md phase-7-review-commit.md; do
-  grep -Fq 'Reuse the run-loaded `workflow-prose-quality.md` contract' "$ROOT/phases/$phase" 2>/dev/null || prose_ok=false
-done
-grep -Fq '$KIMIFLOW_PLUGIN_ROOT/references/workflow-prose-quality.md' "$ROOT/skills/kimiflow/SKILL.md" 2>/dev/null || prose_ok=false
-grep -Fq '<loaded-kimiflow-package-root>/references/workflow-prose-quality.md' "$ROOT/hosts/pi/skills/kimiflow/SKILL.md" 2>/dev/null || prose_ok=false
-grep -Fq 'same model pass' "$ROOT/hosts/pi/skills/kimiflow/SKILL.md" 2>/dev/null || prose_ok=false
-if $prose_ok && [ "$(wc -c < "$ROOT/skills/kimiflow/SKILL.md" | tr -d ' ')" -le 15000 ]; then
-  ok "lazy same-pass prose contract, Codex/Pi wiring and budgets"
+# Fresh default and legacy invariants are verified separately.
+if bash "$ROOT/hooks/smoke-default.sh" --host codex; then
+  ok "lean default installation and executable checks"
 else
-  bad "workflow prose quality contract or wiring invalid"
+  bad "lean default installation failed"
 fi
 
-echo "== codex manifests =="
-for j in .codex-plugin/plugin.json .agents/plugins/marketplace.json hooks/hooks.json hooks.json; do
-  if jq -e . "$ROOT/$j" >/dev/null 2>&1; then ok "valid JSON: $j"; else bad "invalid JSON: $j"; fi
-done
-cv="$(jq -r '.version' "$ROOT/.codex-plugin/plugin.json" 2>/dev/null)"
-pv="$(jq -r '.version' "$ROOT/.claude-plugin/plugin.json" 2>/dev/null)"
-if [ -n "$cv" ] && [ "$cv" = "$pv" ]; then ok "version consistent with Claude manifest ($cv)"; else bad "version mismatch: codex=$cv claude=$pv"; fi
-jq -e '.name == "kimiflow" and .skills == "./skills/" and (.interface.displayName | length > 0)' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
-  && ok "codex plugin shape" || bad "codex plugin shape"
-jq -e '(.interface.defaultPrompt // []) | any(test("codebase|architecture|refactoring|Document"))' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
-  && ok "codex plugin Project Intelligence prompts visible" || bad "codex plugin Project Intelligence prompts missing"
-jq -e '((.interface.longDescription // "") + " " + (.interface.shortDescription // "") + " " + (.description // "")) | test("codebase|architecture|project intelligence")' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
-  && ok "codex plugin describes project intelligence" || bad "codex plugin description does not mention project intelligence"
-jq -e '((.interface.longDescription // "") + " " + (.description // "")) | test("code-review ensemble")' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
-  && ok "codex plugin describes code-review ensemble" || bad "codex plugin description does not mention code-review ensemble"
-jq -e '((.interface.longDescription // "") + " " + (.interface.shortDescription // "") + " " + (.description // "") + " " + ((.interface.defaultPrompt // []) | join(" "))) | test("full/grill/plan/build/quick/review/audit/fix/release"; "i") and test("kimiflow full"; "i") and test("kimiflow release"; "i") and test("grill"; "i") and test("plan"; "i")' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
-  && ok "codex plugin exposes natural mode aliases" || bad "codex plugin natural mode aliases missing"
-jq -e '.name == "kimiflow" and (.plugins[] | select(.name == "kimiflow" and .source.source == "local" and .source.path == "./plugins/kimiflow"))' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
-  && ok "codex marketplace entry" || bad "codex marketplace entry"
-jq -e '[.. | strings] | join(" ") | test("full/grill/plan/build/quick/review/audit/fix/release"; "i")' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
-  && ok "codex marketplace describes natural mode aliases" || bad "codex marketplace missing natural mode aliases"
-jq -e '.hooks == "./hooks/hooks.json"' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
-  && ok "codex manifest pins loaded hook contract" || bad "codex manifest hook path missing"
-jq -e '.hooks.PreToolUse[] | select(.matcher | contains("apply_patch") and contains("Write") and contains("update_plan") and contains("TaskCreate"))' "$ROOT/hooks/hooks.json" >/dev/null 2>&1 \
-  && ok "loaded hook contract covers both host tool namespaces" || bad "loaded hook contract host coverage missing"
-
-echo "== capability display sync (Codex) =="
-# Four canonical capabilities must each appear PER-FIELD in the prominent shortDescription surfaces (non-vacuous drift guard;
-# checking the concatenated long+short surface would let longDescription mask a drop in shortDescription).
-for m in 'feature[^.]*fix' 'project intelligence' 'repo docs' 'findings'; do
-  jq -e --arg m "$m" '((.interface.shortDescription // "") | test($m; "i"))' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
-    && ok "codex shortDescription names capability: $m" || bad "codex shortDescription missing capability: $m"
-done
-for m in 'feature[^.]*fix' 'project intelligence' 'repo docs' 'findings'; do
-  jq -e --arg m "$m" '((.interface.shortDescription // "") | test($m; "i"))' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
-    && ok "codex marketplace shortDescription names capability: $m" || bad "codex marketplace shortDescription missing capability: $m"
-done
-
-echo "== codex skill =="
-SKILL="$ROOT/skills/kimiflow/SKILL.md"
-if [ -f "$SKILL" ]; then ok "skill exists: skills/kimiflow/SKILL.md"; else bad "missing skills/kimiflow/SKILL.md"; fi
-fm="$(awk 'NR==1 && $0=="---"{f=1;next} f && $0=="---"{exit} f' "$SKILL" 2>/dev/null || true)"
-printf '%s\n' "$fm" | grep -qE '^name:[[:space:]]*kimiflow' && ok "skill name: kimiflow" || bad "skill name missing/wrong"
-printf '%s\n' "$fm" | grep -qE '^description:' && ok "skill description present" || bad "skill description missing"
-printf '%s\n' "$fm" | grep -q 'actionable implementation requests' && ok "description limits auto-routing to implementation requests" || bad "description missing implementation-authorization boundary"
-printf '%s\n' "$fm" | grep -q 'Discussion, ideation' && ok "description keeps non-build discussion direct" || bad "description missing discussion-only boundary"
-printf '%s\n' "$fm" | grep -q 'explicit direct or direkt always bypasses' && ok "description preserves direct/direkt overrides" || bad "description missing direct/direkt overrides"
-printf '%s\n' "$fm" | grep -q 'Do not auto-trigger for fixes' && ok "description keeps fixes direct by default" || bad "description missing direct-by-default fix boundary"
-[ -f "$ROOT/skills/kimiflow/agents/openai.yaml" ] && ok "Codex skill metadata exists" || bad "missing agents/openai.yaml"
-grep -q 'KIMIFLOW_PLUGIN_ROOT/hooks/resolve-review-gate.sh' "$SKILL" && ok "skill uses absolute plugin-root helper paths" || bad "skill does not use plugin-root helper paths"
-if grep -q '\.\./\.\./hooks/' "$SKILL"; then bad "skill still documents cwd-sensitive ../../hooks paths"; else ok "skill avoids cwd-sensitive ../../hooks paths"; fi
-grep -q -- '--project-map <quick|skip>' "$SKILL" && ok "Codex wrapper maps project-map invocation" || bad "Codex wrapper missing project-map invocation mapping"
-grep -q -- '--verify-feature <feature-or-path>' "$ROOT/SKILL.md" && ok "canonical verify-feature argument present" || bad "canonical verify-feature argument missing"
-grep -q -- '--verify-feature <feature-or-path>' "$SKILL" && ok "Codex wrapper maps verify-feature invocation" || bad "Codex wrapper missing verify-feature invocation mapping"
-grep -q 'launcher-status.sh' "$SKILL" && ok "Codex wrapper maps launcher status helper" || bad "Codex wrapper missing launcher status helper"
-grep -q 'Launcher / menu' "$ROOT/SKILL.md" && ok "canonical Launcher mode present" || bad "canonical Launcher mode missing"
-grep -q 'Launcher mode' "$ROOT/reference.md" && ok "canonical Launcher mode documented" || bad "canonical Launcher mode docs missing"
-grep -q 'Natural mode aliases' "$ROOT/SKILL.md" && ok "canonical natural mode aliases present" || bad "canonical natural mode aliases missing"
-grep -q 'Natural mode aliases' "$ROOT/reference.md" && ok "canonical natural mode aliases documented" || bad "canonical natural mode aliases docs missing"
-grep -q 'full|grill|plan|build|quick|review|audit|fix|release' "$ROOT/SKILL.md" && ok "canonical skill maps release alias" || bad "canonical skill missing release alias"
-grep -q 'full|grill|plan|build|quick|review|audit|fix|release' "$ROOT/phases/phase-0-setup.md" && ok "Phase 0 normalizes release alias" || bad "Phase 0 missing release alias"
-grep -q 'full|grill|plan|build|quick|review|audit|fix|release' "$SKILL" && ok "Codex wrapper maps natural mode aliases" || bad "Codex wrapper missing natural mode aliases"
-for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'kimiflow quick' 'kimiflow review' 'kimiflow audit' 'kimiflow fix' 'kimiflow release'; do
-  grep -q "$term" "$SKILL" && ok "Codex wrapper documents plain alias: $term" || bad "Codex wrapper missing plain alias: $term"
-done
-for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'kimiflow review' 'kimiflow audit' 'kimiflow fix' 'kimiflow quick' 'kimiflow release'; do
-  grep -q "$term" "$ROOT/README.md" && ok "README documents mode alias: $term" || bad "README missing mode alias: $term"
-done
-grep -q 'full.*does not create an approval stop' "$ROOT/SKILL.md" && ok "full mode follows material-risk decisions" || bad "full mode still forces approval"
-grep -q 'Contract-4 single final Product Intake after planning' "$ROOT/SKILL.md" && ok "canonical skill requires bounded intent interaction" || bad "canonical skill missing bounded intent interaction"
-grep -q 'one receipt-bound final product-flow confirmation' "$SKILL" && ok "Codex wrapper preserves single final intent interaction" || bad "Codex wrapper missing single final intent interaction"
-grep -q 'Intent Coverage Scan (Contract 4)' "$ROOT/reference.md" && ok "reference documents provenance-aware intent coverage" || bad "reference missing provenance-aware intent coverage"
-grep -q 'asks for exactly one confirmation' "$ROOT/README.md" && ok "README documents single final feature confirmation" || bad "README missing single final feature confirmation"
-grep -q 'git commit --only' "$ROOT/phases/phase-7-review-commit.md" && grep -q 'foreign staged' "$ROOT/phases/phase-7-review-commit.md" \
-  && ok "atomic commit isolates foreign staged paths" || bad "atomic commit foreign-staging isolation missing"
-grep -q 'Vault Pulse' "$ROOT/SKILL.md" && ok "canonical skill requires scope=large Vault Pulse semantics" || bad "canonical skill missing Vault Pulse"
-grep -q 'Vault Pulse' "$SKILL" && ok "Codex wrapper preserves scope=large Vault Pulse semantics" || bad "Codex wrapper missing Vault Pulse"
-grep -Eq 'Vault Pulse.*scope=large|scope=large.*Vault Pulse' "$ROOT/reference.md" && ok "reference documents scope=large Vault Pulse semantics" || bad "reference missing scope=large Vault Pulse semantics"
-grep -q 'Vault Pulse' "$ROOT/README.md" && ok "README documents scope=large Vault Pulse semantics" || bad "README missing Vault Pulse"
-if grep -q 'kimiflow grill.*no code' "$ROOT/reference.md" \
-  && grep -q 'kimiflow plan.*no code' "$ROOT/reference.md" \
-  && grep -q 'kimiflow review.*no code' "$ROOT/reference.md" \
-  && grep -q 'kimiflow audit.*no code' "$ROOT/reference.md"; then
-  ok "launcher documents no-code aliases"
-else
-  bad "launcher docs missing no-code alias rule"
-fi
-grep -q 'Resume safety check' "$ROOT/reference.md" && ok "resume safety check documented" || bad "resume safety check missing"
+echo "== retained managed-run compatibility checks =="
 if [ -x "$ROOT/hooks/launcher-status.sh" ] && bash -n "$ROOT/hooks/launcher-status.sh" 2>/dev/null; then ok "launcher status helper ok"; else bad "launcher status helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-launcher-status.sh" ] && bash -n "$ROOT/hooks/test-launcher-status.sh" 2>/dev/null; then ok "launcher status test ok"; else bad "launcher status test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/active-run.sh" ] && bash -n "$ROOT/hooks/active-run.sh" 2>/dev/null; then ok "active session helper ok"; else bad "active session helper missing/not-exec/bad"; fi
@@ -124,7 +29,7 @@ if [ -f "$ROOT/hooks/kimiflow_core/execution_control.py" ] \
   && [ -x "$ROOT/hooks/test-execution-control.sh" ] \
   && grep -q '"execution_control"' "$ROOT/phases/PHASES.json" \
   && grep -q 'Execution contract: 1' "$ROOT/phases/phase-0-setup.md" \
-  && grep -q 'Adaptive Execution contracts' "$SKILL"; then
+  && grep -q 'Adaptive Execution contracts' "$ROOT/references/legacy-codex.md"; then
   ok "Codex adaptive execution controller wiring"
 else
   bad "Codex adaptive execution controller wiring incomplete"
@@ -135,12 +40,12 @@ if [ -x "$ROOT/hooks/adapter-conformance.sh" ] \
   && [ -s "$ROOT/references/adapter-conformance-v1.schema.json" ] \
   && [ -s "$ROOT/references/code-intelligence-provider-v1.schema.json" ] \
   && grep -q 'kimiflow_status' "$ROOT/hooks/kimiflow_core/mcp_server.py" \
-  && grep -q 'five clean verified Canary outcomes' "$ROOT/README.md"; then
+  ; then
   ok "Codex provider-neutral MCP, conformance and code-intelligence wiring"
 else
   bad "Codex provider-neutral MCP, conformance or code-intelligence wiring incomplete"
 fi
-grep -q 'Project Map Bootstrap' "$ROOT/SKILL.md" && ok "canonical Project Map Bootstrap present" || bad "canonical Project Map Bootstrap missing"
+grep -q 'Project Map Bootstrap' "$ROOT/references/legacy-workflow.md" && ok "canonical Project Map Bootstrap present" || bad "canonical Project Map Bootstrap missing"
 grep -q 'FACTS.jsonl' "$ROOT/reference.md" && ok "project map evidence artifact documented" || bad "project map evidence artifact missing"
 if [ -x "$ROOT/hooks/project-map-status.sh" ] && bash -n "$ROOT/hooks/project-map-status.sh" 2>/dev/null; then ok "project map status helper ok"; else bad "project map status helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-project-map-status.sh" ] && bash -n "$ROOT/hooks/test-project-map-status.sh" 2>/dev/null; then ok "project map status test ok"; else bad "project map status test missing/not-exec/bad"; fi
@@ -230,22 +135,19 @@ if grep -q 'Conformance contract: 1' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'code-changing audit slice' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'release-discovered product-code/config repair' "$ROOT/reference.md" \
   && grep -q 'conformance gate closed' "$ROOT/hooks/kimiflow_core/active_run.py" \
-  && grep -q 'KIMIFLOW_PLUGIN_ROOT/hooks/conformance-gate.sh' "$SKILL" \
+  && grep -q 'KIMIFLOW_PLUGIN_ROOT/hooks/conformance-gate.sh' "$ROOT/references/legacy-codex.md" \
   && grep -q 'Implementation conformance (adaptive Phase 6)' "$ROOT/reference.md"; then
   ok "Codex adaptive implementation conformance wiring"
 else
   bad "Codex adaptive implementation conformance wiring incomplete"
 fi
-grep -q '^## First Principles' "$ROOT/README.md" \
-  && [ "$(grep -n '^## First Principles' "$ROOT/README.md" | cut -d: -f1)" -lt "$(grep -n '^## Install' "$ROOT/README.md" | cut -d: -f1)" ] \
-  && ok "Codex README exposes First Principles before Install" || bad "Codex README First Principles are missing or misplaced"
 if grep -q 'Flow schema: 5' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'Convergence contract: 1' "$ROOT/phases/phase-0-setup.md" \
   && grep -q 'kimiflow:convergence contract=1 risk=' "$ROOT/phases/phase-3-plan.md" \
   && grep -q 'plan-review-gate.sh seal.*--write' "$ROOT/phases/phase-4-review-approval.md" \
   && grep -q 'Codex planning context boundary' "$ROOT/phases/phase-1-clarify.md" \
   && grep -q 'Codex intake command economy' "$ROOT/phases/phase-1-clarify.md" \
-  && grep -q 'worker replaces parent planning' "$SKILL" \
+  && grep -q 'worker replaces parent planning' "$ROOT/references/legacy-codex.md" \
   && grep -q 'one fresh independent closeout verifier' "$ROOT/phases/phase-4-review-approval.md" \
   && grep -q 'dispatch A+B together' "$ROOT/phases/phase-4-review-approval.md" \
   && grep -q 'root-class-repeated' "$ROOT/hooks/resolve-review-gate.sh" \
@@ -271,7 +173,7 @@ grep -q 'frontend-quality-qa.md' "$ROOT/phases/phase-6-verify.md" && ok "Phase 6
 grep -Fq "\$KIMIFLOW_PLUGIN_ROOT/references/frontend-quality-standard.md" "$ROOT/phases/phase-2-understand.md" && ok "Phase 2 Codex frontend reference is plugin-rooted" || bad "Phase 2 Codex frontend reference is not plugin-rooted"
 grep -Fq "\$KIMIFLOW_PLUGIN_ROOT/references/frontend-quality-qa.md" "$ROOT/phases/phase-6-verify.md" && ok "Phase 6 Codex frontend QA is plugin-rooted" || bad "Phase 6 Codex frontend QA is not plugin-rooted"
 grep -q 'Frontend quality recovery: clean' "$ROOT/phases/phase-7-review-commit.md" && ok "Phase 7 frontend serialization present" || bad "Phase 7 frontend serialization missing"
-grep -q 'frontend-quality-gate.sh' "$SKILL" && ok "Codex wrapper maps frontend quality gate" || bad "Codex wrapper missing frontend quality gate"
+grep -q 'frontend-quality-gate.sh' "$ROOT/references/legacy-codex.md" && ok "Codex wrapper maps frontend quality gate" || bad "Codex wrapper missing frontend quality gate"
 [ "$(wc -c < "$ROOT/references/frontend-quality-standard.md")" -le 5000 ] && ok "standard frontend reference budget" || bad "standard frontend reference over budget"
 [ "$(wc -c < "$ROOT/references/frontend-quality-flagship.md")" -le 2500 ] && ok "flagship frontend reference budget" || bad "flagship frontend reference over budget"
 [ "$(wc -c < "$ROOT/references/frontend-quality-qa.md")" -le 5000 ] && ok "QA frontend reference budget" || bad "QA frontend reference over budget"
@@ -318,9 +220,9 @@ grep -q 'suggest-affected-sections.sh' "$ROOT/reference.md" && ok "canonical sug
 grep -q 'map-staleness-nudge.sh' "$ROOT/reference.md" && ok "canonical map staleness nudge helper documented" || bad "canonical map staleness nudge helper missing"
 grep -q -- 'refresh --changed' "$ROOT/reference.md" && ok "canonical auto delta refresh documented" || bad "canonical refresh --changed missing"
 grep -q 'index-symbols' "$ROOT/reference.md" && ok "canonical symbol index documented" || bad "canonical index-symbols missing"
-grep -q -- 'refresh --changed' "$ROOT/SKILL.md" && ok "canonical skill documents Phase-7 auto-refresh" || bad "canonical Phase-7 auto-refresh missing"
-grep -q 'suggest-affected-sections.sh' "$SKILL" && ok "Codex wrapper maps suggest-affected helper" || bad "Codex wrapper missing suggest-affected helper"
-grep -q 'map-staleness-nudge.sh' "$SKILL" && ok "Codex wrapper maps map staleness nudge helper" || bad "Codex wrapper missing map staleness nudge helper"
+grep -q -- 'refresh --changed' "$ROOT/references/legacy-workflow.md" && ok "canonical skill documents Phase-7 auto-refresh" || bad "canonical Phase-7 auto-refresh missing"
+grep -q 'suggest-affected-sections.sh' "$ROOT/references/legacy-codex.md" && ok "Codex wrapper maps suggest-affected helper" || bad "Codex wrapper missing suggest-affected helper"
+grep -q 'map-staleness-nudge.sh' "$ROOT/references/legacy-codex.md" && ok "Codex wrapper maps map staleness nudge helper" || bad "Codex wrapper missing map staleness nudge helper"
 grep -q 'current-state-gate.sh' "$ROOT/reference.md" && ok "canonical current-state gate helper documented" || bad "canonical current-state gate helper missing"
 grep -q 'discovery-gate.sh' "$ROOT/reference.md" && ok "canonical discovery gate helper documented" || bad "canonical discovery gate helper missing"
 grep -q 'Architecture contract: 1' "$ROOT/phases/phase-0-setup.md" \
@@ -355,19 +257,19 @@ for term in PRIVACY-CAPSULE.json 'lifecycle --write' 'lifecycle --restore' 'caps
   grep -q -- "$term" "$ROOT/reference.md" && ok "canonical memory lifecycle documented: $term" || bad "canonical memory lifecycle missing: $term"
 done
 grep -q 'active-run.sh' "$ROOT/reference.md" && ok "canonical active session helper documented" || bad "canonical active session helper missing"
-grep -q 'current-state-gate.sh' "$SKILL" && ok "Codex wrapper maps current-state gate helper" || bad "Codex wrapper missing current-state gate helper"
-grep -q 'discovery-gate.sh' "$SKILL" && ok "Codex wrapper maps discovery gate helper" || bad "Codex wrapper missing discovery gate helper"
-grep -q 'working-tree-gate.sh' "$SKILL" && ok "Codex wrapper maps working-tree gate helper" || bad "Codex wrapper missing working-tree gate helper"
-grep -q 'clarify-gate.sh' "$SKILL" && ok "Codex wrapper maps clarify gate helper" || bad "Codex wrapper missing clarify gate helper"
-grep -q 'plan-blocker-gate.sh' "$SKILL" && ok "Codex wrapper maps plan-blocker gate helper" || bad "Codex wrapper missing plan-blocker gate helper"
-grep -q 'plan-review-gate.sh' "$SKILL" && ok "Codex wrapper maps plan-review gate helper" || bad "Codex wrapper missing plan-review gate helper"
-grep -q 'red-green-gate.sh' "$SKILL" && ok "Codex wrapper maps red-green gate helper" || bad "Codex wrapper missing red-green gate helper"
-grep -q 'lsp-diagnostics.sh' "$SKILL" && ok "Codex wrapper maps local diagnostics helper" || bad "Codex wrapper missing local diagnostics helper"
-grep -q 'memory-router.sh' "$SKILL" && ok "Codex wrapper maps memory router helper" || bad "Codex wrapper missing memory router helper"
-grep -q 'active-run.sh' "$SKILL" && ok "Codex wrapper maps active session helper" || bad "Codex wrapper missing active session helper"
+grep -q 'current-state-gate.sh' "$ROOT/references/legacy-codex.md" && ok "Codex wrapper maps current-state gate helper" || bad "Codex wrapper missing current-state gate helper"
+grep -q 'discovery-gate.sh' "$ROOT/references/legacy-codex.md" && ok "Codex wrapper maps discovery gate helper" || bad "Codex wrapper missing discovery gate helper"
+grep -q 'working-tree-gate.sh' "$ROOT/references/legacy-codex.md" && ok "Codex wrapper maps working-tree gate helper" || bad "Codex wrapper missing working-tree gate helper"
+grep -q 'clarify-gate.sh' "$ROOT/references/legacy-codex.md" && ok "Codex wrapper maps clarify gate helper" || bad "Codex wrapper missing clarify gate helper"
+grep -q 'plan-blocker-gate.sh' "$ROOT/references/legacy-codex.md" && ok "Codex wrapper maps plan-blocker gate helper" || bad "Codex wrapper missing plan-blocker gate helper"
+grep -q 'plan-review-gate.sh' "$ROOT/references/legacy-codex.md" && ok "Codex wrapper maps plan-review gate helper" || bad "Codex wrapper missing plan-review gate helper"
+grep -q 'red-green-gate.sh' "$ROOT/references/legacy-codex.md" && ok "Codex wrapper maps red-green gate helper" || bad "Codex wrapper missing red-green gate helper"
+grep -q 'lsp-diagnostics.sh' "$ROOT/references/legacy-codex.md" && ok "Codex wrapper maps local diagnostics helper" || bad "Codex wrapper missing local diagnostics helper"
+grep -q 'memory-router.sh' "$ROOT/references/legacy-codex.md" && ok "Codex wrapper maps memory router helper" || bad "Codex wrapper missing memory router helper"
+grep -q 'active-run.sh' "$ROOT/references/legacy-codex.md" && ok "Codex wrapper maps active session helper" || bad "Codex wrapper missing active session helper"
 grep -q 'Existing feature check' "$ROOT/reference.md" && ok "canonical existing feature check documented" || bad "canonical existing feature check missing"
-grep -q 'Memory Router & Learning Loop' "$ROOT/SKILL.md" && ok "canonical Memory Router present" || bad "canonical Memory Router missing"
-grep -q 'code-review ensemble' "$ROOT/SKILL.md" && ok "canonical code-review ensemble present" || bad "canonical code-review ensemble missing"
+grep -q 'Memory Router & Learning Loop' "$ROOT/references/legacy-workflow.md" && ok "canonical Memory Router present" || bad "canonical Memory Router missing"
+grep -q 'code-review ensemble' "$ROOT/references/legacy-workflow.md" && ok "canonical code-review ensemble present" || bad "canonical code-review ensemble missing"
 grep -q 'Code-review ensemble' "$ROOT/reference.md" && ok "canonical code-review ensemble documented" || bad "canonical code-review ensemble docs missing"
 grep -q 'CANDIDATE <SEVERITY>' "$ROOT/reference.md" && ok "canonical review candidate format documented" || bad "canonical review candidate format missing"
 grep -q 'code-verified' "$ROOT/reference.md" && ok "canonical promoted code-review findings documented" || bad "canonical promoted code-review findings missing"
@@ -395,7 +297,7 @@ grep -Fq 'does not suppress a later named Discovery/Reference Strategy Fit gap' 
   && ok "canonical freshness and Reference Strategy Fit compose" || bad "canonical freshness suppresses Reference Strategy Fit"
 grep -Fq 'Explicit prior-work cue override' "$ROOT/phases/phase-2-understand.md" \
   && grep -Fq 'Explicit prior-work cue override' "$ROOT/reference.md" \
-  && grep -Fq 'prior-work cue' "$SKILL" \
+  && grep -Fq 'prior-work cue' "$ROOT/references/legacy-codex.md" \
   && ok "canonical prior-fix cue override reaches Codex" || bad "canonical prior-fix cue override missing in Codex"
 grep -Fq 'MR recall --targeted --strategies --query-file <PROBLEM.md> --max 5 --write .kimiflow/<slug>/RECALL.md' "$ROOT/phases/phase-2-understand.md" \
   && grep -Fq 'replaces the default broad recall' "$ROOT/reference.md" \
@@ -411,7 +313,7 @@ grep -q 'Clean-tree verification checkpoint' "$ROOT/phases/phase-5-build.md" \
   && grep -q 'STATE-backed `started_head`' "$ROOT/phases/phase-7-review-commit.md" \
   && ok "schema4_clean_tree_verification_checkpoint" || bad "clean-tree verification checkpoint/review basis missing"
 grep -Fq '${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/hooks/test-weakening-scan.sh' "$ROOT/phases/phase-5-build.md" \
-  && grep -Fq '$KIMIFLOW_PLUGIN_ROOT/hooks/test-weakening-scan.sh' "$SKILL" \
+  && grep -Fq '$KIMIFLOW_PLUGIN_ROOT/hooks/test-weakening-scan.sh' "$ROOT/references/legacy-codex.md" \
   && ok "Phase 5 test-weakening scan is plugin-rooted for Codex" || bad "Phase 5 test-weakening scan is not plugin-rooted for Codex"
 grep -q 'git ls-files --others --exclude-standard' "$ROOT/phases/phase-7-review-commit.md" \
   && ok "phase7_named_untracked_review_basis" || bad "Phase 7 review basis omits named untracked files"
@@ -423,9 +325,9 @@ grep -q 'plan seal records and binds that transition mechanically' "$ROOT/refere
 grep -q 'kimiflow:strategy gate=<plan|code>' "$ROOT/reference.md" && ok "canonical strategy baseline documented" || bad "canonical strategy baseline missing"
 grep -Eq -- 'await-user .*--kind <kind>' "$ROOT/reference.md" && ok "canonical typed user pauses documented" || bad "canonical typed user pauses missing"
 grep -q 'Autonomous recovery contract' "$ROOT/reference.md" && ok "canonical autonomous review recovery documented" || bad "canonical autonomous review recovery missing"
-grep -q 'Minimum-complete' "$ROOT/SKILL.md" && ok "canonical minimum-complete rule loaded" || bad "canonical minimum-complete rule missing"
+grep -q 'Minimum-complete' "$ROOT/references/legacy-workflow.md" && ok "canonical minimum-complete rule loaded" || bad "canonical minimum-complete rule missing"
 grep -q 'Scope size alone never adds a second planner' "$ROOT/reference.md" && ok "canonical dual-plan is conditional" || bad "canonical conditional dual-plan guard missing"
-grep -q 'Review Ensemble' "$SKILL" && ok "Codex wrapper maps code-review ensemble" || bad "Codex wrapper missing code-review ensemble mapping"
+grep -q 'Review Ensemble' "$ROOT/references/legacy-codex.md" && ok "Codex wrapper maps code-review ensemble" || bad "Codex wrapper missing code-review ensemble mapping"
 grep -q 'potentially_stale' "$ROOT/reference.md" && ok "per-section staleness documented" || bad "per-section staleness missing"
 grep -q 'phase2_depth' "$ROOT/reference.md" && ok "adaptive map coverage depth documented" || bad "adaptive map coverage depth missing"
 for term in MEMORY.md USER.md LEARNINGS.jsonl USER.jsonl MEMORY-INDEX.json MEMORY-USAGE.json RECALL.sqlite RECALL.md RUN-HISTORY.json VAULT-PROVIDER.json VAULT-PREFETCH.md VAULT-SYNC.md SKILL-DRAFTS PENDING-PROPOSALS.md PROPOSALS.jsonl LEARNING-REVIEW.md review-run verify-run 'history --query' metrics 'provider status' 'provider health' 'provider setup' 'provider detect' 'provider sync' 'Vault Pulse' 'vault-mcp-setup.sh' 'vault-mcp-open-terminal.sh' '--interactive' bearer_token_env_var headersHelper 'index --write' 'consolidate --write' 'propose --write' '--approve' '--reject' '--apply' evidence_fingerprints 'Learning quality gate' 'Source freshness gate' provider_sync_pending provider_detected_unconfigured provider_auth_required provider_auth_failed connected_local_only authenticated auth_failed; do
@@ -482,13 +384,12 @@ for schema in security-scan-manifest-v1.schema.json security-coverage-v1.schema.
     bad "Codex security schema missing/invalid: $schema"
   fi
 done
-grep -q 'kimiflow security scan' "$ROOT/skills/kimiflow/SKILL.md" \
+grep -q 'kimiflow security scan' "$ROOT/references/legacy-codex.md" \
   && grep -q 'kimiflow security diff' "$ROOT/reference.md" \
   && grep -q 'kimiflow security deep' "$ROOT/reference.md" \
   && grep -q 'kimiflow security ci-artifact' "$ROOT/reference.md" \
   && ok "Codex actionable and deep security contracts documented" || bad "Codex security docs missing"
-grep -q 'embedded plugin remains the default' "$ROOT/README.md" \
-  && grep -q 'same `.kimiflow/` state' "$ROOT/README.md" \
+grep -q 'legacy-workflow.md' "$ROOT/references/optional-tools.md" \
   && ok "smoke_runner_surface_visible" || bad "embedded-first runner docs missing"
 echo "== unified local run control plane =="
 for rel in hooks/run-bridge.sh hooks/test-run-bridge.sh; do
@@ -497,7 +398,6 @@ done
 PYTHONPATH="$ROOT/hooks" python3 -c 'from kimiflow_core import phase_context, readiness, run_bridge, scorecard; assert run_bridge.RECEIPT_NAME == "RUN-BRIDGE.json"; assert scorecard.SCORECARD_NAME == "RUN-SCORECARD.json"; assert phase_context.SHADOW_NAME == "PHASE-CONTEXT-SHADOW.json"' 2>/dev/null \
   && ok "Codex unified run control-plane modules import" || bad "Codex unified run control-plane modules unavailable"
 grep -q 'Unified local run control plane' "$ROOT/reference.md" \
-  && grep -q 'run-bridge.sh' "$ROOT/README.md" \
   && ok "Codex unified run control-plane contract documented" || bad "Codex unified run control-plane docs missing"
 INSTALLER="$ROOT/hooks/install-codex-hooks.sh"
 if [ -x "$INSTALLER" ] && bash -n "$INSTALLER" 2>/dev/null; then ok "installer script ok: hooks/install-codex-hooks.sh"; else bad "installer script missing/not-exec/bad"; fi

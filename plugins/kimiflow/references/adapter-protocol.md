@@ -23,7 +23,9 @@ mandatory capabilities set to `true`: `files`, `shell`, `tests`, `resume`, and `
 Optional v1 features are advertised under `features` and are off when absent:
 
 - `workflow_context`: Kimiflow sends transient canonical skill, phase-manifest, and bridge locations. The host
-  loads the workflow; the model does not need a native `$kimiflow` command.
+  loads the workflow; the model does not need a native `$kimiflow` command. The v1 `skill` path remains
+  `SKILL.md`: this entry dispatches supplied managed context to `references/legacy-workflow.md`, including
+  recovery before ACTIVE_RUN exists. Hosts must allow its referenced installed resources, as for phase/reference loading.
 - `model_roles`: the host accepts abstract `top`, `balanced`, `cheap`, and `cross_family_top` mappings. Model and
   provider IDs remain host configuration, not Kimiflow policy.
 - `adaptive_model_routes`: requires `model_roles`; the host additionally accepts configured evaluation
