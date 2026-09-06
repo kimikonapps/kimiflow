@@ -1,6 +1,6 @@
 {
   "name": "@kimiflow/pi",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Minimal delivery support for Pi using native agent tools.",
   "type": "module",
   "license": "MIT",

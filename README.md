@@ -17,6 +17,13 @@ The public release history starts with **0.5.0**.
 GPT-6 Astra, Fable 5.1 and local models use the same agreement. Constrained models can receive smaller
 coherent tasks and exact commands. Kimiflow does not select a paid fallback or assume local means weak.
 
+## Building features
+
+Start with an idea such as “I want X so that Y.” The agent turns it into a short brief, checks the
+largest uncertainty early and delivers a usable end-to-end slice for larger features. Completion
+combines technical checks with a concrete user scenario. See the [feature guide](references/feature-work.md).
+An agreed five-feature pilot can record outcomes and feedback locally; it creates no approval gate.
+
 ## Use
 
 Invoke `/kimiflow <task>` in Claude Code or `$kimiflow <task>` in Codex. Pi loads the same agreement.

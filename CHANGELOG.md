@@ -6,6 +6,13 @@ The public release history starts at **0.5.0**. Earlier development artifacts ar
 
 _No unreleased changes._
 
+## 0.5.1
+
+Small feature briefs, early usable results and lightweight feedback for better feature delivery.
+
+- Add a short feature brief, early usable slices and explicit user-scenario acceptance.
+- Provide an optional local five-feature results table without new workflow gates.
+
 ## 0.5.0
 
 Initial release of the minimal Kimiflow working agreement for coding agents.

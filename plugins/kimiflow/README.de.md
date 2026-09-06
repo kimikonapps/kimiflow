@@ -14,6 +14,14 @@ Kimiflow nutzt deine vorhandenen Werkzeuge. Kein API-Key und kein neuer Dienst s
 Astra, Fable 5.1 und lokale Modelle verwenden dieselbe Vereinbarung; bei begrenztem Kontext helfen
 kleinere Aufgaben und präzise Befehle. Die öffentliche Versionsreihe beginnt mit **0.5.0**.
 
+## Features gemeinsam bauen
+
+„Ich möchte X, damit Y“ reicht als Einstieg. Der Agent ergänzt daraus einen kurzen Auftrag, prüft die
+größte Unsicherheit früh und liefert bei größeren Features zuerst einen benutzbaren Gesamtablauf.
+Zur Abnahme gehören technische Checks und ein konkreter Nutzerablauf. Die [Feature-Anleitung](references/feature-work.md)
+enthält die Vorlage und eine lokale Ergebnistabelle für einen vereinbarten Pilot mit fünf Features.
+Daraus entsteht keine zusätzliche Freigabepflicht.
+
 ## Nutzung und Installation
 
 `/kimiflow <Auftrag>` in Claude Code oder `$kimiflow <Auftrag>` in Codex. Pi lädt dieselben Grundregeln.

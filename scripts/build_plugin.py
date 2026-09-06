@@ -16,6 +16,7 @@ RUNTIME_FILES = (
     '.claude-plugin/plugin.json', '.codex-plugin/plugin.json', 'package.json',
     'SKILL.md', 'skills/kimiflow/SKILL.md', 'skills/kimiflow/agents/openai.yaml',
     'hosts/pi/skills/kimiflow/SKILL.md', 'scripts/check_change.py',
+    'references/feature-work.md',
     'README.md', 'README.de.md', 'MIGRATION.md', 'COMPATIBILITY.md', 'LICENSE',
 )
 MANIFEST = 'RUNTIME-FINGERPRINT.json'

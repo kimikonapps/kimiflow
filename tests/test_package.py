@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 import tempfile
 import unittest
@@ -120,6 +121,15 @@ class PackageTests(unittest.TestCase):
         shared = (self.root / 'SKILL.md').read_text()
         self.assertLess(len(shared.encode()), 4000)
         self.assertTrue((self.root / 'MIGRATION.md').is_file())
+
+    def test_installed_skill_references_are_packaged(self):
+        build(self.root)
+        target = self.root / 'plugins' / 'kimiflow'
+        for relative in ('SKILL.md', 'skills/kimiflow/SKILL.md', 'hosts/pi/skills/kimiflow/SKILL.md'):
+            skill = target / relative
+            for link in re.findall(r'\]\(([^)#]+)(?:#[^)]*)?\)', skill.read_text()):
+                if '://' not in link:
+                    self.assertTrue((skill.parent / link).is_file(), (relative, link))
 
     def test_exported_helper_runs_without_maintainer_modules(self):
         build(self.root)

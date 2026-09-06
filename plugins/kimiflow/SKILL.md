@@ -17,6 +17,10 @@ Inspect current code before proposing a replacement. Reuse existing authorizatio
 missing fact or consequence that materially changes the result. Planning and implementation depth are
 up to the agent. An empty invocation asks for the task; it does not start a project scan.
 
+For feature work, use [the short feature guide](references/feature-work.md): turn the user's idea
+into a brief, test the largest uncertainty early, and deliver a usable slice before expanding it.
+Use the existing conversation or host plan; this adds no approval gate or required artifact.
+
 Preserve unrelated work and staging. Use host worktrees or normal Git isolation when needed; Kimiflow
 owns no worktree fleet. Keep the user's model and effort. Local models may need smaller coherent tasks,
 precise commands and compact context, not a paid fallback or an additional workflow.

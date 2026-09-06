@@ -1,15 +1,15 @@
 {
-  "file_count": 13,
+  "file_count": 14,
   "files": [
     {
       "bytes": 228,
       "path": ".claude-plugin/plugin.json",
-      "sha256": "9fd43c1a5f8861c90ddeda403e1b0ebe767ca0a4524b11b7369f2c43f4a40189"
+      "sha256": "f21b69bc5e29cca181096b07ec94633df936a4d1361a3736e9ca280f0d9b360b"
     },
     {
       "bytes": 1459,
       "path": ".codex-plugin/plugin.json",
-      "sha256": "d7194527ca5566123f670dc047467472f8c44f9e1ba614f5923c725d31772318"
+      "sha256": "5aba278494494413f5439a93024951bbe7d799112054e60204ebcca3fd6dfe68"
     },
     {
       "bytes": 788,
@@ -27,19 +27,19 @@
       "sha256": "e55a0ec48ed221ad8523e960699b35f4daf41b70e35cc7608be18ff4d844be44"
     },
     {
-      "bytes": 2736,
+      "bytes": 3256,
       "path": "README.de.md",
-      "sha256": "7d9999ec9042f1f8dbd29a8f5adb9b30581457dafeb74763b3c52488340807d7"
+      "sha256": "d487b436459d2800b61a5ad498e4cc1419f2d7b76d19ad8e3b2deccd044c2b29"
     },
     {
-      "bytes": 3918,
+      "bytes": 4351,
       "path": "README.md",
-      "sha256": "7e60690143a594705160f83d7bc577f316c1b50dc55257574f049fb3305d3fbe"
+      "sha256": "004431dcb79c0853d4d18fc917b47e54ce7dc4379999b9b4ca68d046ad11c406"
     },
     {
-      "bytes": 3481,
+      "bytes": 3771,
       "path": "SKILL.md",
-      "sha256": "d2b50d00e0e075f338196cc94dd9483adc62e8e7f7116acde09213ac276636ea"
+      "sha256": "989741660c66c747dec7108ed45be09f8bfc2d47f4fd90413452225259eefb80"
     },
     {
       "bytes": 642,
@@ -49,7 +49,12 @@
     {
       "bytes": 241,
       "path": "package.json",
-      "sha256": "e54fa22f1d0fa86c370cd2b71938784dcd1bf4637f005e3f2cfa6ad64a1f426e"
+      "sha256": "ffecfdf61f6323a528cd427d362a71d430914146805b31d56f3c481ce09f4d0a"
+    },
+    {
+      "bytes": 3022,
+      "path": "references/feature-work.md",
+      "sha256": "b35f6295a8e631bb8680a2d672e855888e5874c197f9d04085d0aaf0717c1441"
     },
     {
       "bytes": 8235,
@@ -67,7 +72,7 @@
       "sha256": "57dc23b3fd3371622618b47eb90eb9f4d5a655114c33b8fe7a47aacb7930bbec"
     }
   ],
-  "runtime_fingerprint": "sha256:997a318329bed64a0d03a11698d9fee5248dd34101ba11323c107b192646e065",
+  "runtime_fingerprint": "sha256:43dad27a6205389390667e6a7fe1a1c65b3bcd037d9be635b2455fa6f62a462d",
   "schema_version": 1,
-  "version": "0.5.0"
+  "version": "0.5.1"
 }
