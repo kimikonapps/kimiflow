@@ -36,6 +36,30 @@ def valid_receipt():
 
 
 class EvalReceiptCase(unittest.TestCase):
+    def setUp(self):
+        # Receipts bind immutable Git blobs. A unit fixture must not accidentally
+        # change its meaning when HEAD's real workflow headings are redesigned.
+        self.repo = tempfile.TemporaryDirectory(prefix="kimiflow-receipt-")
+        self.addCleanup(self.repo.cleanup)
+        root = self.repo.name
+        subprocess.run(["git", "init", "-q", root], check=True)
+        os.makedirs(os.path.join(root, "evals", "scenarios"))
+        files = {
+            "SKILL.md": "---\nname: fixture\n---\n# Workflow\n## Core principles (apply in ALL phases)\nRequire evidence.\n",
+            "reference.md": "# Reference\n## Review rubric (Phase 4 plan-gate · Phase 7 code-review)\nVerify material findings.\n" + "\n" * 24 + "```text\nexample only\n```\n",
+            "evals/scenarios/03-plan-gate-cap.md": "# Plan gate fixture\nContinue the bounded review.\n",
+            "evals/scenarios/26-workspace-aware-recall.md": "# Recall fixture\nUse current source.\n",
+        }
+        for relative, content in files.items():
+            with open(os.path.join(root, relative), "w", encoding="utf-8") as handle:
+                handle.write(content)
+        subprocess.run(["git", "-C", root, "add", "--", *files], check=True)
+        subprocess.run(["git", "-C", root, "-c", "user.name=Fixture", "-c",
+                        "user.email=fixture@example.invalid", "commit", "-qm", "receipt fixture"], check=True)
+        patch = mock.patch.object(eval_receipt, "_repo_root", return_value=root)
+        patch.start()
+        self.addCleanup(patch.stop)
+
     def test_accepts_consistent_majority_pass(self):
         result = eval_receipt.validate(valid_receipt())
         self.assertEqual(result["verdict"], "PASS")

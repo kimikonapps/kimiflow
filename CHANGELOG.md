@@ -24,6 +24,8 @@ Lean default delivery with verified checks and preserved managed-run compatibili
 
 ### Fixed
 
+- Isolate behavioral-receipt test sources from the current workflow headings so release commits do not invalidate their fixtures.
+
 - Reject and stop surviving POSIX check-process groups instead of reporting a completed verification when only the launcher exited.
 - Keep headless start, interruption and transport recovery on the managed Legacy workflow while preserving the adapter-v1 entry contract.
 
