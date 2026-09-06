@@ -1,15 +1,12 @@
 {
   "name": "@kimiflow/pi",
-  "version": "0.4.3",
-  "description": "Kimiflow workflow for Pi with optional stock FirstMate crew orchestration.",
+  "version": "0.5.0",
+  "description": "Minimal delivery support for Pi using native agent tools.",
   "type": "module",
   "license": "MIT",
   "pi": {
     "skills": [
       "./hosts/pi/skills/kimiflow"
-    ],
-    "extensions": [
-      "./hosts/pi/extensions/kimiflow-crew.js"
     ]
   }
 }

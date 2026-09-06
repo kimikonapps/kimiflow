@@ -1,64 +1,12 @@
 # Codebase
 
-> Managed-workflow compatibility documentation. Fresh tasks follow the short default in `SKILL.md`.
-> The phase, memory and reviewer contracts below apply only to existing Flow-schema runs or
-> explicitly requested managed tools; they are not mandatory for ordinary new work.
+- `docs/render/kimiflow/`: editable shared skill and host wrapper sources.
+- `SKILL.md`, `skills/kimiflow/`, `hosts/pi/skills/kimiflow/`: generated installed skills.
+- `scripts/check_change.py`: optional runtime verifier.
+- `scripts/render_skills.py`, `scripts/build_plugin.py`: maintainer-only generation and package checks.
+- `tests/`: behavior tests for the surviving verifier and packaging boundaries.
+- `plugins/kimiflow/`: generated runtime, never edited separately.
+- `evals/`: simple comparative-evaluation guidance and preserved historical pilot evidence.
+- `MIGRATION.md`: removed interfaces and handling of old runs with pinned 0.4.3.
 
-
-Diese Datei ist eine publish-safe Orientierung fuer die Kimiflow-Codebase. Konkrete Analyse-Findings und
-Verbesserungs-Backlogs liegen lokal unter `.kimiflow/project/` und werden nicht als Repo-Doku publiziert.
-
-## Top-Level-Struktur
-
-| Pfad | Rolle |
-|---|---|
-| `SKILL.md` | Canonical Orchestrator fuer Claude Code: Modi, Scope-Gate, Project Map und Phasen 0-7. |
-| `reference.md` | Ausfuehrliche Regeln fuer Interviews, Recherche, Review, Verification, Commit-Hygiene und Repo-Doku. |
-| `.claude-plugin/` | Claude-Code-Manifest und Marketplace-Metadaten. |
-| `.codex-plugin/` | Codex-Plugin-Manifest mit Interface-Texten und Skill-Verweis. |
-| `.agents/plugins/` | Repo-lokaler Codex-Marketplace-Eintrag. |
-| `skills/kimiflow/` | Codex-Adapter-Skill und Agent-Metadaten. |
-| `hooks/` | Gemeinsame Shell-Skripte fuer Gates, Installer, Scanner und Tests. |
-| `docs/` | Publish-safe Repo-Doku, Demo-Material und Design-Kontext. |
-| `examples/` | Beispielhafte Kimiflow-Laeufe. |
-| `evals/` | Behavioural Evals fuer Release-Kalibrierung ausserhalb der CI. |
-
-## Einstiegspunkte
-
-- Claude Code: `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `SKILL.md`,
-  `hooks/hooks.json`.
-- Codex: `.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`, `skills/kimiflow/SKILL.md`,
-  `skills/kimiflow/agents/openai.yaml`, `hooks/install-codex-hooks.sh`.
-- Shared runtime: `hooks/commit-secret-gate.sh`, `hooks/state-gate.sh`, `hooks/test-gate.sh`,
-  `hooks/resolve-review-gate.sh`, `hooks/project-map-status.sh`, `hooks/memory-router.sh`.
-- Optional Pi boundary: root `package.json`, `hosts/pi/skills/kimiflow/SKILL.md` and the dormant
-  `hosts/pi/extensions/kimiflow-crew.js`. Stock FirstMate is a separate, unmodified installation and owns
-  Captain/Main/Crew worktrees, Herdr endpoints, status, recovery, delivery and Calm. Kimiflow only enforces the
-  role/action boundary and isolated Homes. The release mirror under
-  `plugins/kimiflow/` is generated, not edited independently.
-
-## Wo Aenderungen typischerweise landen
-
-| Vorhaben | Primaere Dateien |
-|---|---|
-| Workflow oder Phasenlogik aendern | `SKILL.md`, `reference.md` |
-| Project Intelligence erweitern | `reference.md`, `hooks/project-map-status.sh`, `hooks/test-project-map-status.sh` |
-| Memory/Recall/Learning Loop erweitern | `reference.md`, `hooks/memory-router.sh`, `hooks/test-memory-router.sh`, `hooks/launcher-status.sh` |
-| Codex-Plugin-Darstellung verbessern | `.codex-plugin/plugin.json`, `skills/kimiflow/agents/openai.yaml`, README-Codex-Abschnitt |
-| Claude-Plugin-Darstellung verbessern | `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, README-Claude-Abschnitt |
-| Hook-Verhalten aendern | Passendes `hooks/*.sh`, passendes `hooks/test-*.sh`, Smoke-Tests |
-| Pi-/FirstMate-Grenze aendern | `hosts/pi/extensions/kimiflow-crew.js`, `hosts/pi/skills/kimiflow/SKILL.md`, `hosts/pi/tests/kimiflow-crew.test.mjs`, `hooks/test-firstmate-integration.sh`, README und COMPATIBILITY |
-| Release-Doku aktualisieren | `CHANGELOG.md`, `COMPATIBILITY.md`, `README.md` |
-
-## Lokale Artefakte
-
-Kimiflow legt Arbeitszustand und Projektkarten unter `.kimiflow/` ab. Dieses Verzeichnis ist absichtlich in
-`.gitignore`, weil es lokale Analyse, Findings und projektspezifische Memory enthaelt. Wenn
-Informationen ins Repo gehoeren, werden sie kuratiert in `docs/` oder README/CHANGELOG/COMPATIBILITY
-uebernommen.
-
-## Repo-Doku-Regel
-
-Oeffentliche Repo-Doku darf Architektur, Bedienung, Teststrategie und stabile Designentscheidungen erklaeren.
-Sie soll keine ungepruefte Fehlerliste, internen Analyse-Backlog oder sensible Schwachstellenbeschreibung
-enthalten. Solche Punkte bleiben lokal und werden ueber separate Fix-Laeufe abgearbeitet.
+No code reads or writes `.kimiflow/` as a managed control plane. Existing user data stays local.

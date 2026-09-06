@@ -1,7 +1,7 @@
 {
   "name": "kimiflow",
-  "version": "0.4.3",
-  "description": "Lean verified delivery for Codex, Astra and local models, with optional managed-run compatibility.",
+  "version": "0.5.0",
+  "description": "Minimal delivery support: a short working agreement, native checks and optional continuation notes.",
   "author": {
     "name": "kimikon",
     "url": "https://github.com/kimikonapps"
@@ -11,23 +11,15 @@
   "license": "MIT",
   "keywords": [
     "workflow",
-    "quality-gates",
-    "tdd",
     "code-review",
-    "bug-fix",
-    "project-intelligence",
-    "memory",
-    "codebase-analysis",
-    "architecture",
-    "refactoring",
-    "codex"
+    "verification",
+    "coding"
   ],
   "skills": "./skills/",
-  "hooks": "./hooks/hooks.json",
   "interface": {
     "displayName": "kimiflow",
-    "shortDescription": "Lean feature/fix delivery, current-source checks and optional project tools",
-    "longDescription": "Understand the request, build with the selected model and native host tools, then verify current source and deliver. Fresh work needs no routine confirmation, phase ledger, fixed reviewer ensemble or memory write. Existing managed runs resume with their pinned gates. Optional project intelligence, repo docs, findings, memory, security and release tools load only on request. No automatic paid-provider fallback.",
+    "shortDescription": "Minimal delivery support using native agent tools",
+    "longDescription": "A short working agreement, project-native verification and optional continuation notes. Uses the selected model and host tools. No managed engine, hooks, memory platform, fleet or automatic provider routing. Existing managed runs remain pinned to 0.4.3.",
     "developerName": "kimikon",
     "category": "Developer Tools",
     "capabilities": [
@@ -39,10 +31,7 @@
     "privacyPolicyURL": "https://github.com/kimikonapps/kimiflow",
     "termsOfServiceURL": "https://github.com/kimikonapps/kimiflow/blob/main/LICENSE",
     "defaultPrompt": [
-      "Use Kimiflow to implement this feature and verify it",
-      "Use Kimiflow to fix this bug with regression evidence",
-      "Open Kimiflow and show project status",
-      "Resume the existing Kimiflow task"
+      "Use Kimiflow to implement this task and verify the result"
     ],
     "brandColor": "#1F6FEB",
     "screenshots": []

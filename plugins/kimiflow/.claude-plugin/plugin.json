@@ -1,7 +1,7 @@
 {
   "name": "kimiflow",
-  "description": "Lean feature and bug-fix delivery using the selected model: understand, build, verify. No required phase ledger, reviewer ensemble or memory writes for new work. Project intelligence, repo docs, findings and managed release tools remain optional.",
-  "version": "0.4.3",
+  "description": "Minimal delivery support: a short working agreement, native checks and optional continuation notes.",
+  "version": "0.5.0",
   "license": "MIT",
   "author": {
     "name": "kimikon"

@@ -2,7 +2,7 @@
   "name": "kimiflow",
   "interface": {
     "displayName": "kimiflow",
-    "shortDescription": "Lean feature/fix delivery and optional project tools"
+    "shortDescription": "Minimal delivery support using native agent tools"
   },
   "plugins": [
     {
@@ -19,7 +19,7 @@
         ]
       },
       "category": "Developer Tools",
-      "description": "Lean feature/fix delivery; optional project intelligence, repo docs, findings and managed runs."
+      "description": "A short working agreement, native verification and optional continuation notes."
     }
   ]
 }

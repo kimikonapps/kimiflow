@@ -8,6 +8,26 @@ Versions before 0.4.0 were internal development snapshots. **0.4.0 is the first 
 
 _No unreleased changes._
 
+## 0.5.0
+
+Minimal delivery support with native tools; managed 0.4 clients remain pinned to 0.4.3.
+
+### Changed
+
+- Remove the managed engine, hooks, model/review routing, memory platform, Fleet, headless/MCP adapters,
+  FirstMate extension and project-release machinery from source and the shipped package.
+- Keep a short shared working agreement, thin native-host wrappers, an optional stateless check helper
+  and advisory continuation notes. Native project checks are the default.
+- Replace the old test/control infrastructure with direct behavior tests and an explicit package allowlist.
+- Preserve historical pilot evidence and describe a simple native-versus-core evaluation protocol.
+- Existing run/memory/worktree data and installed 0.4.3 runtimes are untouched. Managed interfaces are
+  intentionally incompatible with 0.5; finish old runs with the pinned 0.4.3 release before upgrading.
+
+### Fixed
+
+- Validate render source and destination paths before any write; reject symlink traversal and use unique temporary files.
+
+
 ## 0.4.3
 
 Lean default delivery with verified checks and preserved managed-run compatibility.
