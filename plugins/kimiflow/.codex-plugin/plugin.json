@@ -19,7 +19,7 @@
   "interface": {
     "displayName": "kimiflow",
     "shortDescription": "Minimal delivery support using native agent tools",
-    "longDescription": "A short working agreement, project-native verification and optional continuation notes. Uses the selected model and host tools. No managed engine, hooks, memory platform, fleet or automatic provider routing. Existing managed runs remain pinned to 0.4.3.",
+    "longDescription": "A short working agreement, project-native verification and optional continuation notes. Uses the selected model and host tools. No managed engine, hooks, memory platform, fleet or automatic provider routing. Development-era managed runs require their original runtime; see compatibility notes.",
     "developerName": "kimikon",
     "category": "Developer Tools",
     "capabilities": [

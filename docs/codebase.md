@@ -7,6 +7,6 @@
 - `tests/`: behavior tests for the surviving verifier and packaging boundaries.
 - `plugins/kimiflow/`: generated runtime, never edited separately.
 - `evals/`: simple comparative-evaluation guidance and preserved historical pilot evidence.
-- `MIGRATION.md`: removed interfaces and handling of old runs with pinned 0.4.3.
+- `MIGRATION.md`: handling of existing development installations.
 
 No code reads or writes `.kimiflow/` as a managed control plane. Existing user data stays local.

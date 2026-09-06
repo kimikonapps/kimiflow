@@ -1,33 +1,23 @@
-# Moving from 0.4.3 to the minimal core
+# Compatibility with development installations
 
-0.5 removes the managed workflow rather than maintaining two engines. It is a breaking change for
-headless/stdio/MCP clients, FirstMate crews and users of Kimiflow's Fleet, memory and release commands.
-New work uses native agent tools, project tests and optional plain continuation notes.
+The public release series starts at 0.5.0. Earlier development releases and version tags have been
+removed from the public release list. Existing Git history and local user data are retained.
 
-## Existing work comes first
+## Existing managed work
 
-- Finish an active Flow-schema run using its existing **0.4.3** installation before upgrading that host.
-  Keep its project checkout, `.kimiflow/` data and worktrees intact. Do not convert its state into a
-  successful run or copy it into the new notes format as an implicit migration.
-- The immutable [0.4.3 release](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.4.3)
-  retains the old runtime ZIP and its verified update manifest. The Git tag `kimiflow--v0.4.3` also
-  preserves the old source, commands and documentation. Recover a missing old runtime from that version;
-  do not point an active run at the new source checkout.
-- This change does not modify installed caches, global hook registrations, `.kimiflow/` data,
-  `~/.kimiflow/` memory, external Vault data or existing worktrees. Their lifecycle remains with the old
-  runtime and the user. The repository's historical plans are available at the old Git tag.
+Some development installations used Flow-schema runs, managed adapters, hooks, memory or worktree
+controllers. The public core does not implement those interfaces. Do not reinterpret their state as
+new continuation notes, mark them complete without evidence, or discard their data.
 
-## Removed interfaces
+Finish such work with its original installation. If that runtime is missing, its last development
+source is preserved at commit `c0849d69985074e9a8a7d5e5d5fac2cdd2f824b2` in this repository's history.
+Use a separate checkout of that exact commit for recovery; do not overwrite the current project or
+assume a deleted release/tag is still downloadable. Applications requiring the old adapter-v1 or
+managed update-v1 contracts must not automatically switch to the public core.
 
-There is no `kimiflow run`, stdio adapter/MCP server, Fleet controller, memory router, project-map engine,
-security engine, project-release engine, phase gate or FirstMate extension in 0.5. The adapter-v1 and
-managed update-v1 contracts belong to 0.4.3; applications requiring them must stay pinned there.
-Do not auto-upgrade a managed host to 0.5 merely because its version number is higher.
+Keep project checkouts, `.kimiflow/` state, `~/.kimiflow/` memory, external Vault data and worktrees intact.
+After old work is finished, remove only its obsolete hook/CLI registrations through that installation's
+documented procedure. Never clear unrelated host hooks. The public plugin registers no hooks or services.
 
-The new plugin registers no hooks. If old manually installed Kimiflow hooks or CLI wrappers remain,
-finish their runs first, then remove only those entries through the old version's documented uninstall
-or migration procedure. Never clear unrelated host hooks or use a missing command as evidence of success.
-
-The optional check helper moved from `hooks/check-change.sh` to
-`python3 <installed-root>/scripts/check_change.py`. It is no longer a compulsory wrapper around project
-checks. No automatic state migration, remote fallback or legacy runtime is bundled.
+The public check helper is `python3 <installed-root>/scripts/check_change.py`. It is optional and does
+not migrate state, install old runtimes or provide a fallback controller.

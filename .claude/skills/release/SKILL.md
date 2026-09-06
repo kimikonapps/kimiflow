@@ -19,5 +19,5 @@ reviewed commit when the working tree contains other work.
    downloadable plugin ZIP is needed, export only `plugins/kimiflow/` from that exact commit and
    provide its SHA-256 digest. Verify the published tag and any attached bytes against the local export.
 
-The old managed `kimiflow-update-v1`/adapter contracts do not apply to 0.5. Do not advertise their
+Development-era managed `kimiflow-update-v1`/adapter contracts do not apply to public releases. Do not advertise their
 compatibility or add a project-release engine to publish this small plugin.

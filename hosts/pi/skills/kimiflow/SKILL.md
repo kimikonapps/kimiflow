@@ -9,5 +9,5 @@ Read `SKILL.md` at the installed package root once and use its working agreement
 model and native task/tools; no FirstMate crew is activated. Helper paths belong to the installed
 package, not the current project.
 
-A `KIMIFLOW_CREW_ROLE` context, Kimiflow adapter-v1 context or Flow-schema run belongs to 0.4.3. Read
+A `KIMIFLOW_CREW_ROLE` context, Kimiflow adapter-v1 context or Flow-schema run belongs to an earlier development runtime. Read
 `MIGRATION.md` instead of trying to continue it with this package. Never create competing run state.

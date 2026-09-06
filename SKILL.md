@@ -53,5 +53,5 @@ checks. Keep it short and advisory; recheck current source before resuming. Befo
 notes, check for an existing `STATE.md` in that task directory. Do not create or convert a run schema.
 
 A legacy `Flow schema` run or managed adapter request is **not** a notes-based task. Do not reinterpret,
-advance or discard its state. Read [MIGRATION.md](MIGRATION.md) and finish it with the pinned 0.4.3 runtime.
+advance or discard its state. Read [MIGRATION.md](MIGRATION.md) and use its matching development runtime.
 No legacy engine, automatic updater or fallback controller is included here.

@@ -2,18 +2,17 @@
 
 A small working agreement for coding agents: define the result, use native tools, verify the work.
 
-[Deutsch](README.de.md) · [Workflow](SKILL.md) · [Migration from 0.4.3](MIGRATION.md)
+[Deutsch](README.de.md) · [Workflow](SKILL.md) · [Release 0.5.0](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.5.0)
 
-## What remains
+## What Kimiflow does
 
 - A short skill: outcome, acceptance, boundaries and relevant project conventions.
 - The user's selected model and the host's existing tools, planning and workspace isolation.
 - Project-native tests and CI. An optional stateless check helper when it adds useful source verification.
 - One short continuation note only when task history is insufficient.
 
-There is no phase engine, hook registration, model routing, fixed reviewer ensemble, memory platform,
-Fleet controller, MCP/headless adapter, FirstMate extension or project-release engine. Those features
-have been removed from the new package, not hidden behind a mode. No API key or new service is required.
+Kimiflow works with the tools you already use. No API key or new service is required.
+The public release history starts with **0.5.0**.
 
 GPT-6 Astra, Fable 5.1 and local models use the same agreement. Constrained models can receive smaller
 coherent tasks and exact commands. Kimiflow does not select a paid fallback or assume local means weak.
@@ -28,7 +27,7 @@ An empty invocation asks for the task, without running a project inventory.
 No special plan/full/build/release mode is needed. State the desired outcome in the normal request.
 Read-only requests remain read-only. The host and project own commit and publication policies.
 
-## Install and upgrade
+## Installation
 
 Claude Code:
 
@@ -44,10 +43,8 @@ codex plugin marketplace add kimikonapps/kimiflow
 codex plugin add kimiflow@kimiflow
 ```
 
-**0.5 is a breaking change for managed clients.** Finish active old runs with the pinned
-[0.4.3 release](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.4.3) before updating their
-host. See [migration](MIGRATION.md) for removed interfaces and existing hook/CLI installations.
-This source change does not replace an installed plugin cache or modify any run, memory or worktree.
+After installing or updating the plugin, start a new host task to load the skill.
+For existing development installations, see [development compatibility](MIGRATION.md).
 
 ## Optional check helper
 
@@ -73,8 +70,8 @@ If the host/CI already provides adequate verification, do not add this wrapper m
 That is an empirical question. Compare native agent work with this minimal agreement using the same
 model, start state, tools, permissions and total budget. Judge acceptance, remaining defects,
 interruptions, elapsed time and measured usage. [Evaluation guidance](evals/README.md) keeps this simple.
-The two historical 0.4-era pilot pairs are confounded and prove no quality or cost advantage.
-No new model benchmark has been run for this rebuild.
+The available development pilots do not establish a quality or cost advantage.
+Model performance has not yet been benchmarked for the public release.
 
 ## Development
 

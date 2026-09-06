@@ -2,30 +2,27 @@
 
 Eine kurze Arbeitsvereinbarung für Coding-Agenten: Ziel klären, native Werkzeuge nutzen, Ergebnis prüfen.
 
-[English](README.md) · [Workflow](SKILL.md) · [Umstieg von 0.4.3](MIGRATION.md)
+[English](README.md) · [Workflow](SKILL.md) · [Release 0.5.0](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.5.0)
 
-## Der kleine Kern
+## Was Kimiflow bietet
 
 Kimiflow hält Ziel, Erfolgskriterien, Grenzen und Projektkonventionen fest. Planung, Umsetzung,
 Werkzeuge und Modellwahl bleiben beim Agenten und Host. Bestehende Tests und CI haben Vorrang.
 Für lange Aufgaben gibt es bei Bedarf eine kurze Fortsetzungsnotiz statt einer eigenen Zustandsmaschine.
 
-Phasen-Engine, Hooks, Modellrouting, feste Reviewer-Strukturen, Memory-Plattform, Fleet, Headless/MCP,
-FirstMate-Erweiterung und Projekt-Release-Engine sind aus dem neuen Paket entfernt. Kein API-Key und
-kein neuer Dienst sind erforderlich. Astra, Fable 5.1 und lokale Modelle verwenden dieselbe Vereinbarung;
-bei begrenztem Kontext helfen kleinere Aufgaben und präzise Befehle.
+Kimiflow nutzt deine vorhandenen Werkzeuge. Kein API-Key und kein neuer Dienst sind erforderlich.
+Astra, Fable 5.1 und lokale Modelle verwenden dieselbe Vereinbarung; bei begrenztem Kontext helfen
+kleinere Aufgaben und präzise Befehle. Die öffentliche Versionsreihe beginnt mit **0.5.0**.
 
-## Nutzung und Umstieg
+## Nutzung und Installation
 
 `/kimiflow <Auftrag>` in Claude Code oder `$kimiflow <Auftrag>` in Codex. Pi lädt dieselben Grundregeln.
 Keine Spezialmodi nötig: Beschreibe das gewünschte Ergebnis. `direkt` umgeht den Skill; reine
 Einschätzungen bleiben ohne Umsetzung. Ohne Aufgabe wird nur nach dem Auftrag gefragt.
 
-Installation: [Befehle in der englischen README](README.md#install-and-upgrade).
-**0.5 ist für verwaltete Clients inkompatibel.** Aktive Altläufe zuerst mit der vorhandenen
-[Version 0.4.3](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.4.3) abschließen.
-[MIGRATION.md](MIGRATION.md) beschreibt entfernte Schnittstellen und alte Hook-/CLI-Installationen.
-Run-Daten, Memory, Worktrees und installierte Caches werden durch diesen Umbau nicht verändert.
+Installation: [Befehle in der englischen README](README.md#installation).
+Nach Installation oder Update eine neue Aufgabe im Host starten, damit der Skill frisch geladen wird.
+Für vorhandene Entwicklungsinstallationen siehe [Kompatibilitätshinweise](MIGRATION.md).
 
 ## Optionales Prüfwerkzeug
 
