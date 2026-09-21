@@ -1,7 +1,7 @@
 {
   "name": "kimiflow",
   "description": "Minimal delivery support: a short working agreement, native checks and optional continuation notes.",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "license": "MIT",
   "author": {
     "name": "kimikon"

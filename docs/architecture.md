@@ -13,9 +13,10 @@ The only optional runtime program is `scripts/check_change.py`: explicit argv ch
 failure output, timeout cleanup and comparison of source snapshots. It has no provider, persistent
 state, automatic recall or commit logic. Prefer native checks when this adds no useful assurance.
 
-`docs/render/kimiflow/` contains the shared skill and thin Codex/Pi wrappers. `scripts/render_skills.py`
-produces their installed copies. `scripts/build_plugin.py` builds/checks the exact allowlisted runtime
-under `plugins/kimiflow`; its fingerprint proves package identity, not software correctness.
+`docs/render/kimiflow/` contains the canonical skill plus a shared Codex/Claude Code wrapper and a Pi
+wrapper. `scripts/render_skills.py` produces their installed copies. `scripts/build_plugin.py`
+builds/checks the exact allowlisted runtime under `plugins/kimiflow`; its fingerprint proves package
+identity, not software correctness.
 
 Development-era runtimes are not bundled. Their source history and local user data remain available;
 see `MIGRATION.md` when handling existing managed work.

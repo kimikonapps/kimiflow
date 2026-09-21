@@ -10,7 +10,7 @@ from typing import Iterable
 
 
 CANONICAL_SOURCE = "docs/render/kimiflow/canonical/SKILL.md"
-HOST_OVERLAYS = (("codex", "docs/render/kimiflow/overlays/codex.md", "skills/kimiflow/SKILL.md"), ("pi", "docs/render/kimiflow/overlays/pi.md", "hosts/pi/skills/kimiflow/SKILL.md"))
+HOST_OVERLAYS = (("codex-claude", "docs/render/kimiflow/overlays/codex-claude.md", "skills/kimiflow/SKILL.md"), ("pi", "docs/render/kimiflow/overlays/pi.md", "hosts/pi/skills/kimiflow/SKILL.md"))
 RENDER_TARGETS = ((CANONICAL_SOURCE, "SKILL.md"),) + tuple(
     (source, output) for _, source, output in HOST_OVERLAYS
 )

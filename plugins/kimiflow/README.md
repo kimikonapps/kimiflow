@@ -2,7 +2,7 @@
 
 A small working agreement for coding agents: define the result, use native tools, verify the work.
 
-[Deutsch](README.de.md) · [Workflow](SKILL.md) · [Release 0.5.2](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.5.2)
+[Deutsch](README.de.md) · [Workflow](SKILL.md) · [Release 0.5.3](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.5.3)
 
 ## What Kimiflow does
 
@@ -40,6 +40,10 @@ not count as a different model, and price alone does not establish capability. R
 unavailable model choices before delegation; do not silently substitute models or add unauthorized costs.
 Count planning, review and rework when evaluating savings; cheaper worker calls alone do not prove a
 cheaper result. See the [planner-worker agreement](references/planner-worker.md).
+
+In Claude Code the worker runs as a subagent with an explicitly chosen, cheaper model, while planning
+and review stay in the session model. A subagent without an explicit model inherits the session model
+and is not a cheaper worker. Codex uses its native delegation the same way.
 
 ## Use
 

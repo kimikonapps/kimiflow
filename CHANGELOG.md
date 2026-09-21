@@ -6,6 +6,15 @@ The public release history starts at **0.5.0**. Earlier development artifacts ar
 
 _No unreleased changes._
 
+## 0.5.3
+
+Claude Code becomes a first-class host of the shared wrapper, without new moving parts.
+
+- Make the shared `skills/kimiflow` wrapper host-neutral for Codex and Claude Code.
+- State how Claude Code runs a cheaper worker: a subagent with an explicitly chosen `model`, while
+  planning and review stay in the session model; a subagent without an explicit model is not cheaper.
+- Add no new host, hooks, agents or renderer complexity.
+
 ## 0.5.2
 
 Model-independent planner-worker collaboration focused on total delivery cost.

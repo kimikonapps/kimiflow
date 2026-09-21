@@ -2,7 +2,7 @@
 
 Eine kurze Arbeitsvereinbarung für Coding-Agenten: Ziel klären, native Werkzeuge nutzen, Ergebnis prüfen.
 
-[English](README.md) · [Workflow](SKILL.md) · [Release 0.5.2](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.5.2)
+[English](README.md) · [Workflow](SKILL.md) · [Release 0.5.3](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.5.3)
 
 ## Was Kimiflow bietet
 
@@ -39,6 +39,10 @@ höhere Fähigkeit. Ungeeignete oder fehlende Modelle vor Delegation klären, oh
 nicht autorisierte Zusatzkosten. Für Einsparungen zählen Planung, Review und Nacharbeit mit;
 günstigere Worker-Aufrufe allein belegen keine geringeren Gesamtkosten.
 Details: [Planner-/Worker-Vereinbarung](references/planner-worker.md).
+
+In Claude Code läuft der Worker als Subagent mit einem ausdrücklich gewählten, günstigeren Modell,
+während Planung und Review im Sitzungsmodell bleiben. Ein Subagent ohne ausdrückliches Modell erbt das
+Sitzungsmodell und ist kein günstigerer Worker. Codex nutzt seine native Delegation auf dieselbe Weise.
 
 ## Nutzung und Installation
 

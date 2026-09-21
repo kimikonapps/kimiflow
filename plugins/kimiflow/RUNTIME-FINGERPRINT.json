@@ -4,12 +4,12 @@
     {
       "bytes": 228,
       "path": ".claude-plugin/plugin.json",
-      "sha256": "b56c55abc143d83ceb1cb2e5a2e78ad51b2b7dca48763488c9099d82eb500164"
+      "sha256": "8c3c61116f3be32acaf5fe056ad7b2d9992746e0dc1245a58785bf2b8b434089"
     },
     {
       "bytes": 1459,
       "path": ".codex-plugin/plugin.json",
-      "sha256": "cb4e1ed644e5b1ae0ece23e813bf00682c308f987a3ddfc30834b25f7552cff8"
+      "sha256": "100888d29292d838e402506c17f26d0a31170f4e0b20551b33e1a72f43d74cb4"
     },
     {
       "bytes": 788,
@@ -27,14 +27,14 @@
       "sha256": "e55a0ec48ed221ad8523e960699b35f4daf41b70e35cc7608be18ff4d844be44"
     },
     {
-      "bytes": 4529,
+      "bytes": 4843,
       "path": "README.de.md",
-      "sha256": "026c09c59f61e7e10dd5d91510b09ab610e72eee3f65bcc1ef7183e7973abdab"
+      "sha256": "67f89794768c4022d7aae07851ab3e6646cbb56ad5150b89dfec336d5ccd2021"
     },
     {
-      "bytes": 5530,
+      "bytes": 5811,
       "path": "README.md",
-      "sha256": "40afda81fc756f23c2e9979e3a80e4b6383308ccf076d06417690abfd3851142"
+      "sha256": "4dcba7e54b05ef7fa112d9ee89a9e9061b20cc7b0ab12310b4a563d0730ff229"
     },
     {
       "bytes": 3972,
@@ -49,7 +49,7 @@
     {
       "bytes": 241,
       "path": "package.json",
-      "sha256": "38cc9d486c5691782e3ca6f9ca36adf9dce0c37294876a20d75bfe7858522785"
+      "sha256": "c055aecaf0376c559f19b7c59b8224983329a42ed90d7e3c2dd520635b174464"
     },
     {
       "bytes": 3022,
@@ -67,9 +67,9 @@
       "sha256": "0ae08503c5e1fdb87c9faa36b73daa1fde79643c2b70a2af1e38b5554e151f9b"
     },
     {
-      "bytes": 882,
+      "bytes": 1349,
       "path": "skills/kimiflow/SKILL.md",
-      "sha256": "cb36c40b88555be2d83e49fa3112d8418feba55aa8b6e939f8275a972bab1b16"
+      "sha256": "63539bb3629223fca4d574da6c657a495108cd6516793fbf11d6ab442792dbc7"
     },
     {
       "bytes": 220,
@@ -77,7 +77,7 @@
       "sha256": "57dc23b3fd3371622618b47eb90eb9f4d5a655114c33b8fe7a47aacb7930bbec"
     }
   ],
-  "runtime_fingerprint": "sha256:28edd4e96e02975d1526ce58778c4670cf07b802489e4d285483fa044160e42b",
+  "runtime_fingerprint": "sha256:855b392a0bdc878d5684f1b36bfb22ce00a5ef8aa3c4511a96f69ae1c95722fc",
   "schema_version": 1,
-  "version": "0.5.2"
+  "version": "0.5.3"
 }
