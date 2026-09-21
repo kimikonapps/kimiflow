@@ -2,7 +2,7 @@
 
 A small working agreement for coding agents: define the result, use native tools, verify the work.
 
-[Deutsch](README.de.md) · [Workflow](SKILL.md) · [Release 0.5.0](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.5.0)
+[Deutsch](README.de.md) · [Workflow](SKILL.md) · [Release 0.5.2](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.5.2)
 
 ## What Kimiflow does
 
@@ -14,7 +14,7 @@ A small working agreement for coding agents: define the result, use native tools
 Kimiflow works with the tools you already use. No API key or new service is required.
 The public release history starts with **0.5.0**.
 
-GPT-6 Astra, Fable 5.1 and local models use the same agreement. Constrained models can receive smaller
+Hosted and local models use the same agreement. Constrained models can receive smaller
 coherent tasks and exact commands. Kimiflow does not select a paid fallback or assume local means weak.
 
 ## Building features
@@ -23,6 +23,23 @@ Start with an idea such as “I want X so that Y.” The agent turns it into a s
 largest uncertainty early and delivers a usable end-to-end slice for larger features. Completion
 combines technical checks with a concrete user scenario. See the [feature guide](references/feature-work.md).
 An agreed five-feature pilot can record outcomes and feedback locally; it creates no approval gate.
+
+## Planning, implementation and review
+
+When you choose delegation, Kimiflow uses model roles to reduce total delivery cost:
+
+| Role | Model selection | Responsibility |
+| --- | --- | --- |
+| Planner | Your selected model, more capable than the worker for planning | Decompose the task and define acceptance and boundaries. |
+| Worker | A different, cheaper model suited to bounded implementation | Implement and run relevant checks. |
+| Reviewer | More capable than the worker for review; normally the planner | Inspect the actual diff, integration, requirements and test evidence; verify corrections. |
+
+No model names or versions are fixed. Select models and reasoning efforts explicitly from current
+availability, pricing and task-relevant capability evidence. A different reasoning level alone does
+not count as a different model, and price alone does not establish capability. Resolve unsuitable or
+unavailable model choices before delegation; do not silently substitute models or add unauthorized costs.
+Count planning, review and rework when evaluating savings; cheaper worker calls alone do not prove a
+cheaper result. See the [planner-worker agreement](references/planner-worker.md).
 
 ## Use
 

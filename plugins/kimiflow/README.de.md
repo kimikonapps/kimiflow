@@ -2,7 +2,7 @@
 
 Eine kurze Arbeitsvereinbarung für Coding-Agenten: Ziel klären, native Werkzeuge nutzen, Ergebnis prüfen.
 
-[English](README.md) · [Workflow](SKILL.md) · [Release 0.5.0](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.5.0)
+[English](README.md) · [Workflow](SKILL.md) · [Release 0.5.2](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.5.2)
 
 ## Was Kimiflow bietet
 
@@ -11,7 +11,7 @@ Werkzeuge und Modellwahl bleiben beim Agenten und Host. Bestehende Tests und CI 
 Für lange Aufgaben gibt es bei Bedarf eine kurze Fortsetzungsnotiz statt einer eigenen Zustandsmaschine.
 
 Kimiflow nutzt deine vorhandenen Werkzeuge. Kein API-Key und kein neuer Dienst sind erforderlich.
-Astra, Fable 5.1 und lokale Modelle verwenden dieselbe Vereinbarung; bei begrenztem Kontext helfen
+Gehostete und lokale Modelle verwenden dieselbe Vereinbarung; bei begrenztem Kontext helfen
 kleinere Aufgaben und präzise Befehle. Die öffentliche Versionsreihe beginnt mit **0.5.0**.
 
 ## Features gemeinsam bauen
@@ -21,6 +21,24 @@ größte Unsicherheit früh und liefert bei größeren Features zuerst einen ben
 Zur Abnahme gehören technische Checks und ein konkreter Nutzerablauf. Die [Feature-Anleitung](references/feature-work.md)
 enthält die Vorlage und eine lokale Ergebnistabelle für einen vereinbarten Pilot mit fünf Features.
 Daraus entsteht keine zusätzliche Freigabepflicht.
+
+## Planung, Umsetzung und Review
+
+Bei ausdrücklich gewählter Delegation dient die Modellaufteilung der Kostensenkung:
+
+| Rolle | Modellwahl | Verantwortung |
+| --- | --- | --- |
+| Planner | Dein gewähltes Modell, für Planung leistungsfähiger als der Worker | Aufgabe zerlegen, Grenzen und Abnahmekriterien festlegen. |
+| Worker | Anderes, günstigeres Modell für klar begrenzte Umsetzung | Implementieren und relevante Checks ausführen. |
+| Reviewer | Für die Prüfung leistungsfähiger als der Worker; normalerweise der Planner | Tatsächlichen Diff, Integration, Anforderungen und Testnachweise prüfen; Korrekturen verifizieren. |
+
+Modellnamen und Versionen sind nicht fest vorgegeben. Die explizite Auswahl von Modellen und
+Reasoning-Stufen richtet sich nach aktueller Verfügbarkeit, Preisen und aufgabenbezogener Eignung.
+Eine andere Reasoning-Stufe allein zählt nicht als anderes Modell; ein höherer Preis beweist keine
+höhere Fähigkeit. Ungeeignete oder fehlende Modelle vor Delegation klären, ohne stillen Ersatz oder
+nicht autorisierte Zusatzkosten. Für Einsparungen zählen Planung, Review und Nacharbeit mit;
+günstigere Worker-Aufrufe allein belegen keine geringeren Gesamtkosten.
+Details: [Planner-/Worker-Vereinbarung](references/planner-worker.md).
 
 ## Nutzung und Installation
 

@@ -6,6 +6,17 @@ The public release history starts at **0.5.0**. Earlier development artifacts ar
 
 _No unreleased changes._
 
+## 0.5.2
+
+Model-independent planner-worker collaboration focused on total delivery cost.
+
+- Require a different, cheaper worker model for explicitly selected delegation.
+- Use more capable planner/reviewer models; the planner normally performs the review.
+- Review actual changes, integration, requirements and check evidence, including corrections.
+- Select models using current availability, pricing and task suitability, without fixed model versions.
+- Include planning, review and rework in cost assessment; no measured savings are claimed.
+- Package the collaboration guide and update English/German documentation.
+
 ## 0.5.1
 
 Small feature briefs, early usable results and lightweight feedback for better feature delivery.

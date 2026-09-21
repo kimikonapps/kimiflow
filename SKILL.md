@@ -25,6 +25,9 @@ Preserve unrelated work and staging. Use host worktrees or normal Git isolation 
 owns no worktree fleet. Keep the user's model and effort. Local models may need smaller coherent tasks,
 precise commands and compact context, not a paid fallback or an additional workflow.
 
+For user-selected delegation, use [planner-worker collaboration](references/planner-worker.md).
+Use a different, cheaper worker model and a more capable planner/reviewer; make model choices explicit.
+
 ## Verification
 
 Use existing project tests and CI. Reproduce bugs, verify the changed behavior and relevant regressions,
