@@ -3,7 +3,7 @@
 An operating kit for planner-led work with coding agents, plus a short working agreement for
 everything else: define the result, use native tools, verify the work.
 
-[Deutsch](README.de.md) · [Workflow](SKILL.md) · [Release 0.6.0](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.6.0)
+[Deutsch](README.de.md) · [Workflow](SKILL.md) · [Release 0.6.1](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.6.1)
 
 ## What Kimiflow does
 
@@ -94,7 +94,8 @@ The plugin registers two hooks through `.claude-plugin/plugin.json`. Both run `p
 - **Session start.** In a project initialized locally, each session (startup, resume, clear,
   compact; also in a worktree) gets the absolute paths of the kit files and the reading order:
   OPERATIONS.md, then HANDOFF.md; LIST.md is searched, not read whole. It adds a notice when the kit
-  is older than the plugin and when commits landed since HANDOFF.md was last changed.
+  is older than the plugin and when commits landed since HANDOFF.md was last changed. It also warns
+  when OPERATIONS.md exceeds 12 KB or HANDOFF.md exceeds 6 KB.
 - **Trust gate.** The hook speaks only for a kit set up by `init` here: Git's local exclude lists
   `.kimiflow/` and no kit file is tracked. A cloned repository cannot promote its own files to
   operating rules.

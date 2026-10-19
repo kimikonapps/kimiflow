@@ -6,6 +6,14 @@ The public release history starts at **0.5.0**. Earlier development artifacts ar
 
 _No unreleased changes._
 
+## 0.6.1
+
+A size check keeps the always-read kit files short.
+
+- Session start notes when `OPERATIONS.md` exceeds 12 KB (move reasons and history to
+  `OPERATIONS-history.md`) or `HANDOFF.md` exceeds 6 KB (rewrite it to the current state, older parts
+  to `archive/`). One line each, only for a locally set-up kit; nothing blocks.
+
 ## 0.6.0
 
 Kimiflow becomes a project-agnostic operating kit plus delivery support.

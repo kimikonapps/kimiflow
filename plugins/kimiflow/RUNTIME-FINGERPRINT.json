@@ -4,12 +4,12 @@
     {
       "bytes": 490,
       "path": ".claude-plugin/plugin.json",
-      "sha256": "37bb6e2f5e0eea5b3342717220034de1cee4da006d593daa2e00ca46f3d7fe5c"
+      "sha256": "99e8d58a2114949312bc691806cb1aaeecef18ce4d44ac4d2e098843d89b79a3"
     },
     {
       "bytes": 1723,
       "path": ".codex-plugin/plugin.json",
-      "sha256": "a8077fef998b84ead9c45416a8fd85bf51762558667887b2ef9472b4ab2c0529"
+      "sha256": "a03d1c20ad8f55af6ce2506d607e9763f87c4044ceb9137b8b0c50a48fbf37db"
     },
     {
       "bytes": 1829,
@@ -27,14 +27,14 @@
       "sha256": "ef537f9ad179daa04513bcbee68c4d248a85e05061d1cffa36de59c24a1f09bf"
     },
     {
-      "bytes": 10468,
+      "bytes": 10565,
       "path": "README.de.md",
-      "sha256": "3533c2bfe67132c6c597af847b465e3619b205025e8d226bbd5b6bdac0c2fee2"
+      "sha256": "9f14c50d0d898ab592898343b17fc45817e9bba663cd74642d238f7099a82bfa"
     },
     {
-      "bytes": 9603,
+      "bytes": 9680,
       "path": "README.md",
-      "sha256": "89410217f6dbd327a0c8b881f9c1a6bc9d1f4e936fe6657cf03ab5565420cbc7"
+      "sha256": "a798a943a2f84a4b4ec9e5d4896103064b3053a1d3840af25854c6265c386f77"
     },
     {
       "bytes": 3384,
@@ -69,7 +69,7 @@
     {
       "bytes": 264,
       "path": "package.json",
-      "sha256": "5cfbb602e772134103a883f69929795978cf5a5e8a4968b1dbf992079a93e96d"
+      "sha256": "e625d8df7b775625067dc7ed0f6f68d4480002078d503fc1d30d7920eb1819c0"
     },
     {
       "bytes": 926,
@@ -87,9 +87,9 @@
       "sha256": "0d9d2fd9ee7ff31f4645e706115a1c0a26426760491ce7e11121c72a8e1d9a5b"
     },
     {
-      "bytes": 7545,
+      "bytes": 7628,
       "path": "references/operating-model.md",
-      "sha256": "d3ea40eb2a15633bbdc7ea167e7e30942abc8c10c0720d72369281f139fb0aca"
+      "sha256": "ce5afe3a3e4f0dfca5e3207b3ebf97d93598f53369ed63aaa74eec424ffde6ab"
     },
     {
       "bytes": 3033,
@@ -107,9 +107,9 @@
       "sha256": "0ae08503c5e1fdb87c9faa36b73daa1fde79643c2b70a2af1e38b5554e151f9b"
     },
     {
-      "bytes": 14633,
+      "bytes": 15214,
       "path": "scripts/kimiflow_ops.py",
-      "sha256": "ee0e7fb687cbbc99850660c2ec992c9cdf951c4ce97ba2ee3f8058d6179f5830"
+      "sha256": "beda76662dfc92a4a7f8dbabc47d9171494dff78b88600a22225cfb53917b05d"
     },
     {
       "bytes": 1505,
@@ -182,7 +182,7 @@
       "sha256": "fdcb2855ec4c37b3b51068a19b4a849ce738b472cf90b24b536fde7806b9327c"
     }
   ],
-  "runtime_fingerprint": "sha256:def1c1cb3a50fe271497d8f1b74447f7f886dc486f9ed9b5cce48a0bff2a85a3",
+  "runtime_fingerprint": "sha256:91c8f4a9a02a8ec30f1b51b63f140385ef3026e135245304fbcb17694a01fe0d",
   "schema_version": 1,
-  "version": "0.6.0"
+  "version": "0.6.1"
 }

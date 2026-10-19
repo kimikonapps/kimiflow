@@ -119,6 +119,7 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
   existing ones first. Split a topic into its own `rules-<topic>.md` only when it separates cleanly.
 - HANDOFF.md: current state only. LIST.md: the one list. `plans/`: feature sheets, plans, briefs.
   `research/`: findings worth keeping.
+- Session start warns when OPERATIONS.md exceeds 12 KB or HANDOFF.md exceeds 6 KB.
 
 ## Communication
 

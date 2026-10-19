@@ -440,6 +440,22 @@ class OpsTests(unittest.TestCase):
                                  r'HANDOFF\.md last updated \d{4}-\d\d-\d\d \d\d:\d\d; 2 commit\(s\) since '
                                  r'— check git log for what changed before relying on it\.')
 
+    def test_session_start_size_notices(self):
+        self.init()
+        ops = self.main / '.kimiflow' / 'ops'
+        fresh = self.session(self.main).stdout
+        self.assertNotIn('KB (limit', fresh)
+        cases = (('OPERATIONS.md', 12, 'OPERATIONS.md is 13 KB (limit 12 KB): move reasons and history to '
+                  'OPERATIONS-history.md and keep the rules short.'),
+                 ('HANDOFF.md', 6, 'HANDOFF.md is 7 KB (limit 6 KB): rewrite it to the current state and '
+                  'move older parts to archive/.'))
+        for name, limit, notice in cases:
+            with self.subTest(name=name):
+                (ops / name).write_bytes(b'x' * (limit * 1024 + 1))
+                self.assertIn(notice, self.session(self.main).stdout)
+                (ops / name).write_bytes(b'x' * (limit * 1024))
+                self.assertNotIn(name + ' is', self.session(self.main).stdout)
+
     # git-guard
 
     def guard(self, command, cwd=None, stdin=None):

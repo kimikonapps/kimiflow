@@ -20,6 +20,8 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 KIT = PLUGIN_ROOT / 'templates' / 'ops'
 KIT_FILE = '.kit.json'
 DIFF_LINES = 200
+OPERATIONS_LIMIT = 12 * 1024
+HANDOFF_LIMIT = 6 * 1024
 # Per line, like grep: git starts a command segment, optionally after -C <path> global options.
 _GIT = r'(?:^|[;&|])[ \t]*git(?:[ \t]+-C[ \t]+(?:"[^"\n]*"|\'[^\'\n]*\'|[^ \t\n]+))*[ \t]+'
 BULK_ADD = re.compile(_GIT + r'add[ \t]+(?:[^;&|\n]*[ \t])?(?:-A|--all|\.|:/|\*)(?:[ \t]|$|[;&|])', re.M)
@@ -238,6 +240,16 @@ def _notices(cwd, ops):
     if since > 0:
         lines.append('HANDOFF.md last updated %s; %d commit(s) since — check git log for what changed '
                      'before relying on it.' % (_stamp(handoff), since))
+    for name, limit, advice in (
+            ('OPERATIONS.md', OPERATIONS_LIMIT, 'move reasons and history to OPERATIONS-history.md and keep '
+             'the rules short'),
+            ('HANDOFF.md', HANDOFF_LIMIT, 'rewrite it to the current state and move older parts to archive/')):
+        try:
+            size = (ops / name).stat().st_size
+        except OSError:
+            continue
+        if size > limit:
+            lines.append('%s is %d KB (limit %d KB): %s.' % (name, -(-size // 1024), limit // 1024, advice))
     return lines
 
 

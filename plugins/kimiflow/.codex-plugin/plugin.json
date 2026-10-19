@@ -1,6 +1,6 @@
 {
   "name": "kimiflow",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Operating kit for planner-led work: /kimiflow init sets up project rules, handoff, list and plan templates; plus delivery support elsewhere.",
   "author": {
     "name": "kimikon",

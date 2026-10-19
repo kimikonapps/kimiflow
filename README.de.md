@@ -3,7 +3,7 @@
 Ein Betriebskit für planergeführte Arbeit mit Coding-Agenten, dazu eine kurze Arbeitsvereinbarung
 für alles andere: Ziel klären, native Werkzeuge nutzen, Ergebnis prüfen.
 
-[English](README.md) · [Workflow](SKILL.md) · [Release 0.6.0](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.6.0)
+[English](README.md) · [Workflow](SKILL.md) · [Release 0.6.1](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.6.1)
 
 ## Was Kimiflow bietet
 
@@ -96,7 +96,7 @@ Das Plugin registriert zwei Hooks über `.claude-plugin/plugin.json`. Beide star
   clear, compact; auch im Worktree) die absoluten Pfade der Kit-Dateien und die Lesereihenfolge:
   OPERATIONS.md, dann HANDOFF.md; LIST.md wird durchsucht, nicht ganz gelesen. Dazu kommt ein Hinweis,
   wenn das Kit älter als das Plugin ist und wenn seit der letzten Änderung von HANDOFF.md Commits
-  dazukamen.
+  dazukamen. Außerdem warnt er, wenn OPERATIONS.md größer als 12 KB oder HANDOFF.md größer als 6 KB ist.
 - **Vertrauensprüfung.** Der Hook spricht nur für ein Kit, das `init` hier angelegt hat: Gits lokale
   Exclude-Datei enthält `.kimiflow/`, und keine Kit-Datei ist versioniert. Ein geklontes Repository
   kann seine eigenen Dateien so nicht zu Betriebsregeln machen.
