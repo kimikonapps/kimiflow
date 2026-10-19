@@ -1,64 +1,59 @@
 ---
 name: kimiflow
-description: "Minimal delivery support for substantial, authorized feature work with material integration, data, security, architecture or discovery risk. Explicit Kimiflow selects it; direct/direkt bypasses it. Discussion and ordinary fixes, reviews, refactors, docs and small changes stay direct."
+description: "Operating kit and delivery support. Explicit Kimiflow or a project initialized with kimiflow init selects it; direct/direkt bypasses it. Elsewhere, discussion and ordinary fixes, reviews, refactors, docs and small changes stay direct."
 disable-model-invocation: false
-argument-hint: "[task]"
+argument-hint: "[init | task]"
 ---
 
 # Kimiflow
 
-Work on **$ARGUMENTS**, or the task supplied by the host. Use the selected model, its tools and the
-project's existing checks. Kimiflow adds a working agreement, not another controller.
+Work on **$ARGUMENTS**, or the task supplied by the host. Kimiflow is a set of documents and
+conventions for planner-led project work; it adds no controller or run state.
 
-## Working agreement
+## init
+
+`/kimiflow init` or `/kimiflow:kimiflow init` sets the operating kit up in the current project:
+
+1. Run `python3 <plugin-root>/scripts/kimiflow_ops.py init --root <project>`. `<plugin-root>` is the
+   directory holding this SKILL.md. It resolves the main checkout (also from a worktree), copies the
+   templates to `.kimiflow/ops/` without overwriting, adds `.kimiflow/` to Git's local exclude and
+   prints a JSON report. Show the owner what was created, kept and listed as legacy.
+2. Analyse the project: checks and CI, branch and commit convention, CLAUDE.md/AGENTS.md, existing
+   backlogs. Fill the project sections of `.kimiflow/ops/OPERATIONS.md` from what you found; reasons
+   and incidents go to `OPERATIONS-history.md`.
+3. Propose, and apply only with the owner's OK: trimming CLAUDE.md to short, true rules;
+   `additionalDirectories` for the main checkout when sessions run in worktrees; one AGENTS.md line
+   pointing Codex to `.kimiflow/ops/OPERATIONS.md`.
+
+## update
+
+`/kimiflow update` runs `python3 <plugin-root>/scripts/kimiflow_ops.py update --root <project>`, which
+writes nothing and reports each template as new, safe, conflict, unchanged or unknown_base. Show the
+owner the report. Run it again with `--apply-safe` only with the owner's OK; merge conflicts and
+unknown_base files by hand together with the owner, then record each with `--resolved <path>`.
+
+## Initialized project
+
+A project with `.kimiflow/ops/OPERATIONS.md` follows that file and
+[the operating model](references/operating-model.md). Read OPERATIONS.md, then HANDOFF.md; grep LIST.md by ID.
+The flow scales with risk; the gates are the ones the operating model names.
+
+## Other projects
 
 Briefly establish the requested outcome, observable acceptance, boundaries and relevant project rules.
 Inspect current code before proposing a replacement. Reuse existing authorization; ask only about a
-missing fact or consequence that materially changes the result. Planning and implementation depth are
-up to the agent. An empty invocation asks for the task; it does not start a project scan.
+missing fact or consequence that materially changes the result. An empty invocation asks for the
+task; it does not start a project scan.
 
-For feature work, use [the short feature guide](references/feature-work.md): turn the user's idea
-into a brief, test the largest uncertainty early, and deliver a usable slice before expanding it.
-Use the existing conversation or host plan; this adds no approval gate or required artifact.
+Preserve unrelated work and staging. Use host worktrees or normal Git isolation when needed. Keep the
+user's model and effort. Local models may need smaller coherent tasks, precise commands and compact
+context, not a paid fallback or an additional workflow.
 
-Preserve unrelated work and staging. Use host worktrees or normal Git isolation when needed; Kimiflow
-owns no worktree fleet. Keep the user's model and effort. Local models may need smaller coherent tasks,
-precise commands and compact context, not a paid fallback or an additional workflow.
+## References
 
-For user-selected delegation, use [planner-worker collaboration](references/planner-worker.md).
-Use a different, cheaper worker model and a more capable planner/reviewer; make model choices explicit.
-
-## Verification
-
-Use existing project tests and CI. Reproduce bugs, verify the changed behavior and relevant regressions,
-and inspect the diff against acceptance. Use independent review when a concrete risk warrants it and
-the host supports it; there is no fixed reviewer count. After repeated failure, change diagnosis or
-approach instead of repeating the same assumption. Report an unresolved blocker honestly.
-
-If existing tools already provide adequate verification, use them directly. Only when useful, the
-installed `scripts/check_change.py` can run explicit argv checks and detect source differences between
-snapshots before and after each check:
-
-```bash
-python3 /absolute/plugin/root/scripts/check_change.py --root /absolute/project --check '["npm","test"]'
-```
-
-Repeat `--check` for multiple checks. It writes no state and makes no commit. This is not continuous
-monitoring or a security sandbox. Ignored build output and untracked `.kimiflow/` notes are excluded.
-On POSIX it rejects and stops surviving members of the check's process group; detached processes
-outside that group and changes restored between snapshots are outside its observation.
-
-Deliver the result with actual checks and remaining limitations. Respect the project's commit policy;
-when committing, include only intended paths and preserve foreign staging. Publication and irreversible
-actions require their own authority. No memory maintenance or administrative artifact blocks completion.
-
-## Continuation only when needed
-
-Prefer the host's task history. For a long or interrupted task, optionally keep one local
-`.kimiflow/<task>/NOTES.md`: goal and boundaries, current revision/paths, decisions, open work, last
-checks. Keep it short and advisory; recheck current source before resuming. Before writing or resuming
-notes, check for an existing `STATE.md` in that task directory. Do not create or convert a run schema.
-
-A legacy `Flow schema` run or managed adapter request is **not** a notes-based task. Do not reinterpret,
-advance or discard its state. Read [MIGRATION.md](MIGRATION.md) and use its matching development runtime.
-No legacy engine, automatic updater or fallback controller is included here.
+- [Operating model](references/operating-model.md): roles, risk-scaled flow, briefs, reviews, handoff.
+- [Feature work](references/feature-work.md): from an idea to a brief and a usable slice.
+- [Planner-worker](references/planner-worker.md): delegation with explicit model choices.
+- [Models](references/models.md): current Claude models per role and how to brief them.
+- [Verification](references/verification.md): checks, `check_change.py`, delivery and commits.
+- [Continuation](references/continuation.md): notes for long tasks; legacy Flow-schema runs.

@@ -5,13 +5,13 @@
     "name": "kimikon"
   },
   "metadata": {
-    "description": "Minimal delivery support for coding agents."
+    "description": "Operating kit and delivery support for coding agents."
   },
   "plugins": [
     {
       "name": "kimiflow",
-      "description": "Minimal delivery support using native agent tools.",
-      "version": "0.5.3",
+      "description": "Operating kit for planner-led work, plus delivery support using native agent tools.",
+      "version": "0.6.0",
       "author": {
         "name": "kimikon"
       },

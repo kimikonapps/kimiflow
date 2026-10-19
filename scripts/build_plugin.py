@@ -15,11 +15,21 @@ else:
 RUNTIME_FILES = (
     '.claude-plugin/plugin.json', '.codex-plugin/plugin.json', 'package.json',
     'SKILL.md', 'skills/kimiflow/SKILL.md', 'skills/kimiflow/agents/openai.yaml',
-    'hosts/pi/skills/kimiflow/SKILL.md', 'scripts/check_change.py',
-    'references/feature-work.md', 'references/planner-worker.md',
+    'hosts/pi/skills/kimiflow/SKILL.md', 'scripts/check_change.py', 'scripts/kimiflow_ops.py',
+    'claude/hooks.json', 'claude/agents/worker.md', 'claude/agents/reviewer.md', 'claude/agents/architect.md',
+    'references/feature-work.md', 'references/planner-worker.md', 'references/models.md',
+    'references/operating-model.md', 'references/verification.md', 'references/continuation.md',
+    'templates/ops/OPERATIONS.md', 'templates/ops/OPERATIONS-history.md',
+    'templates/ops/rules-worker.md',
+    'templates/ops/HANDOFF.md', 'templates/ops/LIST.md',
+    'templates/ops/LIST-done.md', 'templates/ops/plans/feature-sheet.md', 'templates/ops/plans/plan.md',
+    'templates/ops/plans/worker-brief.md', 'templates/ops/plans/review-brief.md',
+    'templates/ops/archive/.keep', 'templates/ops/research/.keep',
     'README.md', 'README.de.md', 'MIGRATION.md', 'COMPATIBILITY.md', 'LICENSE',
 )
 MANIFEST = 'RUNTIME-FINGERPRINT.json'
+CLAUDE_HOOKS = './claude/hooks.json'
+CLAUDE_AGENTS = ['./claude/agents/worker.md', './claude/agents/reviewer.md', './claude/agents/architect.md']
 MARKETPLACES = ('.claude-plugin/marketplace.json', '.agents/plugins/marketplace.json')
 
 
@@ -37,8 +47,13 @@ def payloads(root):
         raise ValueError('Runtime versions differ')
     if claude.get('name') != 'kimiflow' or codex.get('name') != 'kimiflow':
         raise ValueError('Unexpected plugin identity')
-    if any(field in manifest for manifest in (claude, codex) for field in ('hooks', 'mcpServers', 'apps')) or pi.get('pi') != {'skills': ['./hosts/pi/skills/kimiflow']}:
-        raise ValueError('The minimal runtime must not register hooks or extensions')
+    if (any(field in codex for field in ('hooks', 'agents', 'mcpServers', 'apps'))
+            or any(field in claude for field in ('mcpServers', 'apps'))
+            or claude.get('hooks', CLAUDE_HOOKS) != CLAUDE_HOOKS
+            or claude.get('agents', CLAUDE_AGENTS) != CLAUDE_AGENTS
+            or pi.get('pi') != {'skills': ['./hosts/pi/skills/kimiflow']}):
+        raise ValueError('Only the Claude manifest may register hooks and agents, as ' + CLAUDE_HOOKS
+                         + ' and ' + ', '.join(CLAUDE_AGENTS) + '; no other hooks or extensions')
     for relative in MARKETPLACES:
         marketplace = json.loads((root / relative).read_text())
         entries = [entry for entry in marketplace.get('plugins', []) if entry.get('name') == 'kimiflow']

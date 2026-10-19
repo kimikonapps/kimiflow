@@ -6,6 +6,33 @@ The public release history starts at **0.5.0**. Earlier development artifacts ar
 
 _No unreleased changes._
 
+## 0.6.0
+
+Kimiflow becomes a project-agnostic operating kit plus delivery support.
+
+- Add `/kimiflow init` (or `/kimiflow:kimiflow init`): `scripts/kimiflow_ops.py init` creates
+  `.kimiflow/ops/` in the main checkout (OPERATIONS, OPERATIONS-history, rules-worker, HANDOFF, LIST,
+  LIST-done, plan and brief templates), never overwrites and adds `.kimiflow/` to Git's local exclude.
+  It refuses tracked kit files, symlinks leading outside the checkout and an earlier task named `ops`,
+  and only reports legacy Flow-schema runs.
+- Add `/kimiflow update`: reports template changes without writing; `--apply-safe` copies new and
+  unedited files, `--resolved` records hand-merged ones. `.kit.json` records kit version and hashes.
+- Add `references/operating-model.md`: roles, flow scaled by risk and the only gates (feature sheet
+  OK, plan audit by risk, owner-items check before main).
+- Claude Code only: a SessionStart hook that points each session, also in a worktree, at the kit,
+  with notices for an older kit and for commits since HANDOFF.md changed; it speaks only for a kit
+  set up locally by `init`.
+- Claude Code only: a PreToolUse git guard that blocks bulk `git add` and AI attribution in commits,
+  recognised by AI sender signatures; active only in initialized projects.
+- Claude Code only: agents `kimiflow:worker`, `kimiflow:reviewer` and `kimiflow:architect`
+  (read-only), without a fixed model.
+- Add the dated `references/models.md` for the Claude 5 models. A worker may now use the same model
+  as the planner; a cheaper worker model is an option, not a requirement.
+- Rewrite the skill as a router for init, update, initialized projects and other projects; move
+  verification and continuation details to `references/`.
+- Hooks need `python3` on PATH and are tested on POSIX. Codex and Pi get the skill texts only.
+- Update README, compatibility, migration and maintainer documentation.
+
 ## 0.5.3
 
 Claude Code becomes a first-class host of the shared wrapper, without new moving parts.

@@ -3,6 +3,16 @@
 The public release series starts at 0.5.0. Earlier development releases and version tags have been
 removed from the public release list. Existing Git history and local user data are retained.
 
+## 0.5 to 0.6
+
+- Continuation notes in `.kimiflow/<task>/NOTES.md` stay valid; `init` does not read, move or change
+  them. In an initialized project, HANDOFF.md carries the state between sessions.
+- `init` uses `.kimiflow/ops/`. If an earlier task named `ops` left `STATE.md` or `NOTES.md` there,
+  `init` stops without writing; rename or move that task directory, then run it again.
+- Legacy Flow-schema runs (`.kimiflow/<task>/STATE.md`) are listed in the `init` report and left
+  untouched. Handle them as described below.
+- The operating kit is optional. Without `init`, the short working agreement applies as before.
+
 ## Existing managed work
 
 Some development installations used Flow-schema runs, managed adapters, hooks, memory or worktree
@@ -17,7 +27,8 @@ managed update-v1 contracts must not automatically switch to the public core.
 
 Keep project checkouts, `.kimiflow/` state, `~/.kimiflow/` memory, external Vault data and worktrees intact.
 After old work is finished, remove only its obsolete hook/CLI registrations through that installation's
-documented procedure. Never clear unrelated host hooks. The public plugin registers no hooks or services.
+documented procedure. Never clear unrelated host hooks. The public plugin registers no services; in
+Claude Code it registers two hooks (session start and git guard), see [compatibility](COMPATIBILITY.md).
 
 The public check helper is `python3 <installed-root>/scripts/check_change.py`. It is optional and does
 not migrate state, install old runtimes or provide a fallback controller.

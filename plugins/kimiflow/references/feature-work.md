@@ -19,8 +19,9 @@ be that slice. Test the greatest plan-changing uncertainty early with a focused 
 Do not create an extra prototype when the existing code or tests settle it.
 
 Show the usable result through a running flow, relevant output or screenshot, as appropriate. Continue
-authorized work while feedback is pending; a demo is not a mandatory approval checkpoint. Ask again
-only when a correction introduces a material product decision.
+authorized work while feedback is pending; a demo is not an approval checkpoint. The gates are the ones
+[the operating model](operating-model.md) names (feature sheet OK, audit by risk, the owner-items check (the LIST grep) before a merge to main).
+Ask again only when a correction introduces a material product decision.
 
 Before completion, execute the relevant technical checks and walk through the brief's user scenario.
 Keep these separate: tests passing does not establish that the feature is useful or complete.
@@ -31,7 +32,7 @@ Report unavailable checks or missing feedback accurately. Do not claim the user'
 Use one local `.kimiflow/FEATURE-RESULTS.md` per participating project, or the user's chosen location.
 Preserve existing content. Record one row per feature; update that row for later feedback or defects.
 Stop adding features after five and discuss the observations. This is a short trial, not a permanent
-ledger or a completion gate. Missing feedback never blocks delivery.
+ledger. Missing pilot feedback never blocks delivery.
 
 | # | Feature / model / host | First usable result | Outcome / check evidence | Rework | Open or later issues | User feedback |
 |---|---|---|---|---|---|---|

@@ -8,6 +8,8 @@ import sys
 from unittest import mock
 
 from scripts.build_plugin import build, RUNTIME_FILES, MANIFEST, MARKETPLACES
+
+CLAUDE_AGENTS = ('./claude/agents/worker.md', './claude/agents/reviewer.md', './claude/agents/architect.md')
 from scripts.render_skills import RENDER_TARGETS
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,7 +35,8 @@ class PackageTests(unittest.TestCase):
         build(self.root)
         self.assertEqual(first, (target / MANIFEST).read_bytes())
         self.assertEqual(build(self.root, check=True)['status'], 'current')
-        self.assertFalse((target / 'hooks').exists())
+        self.assertFalse((target / 'hooks' / 'hooks.json').exists())
+        self.assertTrue((target / 'claude' / 'hooks.json').is_file())
         self.assertFalse((target / '.kimiflow').exists())
         self.assertFalse((target / 'scripts' / 'unlisted.py').exists())
         self.assertEqual(json.loads(first)['file_count'], len(RUNTIME_FILES))
@@ -107,6 +110,61 @@ class PackageTests(unittest.TestCase):
             path.write_text(json.dumps(data))
             with self.assertRaises(ValueError): build(self.root)
 
+    def test_claude_manifest_accepts_only_the_session_start_hooks_file(self):
+        path = self.root / '.claude-plugin' / 'plugin.json'
+        self.assertEqual(json.loads(path.read_text())['hooks'], './claude/hooks.json')
+        original = path.read_text()
+        for value in ('./hooks/hooks.json', './claude/other.json', ['./claude/hooks.json'], {}):
+            with self.subTest(value=value):
+                data = json.loads(original); data['hooks'] = value
+                path.write_text(json.dumps(data))
+                with self.assertRaisesRegex(ValueError, 'Only the Claude manifest'):
+                    build(self.root)
+        data = json.loads(original); data['mcpServers'] = {}
+        path.write_text(json.dumps(data))
+        with self.assertRaises(ValueError): build(self.root)
+
+    def test_only_the_claude_manifest_registers_the_shipped_agents(self):
+        path = self.root / '.claude-plugin' / 'plugin.json'
+        original = path.read_text()
+        self.assertEqual(json.loads(original)['agents'], list(CLAUDE_AGENTS))
+        for value in ('./claude/agents/', './agents/worker.md', list(CLAUDE_AGENTS)[:2], {}):
+            with self.subTest(value=value):
+                data = json.loads(original); data['agents'] = value
+                path.write_text(json.dumps(data))
+                with self.assertRaisesRegex(ValueError, 'Only the Claude manifest'):
+                    build(self.root)
+        path.write_text(original)
+        codex = self.root / '.codex-plugin' / 'plugin.json'
+        data = json.loads(codex.read_text()); data['agents'] = list(CLAUDE_AGENTS)
+        codex.write_text(json.dumps(data))
+        with self.assertRaises(ValueError): build(self.root)
+
+    def test_shipped_agents_leave_the_model_to_the_planner(self):
+        build(self.root)
+        target = self.root / 'plugins' / 'kimiflow'
+        for relative in CLAUDE_AGENTS:
+            text = (target / relative).read_text()
+            front = text.split('---')[1]
+            with self.subTest(agent=relative):
+                self.assertIsNone(re.search(r'^model:', front, re.M))
+                self.assertIn('name: ' + Path(relative).stem, front)
+                self.assertLessEqual(len(text.splitlines()), 55)
+        architect = (target / 'claude/agents/architect.md').read_text().split('---')[1]
+        self.assertIn('tools: Read, Grep, Glob, Bash, WebSearch, WebFetch\n', architect)
+
+    def test_claude_hooks_register_session_start_and_git_guard(self):
+        hooks = json.loads((self.root / 'claude' / 'hooks.json').read_text())['hooks']
+        expected = {'SessionStart': (None, 'session-start'), 'PreToolUse': ('Bash', 'git-guard')}
+        self.assertEqual(set(hooks), set(expected))
+        for event, (matcher, command) in expected.items():
+            with self.subTest(event=event):
+                [entry] = hooks[event]
+                [hook] = entry['hooks']
+                self.assertEqual(entry.get('matcher'), matcher)
+                self.assertEqual((hook['type'], hook['command']), ('command', 'python3'))
+                self.assertEqual(hook['args'], ['${CLAUDE_PLUGIN_ROOT}/scripts/kimiflow_ops.py', command])
+
     def test_marketplace_version_must_match_the_runtime(self):
         path = self.root / '.claude-plugin' / 'marketplace.json'
         data = json.loads(path.read_text()); data['plugins'][0]['version'] = '0.4.3'
@@ -121,6 +179,27 @@ class PackageTests(unittest.TestCase):
         shared = (self.root / 'SKILL.md').read_text()
         self.assertLess(len(shared.encode()), 4000)
         self.assertTrue((self.root / 'MIGRATION.md').is_file())
+
+    def test_shipped_texts_do_not_exclude_a_model(self):
+        model = r'(?:haiku|sonnet|opus|fable)'
+        patterns = [r'must not use [^.]*' + model, r'never use [^.]*' + model, r'only (?:use )?' + model,
+                    r'do not use [^.]*' + model, r'avoid [^.]*' + model,
+                    model + r'[^.]* (?:must|should) not be used',
+                    model + r' (?:is|are) not (?:allowed|permitted)',
+                    model + r'[^.]* nicht (?:verwenden|nutzen|einsetzen)']
+        for relative in RUNTIME_FILES:
+            if relative.endswith('.md'):
+                text = (self.root / relative).read_text().lower()
+                for pattern in patterns:
+                    self.assertIsNone(re.search(pattern, text), (relative, pattern))
+
+    def test_shipped_texts_are_project_agnostic(self):
+        terms = ('m8thor', 'xcodebuild', 'swiftui', 'deriveddata', 'sparkle', '/volumes', 'scratchpad-keep')
+        for relative in RUNTIME_FILES:
+            if relative.endswith(('.md', '.json')) and relative != 'references/models.md':
+                text = (self.root / relative).read_text().lower()
+                for term in terms:
+                    self.assertNotIn(term, text, relative)
 
     def test_installed_skill_references_are_packaged(self):
         build(self.root)

@@ -1,20 +1,20 @@
 {
-  "file_count": 15,
+  "file_count": 36,
   "files": [
     {
-      "bytes": 228,
+      "bytes": 490,
       "path": ".claude-plugin/plugin.json",
-      "sha256": "8c3c61116f3be32acaf5fe056ad7b2d9992746e0dc1245a58785bf2b8b434089"
+      "sha256": "37bb6e2f5e0eea5b3342717220034de1cee4da006d593daa2e00ca46f3d7fe5c"
     },
     {
-      "bytes": 1459,
+      "bytes": 1723,
       "path": ".codex-plugin/plugin.json",
-      "sha256": "100888d29292d838e402506c17f26d0a31170f4e0b20551b33e1a72f43d74cb4"
+      "sha256": "a8077fef998b84ead9c45416a8fd85bf51762558667887b2ef9472b4ab2c0529"
     },
     {
-      "bytes": 788,
+      "bytes": 1829,
       "path": "COMPATIBILITY.md",
-      "sha256": "199161741a1443e0ee72207e9a645eddca03f4d6bf7fda4dcae50ea5ef8abf8e"
+      "sha256": "164e552223fa147b1512cf5298a6694c05f205adebadb290e258a7f364a05814"
     },
     {
       "bytes": 1064,
@@ -22,44 +22,84 @@
       "sha256": "b796986e145d409f27c8ec0edaaf223ee51bdbbc2fa4477fe2d6c0984d5adf5b"
     },
     {
-      "bytes": 1523,
+      "bytes": 2246,
       "path": "MIGRATION.md",
-      "sha256": "e55a0ec48ed221ad8523e960699b35f4daf41b70e35cc7608be18ff4d844be44"
+      "sha256": "ef537f9ad179daa04513bcbee68c4d248a85e05061d1cffa36de59c24a1f09bf"
     },
     {
-      "bytes": 4843,
+      "bytes": 10468,
       "path": "README.de.md",
-      "sha256": "67f89794768c4022d7aae07851ab3e6646cbb56ad5150b89dfec336d5ccd2021"
+      "sha256": "3533c2bfe67132c6c597af847b465e3619b205025e8d226bbd5b6bdac0c2fee2"
     },
     {
-      "bytes": 5811,
+      "bytes": 9603,
       "path": "README.md",
-      "sha256": "4dcba7e54b05ef7fa112d9ee89a9e9061b20cc7b0ab12310b4a563d0730ff229"
+      "sha256": "89410217f6dbd327a0c8b881f9c1a6bc9d1f4e936fe6657cf03ab5565420cbc7"
     },
     {
-      "bytes": 3972,
+      "bytes": 3384,
       "path": "SKILL.md",
-      "sha256": "33832f843d9aacaa8ed748a638212e1bef7afb0a20f295f4264ded826364563a"
+      "sha256": "0fa452e216b316072563757ad5c67dc185e75c5cb4a2ef82905bac6882f7ee93"
     },
     {
-      "bytes": 642,
+      "bytes": 1584,
+      "path": "claude/agents/architect.md",
+      "sha256": "e90b4d82ad33ed55eb78fb64d004871d5a8e438a78788b3f023e1d7e42012fb6"
+    },
+    {
+      "bytes": 1632,
+      "path": "claude/agents/reviewer.md",
+      "sha256": "40fbfb1d7db9edfc66304e12d3538505ea495dc7890b549373efa81808eb1d61"
+    },
+    {
+      "bytes": 2177,
+      "path": "claude/agents/worker.md",
+      "sha256": "6b1876d5c8737c399f94773410217d3368464c331baf82958e4e8635cfbbfbd0"
+    },
+    {
+      "bytes": 594,
+      "path": "claude/hooks.json",
+      "sha256": "641c02ab02ddb78e4992eeab8afd0fc5136244b86d41c13e435817cde8e5683d"
+    },
+    {
+      "bytes": 776,
       "path": "hosts/pi/skills/kimiflow/SKILL.md",
-      "sha256": "708e68bac5ab191cb3fefa009438c590fadd1f425a09cc236238be79b9b04e5e"
+      "sha256": "e53e845dc0a5e0635c77678b64aba6e7d5cac540648894c585e727f6665060c7"
     },
     {
-      "bytes": 241,
+      "bytes": 264,
       "path": "package.json",
-      "sha256": "c055aecaf0376c559f19b7c59b8224983329a42ed90d7e3c2dd520635b174464"
+      "sha256": "5cfbb602e772134103a883f69929795978cf5a5e8a4968b1dbf992079a93e96d"
     },
     {
-      "bytes": 3022,
+      "bytes": 926,
+      "path": "references/continuation.md",
+      "sha256": "b61a59bde342fb47d8987f16efad46f4d9a626b35b028c9bed84cd635343179d"
+    },
+    {
+      "bytes": 3166,
       "path": "references/feature-work.md",
-      "sha256": "b35f6295a8e631bb8680a2d672e855888e5874c197f9d04085d0aaf0717c1441"
+      "sha256": "1535622b1fd4ba864bc3d135dfc744f8ef49904699e4b2dc071f1e741c41d88e"
     },
     {
-      "bytes": 2641,
+      "bytes": 8864,
+      "path": "references/models.md",
+      "sha256": "0d9d2fd9ee7ff31f4645e706115a1c0a26426760491ce7e11121c72a8e1d9a5b"
+    },
+    {
+      "bytes": 7545,
+      "path": "references/operating-model.md",
+      "sha256": "d3ea40eb2a15633bbdc7ea167e7e30942abc8c10c0720d72369281f139fb0aca"
+    },
+    {
+      "bytes": 3033,
       "path": "references/planner-worker.md",
-      "sha256": "7237b37be899cfa726a0b73047da21a89e50dfbfad1a9c65a42ac8261cbbab2c"
+      "sha256": "089f9dcbec0c294c36e4b0ff47464c0b8a1edaba14144736c1b4b87f73975424"
+    },
+    {
+      "bytes": 1540,
+      "path": "references/verification.md",
+      "sha256": "4da0a31d15025356d938d74ce32c255023d8f257603132094790e8ee98a29557"
     },
     {
       "bytes": 8235,
@@ -67,17 +107,82 @@
       "sha256": "0ae08503c5e1fdb87c9faa36b73daa1fde79643c2b70a2af1e38b5554e151f9b"
     },
     {
-      "bytes": 1349,
-      "path": "skills/kimiflow/SKILL.md",
-      "sha256": "63539bb3629223fca4d574da6c657a495108cd6516793fbf11d6ab442792dbc7"
+      "bytes": 14633,
+      "path": "scripts/kimiflow_ops.py",
+      "sha256": "ee0e7fb687cbbc99850660c2ec992c9cdf951c4ce97ba2ee3f8058d6179f5830"
     },
     {
-      "bytes": 220,
+      "bytes": 1505,
+      "path": "skills/kimiflow/SKILL.md",
+      "sha256": "c6da2287e6231cc493366598eac7b1ad4d20d78f02f87e46987413bdfc0fa8fe"
+    },
+    {
+      "bytes": 217,
       "path": "skills/kimiflow/agents/openai.yaml",
-      "sha256": "57dc23b3fd3371622618b47eb90eb9f4d5a655114c33b8fe7a47aacb7930bbec"
+      "sha256": "de9ff82f6148554635d8ba72f60dde8d51c59f12c124e372cadb43fd1da29ad9"
+    },
+    {
+      "bytes": 536,
+      "path": "templates/ops/HANDOFF.md",
+      "sha256": "25e1f7cc5ff2287a85fdd8427a041e440332ad4e2bb0565fb45bfbb1b1a8d01c"
+    },
+    {
+      "bytes": 129,
+      "path": "templates/ops/LIST-done.md",
+      "sha256": "6fcd303ab456b13b0b48bd273097fc73646d84bca680b564981bda2ad81e527d"
+    },
+    {
+      "bytes": 824,
+      "path": "templates/ops/LIST.md",
+      "sha256": "9c9b73cbce56cfb74b32057ae9b1dae6d7cee933b83a1364db8912772e40560c"
+    },
+    {
+      "bytes": 526,
+      "path": "templates/ops/OPERATIONS-history.md",
+      "sha256": "1a41b7ec79a971f4bf237465d3a4c19e84b1da05064f99f23c4c02f86b68548c"
+    },
+    {
+      "bytes": 3745,
+      "path": "templates/ops/OPERATIONS.md",
+      "sha256": "335daec1451c37f85e480a3fd15ef7059a1c4200e85cf2c598e4ad000774a72f"
+    },
+    {
+      "bytes": 0,
+      "path": "templates/ops/archive/.keep",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 633,
+      "path": "templates/ops/plans/feature-sheet.md",
+      "sha256": "01291992e8138def0cadf8a7ce4c64c1548253b30feec7a395f3632fbeafa33f"
+    },
+    {
+      "bytes": 576,
+      "path": "templates/ops/plans/plan.md",
+      "sha256": "13fcc093a13186b74c6fc82a0c7969538247b22271cc435ae6f11de35ff1c4f1"
+    },
+    {
+      "bytes": 877,
+      "path": "templates/ops/plans/review-brief.md",
+      "sha256": "4e357ede572d8bf00dad9ea36369f9ac5779b859b82f0950d34bea407660acea"
+    },
+    {
+      "bytes": 671,
+      "path": "templates/ops/plans/worker-brief.md",
+      "sha256": "824ab2f647a80fa50e9d1919ca17706c90776051abb064eb396e2392a703ec42"
+    },
+    {
+      "bytes": 0,
+      "path": "templates/ops/research/.keep",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 2155,
+      "path": "templates/ops/rules-worker.md",
+      "sha256": "fdcb2855ec4c37b3b51068a19b4a849ce738b472cf90b24b536fde7806b9327c"
     }
   ],
-  "runtime_fingerprint": "sha256:855b392a0bdc878d5684f1b36bfb22ce00a5ef8aa3c4511a96f69ae1c95722fc",
+  "runtime_fingerprint": "sha256:def1c1cb3a50fe271497d8f1b74447f7f886dc486f9ed9b5cce48a0bff2a85a3",
   "schema_version": 1,
-  "version": "0.5.3"
+  "version": "0.6.0"
 }

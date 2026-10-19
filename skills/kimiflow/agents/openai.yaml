@@ -1,4 +1,4 @@
 interface:
   display_name: "kimiflow"
-  short_description: "Lean delivery, current-source checks and optional tools"
+  short_description: "Operating kit for planner-led work and lean delivery"
   default_prompt: "Use $kimiflow to understand this task, implement it and verify the current result."

@@ -1,8 +1,10 @@
 {
   "name": "kimiflow",
-  "description": "Minimal delivery support: a short working agreement, native checks and optional continuation notes.",
-  "version": "0.5.3",
+  "description": "Operating kit for planner-led work: /kimiflow init sets up project rules, handoff, list and plan templates; plus delivery support elsewhere. Claude Code: session-start hook, git guard and worker/reviewer/architect agents.",
+  "version": "0.6.0",
   "license": "MIT",
+  "hooks": "./claude/hooks.json",
+  "agents": ["./claude/agents/worker.md", "./claude/agents/reviewer.md", "./claude/agents/architect.md"],
   "author": {
     "name": "kimikon"
   }
