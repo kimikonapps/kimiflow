@@ -3,7 +3,7 @@
 Ein Betriebskit für planergeführte Arbeit mit Coding-Agenten, dazu eine kurze Arbeitsvereinbarung
 für alles andere: Ziel klären, native Werkzeuge nutzen, Ergebnis prüfen.
 
-[English](README.md) · [Workflow](SKILL.md) · [Release 0.6.1](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.6.1)
+[English](README.md) · [Workflow](SKILL.md) · [Release 0.6.2](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.6.2)
 
 ## Was Kimiflow bietet
 
@@ -74,7 +74,7 @@ Nacharbeit mit; günstigere Worker-Aufrufe allein belegen kein günstigeres Erge
 [Planner-/Worker-Vereinbarung](references/planner-worker.md).
 
 In Claude Code bringt das Plugin die Agents `kimiflow:worker`, `kimiflow:reviewer` und
-`kimiflow:architect` (nur lesende Werkzeuge) mit. Sie haben kein eigenes Modell; der Planer übergibt beim
+`kimiflow:architect` (ohne Edit/Write-Werkzeuge; nur lesend per Anweisung, Bash nur zum Lesen) mit. Sie haben kein eigenes Modell; der Planer übergibt beim
 Start das Modell aus der Rollentabelle. Ein Subagent ohne Modellangabe erbt das Sitzungsmodell.
 Ein gleichnamiger User-Agent hat Vorrang, deshalb das Präfix `kimiflow:` verwenden.
 
@@ -114,8 +114,9 @@ schlägt eine AGENTS.md-Zeile vor, die Codex auf `.kimiflow/ops/OPERATIONS.md` v
 ## Nutzung
 
 `/kimiflow <Auftrag>` in Claude Code oder `$kimiflow <Auftrag>` in Codex. Pi lädt dieselbe Vereinbarung.
-Ein ausdrückliches `direct` / `direkt` umgeht Kimiflow. In einem initialisierten Projekt gelten die
-Betriebsregeln für jede Aufgabe. Sonst bleibt die automatische Auswahl auf substanzielle, freigegebene
+Ein ausdrückliches `direct` / `direkt` umgeht den Ablauf des Skills; in einem initialisierten Projekt
+gelten Session-Start-Kontext, Git-Guard und die Betriebsregeln aus OPERATIONS.md weiter, für jede Aufgabe.
+Sonst bleibt die automatische Auswahl auf substanzielle, freigegebene
 Features beschränkt; gewöhnliche Fixes, Reviews, Refactors und kleine Änderungen bleiben direkt, außer
 sie werden ausdrücklich angefordert. Ohne Aufgabe wird nur nach dem Auftrag gefragt, ohne
 Projektinventur.

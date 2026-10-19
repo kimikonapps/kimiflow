@@ -27,7 +27,8 @@ failures, without requiring the entire conversation. The worker implements and r
 checks, reporting changed files, actual results and unresolved issues. Preserve unrelated work and
 coordinate file ownership; use parallel workers only for independent tasks with a concrete benefit.
 
-The reviewer (normally the planner) reviews the actual diff, surrounding integration
+Outside an initialized project the reviewer is normally the planner; in an initialized project reviews
+run per the role table, from a fresh context. The reviewer reviews the actual diff, surrounding integration
 points and check evidence against the original requirements before accepting or expanding the work.
 Check that the implementation fits the existing code and covers relevant regressions; return concrete
 defects to the worker and verify corrections before acceptance. A finished worker turn or passing

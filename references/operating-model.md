@@ -41,7 +41,7 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
   state has one source of truth. Plans name what was searched, what was found, and whether it is
   reused or why something new is needed. In review, a duplicate is at least MEDIUM. Reason: duplicates
   drift apart and produce bugs that look unrelated.
-- **Plans are rewritten, not stacked.** Old versions go to `plans/archive/`. Reason: a reader should
+- **Plans are rewritten, not stacked.** Old versions go to `archive/`. Reason: a reader should
   see one current plan, not reconstruct it from revisions.
 
 ## Briefs and workers

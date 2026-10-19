@@ -11,7 +11,8 @@ the host.
   the only gates: the owner's OK on the feature sheet, a plan audit where the risk calls for it, and
   the owner-items check before a merge to main.
 - **Other projects.** The skill's short working agreement: outcome, acceptance, boundaries, project
-  checks. Explicit `direct`/`direkt` bypasses Kimiflow in both modes.
+  checks. Explicit `direct`/`direkt` bypasses the skill's flow; in an initialized
+  project the session-start context, the git guard and OPERATIONS.md still apply.
 
 ## Helper script
 
@@ -27,7 +28,8 @@ the host.
   new, safe, conflict, unchanged or unknown_base. It writes only with `--apply-safe` or `--resolved`,
   never replaces an owner edit, and moves the kit version only when every file is in sync.
 - `session-start` (SessionStart hook): prints the absolute kit paths, reading order and notices for
-  an older kit and for commits since HANDOFF.md changed. It is silent unless the kit was set up
+  an older kit, for commits since HANDOFF.md changed, and size notices (OPERATIONS.md > 12 KB,
+  HANDOFF.md > 6 KB). It is silent unless the kit was set up
   locally: `.kimiflow/` in the main checkout's `.git/info/exclude` and no tracked kit file. Errors
   never block a session.
 - `git-guard` (PreToolUse hook, matcher `Bash`): exits early unless the command text matches bulk
@@ -40,7 +42,7 @@ the host.
 `.claude-plugin/plugin.json`. The hook file is deliberately not at the default `hooks/hooks.json`
 path, which other hosts may also load. Hooks start `python3` with the script path, so packaged files
 need no exec bit. The agents carry no `model`; the planner passes one from the project's role table.
-The architect has read-only tools. Codex and Pi get the skill texts only.
+The architect has no Edit/Write tools and is read-only by instruction (Bash is available for reading). Codex and Pi get the skill texts only.
 
 ## Delegation and models
 

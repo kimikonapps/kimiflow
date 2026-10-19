@@ -1,6 +1,6 @@
 {
   "name": "@kimiflow/pi",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Operating kit and delivery support for Pi: skill texts using native agent tools.",
   "type": "module",
   "license": "MIT",

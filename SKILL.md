@@ -34,8 +34,8 @@ unknown_base files by hand together with the owner, then record each with `--res
 
 ## Initialized project
 
-A project with `.kimiflow/ops/OPERATIONS.md` follows that file and
-[the operating model](references/operating-model.md). Read OPERATIONS.md, then HANDOFF.md; grep LIST.md by ID.
+A project whose kit was set up locally by `kimiflow init` (`.kimiflow/` in Git's local exclude, no tracked
+kit files) follows `.kimiflow/ops/OPERATIONS.md` and [the operating model](references/operating-model.md). Read OPERATIONS.md, then HANDOFF.md; grep LIST.md by ID.
 The flow scales with risk; the gates are the ones the operating model names.
 
 ## Other projects

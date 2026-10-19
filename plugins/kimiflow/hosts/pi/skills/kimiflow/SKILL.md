@@ -5,7 +5,8 @@ description: "Operating kit and delivery support in Pi with the selected model a
 
 # Kimiflow for Pi
 
-Read `SKILL.md` at the installed package root once and follow it; an initialized project follows its
+Read `SKILL.md` at the installed package root once and follow it; a project whose kit was set up locally by
+`kimiflow init` (`.kimiflow/` in Git's local exclude, no tracked kit files) follows its
 `.kimiflow/ops/OPERATIONS.md`. Keep the selected
 model and native task/tools; no FirstMate crew is activated. Helper paths belong to the installed
 package, not the current project.

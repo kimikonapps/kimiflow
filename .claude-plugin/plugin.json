@@ -1,7 +1,7 @@
 {
   "name": "kimiflow",
   "description": "Operating kit for planner-led work: /kimiflow init sets up project rules, handoff, list and plan templates; plus delivery support elsewhere. Claude Code: session-start hook, git guard and worker/reviewer/architect agents.",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "license": "MIT",
   "hooks": "./claude/hooks.json",
   "agents": ["./claude/agents/worker.md", "./claude/agents/reviewer.md", "./claude/agents/architect.md"],

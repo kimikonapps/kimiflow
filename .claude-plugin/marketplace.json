@@ -11,7 +11,7 @@
     {
       "name": "kimiflow",
       "description": "Operating kit for planner-led work, plus delivery support using native agent tools.",
-      "version": "0.6.1",
+      "version": "0.6.2",
       "author": {
         "name": "kimikon"
       },

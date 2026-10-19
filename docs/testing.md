@@ -14,7 +14,7 @@ are tested on these POSIX systems only.
   refusal of tracked kit files, symlinks leading outside and a legacy `ops` task, legacy runs only
   reported), `update` (report without writing, `--apply-safe`, `--resolved`, symlinks), the
   session-start hook (absolute paths from a worktree, trust gate, version notice, commits since
-  HANDOFF) and the git guard (blocks only in an initialized project, allows named paths and plain
+  HANDOFF, size notices for OPERATIONS.md > 12 KB and HANDOFF.md > 6 KB) and the git guard (blocks only in an initialized project, allows named paths and plain
   commits). The built helper runs from the package without an exec bit.
 - `tests/test_check_change.py`: the check helper, including failing commands, source/index drift,
   ignored output, timeouts and surviving children.

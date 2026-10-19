@@ -6,6 +6,19 @@ The public release history starts at **0.5.0**. Earlier development artifacts ar
 
 _No unreleased changes._
 
+## 0.6.2
+
+Documentation consistency: the texts now match the 0.6.1 behaviour.
+
+- Old plan versions go to `archive/`, as in the kit templates.
+- The skill and host overlays follow `OPERATIONS.md` only for a kit set up locally by `kimiflow init`.
+- Planning and acceptance stay in the session model; in an initialized project reviews follow the role
+  table from a fresh context.
+- `direct`/`direkt` bypasses the skill's flow; session-start context, git guard and `OPERATIONS.md`
+  still apply in an initialized project.
+- The architect has no Edit/Write tools and is read-only by instruction.
+- Architecture and testing docs list the session-start size notices.
+
 ## 0.6.1
 
 A size check keeps the always-read kit files short.

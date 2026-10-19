@@ -4,12 +4,12 @@
     {
       "bytes": 490,
       "path": ".claude-plugin/plugin.json",
-      "sha256": "99e8d58a2114949312bc691806cb1aaeecef18ce4d44ac4d2e098843d89b79a3"
+      "sha256": "2607a41dfb493e5c0b0b7e43c0ab10799f1649abdafd2f670cc8ffc3038ffeaa"
     },
     {
       "bytes": 1723,
       "path": ".codex-plugin/plugin.json",
-      "sha256": "a03d1c20ad8f55af6ce2506d607e9763f87c4044ceb9137b8b0c50a48fbf37db"
+      "sha256": "379087e1786abf2cb5235c5bf4663fb42429396db744e1c95c2d2fffd30d24b9"
     },
     {
       "bytes": 1829,
@@ -27,19 +27,19 @@
       "sha256": "ef537f9ad179daa04513bcbee68c4d248a85e05061d1cffa36de59c24a1f09bf"
     },
     {
-      "bytes": 10565,
+      "bytes": 10691,
       "path": "README.de.md",
-      "sha256": "9f14c50d0d898ab592898343b17fc45817e9bba663cd74642d238f7099a82bfa"
+      "sha256": "53dbe9512fb3c6ac1cf330700408d983cf527a6a3f7fc83e11ca4f353ac42725"
     },
     {
-      "bytes": 9680,
+      "bytes": 9810,
       "path": "README.md",
-      "sha256": "a798a943a2f84a4b4ec9e5d4896103064b3053a1d3840af25854c6265c386f77"
+      "sha256": "53afa72006a8c850d5a43ee8c4063e3c32c6b03fb4549fee381656e32eba5d8c"
     },
     {
-      "bytes": 3384,
+      "bytes": 3477,
       "path": "SKILL.md",
-      "sha256": "0fa452e216b316072563757ad5c67dc185e75c5cb4a2ef82905bac6882f7ee93"
+      "sha256": "f482f28b013b772ed52a755b2d99394b5109b952c49601415a54e40a006da750"
     },
     {
       "bytes": 1584,
@@ -62,14 +62,14 @@
       "sha256": "641c02ab02ddb78e4992eeab8afd0fc5136244b86d41c13e435817cde8e5683d"
     },
     {
-      "bytes": 776,
+      "bytes": 871,
       "path": "hosts/pi/skills/kimiflow/SKILL.md",
-      "sha256": "e53e845dc0a5e0635c77678b64aba6e7d5cac540648894c585e727f6665060c7"
+      "sha256": "53b7c0f09f2bf08c0c006ac5d28765b60dd35ff4462ca6689a37a74c282d816b"
     },
     {
       "bytes": 264,
       "path": "package.json",
-      "sha256": "e625d8df7b775625067dc7ed0f6f68d4480002078d503fc1d30d7920eb1819c0"
+      "sha256": "c95e7364fa309eeb3e7b5c03948c3cd9d80e8357a9123cc8faf05a26f33c2f93"
     },
     {
       "bytes": 926,
@@ -87,14 +87,14 @@
       "sha256": "0d9d2fd9ee7ff31f4645e706115a1c0a26426760491ce7e11121c72a8e1d9a5b"
     },
     {
-      "bytes": 7628,
+      "bytes": 7622,
       "path": "references/operating-model.md",
-      "sha256": "ce5afe3a3e4f0dfca5e3207b3ebf97d93598f53369ed63aaa74eec424ffde6ab"
+      "sha256": "1c6c6a99418e88bc0ddb42397c81650ee80e644b6e15f781058c653fafb11a34"
     },
     {
-      "bytes": 3033,
+      "bytes": 3159,
       "path": "references/planner-worker.md",
-      "sha256": "089f9dcbec0c294c36e4b0ff47464c0b8a1edaba14144736c1b4b87f73975424"
+      "sha256": "7e7f44d44fd92e53d74a0c1b9f43496a0e5efa3181a3cfed7c5841a442172e50"
     },
     {
       "bytes": 1540,
@@ -112,9 +112,9 @@
       "sha256": "beda76662dfc92a4a7f8dbabc47d9171494dff78b88600a22225cfb53917b05d"
     },
     {
-      "bytes": 1505,
+      "bytes": 1698,
       "path": "skills/kimiflow/SKILL.md",
-      "sha256": "c6da2287e6231cc493366598eac7b1ad4d20d78f02f87e46987413bdfc0fa8fe"
+      "sha256": "950330893f3efb7f0e33b7dba8d16d242ed19cbfa0e90596aa84cbb0440afb48"
     },
     {
       "bytes": 217,
@@ -182,7 +182,7 @@
       "sha256": "fdcb2855ec4c37b3b51068a19b4a849ce738b472cf90b24b536fde7806b9327c"
     }
   ],
-  "runtime_fingerprint": "sha256:91c8f4a9a02a8ec30f1b51b63f140385ef3026e135245304fbcb17694a01fe0d",
+  "runtime_fingerprint": "sha256:4faf5c96e35360117112dc27cccb0397db51f871d563a6ec4f082cd0909fafaa",
   "schema_version": 1,
-  "version": "0.6.1"
+  "version": "0.6.2"
 }

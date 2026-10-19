@@ -3,7 +3,7 @@
 An operating kit for planner-led work with coding agents, plus a short working agreement for
 everything else: define the result, use native tools, verify the work.
 
-[Deutsch](README.de.md) · [Workflow](SKILL.md) · [Release 0.6.1](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.6.1)
+[Deutsch](README.de.md) · [Workflow](SKILL.md) · [Release 0.6.2](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.6.2)
 
 ## What Kimiflow does
 
@@ -73,7 +73,7 @@ and pricing decide. Count planning, review and rework when judging cost; cheaper
 do not prove a cheaper result. See the [planner-worker agreement](references/planner-worker.md).
 
 In Claude Code the plugin ships the agents `kimiflow:worker`, `kimiflow:reviewer` and
-`kimiflow:architect` (read-only tools). They have no model of their own; the planner passes the role
+`kimiflow:architect` (no Edit/Write tools; read-only by instruction, Bash only for reading). They have no model of their own; the planner passes the role
 table's model when it starts one. A subagent with no model setting inherits the session model.
 A user agent with the same name takes precedence, so use the `kimiflow:` prefix.
 
@@ -113,8 +113,9 @@ AGENTS.md that points Codex at `.kimiflow/ops/OPERATIONS.md`.
 ## Use
 
 Invoke `/kimiflow <task>` in Claude Code or `$kimiflow <task>` in Codex. Pi loads the same agreement.
-Explicit `direct` / `direkt` bypasses Kimiflow. In an initialized project the operating rules apply to
-every task. Elsewhere, automatic selection stays limited to substantial authorized features; ordinary
+Explicit `direct` / `direkt` bypasses the skill's flow; in an initialized project the session-start
+context, the git guard and the operating rules in OPERATIONS.md still apply, to every task.
+Elsewhere, automatic selection stays limited to substantial authorized features; ordinary
 fixes, reviews, refactors and small changes stay direct unless explicitly requested. An empty
 invocation asks for the task, without running a project inventory.
 
