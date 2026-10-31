@@ -44,7 +44,7 @@ The public release history starts with **0.5.0**.
 ├── HANDOFF.md             current state and next steps only
 ├── LIST.md                the one list of open and deferred items
 ├── LIST-done.md           finished items
-├── plans/                 templates: feature sheet, plan, worker brief, review brief
+├── plans/                 templates: feature sheet, plan, worker brief, review brief, build order
 ├── archive/               old handoffs and plans
 ├── research/              findings worth keeping
 └── .kit.json              kit version and template hashes, used by update

@@ -120,7 +120,7 @@ class OpsTests(unittest.TestCase):
         report = self.init()
         ops = self.main / '.kimiflow' / 'ops'
         for name in ('OPERATIONS.md', 'OPERATIONS-history.md', 'rules-worker.md', 'HANDOFF.md', 'LIST.md', 'LIST-done.md', 'plans/feature-sheet.md',
-                     'plans/plan.md', 'plans/worker-brief.md', 'plans/review-brief.md',
+                     'plans/plan.md', 'plans/worker-brief.md', 'plans/review-brief.md', 'plans/build-order.md',
                      'archive/.keep', 'research/.keep'):
             self.assertTrue((ops / name).is_file(), name)
         self.assertIn('.kimiflow/ops/OPERATIONS.md', report['created'])

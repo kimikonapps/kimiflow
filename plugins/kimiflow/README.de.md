@@ -44,7 +44,7 @@ Die öffentliche Versionsreihe beginnt mit **0.5.0**.
 ├── HANDOFF.md             nur der aktuelle Stand und die nächsten Schritte
 ├── LIST.md                die eine Liste offener und zurückgestellter Punkte
 ├── LIST-done.md           erledigte Punkte
-├── plans/                 Vorlagen: Feature-Blatt, Plan, Worker-Brief, Review-Brief
+├── plans/                 Vorlagen: Feature-Blatt, Plan, Worker-Brief, Review-Brief, Bau-Reihenfolge
 ├── archive/               alte Handoffs und Pläne
 ├── research/              Erkenntnisse, die bleiben sollen
 └── .kit.json              Kit-Version und Vorlagen-Hashes für update

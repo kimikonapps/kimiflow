@@ -1,5 +1,5 @@
 {
-  "file_count": 37,
+  "file_count": 38,
   "files": [
     {
       "bytes": 490,
@@ -27,14 +27,14 @@
       "sha256": "ef537f9ad179daa04513bcbee68c4d248a85e05061d1cffa36de59c24a1f09bf"
     },
     {
-      "bytes": 10691,
+      "bytes": 10708,
       "path": "README.de.md",
-      "sha256": "53dbe9512fb3c6ac1cf330700408d983cf527a6a3f7fc83e11ca4f353ac42725"
+      "sha256": "b79d3678bb76ab1cfaed7d48e1526c0392be869a7e8b29d411d0465db7ee76ce"
     },
     {
-      "bytes": 9810,
+      "bytes": 9823,
       "path": "README.md",
-      "sha256": "53afa72006a8c850d5a43ee8c4063e3c32c6b03fb4549fee381656e32eba5d8c"
+      "sha256": "b8f964140d92a16beed338d2b851f92f27d5361455cc0c3324b0daa3b23b8c90"
     },
     {
       "bytes": 3572,
@@ -87,9 +87,9 @@
       "sha256": "0d9d2fd9ee7ff31f4645e706115a1c0a26426760491ce7e11121c72a8e1d9a5b"
     },
     {
-      "bytes": 8613,
+      "bytes": 8942,
       "path": "references/operating-model.md",
-      "sha256": "e2a609c5cee7a090987262835a0fec72b21b2d432c13b1acd96f225a02160632"
+      "sha256": "f2bb0b196c679877bb0ff7fc8db9a7f2b1742f736009855aafcdb3bdc49b60de"
     },
     {
       "bytes": 3159,
@@ -157,6 +157,11 @@
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
+      "bytes": 738,
+      "path": "templates/ops/plans/build-order.md",
+      "sha256": "07b8c06699394cb1f60995b53d152dfa789c3e2fb39da32c2dadf6af2f70882c"
+    },
+    {
       "bytes": 633,
       "path": "templates/ops/plans/feature-sheet.md",
       "sha256": "01291992e8138def0cadf8a7ce4c64c1548253b30feec7a395f3632fbeafa33f"
@@ -187,7 +192,7 @@
       "sha256": "74753cea23b94c8f2c6a1ea13c2e752d12c2b47a3f90bd244f50e7a1e67d0d1a"
     }
   ],
-  "runtime_fingerprint": "sha256:fc17edce071ef6b5cf40c7242fbcf15719b1899b6be35891f76fa4a8bee43a71",
+  "runtime_fingerprint": "sha256:b8dfbd89277dfc2780352f7052cbbafd5dbc950a4433583f3c6440955cf78c26",
   "schema_version": 1,
   "version": "0.6.2"
 }

@@ -48,6 +48,10 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
   state has one source of truth. Plans name what was searched, what was found, and whether it is
   reused or why something new is needed. In review, a duplicate is at least MEDIUM. Reason: duplicates
   drift apart and produce bugs that look unrelated.
+- **Consolidate before build.** After a batch of items, group them, put shared parts first, cut
+  parallel lanes by file ownership and fix the order in `plans/build-order.md`; then act. The planner
+  decides this and does not ask. Reason: items built one by one touch the same files twice and
+  collide in parallel.
 - **Plans are rewritten, not stacked.** Old versions go to `archive/`. Reason: a reader should
   see one current plan, not reconstruct it from revisions.
 
@@ -129,7 +133,7 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
   link it instead of copying it, because copies drift and cost time to rewrite. The rule register at
   the top of OPERATIONS.md lists every rule and where it lives, so a new rule is checked against
   existing ones first. Split a topic into its own `rules-<topic>.md` only when it separates cleanly.
-- HANDOFF.md: current state only. LIST.md: the one list. `plans/`: feature sheets, plans, briefs.
+- HANDOFF.md: current state only. LIST.md: the one list. `plans/`: feature sheets, plans, briefs, build order.
   `research/`: findings worth keeping.
 - Session start warns when OPERATIONS.md exceeds 12 KB or HANDOFF.md exceeds 6 KB.
 
