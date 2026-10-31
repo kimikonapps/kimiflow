@@ -25,9 +25,12 @@ something. The project's numbers (commands, slots, quiet window) live in OPERATI
   tests that mention changed types, and the project's guard tests. Never the previous list plus new
   entries; a green test is not run again in the same batch unless its files changed since. Reason:
   cumulative lists grow until every gate is the full suite.
-- **One full suite per main merge, bundled.** Integration lines that are ready around the same time
-  merge into one first; one full suite, one main merge. Before it starts, build the small planned
-  packages for that line into it, so the suite is not run twice.
+- **From the last fix to the main merge in under an hour, without losing quality** (owner rule
+  2026-10-31). The pre-merge gate is the touched classes + guards in ONE run (≤ 40 min wall); the
+  full suite and the measurement classes run only in the night before a beta, never per wave or
+  per merge. Packages merge continuously as soon as they compile in the combined build — there is
+  no end-of-wave fix round. Over an hour from last fix to main is a defect of the pipeline, not of
+  the wave: audit the lanes and fix the pipeline first.
 - **The test slot is the critical path.** Before a long measurement or perception gate, check what
   waits for the slot; run the gate smaller, or after the suite, rather than in front of it.
 - **Small gate by default, full gate before a release.** A measurement or perception gate has a
@@ -56,8 +59,9 @@ Source: owner-supplied CI article, 2026-10-31. With agents writing the code, the
 - **Parallelism = cores.** More cores beat more shards; shards beyond the cores spend their time loading.
 - **Load once.** Do not start the app or test world per test file: one host per shard, reset hooks,
   and briefs say what a test must clean up.
-- **Run what the change touches**, plus the full suite nightly on the integration tip. Test the skip
-  logic too: a change the selection misses must fail the gate.
+- **Run what the change touches**; the full suite only in the night before a beta. Test the skip
+  logic too: a change the selection misses must fail the gate. Measurement and timing classes
+  never sit in a gate list or a guard set: they go to the quiet pre-beta night.
 - **Cheap checks in a hook.** Lint, size and style guards and a typecheck of changed files run in a
   pre-commit or pre-push hook in seconds, not as a line in AGENTS.md; agents skip steps.
 - **A rerun is not a fix.** Every rerun of a red carries a one-line cause.
