@@ -2,8 +2,8 @@
 
 - `docs/render/kimiflow/`: editable shared skill and host wrapper sources.
 - `SKILL.md`, `skills/kimiflow/`, `hosts/pi/skills/kimiflow/`: generated installed skills.
-- `references/`: operating model, model guide, planner-worker, feature work, verification and
-  continuation texts the skill links to.
+- `references/`: operating model, test economy, model guide, planner-worker, feature work,
+  verification and continuation texts the skill links to.
 - `templates/ops/`: the operating kit that `init` copies to a project's `.kimiflow/ops/`.
 - `scripts/kimiflow_ops.py`: `init`, `update` and the two Claude Code hook entry points
   (`session-start`, `git-guard`).

@@ -13,6 +13,14 @@ removed from the public release list. Existing Git history and local user data a
   untouched. Handle them as described below.
 - The operating kit is optional. Without `init`, the short working agreement applies as before.
 
+## 0.6 to 0.7
+
+- `kimiflow update` reports `plans/build-order.md` and `tools/run.sh` as new, and `OPERATIONS.md`,
+  `rules-worker.md` and `plans/worker-brief.md` as changed: safe where the project never edited them,
+  otherwise conflict with a diff. Merge the new sections into the project's filled-in files by hand,
+  then record each with `--resolved <path>`.
+- The git guard now also blocks `git add -u`/`--update`; stage named paths instead.
+
 ## Existing managed work
 
 Some development installations used Flow-schema runs, managed adapters, hooks, memory or worktree

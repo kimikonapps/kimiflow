@@ -23,10 +23,25 @@ Change a rule here, never by copying it into a brief.
   error or a missing module is not red. Report the failing output; it shows the test covers the change.
 - A fix covers the inverse case too: edited and unedited, failure and success. Fixes often break the
   path nobody looked at.
+- Golden files and recorded baselines are never re-pinned without the owner's OK; a changed golden
+  is a changed behaviour.
+
+## Code
+
+- Use the central part the brief names; generalise it, never copy it. A second version of the same
+  thing is a finding in review.
+- Remove the orphans of your own change, grep replaced symbols to zero hits and report a Removed list.
+  Other dead code: list it, do not remove it.
+- Shape: guard returns, at most `<3>` nesting levels, functions up to about `<40>` lines.
+- File size: new files at most `<400>` lines; a file already over the cap does not grow (new logic goes
+  into a new file). Splitting a big file is its own neutral step, named in the brief. Add only your
+  own entries to a size guard's exception list, each with a reason.
 
 ## Waits and scratch files
 
 - Every wait loop has a time cap, so a hung build or test cannot block the session for good.
+- Wait for a run's log to end with `EXIT <code>`; stop a run by killing its process group, so no
+  child keeps running beside the next one.
 - Scratch files use the prefix given in the brief, so parallel work does not collide.
 
 ## Stopping
@@ -34,10 +49,12 @@ Change a rule here, never by copying it into a brief.
 - Stop and report after two failed attempts at the same problem, when a stop condition from the brief
   is hit, or when the brief contradicts the real code. A fresh look from the planner is cheaper
   than a third guess.
+- Near about 150k tokens of context, stop at a compiling point, note what is left and report. A
+  worker past that point loses track of its own changes; a fresh worker continues from the note.
 
 ## Report
 
-1. Changed files: one line each.
+1. Changed files: one line each; the Removed list.
 2. Checks: each command with its real result. A check that was not run is reported as not run.
 3. Open points: unresolved issues, assumptions, deviations from the brief.
 

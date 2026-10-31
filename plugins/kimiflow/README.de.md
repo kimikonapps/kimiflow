@@ -3,7 +3,7 @@
 Ein Betriebskit für planergeführte Arbeit mit Coding-Agenten, dazu eine kurze Arbeitsvereinbarung
 für alles andere: Ziel klären, native Werkzeuge nutzen, Ergebnis prüfen.
 
-[English](README.md) · [Workflow](SKILL.md) · [Release 0.6.2](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.6.2)
+[English](README.md) · [Workflow](SKILL.md) · [Release 0.7.0](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.7.0)
 
 ## Was Kimiflow bietet
 
@@ -28,7 +28,9 @@ Die öffentliche Versionsreihe beginnt mit **0.5.0**.
 1. Plugin installieren (siehe [Installation](#installation)).
 2. Im Projekt in Claude Code `/kimiflow init` aufrufen (`/kimiflow:kimiflow init`, falls es einen
    anderen `/kimiflow`-Befehl gibt). Der Agent startet das Init-Skript, analysiert das Projekt und füllt
-   die Projektteile von OPERATIONS.md. Änderungen an CLAUDE.md, AGENTS.md oder Einstellungen schlägt er
+   die Projektteile von OPERATIONS.md; danach geht er mit dir die
+   [Checkliste für den ersten Tag](references/operating-model.md#day-one-in-a-new-project) durch (Rollen,
+   Sicherheit, Runner, Guard-Tests). Änderungen an CLAUDE.md, AGENTS.md oder Einstellungen schlägt er
    vor und setzt sie nur mit deinem OK um.
 3. Neue Sitzung starten. Ab dann beginnt jede Sitzung mit dem Kit.
 
@@ -44,9 +46,10 @@ Die öffentliche Versionsreihe beginnt mit **0.5.0**.
 ├── HANDOFF.md             nur der aktuelle Stand und die nächsten Schritte
 ├── LIST.md                die eine Liste offener und zurückgestellter Punkte
 ├── LIST-done.md           erledigte Punkte
-├── plans/                 Vorlagen: Feature-Blatt, Plan, Worker-Brief, Review-Brief
+├── plans/                 Vorlagen: Feature-Blatt, Plan, Worker-Brief, Review-Brief, Bau-Reihenfolge
 ├── archive/               alte Handoffs und Pläne
 ├── research/              Erkenntnisse, die bleiben sollen
+├── tools/run.sh           Runner-Gerüst: Logs, Lanes, Test-Lock, Load-Reds
 └── .kit.json              Kit-Version und Vorlagen-Hashes für update
 ```
 
@@ -100,9 +103,10 @@ Das Plugin registriert zwei Hooks über `.claude-plugin/plugin.json`. Beide star
 - **Vertrauensprüfung.** Der Hook spricht nur für ein Kit, das `init` hier angelegt hat: Gits lokale
   Exclude-Datei enthält `.kimiflow/`, und keine Kit-Datei ist versioniert. Ein geklontes Repository
   kann seine eigenen Dateien so nicht zu Betriebsregeln machen.
-- **Git-Guard.** Vor jedem Bash-Befehl blockiert er Massen-Staging (`git add -A`, `--all`, `.`, `:/`,
-  `*`) und ein `git commit`, dessen Befehlstext eine AI-Attribution enthält, erkannt an Absenderadresse
-  oder Produktlink eines AI-Werkzeugs. Eine menschliche Co-Autor-Zeile bleibt erlaubt. Der Guard ist nur
+- **Git-Guard.** Vor jedem Bash-Befehl blockiert er Massen-Staging (`git add -A`, `--all`, `-u`,
+  `--update`, `.`, `:/`, `*`) und ein `git commit`, dessen Befehlstext eine AI-Attribution enthält,
+  erkannt an Absenderadresse oder Produktlink eines AI-Werkzeugs, an einer AI-Co-Autor-Zeile (Claude,
+  Codex) oder einer Fußzeile „Generated with Claude Code“. Eine menschliche Co-Autor-Zeile bleibt erlaubt. Der Guard ist nur
   in einem initialisierten Projekt aktiv.
 
 ## Codex und Pi

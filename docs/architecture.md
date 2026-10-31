@@ -33,7 +33,8 @@ the host.
   locally: `.kimiflow/` in the main checkout's `.git/info/exclude` and no tracked kit file. Errors
   never block a session.
 - `git-guard` (PreToolUse hook, matcher `Bash`): exits early unless the command text matches bulk
-  staging or a `git commit` together with an AI sender signature; then it blocks (exit code 2) only in
+  staging (including `-u`/`--update`) or a `git commit` together with an AI signature (sender address,
+  product link, AI co-author trailer, "Generated with Claude Code"); then it blocks (exit code 2) only in
   a locally initialized project.
 
 ## Claude Code integration

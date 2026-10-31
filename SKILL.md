@@ -20,7 +20,8 @@ conventions for planner-led project work; it adds no controller or run state.
    prints a JSON report. Show the owner what was created, kept and listed as legacy.
 2. Analyse the project: checks and CI, branch and commit convention, CLAUDE.md/AGENTS.md, existing
    backlogs. Fill the project sections of `.kimiflow/ops/OPERATIONS.md` from what you found; reasons
-   and incidents go to `OPERATIONS-history.md`.
+   and incidents go to `OPERATIONS-history.md`. Then follow
+   [day one](references/operating-model.md#day-one-in-a-new-project) with the owner.
 3. Propose, and apply only with the owner's OK: trimming CLAUDE.md to short, true rules;
    `additionalDirectories` for the main checkout when sessions run in worktrees; one AGENTS.md line
    pointing Codex to `.kimiflow/ops/OPERATIONS.md`.
@@ -56,4 +57,5 @@ context, not a paid fallback or an additional workflow.
 - [Planner-worker](references/planner-worker.md): delegation with explicit model choices.
 - [Models](references/models.md): current Claude models per role and how to brief them.
 - [Verification](references/verification.md): checks, `check_change.py`, delivery and commits.
+- [Test economy](references/test-economy.md): who tests, gate contents, reds, runner contract.
 - [Continuation](references/continuation.md): notes for long tasks; legacy Flow-schema runs.

@@ -120,7 +120,8 @@ class OpsTests(unittest.TestCase):
         report = self.init()
         ops = self.main / '.kimiflow' / 'ops'
         for name in ('OPERATIONS.md', 'OPERATIONS-history.md', 'rules-worker.md', 'HANDOFF.md', 'LIST.md', 'LIST-done.md', 'plans/feature-sheet.md',
-                     'plans/plan.md', 'plans/worker-brief.md', 'plans/review-brief.md',
+                     'plans/plan.md', 'plans/worker-brief.md', 'plans/review-brief.md', 'plans/build-order.md',
+                     'tools/run.sh',
                      'archive/.keep', 'research/.keep'):
             self.assertTrue((ops / name).is_file(), name)
         self.assertIn('.kimiflow/ops/OPERATIONS.md', report['created'])
@@ -470,7 +471,10 @@ class OpsTests(unittest.TestCase):
                    'git commit -m "fix\n\nWith: Claude <noreply@anthropic.com>"': 'AI attribution',
                    'git commit -m "x" -m "made with https://claude.com/claude-code"': 'AI attribution',
                    'git commit -m "fix\n\nWith: Codex <noreply@openai.com>"': 'AI attribution',
-                   'git add -- .': 'named paths',
+                   'git add -- .': 'named paths', 'git add -u': 'named paths', 'git add --update': 'named paths',
+                   'git commit -m "fix\n\nCo-Authored-By: Claude Opus <bot@example.org>"': 'AI attribution',
+                   'git commit -m "fix" -m "Generated with Claude Code"': 'AI attribution',
+                   'git commit -m "fix" -m "Generated with [Claude Code](https://example.org)"': 'AI attribution',
                    'git commit -F - <<EOF\nfix\n\nWith: Claude <noreply@anthropic.com>\nEOF': 'AI attribution',
                    'git commit -m "$(cat <<EOF\nfix\n\nWith: Claude <noreply@anthropic.com>\nEOF\n)"':
                        'AI attribution'}
@@ -487,6 +491,8 @@ class OpsTests(unittest.TestCase):
                         'git commit -m "fix"', 'git status', 'echo "noreply@anthropic.com"',
                         'git log --grep "noreply@anthropic.com"',
                         'git commit -m "fix\n\nWith: Ana <ana@example.org>"', 'git add -p', 'git add -- file',
+                        'git commit -m "fix\n\nCo-Authored-By: Ana <ana@example.org>"',
+                        'git commit -m "docs: claude code hooks"', 'git add src/update.py',
                         'git add src/.env.example', 'git commit -m "add ."',
                         'git commit -m "$(cat <<EOF\nfix: tidy\n\nBody line.\nEOF\n)"'):
             with self.subTest(command=command):
