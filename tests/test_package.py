@@ -196,7 +196,7 @@ class PackageTests(unittest.TestCase):
     def test_shipped_texts_are_project_agnostic(self):
         terms = ('m8thor', 'xcodebuild', 'swiftui', 'deriveddata', 'sparkle', '/volumes', 'scratchpad-keep')
         for relative in RUNTIME_FILES:
-            if relative.endswith(('.md', '.json')) and relative != 'references/models.md':
+            if relative.endswith(('.md', '.json', '.sh')) and relative != 'references/models.md':
                 text = (self.root / relative).read_text().lower()
                 for term in terms:
                     self.assertNotIn(term, text, relative)

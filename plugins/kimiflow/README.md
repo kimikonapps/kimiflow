@@ -47,6 +47,7 @@ The public release history starts with **0.5.0**.
 ├── plans/                 templates: feature sheet, plan, worker brief, review brief, build order
 ├── archive/               old handoffs and plans
 ├── research/              findings worth keeping
+├── tools/run.sh           runner skeleton: logs, lanes, test lock, load reds
 └── .kit.json              kit version and template hashes, used by update
 ```
 

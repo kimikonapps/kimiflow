@@ -47,6 +47,7 @@ Die öffentliche Versionsreihe beginnt mit **0.5.0**.
 ├── plans/                 Vorlagen: Feature-Blatt, Plan, Worker-Brief, Review-Brief, Bau-Reihenfolge
 ├── archive/               alte Handoffs und Pläne
 ├── research/              Erkenntnisse, die bleiben sollen
+├── tools/run.sh           Runner-Gerüst: Logs, Lanes, Test-Lock, Load-Reds
 └── .kit.json              Kit-Version und Vorlagen-Hashes für update
 ```
 

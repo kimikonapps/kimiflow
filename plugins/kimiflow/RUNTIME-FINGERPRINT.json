@@ -1,5 +1,5 @@
 {
-  "file_count": 38,
+  "file_count": 39,
   "files": [
     {
       "bytes": 490,
@@ -27,14 +27,14 @@
       "sha256": "ef537f9ad179daa04513bcbee68c4d248a85e05061d1cffa36de59c24a1f09bf"
     },
     {
-      "bytes": 10708,
+      "bytes": 10791,
       "path": "README.de.md",
-      "sha256": "b79d3678bb76ab1cfaed7d48e1526c0392be869a7e8b29d411d0465db7ee76ce"
+      "sha256": "ccef26611a5d4a74742ad28970551f4d8c09f062b2c6fabe0f1c2b49de59ecae"
     },
     {
-      "bytes": 9823,
+      "bytes": 9907,
       "path": "README.md",
-      "sha256": "b8f964140d92a16beed338d2b851f92f27d5361455cc0c3324b0daa3b23b8c90"
+      "sha256": "ad32d5fc603e22272cb66aef95e5565548cddd2751e56956901520e52322a300"
     },
     {
       "bytes": 3572,
@@ -187,12 +187,17 @@
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
-      "bytes": 3143,
+      "bytes": 3283,
       "path": "templates/ops/rules-worker.md",
-      "sha256": "74753cea23b94c8f2c6a1ea13c2e752d12c2b47a3f90bd244f50e7a1e67d0d1a"
+      "sha256": "931f6d1f8b5a0c5c92ee2a7c007b4537db0808bbdb945587ce9666347f634af9"
+    },
+    {
+      "bytes": 3750,
+      "path": "templates/ops/tools/run.sh",
+      "sha256": "21b4443150070b4882e9213aede639b4f1121a585174dc8a12ef2f6e73e74487"
     }
   ],
-  "runtime_fingerprint": "sha256:5c425a0431fa88934c46f1caa0db4fc7d3c6c87b812d306b47f5e73ed8dcd861",
+  "runtime_fingerprint": "sha256:1dbf13750fad41ad10f441e96687c0c422252d0419b6126e298a1aa887cf3a9d",
   "schema_version": 1,
   "version": "0.6.2"
 }

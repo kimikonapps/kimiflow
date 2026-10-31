@@ -40,6 +40,8 @@ Change a rule here, never by copying it into a brief.
 ## Waits and scratch files
 
 - Every wait loop has a time cap, so a hung build or test cannot block the session for good.
+- Wait for a run's log to end with `EXIT <code>`; stop a run by killing its process group, so no
+  child keeps running beside the next one.
 - Scratch files use the prefix given in the brief, so parallel work does not collide.
 
 ## Stopping
