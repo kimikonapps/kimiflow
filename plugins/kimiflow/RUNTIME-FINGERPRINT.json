@@ -87,9 +87,9 @@
       "sha256": "0d9d2fd9ee7ff31f4645e706115a1c0a26426760491ce7e11121c72a8e1d9a5b"
     },
     {
-      "bytes": 8369,
+      "bytes": 8613,
       "path": "references/operating-model.md",
-      "sha256": "2225932ae39452977cb7565c8056c1a16f0ff0ac9749d89cdab50990ecfc6f8a"
+      "sha256": "e2a609c5cee7a090987262835a0fec72b21b2d432c13b1acd96f225a02160632"
     },
     {
       "bytes": 3159,
@@ -172,9 +172,9 @@
       "sha256": "4e357ede572d8bf00dad9ea36369f9ac5779b859b82f0950d34bea407660acea"
     },
     {
-      "bytes": 671,
+      "bytes": 876,
       "path": "templates/ops/plans/worker-brief.md",
-      "sha256": "824ab2f647a80fa50e9d1919ca17706c90776051abb064eb396e2392a703ec42"
+      "sha256": "ffc136851c8dbc82ff14739da0b016725ebd52a3613d99f4a2e9f0bc0683f25f"
     },
     {
       "bytes": 0,
@@ -182,12 +182,12 @@
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
-      "bytes": 2155,
+      "bytes": 3143,
       "path": "templates/ops/rules-worker.md",
-      "sha256": "fdcb2855ec4c37b3b51068a19b4a849ce738b472cf90b24b536fde7806b9327c"
+      "sha256": "74753cea23b94c8f2c6a1ea13c2e752d12c2b47a3f90bd244f50e7a1e67d0d1a"
     }
   ],
-  "runtime_fingerprint": "sha256:825f6027df2a9cf371320a58dc8b311ec2a7db8251b045f39e2edfdf1ce5d01f",
+  "runtime_fingerprint": "sha256:fc17edce071ef6b5cf40c7242fbcf15719b1899b6be35891f76fa4a8bee43a71",
   "schema_version": 1,
   "version": "0.6.2"
 }

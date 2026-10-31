@@ -11,6 +11,10 @@ this task.
 
 - `<path>` — <new / edit>
 
+## Central part to use
+
+`<path:line>` <component> — generalise it, never copy it. Acceptance greps for a second version.
+
 ## Current code facts
 
 Each claim was checked by the planner with grep or a read before this brief went out.
@@ -21,6 +25,7 @@ Each claim was checked by the planner with grep or a read before this brief went
 
 1. RED: <test> fails on the current code → verify: <command>, <expected assertion failure>
 2. <step> → verify: <command and expected result>
+3. Removed list: replaced symbols grep to zero hits → verify: `<grep command>`
 
 ## Stop conditions
 

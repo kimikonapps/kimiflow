@@ -58,6 +58,9 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
 - **RED is an assertion.** A test for new behaviour must fail on the old code with an assertion; a
   compile error is not red. Acceptance checks the evidence. Reason: a test that never failed may not
   test the change.
+- **Acceptance greps.** A brief names the central part to use (file:line). Before merge, grep for a
+  second implementation of it and for zero references to removed symbols. Reason: copies and
+  leftovers pass every test and drift apart later.
 - **Fixes go back to the same worker**, which keeps its context. After two rounds, re-cut the brief or
   take the work over.
 - **Fix briefs demand the inverse case too:** edited and unedited, failure and success. Reason: fixes
