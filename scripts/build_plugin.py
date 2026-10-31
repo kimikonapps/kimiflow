@@ -19,6 +19,7 @@ RUNTIME_FILES = (
     'claude/hooks.json', 'claude/agents/worker.md', 'claude/agents/reviewer.md', 'claude/agents/architect.md',
     'references/feature-work.md', 'references/planner-worker.md', 'references/models.md',
     'references/operating-model.md', 'references/verification.md', 'references/continuation.md',
+    'references/test-economy.md',
     'templates/ops/OPERATIONS.md', 'templates/ops/OPERATIONS-history.md',
     'templates/ops/rules-worker.md',
     'templates/ops/HANDOFF.md', 'templates/ops/LIST.md',

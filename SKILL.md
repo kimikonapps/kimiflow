@@ -56,4 +56,5 @@ context, not a paid fallback or an additional workflow.
 - [Planner-worker](references/planner-worker.md): delegation with explicit model choices.
 - [Models](references/models.md): current Claude models per role and how to brief them.
 - [Verification](references/verification.md): checks, `check_change.py`, delivery and commits.
+- [Test economy](references/test-economy.md): who tests, gate contents, reds, runner contract.
 - [Continuation](references/continuation.md): notes for long tasks; legacy Flow-schema runs.

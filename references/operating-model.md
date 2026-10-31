@@ -75,6 +75,8 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
 - Each package has its own RED, its own tests and its own review.
 - After two or three merged packages: a broad test run and a release build. At block end: the full
   suite and a test build. A red test is traced to its package before anything else moves.
+- **Test economy.** Who runs which tests, what a gate contains, how reds are handled and what the
+  project's runner guarantees: [test economy](test-economy.md).
 - **Owner-items check** before every test build, main merge and handoff:
   `grep -nE '\[(NEXT|OPEN|IN PROGRESS)\].*[Oo]wner' LIST.md`. Reason: owner decisions get lost in a
   long list unless something asks for them.

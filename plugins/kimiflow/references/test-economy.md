@@ -1,0 +1,61 @@
+# Test economy
+
+How an initialized project spends its test time. On a long project the test slot, not the planner or
+the workers, decides how fast work lands; these rules keep it busy with runs that can still find
+something. The project's numbers (commands, slots, quiet window) live in OPERATIONS.md § 4.
+
+## Who runs what
+
+- **Workers compile, they do not test.** One compile check before the report; the planner runs the
+  tests. Exception, a fix round: only the red tests and their neighbours, at most three runs. Reason:
+  parallel workers running suites compete for one machine and produce load reds.
+- **Review runs parallel to the build.** The reviewer reads the diff while it builds; its fixes land
+  before the package's single test run. Never build → test → review → fix → test again.
+- **Merge first, test together.** A package whose only pending step is a test run goes into the
+  integration branch with a compile check; the next combined run proves it. Own runs only for pieces
+  that would block others if they were wrong.
+- **Review fixes in batches.** Small review fixes run as parallel compile-only workers with disjoint
+  files, then one combined run for all of them.
+
+## Gates
+
+- **Combined run after two or three merged packages** ([operating model](operating-model.md) §
+  Integration), never per merge.
+- **Gate = changed + affected + guards, never cumulative.** The set is the tests of changed files,
+  tests that mention changed types, and the project's guard tests. Never the previous list plus new
+  entries; a green test is not run again in the same batch unless its files changed since. Reason:
+  cumulative lists grow until every gate is the full suite.
+- **One full suite per main merge, bundled.** Integration lines that are ready around the same time
+  merge into one first; one full suite, one main merge. Before it starts, build the small planned
+  packages for that line into it, so the suite is not run twice.
+- **The test slot is the critical path.** Before a long measurement or perception gate, check what
+  waits for the slot; run the gate smaller, or after the suite, rather than in front of it.
+- **Small gate by default, full gate before a release.** A measurement or perception gate has a
+  standard set that fits the slot (about an hour) and a full set for releases or when the owner asks.
+- **Quiet window for numbers.** Performance and budget numbers count only on an otherwise idle
+  machine (OPERATIONS.md § 4); structural counters gate, wall times only indicate.
+
+## Reds
+
+- **New red, same day.** A red that is not from the current package gets its own small fix package
+  the same day. No list of "known reds": it only grows, and it hides the next real one.
+- **Load reds.** A red seen in a busy run is re-run once alone from the same build: green alone is a
+  `load-red`, red again a `real-red` (a bug, traced to its package). The runner does this, not the
+  planner by hand. A test that is load-red repeatedly is fixed at its cause.
+- **Held-back runs are visible.** A run deliberately held back (quiet window, waiting for another
+  package) gets one line in HANDOFF.md or the runner's state: what it waits for, since when.
+
+## Runner contract
+
+One script starts every build and test run (template: `.kimiflow/ops/tools/run.sh`). Its only
+stack-specific lines are the project's build and test commands and how to read red test ids from the
+log; everything else is this contract:
+
+- One log per run; the last line is `EXIT <code> after <n>s`. Waits watch for that line, with a time
+  cap. Stop a run by killing its process group, not only the runner's pid.
+- One test phase per machine: a lock directory (`mkdir`), a stale pid is taken over.
+- At most `LANES` builds at once; the runner waits for a free lane.
+- Test modes refuse without `TESTS_OK=1`, so a worker's compile check cannot turn into a test run.
+- Reds re-run once alone (see Load reds) and are reported as `load-red:` / `real-red:` lines; the run
+  exits 0 when every red was a load red.
+- A small state file per run and phase, so a queue view or the planner can see what runs and waits.
