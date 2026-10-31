@@ -103,9 +103,10 @@ Das Plugin registriert zwei Hooks über `.claude-plugin/plugin.json`. Beide star
 - **Vertrauensprüfung.** Der Hook spricht nur für ein Kit, das `init` hier angelegt hat: Gits lokale
   Exclude-Datei enthält `.kimiflow/`, und keine Kit-Datei ist versioniert. Ein geklontes Repository
   kann seine eigenen Dateien so nicht zu Betriebsregeln machen.
-- **Git-Guard.** Vor jedem Bash-Befehl blockiert er Massen-Staging (`git add -A`, `--all`, `.`, `:/`,
-  `*`) und ein `git commit`, dessen Befehlstext eine AI-Attribution enthält, erkannt an Absenderadresse
-  oder Produktlink eines AI-Werkzeugs. Eine menschliche Co-Autor-Zeile bleibt erlaubt. Der Guard ist nur
+- **Git-Guard.** Vor jedem Bash-Befehl blockiert er Massen-Staging (`git add -A`, `--all`, `-u`,
+  `--update`, `.`, `:/`, `*`) und ein `git commit`, dessen Befehlstext eine AI-Attribution enthält,
+  erkannt an Absenderadresse oder Produktlink eines AI-Werkzeugs, an einer AI-Co-Autor-Zeile (Claude,
+  Codex) oder einer Fußzeile „Generated with Claude Code“. Eine menschliche Co-Autor-Zeile bleibt erlaubt. Der Guard ist nur
   in einem initialisierten Projekt aktiv.
 
 ## Codex und Pi

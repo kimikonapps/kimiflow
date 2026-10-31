@@ -22,8 +22,9 @@ A local model needs a tool-capable host, not a Kimiflow-specific adapter.
 
 ## Git guard scope
 
-- The guard reads the whole Bash command text. A compound command that mentions an AI sender address
-  or product link anywhere next to `git commit` is blocked too, even when that text is not part of
+- The guard reads the whole Bash command text. A compound command that mentions an AI sender address,
+  product link, AI co-author trailer or "Generated with Claude Code" anywhere next to `git commit` is
+  blocked too, even when that text is not part of
   the commit message.
 - It sees only commands run through the Bash tool. Commits from other tools, editors or a terminal
   outside the session are not checked.

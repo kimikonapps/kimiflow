@@ -102,9 +102,10 @@ The plugin registers two hooks through `.claude-plugin/plugin.json`. Both run `p
 - **Trust gate.** The hook speaks only for a kit set up by `init` here: Git's local exclude lists
   `.kimiflow/` and no kit file is tracked. A cloned repository cannot promote its own files to
   operating rules.
-- **Git guard.** Before each Bash command it blocks bulk staging (`git add -A`, `--all`, `.`, `:/`,
-  `*`) and a `git commit` whose command text carries AI attribution, recognised by the sender address
-  or product link of an AI tool. A human co-author line stays allowed. The guard is active only in
+- **Git guard.** Before each Bash command it blocks bulk staging (`git add -A`, `--all`, `-u`,
+  `--update`, `.`, `:/`, `*`) and a `git commit` whose command text carries AI attribution, recognised
+  by the sender address or product link of an AI tool, an AI co-author trailer (Claude, Codex) or a
+  "Generated with Claude Code" footer. A human co-author line stays allowed. The guard is active only in
   an initialized project.
 
 ## Codex and Pi

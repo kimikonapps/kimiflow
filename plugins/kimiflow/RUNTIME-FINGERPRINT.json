@@ -12,9 +12,9 @@
       "sha256": "379087e1786abf2cb5235c5bf4663fb42429396db744e1c95c2d2fffd30d24b9"
     },
     {
-      "bytes": 1829,
+      "bytes": 1883,
       "path": "COMPATIBILITY.md",
-      "sha256": "164e552223fa147b1512cf5298a6694c05f205adebadb290e258a7f364a05814"
+      "sha256": "6c563299ab49deaad6eec3cead2633b5562ef405066ef7fa097b99ff2a9d6def"
     },
     {
       "bytes": 1064,
@@ -27,14 +27,14 @@
       "sha256": "ef537f9ad179daa04513bcbee68c4d248a85e05061d1cffa36de59c24a1f09bf"
     },
     {
-      "bytes": 10962,
+      "bytes": 11080,
       "path": "README.de.md",
-      "sha256": "16e063f8e084ae671a783a7729d7dc25a0425a47934a5564f1146849f734e71e"
+      "sha256": "a7a1c2208ae8799a16b2d2bc268d9d50a12fc113a994e0ec0a72936e0df9f80d"
     },
     {
-      "bytes": 10058,
+      "bytes": 10160,
       "path": "README.md",
-      "sha256": "cacffbc861c2218e68a74a720c09e0d519a1d6418a3dee837130d61c9476cb58"
+      "sha256": "f8bea19ec26dedbbcf5ba08fff62cee510a3194b9640c1cbf46f1370c0e7dfd7"
     },
     {
       "bytes": 3669,
@@ -87,9 +87,9 @@
       "sha256": "0d9d2fd9ee7ff31f4645e706115a1c0a26426760491ce7e11121c72a8e1d9a5b"
     },
     {
-      "bytes": 10857,
+      "bytes": 10862,
       "path": "references/operating-model.md",
-      "sha256": "b87584e6e71e9bb04035782006c6da27039f90c405e30b3cc9d9a446f2a92773"
+      "sha256": "c7afb31b902c548f28bf68e0a95d32501c4a67150c6def7c05ec4b95a1256e68"
     },
     {
       "bytes": 3159,
@@ -112,9 +112,9 @@
       "sha256": "0ae08503c5e1fdb87c9faa36b73daa1fde79643c2b70a2af1e38b5554e151f9b"
     },
     {
-      "bytes": 15214,
+      "bytes": 15321,
       "path": "scripts/kimiflow_ops.py",
-      "sha256": "beda76662dfc92a4a7f8dbabc47d9171494dff78b88600a22225cfb53917b05d"
+      "sha256": "48f683c28b1d6faa480b60932eee0b2e263055e2396c2e42ae57f55b7d841eb3"
     },
     {
       "bytes": 1698,
@@ -197,7 +197,7 @@
       "sha256": "21b4443150070b4882e9213aede639b4f1121a585174dc8a12ef2f6e73e74487"
     }
   ],
-  "runtime_fingerprint": "sha256:d2f63954ee321154121f55e3a852dc5047d6b55cbf443514ecf3f68f99e70500",
+  "runtime_fingerprint": "sha256:bec2bd68293b639d1ee0c26f9b352754a24afd637b34d305f6dc7c51afbaf920",
   "schema_version": 1,
   "version": "0.6.2"
 }

@@ -24,11 +24,12 @@ OPERATIONS_LIMIT = 12 * 1024
 HANDOFF_LIMIT = 6 * 1024
 # Per line, like grep: git starts a command segment, optionally after -C <path> global options.
 _GIT = r'(?:^|[;&|])[ \t]*git(?:[ \t]+-C[ \t]+(?:"[^"\n]*"|\'[^\'\n]*\'|[^ \t\n]+))*[ \t]+'
-BULK_ADD = re.compile(_GIT + r'add[ \t]+(?:[^;&|\n]*[ \t])?(?:-A|--all|\.|:/|\*)(?:[ \t]|$|[;&|])', re.M)
+BULK_ADD = re.compile(_GIT + r'add[ \t]+(?:[^;&|\n]*[ \t])?(?:-A|--all|-u|--update|\.|:/|\*)(?:[ \t]|$|[;&|])', re.M)
 COMMIT = re.compile(_GIT + 'commit', re.M)
-# AI tools sign their commit trailers and footers with their own address or product link; match those
-# signatures, so the guard needs no trailer wording and a human co-author line stays allowed.
-ATTRIBUTION = re.compile(r'noreply@(?:anthropic|openai)\.com|claude\.(?:com|ai)/(?:claude-)?code', re.I)
+# AI tools sign their commit trailers and footers with their own address or product link, or name the
+# tool in plain text; match those signatures, so a human co-author line stays allowed.
+ATTRIBUTION = re.compile(r'noreply@(?:anthropic|openai)\.com|claude\.(?:com|ai)/(?:claude-)?code'
+                         r'|co-authored-by:[ \t]*(?:claude|codex)\b|generated with \[?claude code', re.I)
 
 
 def _git(cwd, *args):
@@ -285,7 +286,7 @@ def git_guard(raw):
     data = json.loads(raw)
     command = data.get('tool_input', {}).get('command') or ''
     if BULK_ADD.search(command):
-        message = ('Kimiflow git guard: stage named paths only; replace git add -A/--all/./:/ /* '
+        message = ('Kimiflow git guard: stage named paths only; replace git add -A/--all/-u/./:/ /* '
                    'with the paths you mean.')
     elif COMMIT.search(command) and ATTRIBUTION.search(command):
         message = ('Kimiflow git guard: no AI attribution in commits; remove the AI trailer or footer '

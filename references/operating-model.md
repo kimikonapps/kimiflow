@@ -16,7 +16,7 @@ The project's `.kimiflow/ops/` holds the documents named here.
   decides, the owner decides product questions.
 - In Claude Code the plugin ships these as the agents `kimiflow:worker`, `kimiflow:reviewer` and
   `kimiflow:architect`, without a model of their own; the planner passes the role table's model.
-- A Claude Code hook (git guard) blocks `git add -A`/`--all`/`.` and AI attribution in commit messages
+- A Claude Code hook (git guard) blocks `git add -A`/`--all`/`-u`/`.` and AI attribution in commit messages
   in an initialized project, so these two rules hold without anyone remembering them.
 
 ## Process scales with risk
