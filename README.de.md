@@ -3,7 +3,7 @@
 Ein Betriebskit für planergeführte Arbeit mit Coding-Agenten, dazu eine kurze Arbeitsvereinbarung
 für alles andere: Ziel klären, native Werkzeuge nutzen, Ergebnis prüfen.
 
-[English](README.md) · [Workflow](SKILL.md) · [Release 0.6.2](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.6.2)
+[English](README.md) · [Workflow](SKILL.md) · [Release 0.7.0](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.7.0)
 
 ## Was Kimiflow bietet
 

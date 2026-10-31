@@ -4,12 +4,12 @@
     {
       "bytes": 490,
       "path": ".claude-plugin/plugin.json",
-      "sha256": "2607a41dfb493e5c0b0b7e43c0ab10799f1649abdafd2f670cc8ffc3038ffeaa"
+      "sha256": "2f1df96912cdf0a963a1ede4469a57ee5c9e7658f46d2077fa701b052d38cfd2"
     },
     {
       "bytes": 1723,
       "path": ".codex-plugin/plugin.json",
-      "sha256": "379087e1786abf2cb5235c5bf4663fb42429396db744e1c95c2d2fffd30d24b9"
+      "sha256": "2b9baef28a0b982e063bd1f30ad23d634253bd8d6ec61c71372968b151fd20cc"
     },
     {
       "bytes": 1883,
@@ -22,19 +22,19 @@
       "sha256": "b796986e145d409f27c8ec0edaaf223ee51bdbbc2fa4477fe2d6c0984d5adf5b"
     },
     {
-      "bytes": 2246,
+      "bytes": 2693,
       "path": "MIGRATION.md",
-      "sha256": "ef537f9ad179daa04513bcbee68c4d248a85e05061d1cffa36de59c24a1f09bf"
+      "sha256": "94b264a1b4814713982ace8b32cb0af0f618f613fea213b73e7688b493445d6a"
     },
     {
       "bytes": 11080,
       "path": "README.de.md",
-      "sha256": "a7a1c2208ae8799a16b2d2bc268d9d50a12fc113a994e0ec0a72936e0df9f80d"
+      "sha256": "90047d975d23c8a1dbd117a93fa0b4b4e9255b831cb07fc3aafeecf1891a2b3b"
     },
     {
       "bytes": 10160,
       "path": "README.md",
-      "sha256": "f8bea19ec26dedbbcf5ba08fff62cee510a3194b9640c1cbf46f1370c0e7dfd7"
+      "sha256": "e2191f8818cf6b993d18e19a8f0aab5f04975fef636b234b4b58fa141b366948"
     },
     {
       "bytes": 3669,
@@ -69,7 +69,7 @@
     {
       "bytes": 264,
       "path": "package.json",
-      "sha256": "c95e7364fa309eeb3e7b5c03948c3cd9d80e8357a9123cc8faf05a26f33c2f93"
+      "sha256": "a4b5c25722286271ba2e5bd6dfd443e0c6d3fddccd8fca51b16d9189f03f7345"
     },
     {
       "bytes": 926,
@@ -197,7 +197,7 @@
       "sha256": "21b4443150070b4882e9213aede639b4f1121a585174dc8a12ef2f6e73e74487"
     }
   ],
-  "runtime_fingerprint": "sha256:ed8ad2c56cc24a436f65bc9578b1f58fd0d86cfdf091425efe96d733bb232766",
+  "runtime_fingerprint": "sha256:1a3dac175f9ad72e7a96be3dfe01816dc12421b5bc11d4b66edb0d1e0e875cc4",
   "schema_version": 1,
-  "version": "0.6.2"
+  "version": "0.7.0"
 }

@@ -6,6 +6,29 @@ The public release history starts at **0.5.0**. Earlier development artifacts ar
 
 _No unreleased changes._
 
+## 0.7.0
+
+Lessons from long-running app work, written project-agnostically into the kit.
+
+- Add `references/test-economy.md`: workers compile only, review parallel to the build, merge first and
+  test together, non-cumulative gates, one bundled full suite per main merge, new red same day, load
+  reds, the pipeline as a product (audit waiting/setup/running, cores over shards, tested skip logic,
+  cheap checks in a hook, a cause line per rerun) and the runner contract.
+- Add the kit template `tools/run.sh`: a POSIX runner skeleton with one log per run ending in
+  `EXIT <code> after <n>s`, build lanes, one test lock per machine, `TESTS_OK=1` for test modes and a
+  load-red rerun. The project sets its build and test commands.
+- Add the kit template `plans/build-order.md` and the rule to consolidate a batch before building.
+- Operating model: big or risky packages get a worker-written design, one audit and a fresh build
+  worker; acceptance greps for a second implementation and removed symbols; one merger per
+  integration branch; relay only changes; ask at once for a missing report; learnings check at block
+  end; a day-one checklist for a new project.
+- Kit templates: OPERATIONS § 4 gains runner, slot, build-output, quiet-window, quick-path and
+  owner-view fields; rules-worker gains § Code (central part, Removed list, shape and file-size caps),
+  a context stop, golden files and waiting on the `EXIT` line; the worker brief names the central part
+  and the Removed list.
+- Git guard: also blocks `git add -u`/`--update`, AI co-author trailers (Claude, Codex) and a plain
+  "Generated with Claude Code" footer.
+
 ## 0.6.2
 
 Documentation consistency: the texts now match the 0.6.1 behaviour.
