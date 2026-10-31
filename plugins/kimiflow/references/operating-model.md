@@ -23,10 +23,17 @@ The project's `.kimiflow/ops/` holds the documents named here.
 
 | Task | Flow |
 | --- | --- |
-| Data or disk writes, migrations, security, public API, deletes | Full flow: feature sheet → plan → audit → worker → review |
+| Data or disk writes, migrations, security, public API, deletes | Full flow: feature sheet → plan (design by a worker) → one audit → fresh worker → review |
 | UI, display or performance without such writes | Short plan → worker → one review |
 | Bug fix | Reproduce (RED) → fix → review |
 | Unsure | Full flow |
+
+**Big or risky packages.** A worker writes the design and grep-verifies every fact of the brief
+first; one audit checks it, and its corrections are appended to the design as binding. Only open
+BLOCKER/HIGH findings get a re-check; still open after that → architect or owner. A fresh worker builds
+from the design file, and the review runs on the diff while it builds ([test economy](test-economy.md)).
+Reason: the design worker's context is full of exploration, a fresh one builds from the agreed text;
+repeated audit rounds cost more than they find.
 
 The gates are exactly these: the owner's OK on the feature sheet, a plan audit where the risk calls
 for it, and the owner-items check (the LIST grep) before a merge to main. Small corrections need none of them.
