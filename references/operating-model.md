@@ -87,6 +87,9 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
 
 - Branches: `feat/<slug>` → integration branch `int/<batch>` → main.
 - Each package has its own RED, its own tests and its own review.
+- **One merger per integration branch.** The session that owns `int/<batch>` merges everything into
+  it; other sessions send branch, commit and the tests their change concerns, and never touch it.
+  Reason: two mergers on one branch undo each other's conflict resolutions.
 - After two or three merged packages: a broad test run and a release build. At block end: the full
   suite and a test build. A red test is traced to its package before anything else moves.
 - **Test economy.** Who runs which tests, what a gate contains, how reds are handled and what the
@@ -141,5 +144,10 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
 
 Answer the owner in the owner's language. Short and structured: the result, what the owner must do,
 what is open.
+
+- **Relay changes only:** finished, red, decision needed, GO. Heartbeats and "still waiting" stay
+  silent; a check-in with nothing new reports nothing. Reason: the owner reads every line.
+- **Report or ask.** Every brief ends with the report block (rules-worker.md § Report). A worker that
+  stops without it is asked for it at once, not at the next check-in.
 
 Project-specific rules live in the project's OPERATIONS.md.
