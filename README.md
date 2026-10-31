@@ -28,7 +28,9 @@ The public release history starts with **0.5.0**.
 1. Install the plugin (see [Installation](#installation)).
 2. In the project, run `/kimiflow init` in Claude Code (`/kimiflow:kimiflow init` if another
    `/kimiflow` command exists). The agent runs the init script, analyses the project and fills the
-   project sections of OPERATIONS.md. Changes to CLAUDE.md, AGENTS.md or settings are proposed and
+   project sections of OPERATIONS.md, then goes through the
+   [day-one checklist](references/operating-model.md#day-one-in-a-new-project) with you (roles, safety,
+   runner, guard tests). Changes to CLAUDE.md, AGENTS.md or settings are proposed and
    applied only with your OK.
 3. Start a new session. From then on each session starts with the kit.
 

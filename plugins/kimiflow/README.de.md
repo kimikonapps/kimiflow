@@ -28,7 +28,9 @@ Die öffentliche Versionsreihe beginnt mit **0.5.0**.
 1. Plugin installieren (siehe [Installation](#installation)).
 2. Im Projekt in Claude Code `/kimiflow init` aufrufen (`/kimiflow:kimiflow init`, falls es einen
    anderen `/kimiflow`-Befehl gibt). Der Agent startet das Init-Skript, analysiert das Projekt und füllt
-   die Projektteile von OPERATIONS.md. Änderungen an CLAUDE.md, AGENTS.md oder Einstellungen schlägt er
+   die Projektteile von OPERATIONS.md; danach geht er mit dir die
+   [Checkliste für den ersten Tag](references/operating-model.md#day-one-in-a-new-project) durch (Rollen,
+   Sicherheit, Runner, Guard-Tests). Änderungen an CLAUDE.md, AGENTS.md oder Einstellungen schlägt er
    vor und setzt sie nur mit deinem OK um.
 3. Neue Sitzung starten. Ab dann beginnt jede Sitzung mit dem Kit.
 

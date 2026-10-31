@@ -114,6 +114,22 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
 - Session start speaks only for a kit set up locally by init, so a cloned repository cannot promote
   its own files to operating rules.
 
+## Day one in a new project
+
+After `kimiflow init`, before the first feature:
+
+1. OPERATIONS § 1: the role table, one explicit model per role.
+2. § 2 hard safety: data that must never be lost, what needs the owner's GO (push, tag, release,
+   deleting owner data), permission denials are reported, never worked around.
+3. § 4: test, build and lint commands, runner, slots, build output, quiet window.
+4. `tools/run.sh`: set the build and test commands and the red-test reader; see
+   [test economy](test-economy.md) § Runner contract.
+5. rules-worker § Code and § Project checks: the project's caps, forbidden APIs, style rules.
+6. First guard tests, red first: file size with its exception list, forbidden APIs, one single-source check.
+7. HANDOFF.md: the first block. LIST.md: the state line.
+8. Host memory keeps only owner preferences that are not rules (language, reporting style, approved
+   data locations); rules live in OPERATIONS, so they cannot drift apart.
+
 ## Autonomous and night runs
 
 - Take your own recommendation, record it as "default, owner can change", and keep going.
