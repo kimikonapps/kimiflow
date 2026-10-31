@@ -97,9 +97,9 @@
       "sha256": "7e7f44d44fd92e53d74a0c1b9f43496a0e5efa3181a3cfed7c5841a442172e50"
     },
     {
-      "bytes": 4118,
+      "bytes": 5361,
       "path": "references/test-economy.md",
-      "sha256": "9dd0bb7b6d954a3492b7096a08c1b76c65293fbcc5736af21aaf40ee8fec7a85"
+      "sha256": "fd562af2569de7d5d2f7da3b54f3714d165cac515aceb7915b6e5693eec64481"
     },
     {
       "bytes": 1540,
@@ -197,7 +197,7 @@
       "sha256": "21b4443150070b4882e9213aede639b4f1121a585174dc8a12ef2f6e73e74487"
     }
   ],
-  "runtime_fingerprint": "sha256:bec2bd68293b639d1ee0c26f9b352754a24afd637b34d305f6dc7c51afbaf920",
+  "runtime_fingerprint": "sha256:ed8ad2c56cc24a436f65bc9578b1f58fd0d86cfdf091425efe96d733bb232766",
   "schema_version": 1,
   "version": "0.6.2"
 }

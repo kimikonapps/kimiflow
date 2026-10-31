@@ -45,6 +45,24 @@ something. The project's numbers (commands, slots, quiet window) live in OPERATI
 - **Held-back runs are visible.** A run deliberately held back (quiet window, waiting for another
   package) gets one line in HANDOFF.md or the runner's state: what it waits for, since when.
 
+## Make the pipeline itself a product
+
+Source: owner-supplied CI article, 2026-10-31. With agents writing the code, the pipeline is the bottleneck.
+
+- **Audit before tuning.** Split the last runs into waiting, setup and running; the time is usually
+  in setup and waiting, not in the tests. Deleting tests rarely buys time.
+- **Waiting is part of the job.** A 5-second job that waits 10 minutes is a 10-minute job; no job
+  stays on a slow lane or queue.
+- **Parallelism = cores.** More cores beat more shards; shards beyond the cores spend their time loading.
+- **Load once.** Do not start the app or test world per test file: one host per shard, reset hooks,
+  and briefs say what a test must clean up.
+- **Run what the change touches**, plus the full suite nightly on the integration tip. Test the skip
+  logic too: a change the selection misses must fail the gate.
+- **Cheap checks in a hook.** Lint, size and style guards and a typecheck of changed files run in a
+  pre-commit or pre-push hook in seconds, not as a line in AGENTS.md; agents skip steps.
+- **A rerun is not a fix.** Every rerun of a red carries a one-line cause.
+- **Caches are seeded from the integration branch.** A cold cache once after a toolchain update is expected.
+
 ## Runner contract
 
 One script starts every build and test run (template: `.kimiflow/ops/tools/run.sh`). Its only
