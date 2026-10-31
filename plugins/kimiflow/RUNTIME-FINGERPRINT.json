@@ -147,9 +147,9 @@
       "sha256": "1a41b7ec79a971f4bf237465d3a4c19e84b1da05064f99f23c4c02f86b68548c"
     },
     {
-      "bytes": 3745,
+      "bytes": 4255,
       "path": "templates/ops/OPERATIONS.md",
-      "sha256": "335daec1451c37f85e480a3fd15ef7059a1c4200e85cf2c598e4ad000774a72f"
+      "sha256": "91f3395fd9ea2a116d54f21dddf1fc4e761416512aba59e4351dad178799a26e"
     },
     {
       "bytes": 0,
@@ -187,7 +187,7 @@
       "sha256": "fdcb2855ec4c37b3b51068a19b4a849ce738b472cf90b24b536fde7806b9327c"
     }
   ],
-  "runtime_fingerprint": "sha256:2d10ec6fad2ecbabc46c2a96a709b987bdebe83cbcc2879ad8adb210e4398fe7",
+  "runtime_fingerprint": "sha256:20121add97b946b9b89da12fcb2e32c3bcacf93c03693ccd61aad47317467b2d",
   "schema_version": 1,
   "version": "0.6.2"
 }

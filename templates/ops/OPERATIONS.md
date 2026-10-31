@@ -14,6 +14,7 @@ before adding one; extend or centralize it instead of writing a second.
 - BRIEF CHECK — code claims in briefs are grep-verified — OPERATIONS § 3
 - WORKER STANDING RULES — scope, Git, RED, waits, stopping, report — rules-worker.md
 - FLAKES — re-run alone before calling a red test a defect — OPERATIONS § 6, OPERATIONS-history.md
+- TEST ECONOMY — workers compile only; gates = changed + affected + guards; new red same day — installed `references/test-economy.md`, numbers in OPERATIONS § 4
 - GIT GUARD — stage named paths only; no AI attribution in commits — enforced by the kimiflow hook
 - `<NAME>` — `<rule>` — `<OPERATIONS § n / rules-worker.md / rules-<topic>.md>`
 
@@ -61,6 +62,10 @@ table's model as the Agent `model` parameter when starting one.
 
 - Tests: `<test command>` · Lint/format: `<command>` · Build: `<command>` · CI: `<where>`
 - Branches: `<feat/<slug> → int/<batch> → main>` · Commits: `<convention>`
+- Runner: `<sh .kimiflow/ops/tools/run.sh <log> build|test>` (log ends `EXIT <code> after <n>s`) · Slots:
+  tests `<1>`, builds `<LANES>` · Build output: `<dir>` · Guard tests: `<list or file>`
+- Quiet window (performance numbers only then): `<when>` · Quick path for an owner bug: `<slot / command>`
+  · Owner view: `<local URL or none>`
 
 ## 5 · Project rules
 
