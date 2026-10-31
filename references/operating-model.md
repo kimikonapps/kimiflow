@@ -100,6 +100,10 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
 
 ## Block end and continuity
 
+- A block ends when all its packages are merged and the combined run is green.
+- **Learnings check.** Compare the block's mistakes with the rule register. Sharpen the rule that
+  failed or build it into a tool or guard test, never add a second line next to it. Tell the owner
+  in three to five lines.
 - Rewrite HANDOFF.md as one current block; the old version goes to `archive/`.
 - Tell the owner it is a good moment for a fresh session, with a one-line start prompt. A fresh session
   reads OPERATIONS.md and HANDOFF.md and continues without the old context.
