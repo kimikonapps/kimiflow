@@ -70,13 +70,18 @@ Source: owner-supplied CI article, 2026-10-31. With agents writing the code, the
 ## Runner contract
 
 One script starts every build and test run (template: `.kimiflow/ops/tools/run.sh`). Its only
-stack-specific lines are the project's build and test commands and how to read red test ids from the
-log; everything else is this contract:
+stack-specific lines are the project's build and test commands, its build output directory and how to
+read red test ids from the log; everything else is this contract:
 
 - One log per run; the last line is `EXIT <code> after <n>s`. Waits watch for that line, with a time
   cap. Stop a run by killing its process group, not only the runner's pid.
 - One test phase per machine: a lock directory (`mkdir`), a stale pid is taken over.
-- At most `LANES` builds at once; the runner waits for a free lane.
+- At most `LANES` builds at once; the runner waits for a free lane. A test run builds in a lane, then
+  releases it before it waits for the test lock: testing is no build and must not block the next one.
+- One run per build output directory, held until the run ends: two runs in one build directory break
+  on the build tool's own locks (a build database, an index).
+- Fast lane (optional, `SMALL_MAX`): a test run of a few ids (e.g. ≤ 20 test classes) may take a
+  second, small test lock beside the big run, on one host; timing reds seen only then re-run alone.
 - Test modes refuse without `TESTS_OK=1`, so a worker's compile check cannot turn into a test run.
 - Reds re-run once alone (see Load reds) and are reported as `load-red:` / `real-red:` lines; the run
   exits 0 when every red was a load red.

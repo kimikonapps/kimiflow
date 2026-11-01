@@ -127,8 +127,8 @@ After `kimiflow init`, before the first feature:
 2. § 2 hard safety: data that must never be lost, what needs the owner's GO (push, tag, release,
    deleting owner data), permission denials are reported, never worked around.
 3. § 4: test, build and lint commands, runner, slots, build output, quiet window.
-4. `tools/run.sh`: set the build and test commands and the red-test reader; see
-   [test economy](test-economy.md) § Runner contract.
+4. `tools/run.sh`: set the build and test commands, the build output directory and the red-test
+   reader; see [test economy](test-economy.md) § Runner contract.
 5. rules-worker § Code and § Project checks: the project's caps, forbidden APIs, style rules.
 6. First guard tests, red first: file size with its exception list, forbidden APIs, one single-source check.
 7. HANDOFF.md: the first block. LIST.md: the state line.
