@@ -156,6 +156,11 @@ After `kimiflow init`, before the first feature:
 ## Load and waits
 
 - Limit parallel builds and test runs; they compete for the same machine.
+- Long jobs that are not builds (data preparation, training, indexing) run at low priority (`nice`)
+  with few threads and yield to builds and test runs. Avoid throttles that starve the job entirely
+  (on macOS, e.g., background task policy).
+- A run log silent for over 20 minutes while its process lives is a stall (suspect a permission
+  prompt): kill the run, restart it, note it in HANDOFF.md.
 - Every wait loop has a time cap.
 - Workers use unique scratch file names, so parallel work does not collide.
 - Search only inside the project, its worktrees and the session scratch space; never read the
