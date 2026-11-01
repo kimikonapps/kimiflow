@@ -60,11 +60,19 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
   parallel lanes by file ownership and fix the order in `plans/build-order.md`; then act. The planner
   decides this and does not ask. Reason: items built one by one touch the same files twice and
   collide in parallel.
+- **One owner per shared doc chapter.** In a parallel wave the briefs name one owner for each chapter
+  of a shared document (the user's manual, a guide); other workers write only their own short paragraph
+  elsewhere. Reason: two workers in one chapter conflict at every merge.
 - **Plans are rewritten, not stacked.** Old versions go to `archive/`. Reason: a reader should
   see one current plan, not reconstruct it from revisions.
 
 ## Briefs and workers
 
+- **One brief file per package** (`plans/`, at most 3 KB: goal checklist, files, NOT-files, API facts,
+  RED list). Workers read it and rules-worker.md, never sections of a growing collection file. Reason:
+  every worker pays for every line it reads.
+- **Package size.** More than about 8 scope items, or a whole mockup in one brief → split before the
+  launch. Reason: a worker that hits its context limit leaves half-done work for a fresh worker.
 - **Brief check.** Every "the code does X today" claim in a brief is grep-verified by the planner
   before the worker starts. Reason: a wrong premise costs a full worker round.
 - **RED is an assertion.** A test for new behaviour must fail on the old code with an assertion; a
@@ -122,11 +130,16 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
 - **Learnings check.** Compare the block's mistakes with the rule register. Sharpen the rule that
   failed or build it into a tool or guard test, never add a second line next to it. Tell the owner
   in three to five lines.
-- Rewrite HANDOFF.md as one current block; the old version goes to `archive/`.
+- **Handoff check.** The old HANDOFF.md goes whole to `archive/`; the new one is written from scratch
+  from the template, never appended, then its size is checked (at most 6 KB). Over → move content to
+  its one home (LIST item, package brief file, rule file), never cut it. Reason: a size rule alone is
+  not kept (a handoff grew to about 58 KB); the archive keeps everything.
 - Tell the owner it is a good moment for a fresh session, with a one-line start prompt. A fresh session
   reads OPERATIONS.md and HANDOFF.md and continues without the old context.
 - Session start names how many commits landed since HANDOFF.md was last updated: a stale handoff is
   worse than none, because the next session trusts it.
+- **Facts from the source.** The version or state of another repo or tool is read there (git log,
+  tags, PR list) before it is stated, never taken from an old handoff. Reason: handoffs go stale.
 - `kimiflow update` compares the project's kit files with newer shipped templates; it replaces only
   files the owner never edited, and only with the owner's OK.
 - Session start speaks only for a kit set up locally by init, so a cloned repository cannot promote

@@ -6,6 +6,19 @@ The public release history starts at **0.5.0**. Earlier development artifacts ar
 
 _No unreleased changes._
 
+## 0.8.1
+
+Process lessons from long-running app work, written project-agnostically into the kit.
+
+- Handoff check: the old HANDOFF.md goes whole to the archive, the new one is written from the
+  template and kept at 6 KB or less; overflow moves to its one home, never cut. The template header says so.
+- Briefs: one small brief file per package (at most 3 KB) instead of sections of a collection file;
+  more than about 8 scope items or a whole mockup → split before the launch.
+- Parallel waves: one owner per chapter of a shared document; other workers write their own paragraph.
+- Facts about another repo or tool are read there (git log, tags, PR list), not from an old handoff.
+- Worker waits: a capped loop on the run log that breaks on its `EXIT` line; never a `pgrep -f`
+  loop, which matches its own shell and never ends.
+
 ## 0.8.0
 
 Process lessons from long-running app work, written project-agnostically into the kit.
