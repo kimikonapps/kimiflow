@@ -27,14 +27,14 @@
       "sha256": "94b264a1b4814713982ace8b32cb0af0f618f613fea213b73e7688b493445d6a"
     },
     {
-      "bytes": 11080,
+      "bytes": 11114,
       "path": "README.de.md",
-      "sha256": "90047d975d23c8a1dbd117a93fa0b4b4e9255b831cb07fc3aafeecf1891a2b3b"
+      "sha256": "4b3f8c9366312af91ff4304ec4c7ab0c19d5c5e8ef6f583ccf62b32f2de502ac"
     },
     {
-      "bytes": 10160,
+      "bytes": 10187,
       "path": "README.md",
-      "sha256": "e2191f8818cf6b993d18e19a8f0aab5f04975fef636b234b4b58fa141b366948"
+      "sha256": "eaed75f226d86934377709cbd91985a2088cfb749c76c84784774477689f860c"
     },
     {
       "bytes": 3669,
@@ -52,9 +52,9 @@
       "sha256": "40fbfb1d7db9edfc66304e12d3538505ea495dc7890b549373efa81808eb1d61"
     },
     {
-      "bytes": 2177,
+      "bytes": 2355,
       "path": "claude/agents/worker.md",
-      "sha256": "6b1876d5c8737c399f94773410217d3368464c331baf82958e4e8635cfbbfbd0"
+      "sha256": "1b0b74341ec8f3669ab70cdf19bcd49ac5b9cf64f14c092cd3d3ca0582ac665a"
     },
     {
       "bytes": 594,
@@ -87,9 +87,9 @@
       "sha256": "0d9d2fd9ee7ff31f4645e706115a1c0a26426760491ce7e11121c72a8e1d9a5b"
     },
     {
-      "bytes": 10862,
+      "bytes": 10970,
       "path": "references/operating-model.md",
-      "sha256": "c7afb31b902c548f28bf68e0a95d32501c4a67150c6def7c05ec4b95a1256e68"
+      "sha256": "90ce18c9bc6c27b5ef94f7a3de6476d7d66647f4bbbba01277a54a19e01174ee"
     },
     {
       "bytes": 3159,
@@ -147,9 +147,9 @@
       "sha256": "1a41b7ec79a971f4bf237465d3a4c19e84b1da05064f99f23c4c02f86b68548c"
     },
     {
-      "bytes": 4255,
+      "bytes": 4289,
       "path": "templates/ops/OPERATIONS.md",
-      "sha256": "91f3395fd9ea2a116d54f21dddf1fc4e761416512aba59e4351dad178799a26e"
+      "sha256": "cd39e8a8f74959e18819b65cbde1d36c8dd10c3bae8a85480534488a1589acbe"
     },
     {
       "bytes": 0,
@@ -187,9 +187,9 @@
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
-      "bytes": 3283,
+      "bytes": 3607,
       "path": "templates/ops/rules-worker.md",
-      "sha256": "931f6d1f8b5a0c5c92ee2a7c007b4537db0808bbdb945587ce9666347f634af9"
+      "sha256": "ba87cab03ad088b50f3d5e996114a90a14e59dc90bb5092f559142ce312e215c"
     },
     {
       "bytes": 3750,
@@ -197,7 +197,7 @@
       "sha256": "21b4443150070b4882e9213aede639b4f1121a585174dc8a12ef2f6e73e74487"
     }
   ],
-  "runtime_fingerprint": "sha256:4e5eca579f166548e1507da45dd6574d74988b7120f70d28d3353a72cbd64c5f",
+  "runtime_fingerprint": "sha256:afb6838e6b85bbd6bc04894d8ec8403e203ca84b4aa4db6eee5bbee2c4bc6578",
   "schema_version": 1,
   "version": "0.7.0"
 }

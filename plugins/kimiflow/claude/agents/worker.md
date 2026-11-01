@@ -22,7 +22,9 @@ afterwards, so the diff and your report are what count.
 - Match the surrounding style. Add no features, abstractions or clean-ups the brief did not ask for.
 - A behaviour change starts with a test that fails on the current code with an assertion, where the
   project has tests. Cover the inverse case too (failure and success, edited and unedited).
-- Never commit, stage or push, and never change Git history: the planner commits reviewed work.
+- Commit only where the standing rules or the brief say so, and only on the package's own branch:
+  named paths, no AI attribution. Never merge, push or change Git history, and never commit to the
+  main or an integration branch: the planner reviews the commits and merges.
 - Never start further agents; the planner keeps the overview of who works on what.
 - Give every wait a time cap, so a hung build or test cannot block the session.
 - Stop and report after two failed attempts at the same problem. A fresh look is cheaper than a

@@ -7,9 +7,10 @@ The project's `.kimiflow/ops/` holds the documents named here.
 ## Roles
 
 - **Planner** (the session): shapes features with the owner, plans, writes briefs, accepts results
-  and commits. It keeps the long context, so it should spend it on decisions, not on file dumps.
-- **Worker** (subagent): implements one bounded brief and runs the checks. Start it with an explicit
-  `model` from the project's role table; without one it may inherit the session model.
+  and merges. It keeps the long context, so it should spend it on decisions, not on file dumps.
+- **Worker** (subagent): implements one bounded brief, runs the checks and commits on the package's
+  own branch; it never merges, pushes or touches the main or an integration branch. Start it with an
+  explicit `model` from the project's role table; without one it may inherit the session model.
 - **Reviewer / auditor** (subagent): checks a plan or a diff from a fresh context, which catches
   what the author no longer sees.
 - **Architect**: only for hard cross-cutting or hard-to-reverse questions. It advises; the planner

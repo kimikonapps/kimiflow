@@ -14,8 +14,11 @@ Change a rule here, never by copying it into a brief.
 
 ## Git
 
-- Never commit, stage or push, and never change Git history. The planner reviews the diff and
-  commits, so the history stays one reviewed line.
+- Commit your work on the package's own feature or fix branch as soon as it builds: named paths
+  only, no AI attribution, `git status` and `git diff --staged` read first. A finished package never
+  stays uncommitted, so "is it on the branch?" always has a true answer.
+- Never commit to the main or an integration branch; never merge, push, stash or change Git history.
+  The planner reviews the commits and merges, so the integration line stays one reviewed history.
 
 ## Tests
 

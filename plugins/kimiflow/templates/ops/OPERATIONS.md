@@ -29,9 +29,9 @@ before adding one; extend or centralize it instead of writing a second.
 
 ## 1 · Roles and flow
 
-The planner session plans, briefs, accepts and commits; workers implement; reviewers and auditors
-check; an architect only for hard cross-cutting questions. The flow scales with risk; details in the
-installed `references/operating-model.md`. Model notes: the installed `references/models.md`.
+The planner session plans, briefs, accepts and merges; workers implement and commit on their package
+branch; reviewers and auditors check; an architect only for hard cross-cutting questions. The flow
+scales with risk; details in the installed `references/operating-model.md`. Model notes: the installed `references/models.md`.
 
 | Role | Model | Effort | Why |
 | --- | --- | --- | --- |
