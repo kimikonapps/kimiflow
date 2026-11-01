@@ -66,6 +66,10 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
 - **Acceptance greps.** A brief names the central part to use (file:line). Before merge, grep for a
   second implementation of it and for zero references to removed symbols. Reason: copies and
   leftovers pass every test and drift apart later.
+- **Goal check.** A brief carries a goal checklist; the report ticks each point with file:line or
+  says NOT DONE. The planner ticks the list against the diff before the merge; a NOT DONE or silently
+  missing goal blocks it until it is built or the owner accepts the cut. Reason: workers drop goals
+  they judge out of scope, and green tests do not notice.
 - **Fixes go back to the same worker**, which keeps its context. After two rounds, re-cut the brief or
   take the work over.
 - **Fix briefs demand the inverse case too:** edited and unedited, failure and success. Reason: fixes

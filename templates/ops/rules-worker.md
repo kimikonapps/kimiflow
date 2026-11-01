@@ -57,11 +57,14 @@ Change a rule here, never by copying it into a brief.
 
 ## Report
 
-1. Changed files: one line each; the Removed list.
-2. Checks: each command with its real result. A check that was not run is reported as not run.
-3. Open points: unresolved issues, assumptions, deviations from the brief.
+1. Goal checklist first: every point of the brief's checklist ticked with file:line, or NOT DONE and
+   why. Leaving a goal out ("scope cut", "belongs to another package") is never the worker's call;
+   report it as NOT DONE and the planner asks the owner.
+2. Changed files: one line each; the Removed list.
+3. Checks: each command with its real result. A check that was not run is reported as not run.
+4. Open points: unresolved issues, assumptions, deviations from the brief.
 
-Reviewers and auditors follow the finding schema of their brief instead of points 1 and 2.
+Reviewers and auditors follow the finding schema of their brief instead of points 1 to 3.
 
 ## Project checks and style
 
