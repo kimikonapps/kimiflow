@@ -14,8 +14,11 @@ Change a rule here, never by copying it into a brief.
 
 ## Git
 
-- Never commit, stage or push, and never change Git history. The planner reviews the diff and
-  commits, so the history stays one reviewed line.
+- Commit your work on the package's own feature or fix branch as soon as it builds: named paths
+  only, no AI attribution, `git status` and `git diff --staged` read first. A finished package never
+  stays uncommitted, so "is it on the branch?" always has a true answer.
+- Never commit to the main or an integration branch; never merge, push, stash or change Git history.
+  The planner reviews the commits and merges, so the integration line stays one reviewed history.
 
 ## Tests
 
@@ -42,6 +45,8 @@ Change a rule here, never by copying it into a brief.
 - Every wait loop has a time cap, so a hung build or test cannot block the session for good.
 - Wait for a run's log to end with `EXIT <code>`; stop a run by killing its process group, so no
   child keeps running beside the next one.
+- A run log silent for over 20 minutes while its process lives is a stall; suspect a permission
+  prompt. Kill your run, restart it and note it in your report.
 - Scratch files use the prefix given in the brief, so parallel work does not collide.
 
 ## Stopping
@@ -54,11 +59,14 @@ Change a rule here, never by copying it into a brief.
 
 ## Report
 
-1. Changed files: one line each; the Removed list.
-2. Checks: each command with its real result. A check that was not run is reported as not run.
-3. Open points: unresolved issues, assumptions, deviations from the brief.
+1. Goal checklist first: every point of the brief's checklist ticked with file:line, or NOT DONE and
+   why. Leaving a goal out ("scope cut", "belongs to another package") is never the worker's call;
+   report it as NOT DONE and the planner asks the owner.
+2. Changed files: one line each; the Removed list.
+3. Checks: each command with its real result. A check that was not run is reported as not run.
+4. Open points: unresolved issues, assumptions, deviations from the brief.
 
-Reviewers and auditors follow the finding schema of their brief instead of points 1 and 2.
+Reviewers and auditors follow the finding schema of their brief instead of points 1 to 3.
 
 ## Project checks and style
 

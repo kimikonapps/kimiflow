@@ -3,7 +3,7 @@
 An operating kit for planner-led work with coding agents, plus a short working agreement for
 everything else: define the result, use native tools, verify the work.
 
-[Deutsch](README.de.md) · [Workflow](SKILL.md) · [Release 0.7.0](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.7.0)
+[Deutsch](README.de.md) · [Workflow](SKILL.md) · [Release 0.8.0](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.8.0)
 
 ## What Kimiflow does
 
@@ -63,8 +63,8 @@ The public release history starts with **0.5.0**.
 
 | Role | Responsibility |
 | --- | --- |
-| Planner (the session) | Shapes features with the owner, plans, writes briefs, accepts results, commits. |
-| Worker | Implements one bounded brief and runs the named checks. |
+| Planner (the session) | Shapes features with the owner, plans, writes briefs, accepts results, merges. |
+| Worker | Implements one bounded brief, runs the named checks, commits on its package branch. |
 | Reviewer / auditor | Checks a plan or a diff from a fresh context. |
 | Architect | Advises on rare, hard cross-cutting questions; never edits. |
 

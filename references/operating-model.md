@@ -7,9 +7,10 @@ The project's `.kimiflow/ops/` holds the documents named here.
 ## Roles
 
 - **Planner** (the session): shapes features with the owner, plans, writes briefs, accepts results
-  and commits. It keeps the long context, so it should spend it on decisions, not on file dumps.
-- **Worker** (subagent): implements one bounded brief and runs the checks. Start it with an explicit
-  `model` from the project's role table; without one it may inherit the session model.
+  and merges. It keeps the long context, so it should spend it on decisions, not on file dumps.
+- **Worker** (subagent): implements one bounded brief, runs the checks and commits on the package's
+  own branch; it never merges, pushes or touches the main or an integration branch. Start it with an
+  explicit `model` from the project's role table; without one it may inherit the session model.
 - **Reviewer / auditor** (subagent): checks a plan or a diff from a fresh context, which catches
   what the author no longer sees.
 - **Architect**: only for hard cross-cutting or hard-to-reverse questions. It advises; the planner
@@ -48,6 +49,13 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
   state has one source of truth. Plans name what was searched, what was found, and whether it is
   reused or why something new is needed. In review, a duplicate is at least MEDIUM. Reason: duplicates
   drift apart and produce bugs that look unrelated.
+- **Reuse search includes outside code.** Before building a new subsystem (pipeline, analysis,
+  engine part, service), spend up to 15 minutes searching the installed SDKs and platform and
+  maintained open source; note the licence of every candidate. Reason: a working component is often
+  already installed, and the search finds its known bugs too.
+- **Estimates only from measured numbers:** a log, a rate over the first items, a past run; otherwise
+  say "not measured". Never pass on a design's estimate unchecked. Reason: copied estimates look
+  measured and are not.
 - **Consolidate before build.** After a batch of items, group them, put shared parts first, cut
   parallel lanes by file ownership and fix the order in `plans/build-order.md`; then act. The planner
   decides this and does not ask. Reason: items built one by one touch the same files twice and
@@ -65,6 +73,10 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
 - **Acceptance greps.** A brief names the central part to use (file:line). Before merge, grep for a
   second implementation of it and for zero references to removed symbols. Reason: copies and
   leftovers pass every test and drift apart later.
+- **Goal check.** A brief carries a goal checklist; the report ticks each point with file:line or
+  says NOT DONE. The planner ticks the list against the diff before the merge; a NOT DONE or silently
+  missing goal blocks it until it is built or the owner accepts the cut. Reason: workers drop goals
+  they judge out of scope, and green tests do not notice.
 - **Fixes go back to the same worker**, which keeps its context. After two rounds, re-cut the brief or
   take the work over.
 - **Fix briefs demand the inverse case too:** edited and unedited, failure and success. Reason: fixes
@@ -90,8 +102,14 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
 - **One merger per integration branch.** The session that owns `int/<batch>` merges everything into
   it; other sessions send branch, commit and the tests their change concerns, and never touch it.
   Reason: two mergers on one branch undo each other's conflict resolutions.
-- After two or three merged packages: a broad test run and a release build. At block end: the full
-  suite and a test build. A red test is traced to its package before anything else moves.
+- **Gates run on a snapshot, merges never under a run.** Gates, tip builds and test runs use a
+  detached worktree of the integration tip, so merging goes on meanwhile; the project's merge step
+  refuses while a run uses the integration worktree (the project adds both; the run.sh skeleton has
+  neither). Reason: a merge during a gate voided
+  the gate and its rerun.
+- After two or three merged packages: a combined gate run and a release build; at block end a test
+  build. The full suite runs only in the night before a beta. A red test is traced to its package
+  before anything else moves.
 - **Test economy.** Who runs which tests, what a gate contains, how reds are handled and what the
   project's runner guarantees: [test economy](test-economy.md).
 - **Owner-items check** before every test build, main merge and handoff:
@@ -122,8 +140,8 @@ After `kimiflow init`, before the first feature:
 2. § 2 hard safety: data that must never be lost, what needs the owner's GO (push, tag, release,
    deleting owner data), permission denials are reported, never worked around.
 3. § 4: test, build and lint commands, runner, slots, build output, quiet window.
-4. `tools/run.sh`: set the build and test commands and the red-test reader; see
-   [test economy](test-economy.md) § Runner contract.
+4. `tools/run.sh`: set the build and test commands, the build output directory and the red-test
+   reader; see [test economy](test-economy.md) § Runner contract.
 5. rules-worker § Code and § Project checks: the project's caps, forbidden APIs, style rules.
 6. First guard tests, red first: file size with its exception list, forbidden APIs, one single-source check.
 7. HANDOFF.md: the first block. LIST.md: the state line.
@@ -139,6 +157,11 @@ After `kimiflow init`, before the first feature:
 ## Load and waits
 
 - Limit parallel builds and test runs; they compete for the same machine.
+- Long jobs that are not builds (data preparation, training, indexing) run at low priority (`nice`)
+  with few threads and yield to builds and test runs. Avoid throttles that starve the job entirely
+  (on macOS, e.g., background task policy).
+- A run log silent for over 20 minutes while its process lives is a stall (suspect a permission
+  prompt): kill the run, restart it, note it in HANDOFF.md.
 - Every wait loop has a time cap.
 - Workers use unique scratch file names, so parallel work does not collide.
 - Search only inside the project, its worktrees and the session scratch space; never read the

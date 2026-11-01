@@ -21,6 +21,16 @@ removed from the public release list. Existing Git history and local user data a
   then record each with `--resolved <path>`.
 - The git guard now also blocks `git add -u`/`--update`; stage named paths instead.
 
+## 0.7 to 0.8
+
+- Workers now commit on their package's own branch; the planner reviews and merges instead of
+  committing worker diffs. Briefs that told workers not to commit can drop that line.
+- `kimiflow update` reports `tools/run.sh`, `OPERATIONS.md`, `rules-worker.md`, `plans/worker-brief.md`
+  and `plans/plan.md` as changed. A filled-in `run.sh` needs the new project line `BUILD_DIR`; test
+  mode now runs `BUILD_CMD` in a build lane first and `TEST_CMD` after releasing it, so `TEST_CMD`
+  should run on that build without rebuilding where the stack allows. Merge by hand where the project
+  edited the file, then record it with `--resolved <path>`.
+
 ## Existing managed work
 
 Some development installations used Flow-schema runs, managed adapters, hooks, memory or worktree

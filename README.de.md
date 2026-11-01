@@ -3,7 +3,7 @@
 Ein Betriebskit für planergeführte Arbeit mit Coding-Agenten, dazu eine kurze Arbeitsvereinbarung
 für alles andere: Ziel klären, native Werkzeuge nutzen, Ergebnis prüfen.
 
-[English](README.md) · [Workflow](SKILL.md) · [Release 0.7.0](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.7.0)
+[English](README.md) · [Workflow](SKILL.md) · [Release 0.8.0](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.8.0)
 
 ## Was Kimiflow bietet
 
@@ -63,8 +63,8 @@ Die öffentliche Versionsreihe beginnt mit **0.5.0**.
 
 | Rolle | Verantwortung |
 | --- | --- |
-| Planer (die Sitzung) | Features mit dem Owner formen, planen, Briefs schreiben, Ergebnisse abnehmen, committen. |
-| Worker | Einen begrenzten Brief umsetzen und die genannten Checks ausführen. |
+| Planer (die Sitzung) | Features mit dem Owner formen, planen, Briefs schreiben, Ergebnisse abnehmen, mergen. |
+| Worker | Einen begrenzten Brief umsetzen, die genannten Checks ausführen, auf dem eigenen Paket-Branch committen. |
 | Reviewer / Auditor | Plan oder Diff aus frischem Kontext prüfen. |
 | Architekt | Berät selten bei schweren, übergreifenden Fragen; ändert nie etwas. |
 
