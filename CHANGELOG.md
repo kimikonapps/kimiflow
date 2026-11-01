@@ -6,7 +6,24 @@ The public release history starts at **0.5.0**. Earlier development artifacts ar
 
 _No unreleased changes._
 
-## 0.7.0
+## 0.8.0
+
+Process lessons from long-running app work, written project-agnostically into the kit.
+
+- Workers commit on their package's own branch (named paths, no AI attribution) and never merge,
+  push or touch the main or an integration branch; the planner reviews the commits and merges.
+- Worker brief: a goal checklist, ticked in the report with file:line or NOT DONE; a missing goal
+  blocks the merge.
+- Runner `tools/run.sh`: a test run releases its build lane before the test phase; one run per build
+  output directory (new project line `BUILD_DIR`); optional fast lane (`SMALL_MAX`) for small test
+  runs beside the big one; the state file names the run's directory.
+- Test economy: gates and test runs on a snapshot worktree, no merge into a worktree a run uses;
+  guards once per integration tip; a gate estimate before building (40-minute budget, split or
+  nightly for a class over 10 minutes, measured time from last fix to main).
+- Operating model: reuse search includes installed SDKs, the platform and open source (licence
+  noted); estimates only from measured numbers; stall rule for silent run logs; long non-build jobs
+  at low priority; the full suite only before a beta, also at block end.
+
 
 Lessons from long-running app work, written project-agnostically into the kit.
 
