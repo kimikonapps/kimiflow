@@ -87,9 +87,9 @@
       "sha256": "0d9d2fd9ee7ff31f4645e706115a1c0a26426760491ce7e11121c72a8e1d9a5b"
     },
     {
-      "bytes": 12679,
+      "bytes": 12736,
       "path": "references/operating-model.md",
-      "sha256": "c2c1f37d5fe81e73e3cdc23e07afc5bd5a35951079cbbd944a61b12002847258"
+      "sha256": "d06479782970245dd728c224dd1588cc1801c49e2e26bfff16142643b5488b2c"
     },
     {
       "bytes": 3159,
@@ -97,9 +97,9 @@
       "sha256": "7e7f44d44fd92e53d74a0c1b9f43496a0e5efa3181a3cfed7c5841a442172e50"
     },
     {
-      "bytes": 7432,
+      "bytes": 7580,
       "path": "references/test-economy.md",
-      "sha256": "0a8324873c519d263f23697aaba337f24d27fe600658fe043a12c98975b1c05d"
+      "sha256": "a5ce99d3ed7a97a239534cf53d5db10ab68d14d44596b3cb0f99dcea518de4df"
     },
     {
       "bytes": 1540,
@@ -192,12 +192,12 @@
       "sha256": "f58da69b670a11465918b5b834f70ac2b9a1231d114fffd012395e2200dd2077"
     },
     {
-      "bytes": 4964,
+      "bytes": 5069,
       "path": "templates/ops/tools/run.sh",
-      "sha256": "1a9a931a2d66e6b74780ead43054570b763f88e6836aa7de2a1cd2febd5b75d5"
+      "sha256": "8fc3c10936072588f83938c85551f019a9d1bb7a767de9f0a87431bdb7bad3ad"
     }
   ],
-  "runtime_fingerprint": "sha256:87630ee203a9b13e26d32fdeb517b2e2648ce869d395ed9ba0b1e081b99344b3",
+  "runtime_fingerprint": "sha256:2ab10c34746d8360a25ae37474a0a515abf38d628a496de14aca09d5406e416f",
   "schema_version": 1,
   "version": "0.8.0"
 }

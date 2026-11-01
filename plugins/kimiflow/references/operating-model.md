@@ -103,8 +103,9 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
   it; other sessions send branch, commit and the tests their change concerns, and never touch it.
   Reason: two mergers on one branch undo each other's conflict resolutions.
 - **Gates run on a snapshot, merges never under a run.** Gates, tip builds and test runs use a
-  detached worktree of the integration tip, so merging goes on meanwhile; a merge into the
-  integration worktree refuses while a run uses that worktree. Reason: a merge during a gate voided
+  detached worktree of the integration tip, so merging goes on meanwhile; the project's merge step
+  refuses while a run uses the integration worktree (the project adds both; the run.sh skeleton has
+  neither). Reason: a merge during a gate voided
   the gate and its rerun.
 - After two or three merged packages: a combined gate run and a release build; at block end a test
   build. The full suite runs only in the night before a beta. A red test is traced to its package

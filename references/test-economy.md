@@ -80,9 +80,10 @@ Source: owner-supplied CI article, 2026-10-31. With agents writing the code, the
 
 One script starts every build and test run (template: `.kimiflow/ops/tools/run.sh`). Its only
 stack-specific lines are the project's build and test commands, its build output directory and how to
-read red test ids from the log; everything else is this contract:
+read red test ids from the log; everything else is this contract. Items marked *(project)* are not
+in the skeleton: the project adds them to its runner or merge step before relying on them.
 
-- A gate starts with `estimate <n> min (<k> classes)` from the per-class durations of earlier logs,
+- *(project)* A gate starts with `estimate <n> min (<k> classes)` from the per-class durations of earlier logs,
   then `OVER BUDGET` or `SPLIT-OR-NIGHTLY` lines where they apply, before anything builds.
 - One log per run; the last line is `EXIT <code> after <n>s`. Waits watch for that line, with a time
   cap. Stop a run by killing its process group, not only the runner's pid.
@@ -97,6 +98,6 @@ read red test ids from the log; everything else is this contract:
 - Reds re-run once alone (see Load reds) and are reported as `load-red:` / `real-red:` lines; the run
   exits 0 when every red was a load red.
 - A small state file per run and phase, so a queue view or the planner can see what runs and waits.
-- Gates and test runs never run in the integration worktree itself: they get a detached snapshot
+- *(project)* Gates and test runs never run in the integration worktree itself: they get a detached snapshot
   worktree of its tip (`git worktree add --detach`), removed after the run. The merge step refuses
   while a run's state names the integration worktree.

@@ -24,7 +24,9 @@ Process lessons from long-running app work, written project-agnostically into th
   noted); estimates only from measured numbers; stall rule for silent run logs; long non-build jobs
   at low priority; the full suite only in the night before a beta, not at block end.
 - Fix: `tools/run.sh` keeps lock names apart from `RUN_DIR`, so a project path with spaces no longer
-  breaks the lanes and locks.
+  breaks the lanes and locks; the state file escapes `\` and `"`, so it stays valid JSON.
+- The runner contract marks the gate estimate and the snapshot/merge refusal as project additions;
+  the `run.sh` skeleton has neither.
 
 ## 0.7.0
 

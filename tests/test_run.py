@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -84,6 +85,23 @@ class RunnerTests(unittest.TestCase):
         off = self.run_sh(self.wt1, 'off', 'test', 'OneTest', WAIT_MAX='0')
         self.assertEqual(off.returncode, 75)
         self.assertIn('timeout waiting for testlock', self.log('off'))
+
+    def test_state_file_stays_json_for_quotes_and_backslashes(self):
+        odd = self.runs.parent / 'wt "q" \\b'
+        odd.mkdir()
+        (odd / 'hold').touch()
+        run = self.run_sh(odd, 'odd', 'build', background=True)
+        try:
+            state = self.runs / 'state' / 'odd.json'
+            deadline = time.time() + 10
+            while time.time() < deadline and '"phase":"build"' not in (
+                    state.read_text() if state.exists() else ''):
+                time.sleep(0.1)
+            self.assertEqual(json.loads(state.read_text())['dir'], str(odd.resolve()))
+        finally:
+            (odd / 'hold').unlink()
+            run.wait(timeout=30)
+        self.assertEqual(run.returncode, 0, self.log('odd'))
 
 
 if __name__ == '__main__':

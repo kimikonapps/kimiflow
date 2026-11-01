@@ -30,8 +30,9 @@ LOG=$RUN_DIR/$NAME.log STATE=$RUN_DIR/state/$NAME.json T0=$(date +%s) HELD=
 : > "$LOG"; rm -f "$LOG.rerun"
 
 finish() { echo "EXIT $1 after $(( $(date +%s) - T0 ))s" >> "$LOG"; exit "$1"; }
+json() { printf %s "$1" | sed 's/[\\"]/\\&/g'; }  # escape \ and " for a JSON string
 phase() { printf '{"name":"%s","mode":"%s","phase":"%s","since":%s,"pid":%s,"dir":"%s"}\n' \
-    "$NAME" "$MODE" "$1" "$(date +%s)" $$ "$PWD" > "$STATE"; }
+    "$(json "$NAME")" "$MODE" "$1" "$(date +%s)" $$ "$(json "$PWD")" > "$STATE"; }
 cleanup() { for lock in $HELD; do rm -rf "$RUN_DIR/$lock"; done; rm -f "$STATE"; }
 trap cleanup EXIT
 trap 'finish 143' INT TERM
