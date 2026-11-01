@@ -87,9 +87,9 @@
       "sha256": "0d9d2fd9ee7ff31f4645e706115a1c0a26426760491ce7e11121c72a8e1d9a5b"
     },
     {
-      "bytes": 12736,
+      "bytes": 13234,
       "path": "references/operating-model.md",
-      "sha256": "d06479782970245dd728c224dd1588cc1801c49e2e26bfff16142643b5488b2c"
+      "sha256": "d6a9fec73281a7cd6837a18477c2e946a04ad3bdca8709ccf443743ecd1b6449"
     },
     {
       "bytes": 3159,
@@ -127,9 +127,9 @@
       "sha256": "de9ff82f6148554635d8ba72f60dde8d51c59f12c124e372cadb43fd1da29ad9"
     },
     {
-      "bytes": 536,
+      "bytes": 541,
       "path": "templates/ops/HANDOFF.md",
-      "sha256": "25e1f7cc5ff2287a85fdd8427a041e440332ad4e2bb0565fb45bfbb1b1a8d01c"
+      "sha256": "c897725770cf3424db71dcece053f2d76d1066ea98fda9029244f0b04ad47d95"
     },
     {
       "bytes": 129,
@@ -197,7 +197,7 @@
       "sha256": "8fc3c10936072588f83938c85551f019a9d1bb7a767de9f0a87431bdb7bad3ad"
     }
   ],
-  "runtime_fingerprint": "sha256:2ab10c34746d8360a25ae37474a0a515abf38d628a496de14aca09d5406e416f",
+  "runtime_fingerprint": "sha256:d2be78dd425a5cd222abe2945e3abfa16813f481c8b48d3482fd07d67684b33d",
   "schema_version": 1,
   "version": "0.8.0"
 }

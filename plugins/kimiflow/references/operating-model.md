@@ -122,11 +122,16 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
 - **Learnings check.** Compare the block's mistakes with the rule register. Sharpen the rule that
   failed or build it into a tool or guard test, never add a second line next to it. Tell the owner
   in three to five lines.
-- Rewrite HANDOFF.md as one current block; the old version goes to `archive/`.
+- **Handoff check.** The old HANDOFF.md goes whole to `archive/`; the new one is written from scratch
+  from the template, never appended, then its size is checked (at most 6 KB). Over → move content to
+  its one home (LIST item, package brief file, rule file), never cut it. Reason: a size rule alone is
+  not kept (a handoff grew to about 58 KB); the archive keeps everything.
 - Tell the owner it is a good moment for a fresh session, with a one-line start prompt. A fresh session
   reads OPERATIONS.md and HANDOFF.md and continues without the old context.
 - Session start names how many commits landed since HANDOFF.md was last updated: a stale handoff is
   worse than none, because the next session trusts it.
+- **Facts from the source.** The version or state of another repo or tool is read there (git log,
+  tags, PR list) before it is stated, never taken from an old handoff. Reason: handoffs go stale.
 - `kimiflow update` compares the project's kit files with newer shipped templates; it replaces only
   files the owner never edited, and only with the owner's OK.
 - Session start speaks only for a kit set up locally by init, so a cloned repository cannot promote
