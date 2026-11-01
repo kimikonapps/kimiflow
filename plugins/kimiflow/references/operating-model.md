@@ -49,6 +49,13 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
   state has one source of truth. Plans name what was searched, what was found, and whether it is
   reused or why something new is needed. In review, a duplicate is at least MEDIUM. Reason: duplicates
   drift apart and produce bugs that look unrelated.
+- **Reuse search includes outside code.** Before building a new subsystem (pipeline, analysis,
+  engine part, service), spend up to 15 minutes searching the installed SDKs and platform and
+  maintained open source; note the licence of every candidate. Reason: a working component is often
+  already installed, and the search finds its known bugs too.
+- **Estimates only from measured numbers:** a log, a rate over the first items, a past run; otherwise
+  say "not measured". Never pass on a design's estimate unchecked. Reason: copied estimates look
+  measured and are not.
 - **Consolidate before build.** After a batch of items, group them, put shared parts first, cut
   parallel lanes by file ownership and fix the order in `plans/build-order.md`; then act. The planner
   decides this and does not ask. Reason: items built one by one touch the same files twice and
