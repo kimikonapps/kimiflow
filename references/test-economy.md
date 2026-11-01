@@ -81,3 +81,6 @@ log; everything else is this contract:
 - Reds re-run once alone (see Load reds) and are reported as `load-red:` / `real-red:` lines; the run
   exits 0 when every red was a load red.
 - A small state file per run and phase, so a queue view or the planner can see what runs and waits.
+- Gates and test runs never run in the integration worktree itself: they get a detached snapshot
+  worktree of its tip (`git worktree add --detach`), removed after the run. The merge step refuses
+  while a run's state names the integration worktree.

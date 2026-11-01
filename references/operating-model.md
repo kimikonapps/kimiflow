@@ -91,6 +91,10 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
 - **One merger per integration branch.** The session that owns `int/<batch>` merges everything into
   it; other sessions send branch, commit and the tests their change concerns, and never touch it.
   Reason: two mergers on one branch undo each other's conflict resolutions.
+- **Gates run on a snapshot, merges never under a run.** Gates, tip builds and test runs use a
+  detached worktree of the integration tip, so merging goes on meanwhile; a merge into the
+  integration worktree refuses while a run uses that worktree. Reason: a merge during a gate voided
+  the gate and its rerun.
 - After two or three merged packages: a broad test run and a release build. At block end: the full
   suite and a test build. A red test is traced to its package before anything else moves.
 - **Test economy.** Who runs which tests, what a gate contains, how reds are handled and what the
