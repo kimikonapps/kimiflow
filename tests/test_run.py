@@ -19,7 +19,8 @@ PROJECT_LINES = {
 class RunnerTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        base = Path(self.tmp.name)
+        base = Path(self.tmp.name) / 'VIBE CODING'  # projects live under paths with spaces
+        base.mkdir()
         text = TEMPLATE.read_text()
         for old, new in PROJECT_LINES.items():
             self.assertIn(old, text)

@@ -32,7 +32,7 @@ LOG=$RUN_DIR/$NAME.log STATE=$RUN_DIR/state/$NAME.json T0=$(date +%s) HELD=
 finish() { echo "EXIT $1 after $(( $(date +%s) - T0 ))s" >> "$LOG"; exit "$1"; }
 phase() { printf '{"name":"%s","mode":"%s","phase":"%s","since":%s,"pid":%s,"dir":"%s"}\n' \
     "$NAME" "$MODE" "$1" "$(date +%s)" $$ "$PWD" > "$STATE"; }
-cleanup() { for dir in $HELD; do rm -rf "$dir"; done; rm -f "$STATE"; }
+cleanup() { for lock in $HELD; do rm -rf "$RUN_DIR/$lock"; done; rm -f "$STATE"; }
 trap cleanup EXIT
 trap 'finish 143' INT TERM
 
@@ -47,17 +47,18 @@ for line in "$BUILD_CMD" "$TEST_CMD" "$BUILD_DIR"; do
 done
 case $BUILD_DIR in /*) ;; *) BUILD_DIR=$PWD/$BUILD_DIR ;; esac
 
-# Take a lock directory; a lock whose pid no longer runs is stale and taken over.
+# Take a lock directory in RUN_DIR, by name: names hold no spaces, RUN_DIR may. A lock whose pid no
+# longer runs is stale and taken over.
 take() {
-    if mkdir "$1" 2>/dev/null; then echo $$ > "$1/pid"; HELD="$HELD $1" TAKEN=$1; return 0; fi
-    pid=$(cat "$1/pid" 2>/dev/null)
-    if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then rm -rf "$1"; fi
+    if mkdir "$RUN_DIR/$1" 2>/dev/null; then echo $$ > "$RUN_DIR/$1/pid"; HELD="$HELD $1" TAKEN=$1; return 0; fi
+    pid=$(cat "$RUN_DIR/$1/pid" 2>/dev/null)
+    if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then rm -rf "$RUN_DIR/$1"; fi
     return 1
 }
-wait_for() {  # $1 = phase name, rest = lock directories, any one will do
+wait_for() {  # $1 = phase name, rest = lock names, any one will do
     what=$1; shift; phase "$what"; start=$(date +%s)
     while :; do
-        for dir in "$@"; do take "$dir" && return 0; done
+        for lock in "$@"; do take "$lock" && return 0; done
         [ $(( $(date +%s) - start )) -lt "$WAIT_MAX" ] || { echo "timeout waiting for $what" >> "$LOG"; finish 75; }
         sleep 10
     done
@@ -65,9 +66,9 @@ wait_for() {  # $1 = phase name, rest = lock directories, any one will do
 
 # One run per build output directory, until the run ends: two runs in one build directory break
 # on the build tool's own locks.
-wait_for builddir "$RUN_DIR/.build-$(printf %s "$BUILD_DIR" | cksum | cut -d' ' -f1)"
+wait_for builddir ".build-$(printf %s "$BUILD_DIR" | cksum | cut -d' ' -f1)"
 lanes=; i=1
-while [ "$i" -le "$LANES" ]; do lanes="$lanes $RUN_DIR/.lane-$i"; i=$((i + 1)); done
+while [ "$i" -le "$LANES" ]; do lanes="$lanes .lane-$i"; i=$((i + 1)); done
 wait_for lane $lanes
 LANE=$TAKEN
 
@@ -77,9 +78,9 @@ code=$?
 [ "$MODE" = test ] && [ "$code" -eq 0 ] || finish "$code"
 
 # The test phase holds no build lane: the next build starts while this run tests.
-rm -rf "$LANE"; HELD=${HELD%" $LANE"}
-locks=$RUN_DIR/.testlock
-[ "$#" -ge 1 ] && [ "$#" -le "$SMALL_MAX" ] && locks="$locks $RUN_DIR/.testlock-small"
+rm -rf "$RUN_DIR/$LANE"; HELD=${HELD%" $LANE"}
+locks=.testlock
+[ "$#" -ge 1 ] && [ "$#" -le "$SMALL_MAX" ] && locks="$locks .testlock-small"
 wait_for testlock $locks
 case $TAKEN in *-small) export RUN_SMALL=1 ;; esac
 

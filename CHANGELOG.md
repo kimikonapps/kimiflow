@@ -22,8 +22,11 @@ Process lessons from long-running app work, written project-agnostically into th
   nightly for a class over 10 minutes, measured time from last fix to main).
 - Operating model: reuse search includes installed SDKs, the platform and open source (licence
   noted); estimates only from measured numbers; stall rule for silent run logs; long non-build jobs
-  at low priority; the full suite only before a beta, also at block end.
+  at low priority; the full suite only in the night before a beta, not at block end.
+- Fix: `tools/run.sh` keeps lock names apart from `RUN_DIR`, so a project path with spaces no longer
+  breaks the lanes and locks.
 
+## 0.7.0
 
 Lessons from long-running app work, written project-agnostically into the kit.
 

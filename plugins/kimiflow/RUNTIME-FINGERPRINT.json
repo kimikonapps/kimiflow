@@ -192,12 +192,12 @@
       "sha256": "f58da69b670a11465918b5b834f70ac2b9a1231d114fffd012395e2200dd2077"
     },
     {
-      "bytes": 4891,
+      "bytes": 4964,
       "path": "templates/ops/tools/run.sh",
-      "sha256": "ff8f034df25462f57113684c7f433b5c8d58f53831b4e7b1371b1b910f85417d"
+      "sha256": "1a9a931a2d66e6b74780ead43054570b763f88e6836aa7de2a1cd2febd5b75d5"
     }
   ],
-  "runtime_fingerprint": "sha256:3460845ac0a94a2e2f33f6de8add24cf7abdc08920746922174412857aa03af8",
+  "runtime_fingerprint": "sha256:87630ee203a9b13e26d32fdeb517b2e2648ce869d395ed9ba0b1e081b99344b3",
   "schema_version": 1,
   "version": "0.8.0"
 }
