@@ -87,9 +87,9 @@
       "sha256": "0d9d2fd9ee7ff31f4645e706115a1c0a26426760491ce7e11121c72a8e1d9a5b"
     },
     {
-      "bytes": 13234,
+      "bytes": 13964,
       "path": "references/operating-model.md",
-      "sha256": "d6a9fec73281a7cd6837a18477c2e946a04ad3bdca8709ccf443743ecd1b6449"
+      "sha256": "95bdc0545649375fc3ef1f748229bcaec10ad14bb2cc5de34c585e7cb6a4f578"
     },
     {
       "bytes": 3159,
@@ -197,7 +197,7 @@
       "sha256": "8fc3c10936072588f83938c85551f019a9d1bb7a767de9f0a87431bdb7bad3ad"
     }
   ],
-  "runtime_fingerprint": "sha256:d2be78dd425a5cd222abe2945e3abfa16813f481c8b48d3482fd07d67684b33d",
+  "runtime_fingerprint": "sha256:7a0e4eafdf476fa607bdb69396b9068ba32adcc0e9281b70476abcecbdb405b8",
   "schema_version": 1,
   "version": "0.8.0"
 }

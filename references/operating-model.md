@@ -60,11 +60,19 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
   parallel lanes by file ownership and fix the order in `plans/build-order.md`; then act. The planner
   decides this and does not ask. Reason: items built one by one touch the same files twice and
   collide in parallel.
+- **One owner per shared doc chapter.** In a parallel wave the briefs name one owner for each chapter
+  of a shared document (the user's manual, a guide); other workers write only their own short paragraph
+  elsewhere. Reason: two workers in one chapter conflict at every merge.
 - **Plans are rewritten, not stacked.** Old versions go to `archive/`. Reason: a reader should
   see one current plan, not reconstruct it from revisions.
 
 ## Briefs and workers
 
+- **One brief file per package** (`plans/`, at most 3 KB: goal checklist, files, NOT-files, API facts,
+  RED list). Workers read it and rules-worker.md, never sections of a growing collection file. Reason:
+  every worker pays for every line it reads.
+- **Package size.** More than about 8 scope items, or a whole mockup in one brief → split before the
+  launch. Reason: a worker that hits its context limit leaves half-done work for a fresh worker.
 - **Brief check.** Every "the code does X today" claim in a brief is grep-verified by the planner
   before the worker starts. Reason: a wrong premise costs a full worker round.
 - **RED is an assertion.** A test for new behaviour must fail on the old code with an assertion; a
