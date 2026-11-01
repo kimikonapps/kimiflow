@@ -14,7 +14,7 @@ before adding one; extend or centralize it instead of writing a second.
 - BRIEF CHECK — code claims in briefs are grep-verified — OPERATIONS § 3
 - WORKER STANDING RULES — scope, Git, RED, waits, stopping, report — rules-worker.md
 - FLAKES — re-run alone before calling a red test a defect — OPERATIONS § 6, OPERATIONS-history.md
-- TEST ECONOMY — workers compile only; gates = changed + affected + guards; new red same day — installed `references/test-economy.md`, numbers in OPERATIONS § 4
+- TEST ECONOMY — workers compile only; gates = changed + affected, guards once per integration tip; new red same day — installed `references/test-economy.md`, numbers in OPERATIONS § 4
 - GIT GUARD — stage named paths only; no AI attribution in commits — enforced by the kimiflow hook
 - `<NAME>` — `<rule>` — `<OPERATIONS § n / rules-worker.md / rules-<topic>.md>`
 

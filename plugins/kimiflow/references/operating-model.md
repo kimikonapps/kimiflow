@@ -95,8 +95,9 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
   detached worktree of the integration tip, so merging goes on meanwhile; a merge into the
   integration worktree refuses while a run uses that worktree. Reason: a merge during a gate voided
   the gate and its rerun.
-- After two or three merged packages: a broad test run and a release build. At block end: the full
-  suite and a test build. A red test is traced to its package before anything else moves.
+- After two or three merged packages: a combined gate run and a release build; at block end a test
+  build. The full suite runs only in the night before a beta. A red test is traced to its package
+  before anything else moves.
 - **Test economy.** Who runs which tests, what a gate contains, how reds are handled and what the
   project's runner guarantees: [test economy](test-economy.md).
 - **Owner-items check** before every test build, main merge and handoff:

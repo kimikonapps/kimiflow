@@ -87,9 +87,9 @@
       "sha256": "0d9d2fd9ee7ff31f4645e706115a1c0a26426760491ce7e11121c72a8e1d9a5b"
     },
     {
-      "bytes": 11310,
+      "bytes": 11348,
       "path": "references/operating-model.md",
-      "sha256": "7bf27786af1daa5ac12c511cec5c0b607d3d7dfe8a6c755e0e8ba3e17b565f86"
+      "sha256": "51f02e3db5d5b3742367b11580483c2d82f05f0fa3f57e42f56ebab572f7277e"
     },
     {
       "bytes": 3159,
@@ -97,9 +97,9 @@
       "sha256": "7e7f44d44fd92e53d74a0c1b9f43496a0e5efa3181a3cfed7c5841a442172e50"
     },
     {
-      "bytes": 6527,
+      "bytes": 7432,
       "path": "references/test-economy.md",
-      "sha256": "e4d517b82ab2df876d75aca1c135892acf22e2ee8249044cb3dd021d3b36127d"
+      "sha256": "0a8324873c519d263f23697aaba337f24d27fe600658fe043a12c98975b1c05d"
     },
     {
       "bytes": 1540,
@@ -147,9 +147,9 @@
       "sha256": "1a41b7ec79a971f4bf237465d3a4c19e84b1da05064f99f23c4c02f86b68548c"
     },
     {
-      "bytes": 4289,
+      "bytes": 4313,
       "path": "templates/ops/OPERATIONS.md",
-      "sha256": "cd39e8a8f74959e18819b65cbde1d36c8dd10c3bae8a85480534488a1589acbe"
+      "sha256": "401e1d4142023de27d71b887a45f2e3edb3ccf67524b4db257f38382ba4fbde9"
     },
     {
       "bytes": 0,
@@ -197,7 +197,7 @@
       "sha256": "ff8f034df25462f57113684c7f433b5c8d58f53831b4e7b1371b1b910f85417d"
     }
   ],
-  "runtime_fingerprint": "sha256:716262c7546d520e3b548290a7b725dbf304facf8dcbed7106e8887fb76635b5",
+  "runtime_fingerprint": "sha256:26bdc127354da6b9ae372f2d001763057a095e0e2d708af7292bb9c970dcf2a9",
   "schema_version": 1,
   "version": "0.7.0"
 }
