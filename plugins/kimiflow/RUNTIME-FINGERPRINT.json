@@ -187,9 +187,9 @@
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
-      "bytes": 4023,
+      "bytes": 4227,
       "path": "templates/ops/rules-worker.md",
-      "sha256": "f58da69b670a11465918b5b834f70ac2b9a1231d114fffd012395e2200dd2077"
+      "sha256": "a9aaad2c6f2c07861352edd6ef6bbab822e3dfe115dffb0bd3668a776bd19f2e"
     },
     {
       "bytes": 5069,
@@ -197,7 +197,7 @@
       "sha256": "8fc3c10936072588f83938c85551f019a9d1bb7a767de9f0a87431bdb7bad3ad"
     }
   ],
-  "runtime_fingerprint": "sha256:7a0e4eafdf476fa607bdb69396b9068ba32adcc0e9281b70476abcecbdb405b8",
+  "runtime_fingerprint": "sha256:92d0098e59c3c6367168e4e8e3917000bb3775bec06d785c8626824ee73b360c",
   "schema_version": 1,
   "version": "0.8.0"
 }
