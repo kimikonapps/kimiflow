@@ -36,6 +36,13 @@ from the design file, and the review runs on the diff while it builds ([test eco
 Reason: the design worker's context is full of exploration, a fresh one builds from the agreed text;
 repeated audit rounds cost more than they find.
 
+**Second reviewer for money, auth and data (optional).** Where the project's role table names one,
+changes to payments, authentication or permissions, migrations and deletes get a second review on a
+different model, from its own fresh context and without the first review's findings. The planner
+merges both lists. Reason: two reviewers on different models each found a high-severity defect the
+other missed; one more review is cheap next to a defect in money or data. It is opt-in per project,
+never a standing ensemble for every change.
+
 The gates are exactly these: the owner's OK on the feature sheet, a plan audit where the risk calls
 for it, and the owner-items check (the LIST grep) before a merge to main. Small corrections need none of them.
 
@@ -102,6 +109,10 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
 - **One merger per integration branch.** The session that owns `int/<batch>` merges everything into
   it; other sessions send branch, commit and the tests their change concerns, and never touch it.
   Reason: two mergers on one branch undo each other's conflict resolutions.
+- **Held work stays out.** Before freezing a batch for `int/<batch>` or main, check every candidate
+  against each held commit: `git merge-base --is-ancestor <held> <candidate>` succeeds when the
+  candidate contains it; drop or rebuild that candidate. Reason: leaving a branch out of a batch does
+  not keep its commits out when another branch was built on top of it.
 - **Gates run on a snapshot, merges never under a run.** Gates, tip builds and test runs use a
   detached worktree of the integration tip, so merging goes on meanwhile; the project's merge step
   refuses while a run uses the integration worktree (the project adds both; the run.sh skeleton has
@@ -190,6 +201,12 @@ what is open.
 
 - **Relay changes only:** finished, red, decision needed, GO. Heartbeats and "still waiting" stay
   silent; a check-in with nothing new reports nothing. Reason: the owner reads every line.
+- **Completion line in a file.** A brief names a report file in `plans/`. The worker or reviewer
+  writes its report there and ends it with one line at line start: `DONE <slice> <green|red|stopped>`
+  or `REVIEW-DONE <scope> <verdict>`. The planner looks for that line (`grep -n '^DONE \|^REVIEW-DONE '`),
+  then checks the diff and the evidence anyway: the line says the work stopped, not that it is right.
+  Reason: a report only in the chat is lost on compaction or a restart in long and night runs; an
+  exact line in a file survives and can be found without reading everything.
 - **Report or ask.** Every brief ends with the report block (rules-worker.md § Report). A worker that
   stops without it is asked for it at once, not at the next check-in.
 

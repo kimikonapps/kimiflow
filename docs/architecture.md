@@ -41,8 +41,8 @@ the host.
 
 `claude/hooks.json` and `claude/agents/{worker,reviewer,architect}.md` are registered only through
 `.claude-plugin/plugin.json`. The hook file is deliberately not at the default `hooks/hooks.json`
-path, which other hosts may also load. Hooks start `python3` with the script path, so packaged files
-need no exec bit. The agents carry no `model`; the planner passes one from the project's role table.
+path, which other hosts may also load. Hooks start `/bin/sh claude/hook.sh`, which picks a Python 3.9+ independent of the
+host's PATH and runs the helper with the script path, so packaged files need no exec bit. The agents carry no `model`; the planner passes one from the project's role table.
 The architect has no Edit/Write tools and is read-only by instruction (Bash is available for reading). Codex and Pi get the skill texts only.
 
 ## Delegation and models

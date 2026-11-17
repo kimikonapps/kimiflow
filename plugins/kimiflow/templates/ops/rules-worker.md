@@ -66,6 +66,10 @@ Change a rule here, never by copying it into a brief.
 3. Checks: each command with its real result. A check that was not run is reported as not run.
 4. Open points: unresolved issues, assumptions, deviations from the brief.
 
+Write the report to the report file the brief names and end it with the completion line at line start:
+`DONE <slice> <green|red|stopped>` (workers) or `REVIEW-DONE <scope> <verdict>` (reviewers, auditors).
+Nothing follows that line. The planner may lose the chat after a compaction or restart; the file stays.
+
 Reviewers and auditors follow the finding schema of their brief instead of points 1 to 3.
 
 ## Project checks and style

@@ -33,3 +33,6 @@ Severity BLOCKER / HIGH / MEDIUM / LOW. No numeric score.
 1. Findings
 2. NOT VERIFIABLE: what you could not check, and why
 3. Conform: what you checked and found in order
+
+If the brief names a report file, write the report there as well and end it with the line
+`REVIEW-DONE <scope> <verdict>` at line start.

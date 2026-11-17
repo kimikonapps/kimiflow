@@ -16,6 +16,8 @@ before adding one; extend or centralize it instead of writing a second.
 - FLAKES — re-run alone before calling a red test a defect — OPERATIONS § 6, OPERATIONS-history.md
 - TEST ECONOMY — workers compile only; gates = changed + affected, guards once per integration tip; new red same day — installed `references/test-economy.md`, numbers in OPERATIONS § 4
 - GIT GUARD — stage named paths only; no AI attribution in commits — enforced by the kimiflow hook
+- HELD WORK STAYS OUT — `git merge-base --is-ancestor <held> <candidate>` before freezing a batch — installed `references/operating-model.md` § Integration
+- COMPLETION LINE — reports go to the brief's report file and end with `DONE`/`REVIEW-DONE` — rules-worker.md § Report
 - `<NAME>` — `<rule>` — `<OPERATIONS § n / rules-worker.md / rules-<topic>.md>`
 
 ## 0 · Quick start
@@ -38,6 +40,7 @@ scales with risk; details in the installed `references/operating-model.md`. Mode
 | Planner (session) | `<model>` | `<effort>` | `<reason>` |
 | Worker | `<model>` | `<effort>` | `<reason>` |
 | Reviewer / auditor | `<model>` | `<effort>` | `<reason>` |
+| Second reviewer (optional: money, auth, data) | `<a different model, or none>` | `<effort>` | `<reason>` |
 | Architect (rare) | `<model>` | `<effort>` | `<reason>` |
 
 Claude Code ships the agents `kimiflow:worker`, `kimiflow:reviewer` and `kimiflow:architect`; pass the

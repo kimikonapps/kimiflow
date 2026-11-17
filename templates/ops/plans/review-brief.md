@@ -25,6 +25,11 @@ ID · location · evidence (≤ 10 lines) · failure scenario · smallest fix ·
 
 Severity BLOCKER / HIGH / MEDIUM / LOW, no score. A wrong finding costs more than a missing one.
 
+## Report file
+
+`<absolute path>/.kimiflow/ops/plans/<scope>-review.md`, last line `REVIEW-DONE <scope> <verdict>`
+(verdict: `pass`, `fix` or `block`)
+
 ## Report sections
 
 1. Findings

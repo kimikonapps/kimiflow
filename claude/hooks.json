@@ -5,8 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/kimiflow_ops.py", "session-start"],
+            "command": "/bin/sh",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/claude/hook.sh", "session-start"],
             "timeout": 10
           }
         ]
@@ -18,8 +18,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/kimiflow_ops.py", "git-guard"],
+            "command": "/bin/sh",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/claude/hook.sh", "git-guard"],
             "timeout": 5
           }
         ]
