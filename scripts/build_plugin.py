@@ -16,7 +16,7 @@ RUNTIME_FILES = (
     '.claude-plugin/plugin.json', '.codex-plugin/plugin.json', 'package.json',
     'SKILL.md', 'skills/kimiflow/SKILL.md', 'skills/kimiflow/agents/openai.yaml',
     'hosts/pi/skills/kimiflow/SKILL.md', 'scripts/check_change.py', 'scripts/kimiflow_ops.py',
-    'claude/hooks.json', 'claude/agents/worker.md', 'claude/agents/reviewer.md', 'claude/agents/architect.md',
+    'claude/hooks.json', 'claude/hook.sh', 'claude/agents/worker.md', 'claude/agents/reviewer.md', 'claude/agents/architect.md',
     'references/feature-work.md', 'references/planner-worker.md', 'references/models.md',
     'references/operating-model.md', 'references/verification.md', 'references/continuation.md',
     'references/test-economy.md',
