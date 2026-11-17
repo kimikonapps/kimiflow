@@ -4,6 +4,13 @@ The public release history starts at **0.5.0**. Earlier development artifacts ar
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.8.1
+
+Process lessons from long-running app work, written project-agnostically into the kit, plus hooks
+that run without Python on PATH.
+
 - Hooks start through `claude/hook.sh`, which finds Python 3.9+ outside PATH (Homebrew, `/usr/local/bin`,
   `/usr/bin`), so they also run when Claude Desktop is started from the Dock. Without Python, an
   initialized project gets a visible warning and the git guard blocks `git add`/`git commit` instead of
@@ -18,11 +25,6 @@ The public release history starts at **0.5.0**. Earlier development artifacts ar
   so they survive compaction and restarts.
 - Operating model and OPERATIONS role table: an optional second reviewer on a different model for
   money, auth and data changes, opt-in per project.
-
-## 0.8.1
-
-Process lessons from long-running app work, written project-agnostically into the kit.
-
 - Handoff check: the old HANDOFF.md goes whole to the archive, the new one is written from the
   template and kept at 6 KB or less; overflow moves to its one home, never cut. The template header says so.
 - Briefs: one small brief file per package (at most 3 KB) instead of sections of a collection file;
