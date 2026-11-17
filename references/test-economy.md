@@ -21,12 +21,21 @@ something. The project's numbers (commands, slots, quiet window) live in OPERATI
 
 - **Combined run after two or three merged packages** ([operating model](operating-model.md) §
   Integration), never per merge.
-- **Gate = changed + affected + guards, never cumulative.** The set is the tests of changed files,
-  tests that mention changed types, and the project's guard tests. Never the previous list plus new
-  entries; a green test is not run again in the same batch unless its files changed since. Reason:
-  cumulative lists grow until every gate is the full suite.
+- **Gate = changed + affected, never cumulative.** The set is the tests of changed files and tests
+  that mention changed types. Never the previous list plus new entries; a green test is not run again
+  in the same batch unless its files changed since. Reason: cumulative lists grow until every gate is
+  the full suite.
+- **Guards once per integration tip.** The project's guard tests run once per integration tip (the
+  first gate on it), not in every small gate. A small gate adds a guard only when its diff touches
+  that guard's subject (sizes, fonts, shared state) and says why. Reason: the same guards on the same
+  tip in every gate find nothing new.
+- **Estimate before building.** A gate prints its estimate from measured per-class durations before
+  it builds; above the 40-minute budget it says OVER BUDGET and names the dominating classes, and a
+  class that alone takes over 10 minutes is split or moved to the pre-beta night. After every main
+  merge, measure the minutes from the last fix committed to the merge, so the hour target below is a
+  number, not a hope.
 - **From the last fix to the main merge in under an hour, without losing quality** (owner rule
-  2026-10-31). The pre-merge gate is the touched classes + guards in ONE run (≤ 40 min wall); the
+  2026-10-31). The pre-merge gate is the touched classes in ONE run (≤ 40 min wall); the
   full suite and the measurement classes run only in the night before a beta, never per wave or
   per merge. Packages merge continuously as soon as they compile in the combined build — there is
   no end-of-wave fix round. Over an hour from last fix to main is a defect of the pipeline, not of
@@ -70,14 +79,25 @@ Source: owner-supplied CI article, 2026-10-31. With agents writing the code, the
 ## Runner contract
 
 One script starts every build and test run (template: `.kimiflow/ops/tools/run.sh`). Its only
-stack-specific lines are the project's build and test commands and how to read red test ids from the
-log; everything else is this contract:
+stack-specific lines are the project's build and test commands, its build output directory and how to
+read red test ids from the log; everything else is this contract. Items marked *(project)* are not
+in the skeleton: the project adds them to its runner or merge step before relying on them.
 
+- *(project)* A gate starts with `estimate <n> min (<k> classes)` from the per-class durations of earlier logs,
+  then `OVER BUDGET` or `SPLIT-OR-NIGHTLY` lines where they apply, before anything builds.
 - One log per run; the last line is `EXIT <code> after <n>s`. Waits watch for that line, with a time
   cap. Stop a run by killing its process group, not only the runner's pid.
 - One test phase per machine: a lock directory (`mkdir`), a stale pid is taken over.
-- At most `LANES` builds at once; the runner waits for a free lane.
+- At most `LANES` builds at once; the runner waits for a free lane. A test run builds in a lane, then
+  releases it before it waits for the test lock: testing is no build and must not block the next one.
+- One run per build output directory, held until the run ends: two runs in one build directory break
+  on the build tool's own locks (a build database, an index).
+- Fast lane (optional, `SMALL_MAX`): a test run of a few ids (e.g. ≤ 20 test classes) may take a
+  second, small test lock beside the big run, on one host; timing reds seen only then re-run alone.
 - Test modes refuse without `TESTS_OK=1`, so a worker's compile check cannot turn into a test run.
 - Reds re-run once alone (see Load reds) and are reported as `load-red:` / `real-red:` lines; the run
   exits 0 when every red was a load red.
 - A small state file per run and phase, so a queue view or the planner can see what runs and waits.
+- *(project)* Gates and test runs never run in the integration worktree itself: they get a detached snapshot
+  worktree of its tip (`git worktree add --detach`), removed after the run. The merge step refuses
+  while a run's state names the integration worktree.

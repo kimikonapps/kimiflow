@@ -7,6 +7,13 @@ this task.
 
 <outcome and the reason behind it>
 
+## Goal checklist
+
+The report ticks every point with file:line or marks it NOT DONE with the reason. A missing point
+blocks the merge.
+
+- [ ] <goal point>
+
 ## Allowed files
 
 - `<path>` — <new / edit>
