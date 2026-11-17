@@ -93,6 +93,10 @@ def snapshot(root):
                 if (opened.st_size, opened.st_mtime_ns, opened.st_ctime_ns) != (finished.st_size, finished.st_mtime_ns, finished.st_ctime_ns):
                     raise CheckError("Source changed while fingerprinting: " + os.fsdecode(name))
             add(file_digest.digest())
+        elif stat.S_ISDIR(info.st_mode) and name in untracked and (path / ".git").exists():
+            # Another repository or linked worktree inside the checkout, such as Claude Code's
+            # .claude/worktrees/<name>: its files belong to that checkout, not to this source.
+            add(b"nested-checkout")
         elif stat.S_ISDIR(info.st_mode) and name in gitlinks:
             # An uninitialized submodule has no independent Git directory.
             if (path / ".git").exists():

@@ -1,5 +1,5 @@
 {
-  "file_count": 39,
+  "file_count": 40,
   "files": [
     {
       "bytes": 490,
@@ -12,9 +12,9 @@
       "sha256": "2b9baef28a0b982e063bd1f30ad23d634253bd8d6ec61c71372968b151fd20cc"
     },
     {
-      "bytes": 1883,
+      "bytes": 2162,
       "path": "COMPATIBILITY.md",
-      "sha256": "6c563299ab49deaad6eec3cead2633b5562ef405066ef7fa097b99ff2a9d6def"
+      "sha256": "b0d607bdd8398a24f901df9838b5bbd40e668350ea6da59771048b10beb83d9d"
     },
     {
       "bytes": 1064,
@@ -27,14 +27,14 @@
       "sha256": "94b264a1b4814713982ace8b32cb0af0f618f613fea213b73e7688b493445d6a"
     },
     {
-      "bytes": 11080,
+      "bytes": 11423,
       "path": "README.de.md",
-      "sha256": "90047d975d23c8a1dbd117a93fa0b4b4e9255b831cb07fc3aafeecf1891a2b3b"
+      "sha256": "55404ae7338f488c816a809014d365b5fbf4984b169e1b7d07107c1949e6b784"
     },
     {
-      "bytes": 10160,
+      "bytes": 10489,
       "path": "README.md",
-      "sha256": "e2191f8818cf6b993d18e19a8f0aab5f04975fef636b234b4b58fa141b366948"
+      "sha256": "18271ca80292fb3669ee0420b5266d067dc113a6369843ea07188acd06d0f459"
     },
     {
       "bytes": 3669,
@@ -57,9 +57,14 @@
       "sha256": "6b1876d5c8737c399f94773410217d3368464c331baf82958e4e8635cfbbfbd0"
     },
     {
-      "bytes": 594,
+      "bytes": 2380,
+      "path": "claude/hook.sh",
+      "sha256": "c0dbf2a17c23e892d18eaafc93caa637be6a35b0f74697e0ee27cadb998ad133"
+    },
+    {
+      "bytes": 576,
       "path": "claude/hooks.json",
-      "sha256": "641c02ab02ddb78e4992eeab8afd0fc5136244b86d41c13e435817cde8e5683d"
+      "sha256": "24463a3d033bb83e02d636d59ab57c0c5c7ef3a6b422c3a7ef7014f1448711e9"
     },
     {
       "bytes": 871,
@@ -107,9 +112,9 @@
       "sha256": "4da0a31d15025356d938d74ce32c255023d8f257603132094790e8ee98a29557"
     },
     {
-      "bytes": 8235,
+      "bytes": 8553,
       "path": "scripts/check_change.py",
-      "sha256": "0ae08503c5e1fdb87c9faa36b73daa1fde79643c2b70a2af1e38b5554e151f9b"
+      "sha256": "9994c809ba4920d1701ccd700033ed49ff0f9e99bd0ce18b902715f119f7324a"
     },
     {
       "bytes": 15321,
@@ -197,7 +202,7 @@
       "sha256": "21b4443150070b4882e9213aede639b4f1121a585174dc8a12ef2f6e73e74487"
     }
   ],
-  "runtime_fingerprint": "sha256:4e5eca579f166548e1507da45dd6574d74988b7120f70d28d3353a72cbd64c5f",
+  "runtime_fingerprint": "sha256:d8b6a80eac87e7f50bf9a46ca235eb26273497f9def8b3bc8554d7b820ee5562",
   "schema_version": 1,
   "version": "0.7.0"
 }
