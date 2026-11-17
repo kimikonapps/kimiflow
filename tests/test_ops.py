@@ -513,6 +513,70 @@ class OpsTests(unittest.TestCase):
                 result = self.guard('git add -A', stdin=stdin)
                 self.assertEqual((result.returncode, result.stdout, result.stderr), (0, '', ''))
 
+    # claude/hook.sh: finds a Python 3.9+ without relying on the host's PATH
+
+    def launch(self, command, stdin, cwd, fallbacks):
+        """Run the built hook launcher as Claude Code does, with a PATH that holds git but no python3."""
+        bin_dir = self.tmp / 'bin'
+        if not bin_dir.exists():
+            bin_dir.mkdir()
+            (bin_dir / 'git').symlink_to(shutil.which('git'))
+        launcher = self.helper.parents[1] / 'claude' / 'hook.sh'
+        env = {**GIT_ENV, 'PATH': str(bin_dir), 'KIMIFLOW_PYTHON_FALLBACKS': fallbacks}
+        return subprocess.run(['/bin/sh', str(launcher), command], input=stdin, cwd=cwd, env=env,
+                              capture_output=True, text=True, timeout=60)
+
+    def test_hook_launcher_finds_python_outside_path(self):
+        self.init()
+        payload = json.dumps({'cwd': str(self.main)})
+        result = self.launch('session-start', payload, self.main, sys.executable)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Kimiflow operating kit', result.stdout)
+        guard = self.launch('git-guard', json.dumps({'cwd': str(self.main), 'tool_input': {'command': 'git add -A'}}),
+                            self.main, sys.executable)
+        self.assertEqual(guard.returncode, 2)
+        self.assertIn('named paths', guard.stderr)
+
+    def test_hook_launcher_skips_unusable_python(self):
+        self.init()
+        broken = self.tmp / 'old-python3'
+        broken.write_text('#!/bin/sh\nexit 1\n')
+        broken.chmod(0o755)
+        result = self.launch('session-start', json.dumps({'cwd': str(self.main)}), self.main,
+                             '%s %s' % (broken, sys.executable))
+        self.assertIn('Kimiflow operating kit', result.stdout)
+
+    def test_hook_launcher_without_python_warns_and_guards_git_in_an_initialized_project(self):
+        self.init()
+        worktree = self.main / '.claude' / 'worktrees' / 'w'
+        git(self.main, 'worktree', 'add', '-q', str(worktree))
+        for cwd in (self.main, worktree):
+            with self.subTest(cwd=cwd.name):
+                result = self.launch('session-start', json.dumps({'cwd': str(cwd)}), cwd, '')
+                self.assertEqual(result.returncode, 0)
+                output = json.loads(result.stdout)
+                self.assertIn('no Python 3.9', output['systemMessage'])
+                self.assertEqual(output['hookSpecificOutput']['hookEventName'], 'SessionStart')
+                self.assertIn('git guard', output['hookSpecificOutput']['additionalContext'])
+        for command in ('git add -A', 'git commit -m x', 'cd a && git -C b add .'):
+            with self.subTest(command=command):
+                payload = json.dumps({'cwd': str(self.main), 'tool_input': {'command': command}})
+                result = self.launch('git-guard', payload, self.main, '')
+                self.assertEqual(result.returncode, 2)
+                self.assertIn('no Python 3.9', result.stderr)
+        for command in ('ls -la', 'git status', 'git log'):
+            with self.subTest(command=command):
+                payload = json.dumps({'cwd': str(self.main), 'tool_input': {'command': command}})
+                result = self.launch('git-guard', payload, self.main, '')
+                self.assertEqual((result.returncode, result.stdout, result.stderr), (0, '', ''))
+
+    def test_hook_launcher_without_python_is_silent_outside_an_initialized_project(self):
+        payload = json.dumps({'cwd': str(self.main), 'tool_input': {'command': 'git add -A'}})
+        for command in ('session-start', 'git-guard'):
+            with self.subTest(command=command):
+                result = self.launch(command, payload, self.main, '')
+                self.assertEqual((result.returncode, result.stdout, result.stderr), (0, '', ''))
+
     def test_built_helper_is_a_regular_file(self):
         self.assertEqual(stat.S_IMODE(self.helper.stat().st_mode), 0o644)
 

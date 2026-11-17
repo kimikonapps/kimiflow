@@ -38,6 +38,10 @@ Each claim was checked by the planner with grep or a read before this brief went
 
 - <condition specific to this task> → stop and report
 
+## Report file
+
+`<absolute path>/.kimiflow/ops/plans/<slice>-report.md`, last line `DONE <slice> <green|red|stopped>`
+
 ## Scratch prefix
 
 `<unique-prefix>-`

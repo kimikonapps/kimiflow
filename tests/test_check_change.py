@@ -137,6 +137,15 @@ class CheckChangeTests(unittest.TestCase):
             result, code = checks.check_change(directory, [self.py("pass")])
         self.assertEqual((code, result["status"]), (0, "passed"))
 
+    def test_linked_worktree_inside_the_checkout_is_not_source(self):
+        # Claude Code and Claude Desktop create worktrees in .claude/worktrees/ of the main checkout.
+        worktree = self.root / ".claude" / "worktrees" / "lane"
+        self.git("worktree", "add", "-q", str(worktree))
+        result, code = checks.check_change(self.root, [self.py("open('.claude/worktrees/lane/new.txt','w').write('x')")])
+        self.assertEqual((code, result["status"]), (0, "passed"), result)
+        result, code = checks.check_change(self.root, [self.py("open('source.txt','w').write('after')")])
+        self.assertEqual((code, result["status"]), (1, "changed"))
+
     def test_symlink_is_bound_without_following_target(self):
         path = self.root / "link"
         path.symlink_to("source.txt")

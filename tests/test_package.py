@@ -153,6 +153,21 @@ class PackageTests(unittest.TestCase):
         architect = (target / 'claude/agents/architect.md').read_text().split('---')[1]
         self.assertIn('tools: Read, Grep, Glob, Bash, WebSearch, WebFetch\n', architect)
 
+    def test_completion_lines_match_across_shipped_texts(self):
+        # The planner greps for these exact lines, so every text that names one must spell it the same.
+        worker, review = 'DONE <slice> <green|red|stopped>', 'REVIEW-DONE <scope> <verdict>'
+        for relative, expected in (('references/operating-model.md', (worker, review)),
+                                   ('templates/ops/rules-worker.md', (worker, review)),
+                                   ('templates/ops/plans/worker-brief.md', (worker,)),
+                                   ('templates/ops/plans/review-brief.md', (review,)),
+                                   ('claude/agents/worker.md', (worker,)),
+                                   ('claude/agents/reviewer.md', (review,))):
+            text = (self.root / relative).read_text()
+            for line in expected:
+                with self.subTest(file=relative, line=line):
+                    self.assertIn('`' + line, text)
+        self.assertIn("grep -n '^DONE \\|^REVIEW-DONE '", (self.root / 'references/operating-model.md').read_text())
+
     def test_claude_hooks_register_session_start_and_git_guard(self):
         hooks = json.loads((self.root / 'claude' / 'hooks.json').read_text())['hooks']
         expected = {'SessionStart': (None, 'session-start'), 'PreToolUse': ('Bash', 'git-guard')}
@@ -162,8 +177,8 @@ class PackageTests(unittest.TestCase):
                 [entry] = hooks[event]
                 [hook] = entry['hooks']
                 self.assertEqual(entry.get('matcher'), matcher)
-                self.assertEqual((hook['type'], hook['command']), ('command', 'python3'))
-                self.assertEqual(hook['args'], ['${CLAUDE_PLUGIN_ROOT}/scripts/kimiflow_ops.py', command])
+                self.assertEqual((hook['type'], hook['command']), ('command', '/bin/sh'))
+                self.assertEqual(hook['args'], ['${CLAUDE_PLUGIN_ROOT}/claude/hook.sh', command])
 
     def test_marketplace_version_must_match_the_runtime(self):
         path = self.root / '.claude-plugin' / 'marketplace.json'

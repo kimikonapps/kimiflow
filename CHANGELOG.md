@@ -4,7 +4,20 @@ The public release history starts at **0.5.0**. Earlier development artifacts ar
 
 ## Unreleased
 
-_No unreleased changes._
+- Hooks start through `claude/hook.sh`, which finds Python 3.9+ outside PATH (Homebrew, `/usr/local/bin`,
+  `/usr/bin`), so they also run when Claude Desktop is started from the Dock. Without Python, an
+  initialized project gets a visible warning and the git guard blocks `git add`/`git commit` instead of
+  failing open.
+- `check_change.py` no longer fails on a linked worktree inside the checkout, such as
+  `.claude/worktrees/<name>` from Claude Code or Claude Desktop; its files are not source of the main
+  checkout.
+- Operating model: **held work stays out** — before freezing a batch, `git merge-base --is-ancestor`
+  checks that no candidate contains a held commit.
+- Operating model, rules-worker, worker and review briefs, agents: reports go to a report file named
+  in the brief and end with a completion line (`DONE <slice> <status>` / `REVIEW-DONE <scope> <verdict>`),
+  so they survive compaction and restarts.
+- Operating model and OPERATIONS role table: an optional second reviewer on a different model for
+  money, auth and data changes, opt-in per project.
 
 ## 0.8.1
 

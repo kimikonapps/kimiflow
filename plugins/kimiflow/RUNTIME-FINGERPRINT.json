@@ -1,5 +1,5 @@
 {
-  "file_count": 39,
+  "file_count": 40,
   "files": [
     {
       "bytes": 490,
@@ -12,9 +12,9 @@
       "sha256": "ef0babdafd58112f866ef3eb70e7d0e3b1358fa263d3849f35815bf938134751"
     },
     {
-      "bytes": 1883,
+      "bytes": 2162,
       "path": "COMPATIBILITY.md",
-      "sha256": "6c563299ab49deaad6eec3cead2633b5562ef405066ef7fa097b99ff2a9d6def"
+      "sha256": "b0d607bdd8398a24f901df9838b5bbd40e668350ea6da59771048b10beb83d9d"
     },
     {
       "bytes": 1064,
@@ -27,14 +27,14 @@
       "sha256": "ed0b11c3120c8e04145169323137b753bdcc990795f138b635de0f5af730ff39"
     },
     {
-      "bytes": 11114,
+      "bytes": 11457,
       "path": "README.de.md",
-      "sha256": "76b3f24686b75be50ef44874a4487caf44b3fd5a4663ca338c04f259fa1ddccb"
+      "sha256": "df2cc8f4e2bc9d6f6595e7e1070b85cd24c9dc08ae6202eaed1083c1b4365751"
     },
     {
-      "bytes": 10187,
+      "bytes": 10516,
       "path": "README.md",
-      "sha256": "b1ef05b57d7c1759e9eae87ba23799fca739be87c7e70acac69d34f0af6ea79e"
+      "sha256": "680dbe19bce43a9ccad51fb242d6ce45f11a61651eddc312eec119dda90f59cb"
     },
     {
       "bytes": 3669,
@@ -47,19 +47,24 @@
       "sha256": "e90b4d82ad33ed55eb78fb64d004871d5a8e438a78788b3f023e1d7e42012fb6"
     },
     {
-      "bytes": 1632,
+      "bytes": 1770,
       "path": "claude/agents/reviewer.md",
-      "sha256": "40fbfb1d7db9edfc66304e12d3538505ea495dc7890b549373efa81808eb1d61"
+      "sha256": "b2f2f31f675a38531a9494c92f9537c5dcca82c8bb880158826c19be1b704d8f"
     },
     {
-      "bytes": 2355,
+      "bytes": 2496,
       "path": "claude/agents/worker.md",
-      "sha256": "1b0b74341ec8f3669ab70cdf19bcd49ac5b9cf64f14c092cd3d3ca0582ac665a"
+      "sha256": "fba7e53860633d4c38056d1e1e80bc85c2f78398e84c522d0cbf5cfa7d1f4bfa"
     },
     {
-      "bytes": 594,
+      "bytes": 2380,
+      "path": "claude/hook.sh",
+      "sha256": "c0dbf2a17c23e892d18eaafc93caa637be6a35b0f74697e0ee27cadb998ad133"
+    },
+    {
+      "bytes": 576,
       "path": "claude/hooks.json",
-      "sha256": "641c02ab02ddb78e4992eeab8afd0fc5136244b86d41c13e435817cde8e5683d"
+      "sha256": "24463a3d033bb83e02d636d59ab57c0c5c7ef3a6b422c3a7ef7014f1448711e9"
     },
     {
       "bytes": 871,
@@ -87,9 +92,9 @@
       "sha256": "0d9d2fd9ee7ff31f4645e706115a1c0a26426760491ce7e11121c72a8e1d9a5b"
     },
     {
-      "bytes": 13964,
+      "bytes": 15456,
       "path": "references/operating-model.md",
-      "sha256": "95bdc0545649375fc3ef1f748229bcaec10ad14bb2cc5de34c585e7cb6a4f578"
+      "sha256": "df0e6709a53aafbc6f4692967b4c0c0adcda98f9db8f945f6dfe2218be43155d"
     },
     {
       "bytes": 3159,
@@ -107,9 +112,9 @@
       "sha256": "4da0a31d15025356d938d74ce32c255023d8f257603132094790e8ee98a29557"
     },
     {
-      "bytes": 8235,
+      "bytes": 8553,
       "path": "scripts/check_change.py",
-      "sha256": "0ae08503c5e1fdb87c9faa36b73daa1fde79643c2b70a2af1e38b5554e151f9b"
+      "sha256": "9994c809ba4920d1701ccd700033ed49ff0f9e99bd0ce18b902715f119f7324a"
     },
     {
       "bytes": 15321,
@@ -147,9 +152,9 @@
       "sha256": "1a41b7ec79a971f4bf237465d3a4c19e84b1da05064f99f23c4c02f86b68548c"
     },
     {
-      "bytes": 4313,
+      "bytes": 4707,
       "path": "templates/ops/OPERATIONS.md",
-      "sha256": "401e1d4142023de27d71b887a45f2e3edb3ccf67524b4db257f38382ba4fbde9"
+      "sha256": "69a02ec219120ec0d27c9ae83a8dad626b0e91e828ef38b7dc9770c7e25b315b"
     },
     {
       "bytes": 0,
@@ -172,14 +177,14 @@
       "sha256": "34b4df778e7ce17ff6abdc5e5340a20f7fe39c94d4474d20503763480af08600"
     },
     {
-      "bytes": 877,
+      "bytes": 1029,
       "path": "templates/ops/plans/review-brief.md",
-      "sha256": "4e357ede572d8bf00dad9ea36369f9ac5779b859b82f0950d34bea407660acea"
+      "sha256": "97d99756dbe54efb0cd95f3effc2f401cdeb135828231a731fa7e69191ec3300"
     },
     {
-      "bytes": 1032,
+      "bytes": 1151,
       "path": "templates/ops/plans/worker-brief.md",
-      "sha256": "062e9a70427bdc161b7dc17731d5995d823f0d98a327f87e910c852f269446bc"
+      "sha256": "fcb1fa69487868ac4b22e1bfb0504fe6efa24e34a18e2ba52476eb20509ff114"
     },
     {
       "bytes": 0,
@@ -187,9 +192,9 @@
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
-      "bytes": 4227,
+      "bytes": 4538,
       "path": "templates/ops/rules-worker.md",
-      "sha256": "a9aaad2c6f2c07861352edd6ef6bbab822e3dfe115dffb0bd3668a776bd19f2e"
+      "sha256": "54227ed3e093628dae172afbc222906a039e0e7d98714fe68fe51bced697b7a4"
     },
     {
       "bytes": 5069,
@@ -197,7 +202,7 @@
       "sha256": "8fc3c10936072588f83938c85551f019a9d1bb7a767de9f0a87431bdb7bad3ad"
     }
   ],
-  "runtime_fingerprint": "sha256:f3076f6e10a43cb0cb78990a0ea300ea0ebb15984e14cd88a59b22a6bc53a0f0",
+  "runtime_fingerprint": "sha256:3e098e94ca95642ccb0c47d0cbd2587de1ba40a8f997f280106e63f8565aa4a7",
   "schema_version": 1,
   "version": "0.8.1"
 }

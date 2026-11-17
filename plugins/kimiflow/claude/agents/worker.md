@@ -37,3 +37,6 @@ Keep it short; the planner reads the diff anyway.
 1. Changed files: path and one line on what changed.
 2. Checks: each command you ran and its real result. A check you did not run is reported as not run.
 3. Open points: unresolved issues, assumptions, deviations from the brief.
+
+If the brief names a report file, write the report there as well and end it with the line
+`DONE <slice> <green|red|stopped>` at line start.
