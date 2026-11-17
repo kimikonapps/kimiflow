@@ -6,8 +6,9 @@ The public release history starts at **0.5.0**. Earlier development artifacts ar
 
 - Hooks without Python: the fallback guard reads only the command, not its description, and also
   catches `git stage` and Git split by tabs or several blanks. It finds the project from the payload's
-  `cwd` and from any linked worktree, also one outside the checkout, and stays silent where the
-  Python gate would: a nested repository, no `OPERATIONS.md`, no local exclude entry.
+  `cwd` (symlinks resolved) and from any linked worktree, also one outside the checkout, and stays
+  silent where the Python gate would: a nested repository, no `OPERATIONS.md`, no local exclude entry.
+  It parses the hook JSON in linear time, so large commands finish well inside the hook timeout.
 
 ## 0.8.1
 

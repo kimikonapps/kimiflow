@@ -57,9 +57,9 @@
       "sha256": "fba7e53860633d4c38056d1e1e80bc85c2f78398e84c522d0cbf5cfa7d1f4bfa"
     },
     {
-      "bytes": 6171,
+      "bytes": 6806,
       "path": "claude/hook.sh",
-      "sha256": "64bd9ce03064204517260e618ffaf77b22d1471a160fb3a578905b6d3f5be3de"
+      "sha256": "0edbefb19ca5ae6f62ea4bc9d54b02e0b7fd0fc6b3a2fed6173a0958920d5847"
     },
     {
       "bytes": 576,
@@ -202,7 +202,7 @@
       "sha256": "8fc3c10936072588f83938c85551f019a9d1bb7a767de9f0a87431bdb7bad3ad"
     }
   ],
-  "runtime_fingerprint": "sha256:6122c772cbc6f8d28db5f48581368014e920dec73383a8330a46053c4f43da8e",
+  "runtime_fingerprint": "sha256:2ca625042bab7dec4375eae97f27c1077732afafb257c281c6d87cd4d49ff53b",
   "schema_version": 1,
   "version": "0.8.1"
 }

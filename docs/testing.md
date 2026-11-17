@@ -16,8 +16,9 @@ are tested on these POSIX systems only.
   session-start hook (absolute paths from a worktree, trust gate, version notice, commits since
   HANDOFF, size notices for OPERATIONS.md > 12 KB and HANDOFF.md > 6 KB) and the git guard (blocks only in an initialized project, allows named paths and plain
   commits), and the hook launcher (Python outside PATH, unusable Python skipped, warning and git block
-  without Python only where the Python gate would speak, from any worktree and the payload's cwd, judged on
-  the command alone, under every available `sh`, `dash` and `bash`). The built helper runs from the package without an exec bit.
+  without Python only where the Python gate would speak, from any worktree, a symlinked and the payload's
+  cwd; the git guard judged on the command alone, with compact and spaced JSON, under every available
+  `sh`, `dash` and `bash`, and within the hook timeout on large commands and long backslash runs). The built helper runs from the package without an exec bit.
 - `tests/test_check_change.py`: the check helper, including failing commands, source/index drift,
   ignored output, timeouts, surviving children and linked worktrees inside the checkout.
 - `tests/test_package.py`: exact package contents, source/render parity, version consistency, unsafe

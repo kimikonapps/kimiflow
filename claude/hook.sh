@@ -47,9 +47,19 @@ for field do
         instring=1 single=1 start=$((i + 1))
         continue
     fi
-    tail=$field slashes=
-    while :; do case $tail in *\\) tail=${tail%?} slashes=x$slashes ;; *) break ;; esac; done
-    case ${#slashes} in *[13579]) single=; continue ;; esac
+    case $field in
+        *\\)
+            # Ends in backslashes: an odd run escapes the quote. Counted by splitting at backslashes, in
+            # place: shell patterns on a long string (${x%?} in a loop, ${x##*[!\\]}) are quadratic, and a
+            # function call copies this loop's thousands of positional parameters in bash.
+            run=0 text=
+            IFS='\'
+            for piece in $field; do if [ -n "$piece" ]; then run=0 text=1; else run=$((run + 1)); fi; done
+            IFS=$blanks
+            [ -z "$text" ] || run=$((run + 1))
+            if [ $((run % 2)) -eq 1 ]; then single=; continue; fi
+            ;;
+    esac
     case $value_of in
         cwd) [ -n "$cwd_from" ] || cwd_from=$start cwd_to=$i ;;
         command) [ -n "$command_from" ] || command_from=$start command_to=$i ;;
@@ -92,6 +102,8 @@ print_value() {
 # .kimiflow is tracked needs git, so that last check is left to the Python gate.
 dir=$PWD
 if [ -n "$cwd_from" ]; then value=$(print_value "$cwd_from" "$cwd_to"); value=${value%x}; [ -z "$value" ] || dir=$value; fi
+case $dir in /*) ;; *) dir=$PWD ;; esac  # Claude Code sends an absolute cwd
+cd -P -- "$dir" 2>/dev/null && dir=$(pwd -P)  # resolve symlinks, as the Python gate does
 while [ ! -e "$dir/.git" ]; do
     [ -z "$dir" ] || [ "$dir" = / ] && exit 0
     dir=${dir%/*}

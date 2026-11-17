@@ -532,10 +532,11 @@ class OpsTests(unittest.TestCase):
 
     def no_python_guard(self, command, cwd, run_in=None, **extra):
         """Exit code of the no-Python git guard for a Claude Code payload, under every shell at hand."""
-        payload = json.dumps({'session_id': 's', 'cwd': str(cwd), 'hook_event_name': 'PreToolUse',
-                              'tool_name': 'Bash', 'tool_input': {'command': command, **extra}})
-        codes = {self.launch('git-guard', payload, run_in or cwd, '', shell).returncode for shell in self.shells()}
-        self.assertEqual(len(codes), 1, 'shells disagree on %r' % command)
+        data = {'session_id': 's', 'cwd': str(cwd), 'hook_event_name': 'PreToolUse', 'tool_name': 'Bash',
+                'tool_input': {'command': command, **extra}}
+        codes = {self.launch('git-guard', json.dumps(data, separators=separators), run_in or cwd, '', shell).returncode
+                 for shell in self.shells() for separators in ((', ', ': '), (',', ':'))}  # Claude Code sends compact JSON
+        self.assertEqual(len(codes), 1, 'shells or JSON layouts disagree on %r' % command)
         return codes.pop()
 
     def test_hook_launcher_without_python_checks_only_the_command(self):
@@ -551,6 +552,17 @@ class OpsTests(unittest.TestCase):
         for command in ('echo "git log"', 'git status', 'echo "\\"git\\" is a tool"'):
             with self.subTest(command=command):
                 self.assertEqual(self.no_python_guard(command, self.main, description='git add -A'), 0)
+
+    def test_hook_launcher_without_python_stays_fast_on_long_backslash_runs(self):
+        self.init()
+        for command in ('git add f; printf "%s" "' + '\\' * 20000 + '"',
+                        'cat > f <<EOF\n' + 'x' * 80000 + '\\' * 2000 + '\nEOF\ngit commit -m x'):
+            for shell in self.shells():
+                with self.subTest(length=len(command), shell=shell):
+                    payload = json.dumps({'cwd': str(self.main), 'tool_input': {'command': command}})
+                    started = time.monotonic()
+                    self.assertEqual(self.launch('git-guard', payload, self.main, '', shell).returncode, 2)
+                    self.assertLess(time.monotonic() - started, 4)
 
     def test_hook_launcher_without_python_stays_fast_on_a_large_command(self):
         # The hook has a 5 s timeout and a timeout lets the command through; bash makes string building
@@ -577,6 +589,12 @@ class OpsTests(unittest.TestCase):
                 result = self.launch('session-start', json.dumps({'cwd': str(cwd)}), cwd, '')
                 self.assertIn('no Python 3.9', json.loads(result.stdout or '{}').get('systemMessage', ''))
                 self.assertEqual(self.no_python_guard('git add -A', cwd), 2)
+        # A symlink into the project counts like the project (Python resolves the path, so must the fallback).
+        link = self.tmp / 'link'
+        link.symlink_to(sibling / 'sub')
+        self.assertEqual(self.no_python_guard('git add -A', link), 2)
+        # A relative cwd (Claude Code sends absolute ones) falls back to the process directory, never loops.
+        self.assertEqual(self.no_python_guard('git add -A', 'sibling', run_in=self.main), 2)
         # The payload's cwd counts, not the directory the hook process happens to start in.
         self.assertEqual(self.no_python_guard('git add -A', sibling, run_in=self.tmp), 2)
         self.assertEqual(self.no_python_guard('git add -A', self.tmp, run_in=self.main), 0)
