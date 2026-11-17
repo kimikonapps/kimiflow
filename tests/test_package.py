@@ -177,8 +177,8 @@ class PackageTests(unittest.TestCase):
                 [entry] = hooks[event]
                 [hook] = entry['hooks']
                 self.assertEqual(entry.get('matcher'), matcher)
-                self.assertEqual((hook['type'], hook['command']), ('command', 'python3'))
-                self.assertEqual(hook['args'], ['${CLAUDE_PLUGIN_ROOT}/scripts/kimiflow_ops.py', command])
+                self.assertEqual((hook['type'], hook['command']), ('command', '/bin/sh'))
+                self.assertEqual(hook['args'], ['${CLAUDE_PLUGIN_ROOT}/claude/hook.sh', command])
 
     def test_marketplace_version_must_match_the_runtime(self):
         path = self.root / '.claude-plugin' / 'marketplace.json'
