@@ -7,6 +7,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -515,7 +516,7 @@ class OpsTests(unittest.TestCase):
 
     # claude/hook.sh: finds a Python 3.9+ without relying on the host's PATH
 
-    def launch(self, command, stdin, cwd, fallbacks):
+    def launch(self, command, stdin, cwd, fallbacks, shell='/bin/sh'):
         """Run the built hook launcher as Claude Code does, with a PATH that holds git but no python3."""
         bin_dir = self.tmp / 'bin'
         if not bin_dir.exists():
@@ -523,8 +524,81 @@ class OpsTests(unittest.TestCase):
             (bin_dir / 'git').symlink_to(shutil.which('git'))
         launcher = self.helper.parents[1] / 'claude' / 'hook.sh'
         env = {**GIT_ENV, 'PATH': str(bin_dir), 'KIMIFLOW_PYTHON_FALLBACKS': fallbacks}
-        return subprocess.run(['/bin/sh', str(launcher), command], input=stdin, cwd=cwd, env=env,
+        return subprocess.run([shell, str(launcher), command], input=stdin, cwd=cwd, env=env,
                               capture_output=True, text=True, timeout=60)
+
+    def shells(self):
+        return [shell for shell in ('/bin/sh', '/bin/dash', '/bin/bash') if os.path.exists(shell)]
+
+    def no_python_guard(self, command, cwd, run_in=None, **extra):
+        """Exit code of the no-Python git guard for a Claude Code payload, under every shell at hand."""
+        payload = json.dumps({'session_id': 's', 'cwd': str(cwd), 'hook_event_name': 'PreToolUse',
+                              'tool_name': 'Bash', 'tool_input': {'command': command, **extra}})
+        codes = {self.launch('git-guard', payload, run_in or cwd, '', shell).returncode for shell in self.shells()}
+        self.assertEqual(len(codes), 1, 'shells disagree on %r' % command)
+        return codes.pop()
+
+    def test_hook_launcher_without_python_checks_only_the_command(self):
+        self.init()
+        for description in ('Stage with git add -A', 'Show what git commit did', 'Run git -C x log'):
+            with self.subTest(description=description):
+                self.assertEqual(self.no_python_guard('git log --oneline', self.main, description=description), 0)
+        for command in ('git commit -m "fix: \\"quoted\\" text"', 'git\tadd -A', 'git  add -A', 'ls\ngit add x',
+                        'echo "a \\\\" && git commit -m x', 'git stage -A',
+                        'cd x&&git add y', '(git commit -m x)'):
+            with self.subTest(command=command):
+                self.assertEqual(self.no_python_guard(command, self.main, description='Show files'), 2)
+        for command in ('echo "git log"', 'git status', 'echo "\\"git\\" is a tool"'):
+            with self.subTest(command=command):
+                self.assertEqual(self.no_python_guard(command, self.main, description='git add -A'), 0)
+
+    def test_hook_launcher_without_python_stays_fast_on_a_large_command(self):
+        # The hook has a 5 s timeout and a timeout lets the command through; bash makes string building
+        # in loops quadratic, which turned an 80 KB heredoc into minutes.
+        self.init()
+        heredoc = 'cat > f <<EOF\n' + 'echo "quoted \\\\ text" \t x\n' * 2500 + 'EOF\n'
+        for tail, expected in (('git log', 0), ('git add f', 2)):
+            for shell in self.shells():
+                with self.subTest(tail=tail, shell=shell):
+                    payload = json.dumps({'cwd': str(self.main), 'tool_input': {
+                        'command': heredoc + tail, 'description': 'Write f with git add -A'}})
+                    started = time.monotonic()
+                    result = self.launch('git-guard', payload, self.main, '', shell)
+                    self.assertEqual(result.returncode, expected, result.stderr)
+                    self.assertLess(time.monotonic() - started, 4)
+
+    def test_hook_launcher_without_python_finds_the_kit_from_any_worktree_and_the_payload_cwd(self):
+        self.init()
+        sibling = self.tmp / 'sibling'
+        git(self.main, 'worktree', 'add', '-q', str(sibling))
+        (sibling / 'sub').mkdir()
+        for cwd in (sibling, sibling / 'sub'):
+            with self.subTest(cwd=str(cwd.relative_to(self.tmp))):
+                result = self.launch('session-start', json.dumps({'cwd': str(cwd)}), cwd, '')
+                self.assertIn('no Python 3.9', json.loads(result.stdout or '{}').get('systemMessage', ''))
+                self.assertEqual(self.no_python_guard('git add -A', cwd), 2)
+        # The payload's cwd counts, not the directory the hook process happens to start in.
+        self.assertEqual(self.no_python_guard('git add -A', sibling, run_in=self.tmp), 2)
+        self.assertEqual(self.no_python_guard('git add -A', self.tmp, run_in=self.main), 0)
+
+    def test_hook_launcher_without_python_stays_silent_where_the_python_gate_would(self):
+        self.init()
+        nested = self.main / 'vendor' / 'other'
+        nested.mkdir(parents=True)
+        git(nested, 'init', '-q')
+        bare_ops = self.tmp / 'bare'
+        git(self.tmp, 'init', '-q', 'bare')
+        (bare_ops / '.kimiflow' / 'ops').mkdir(parents=True)
+        (bare_ops / '.kimiflow' / 'ops' / 'OPERATIONS.md').write_text('# Operations\n')  # no exclude entry
+        no_ops = self.tmp / 'no-ops'
+        git(self.tmp, 'init', '-q', 'no-ops')
+        (no_ops / '.kimiflow' / 'ops').mkdir(parents=True)
+        (no_ops / '.git' / 'info' / 'exclude').write_text('.kimiflow/\n')  # no OPERATIONS.md
+        for cwd in (nested, bare_ops, no_ops):
+            with self.subTest(cwd=cwd.name):
+                self.assertEqual(self.no_python_guard('git add -A', cwd), 0)
+                result = self.launch('session-start', json.dumps({'cwd': str(cwd)}), cwd, '')
+                self.assertEqual((result.returncode, result.stdout), (0, ''))
 
     def test_hook_launcher_finds_python_outside_path(self):
         self.init()

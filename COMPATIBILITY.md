@@ -18,7 +18,9 @@ A local model needs a tool-capable host, not a Kimiflow-specific adapter.
 - The hooks start through `/bin/sh claude/hook.sh`, which takes the first Python 3.9+ from PATH,
   `/opt/homebrew/bin`, `/usr/local/bin` or `/usr/bin` (on macOS `/usr/bin/python3` only with the Command Line
   Tools installed). Without one, an initialized project gets a warning at session start and the guard
-  blocks `git add` and `git commit`.
+  blocks `git add`, `git stage`, `git commit` and Git with global options. That fallback is plain `sh`
+  without git, so it cannot see whether `.kimiflow` is tracked; it otherwise speaks where the Python
+  gate would.
 - The helper scripts and maintainer tools require Python 3.9+ and Git. CI covers Linux/Python 3.9
   and macOS/Python 3.14; hooks and process-group cleanup are tested on POSIX only. Process-group
   cleanup is not a sandbox for detached processes.
