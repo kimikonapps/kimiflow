@@ -12,9 +12,9 @@
       "sha256": "ef0babdafd58112f866ef3eb70e7d0e3b1358fa263d3849f35815bf938134751"
     },
     {
-      "bytes": 2162,
+      "bytes": 2343,
       "path": "COMPATIBILITY.md",
-      "sha256": "b0d607bdd8398a24f901df9838b5bbd40e668350ea6da59771048b10beb83d9d"
+      "sha256": "d14e38a84758a510c81a7b0c444e6c469bd2c22876c1b58862ba35ed24a566e3"
     },
     {
       "bytes": 1064,
@@ -27,14 +27,14 @@
       "sha256": "ed0b11c3120c8e04145169323137b753bdcc990795f138b635de0f5af730ff39"
     },
     {
-      "bytes": 11457,
+      "bytes": 11616,
       "path": "README.de.md",
-      "sha256": "df2cc8f4e2bc9d6f6595e7e1070b85cd24c9dc08ae6202eaed1083c1b4365751"
+      "sha256": "ec1455b162f3d9586c7174189543315424580921eac3f2303cd7caafeaff83f1"
     },
     {
-      "bytes": 10516,
+      "bytes": 10661,
       "path": "README.md",
-      "sha256": "680dbe19bce43a9ccad51fb242d6ce45f11a61651eddc312eec119dda90f59cb"
+      "sha256": "5b2f943dc5e66e62cd6a635dc4b4696e21e084fbfa71e8f2ab811f2069848f54"
     },
     {
       "bytes": 3669,
@@ -57,9 +57,9 @@
       "sha256": "fba7e53860633d4c38056d1e1e80bc85c2f78398e84c522d0cbf5cfa7d1f4bfa"
     },
     {
-      "bytes": 2380,
+      "bytes": 6806,
       "path": "claude/hook.sh",
-      "sha256": "c0dbf2a17c23e892d18eaafc93caa637be6a35b0f74697e0ee27cadb998ad133"
+      "sha256": "0edbefb19ca5ae6f62ea4bc9d54b02e0b7fd0fc6b3a2fed6173a0958920d5847"
     },
     {
       "bytes": 576,
@@ -202,7 +202,7 @@
       "sha256": "8fc3c10936072588f83938c85551f019a9d1bb7a767de9f0a87431bdb7bad3ad"
     }
   ],
-  "runtime_fingerprint": "sha256:3e098e94ca95642ccb0c47d0cbd2587de1ba40a8f997f280106e63f8565aa4a7",
+  "runtime_fingerprint": "sha256:2ca625042bab7dec4375eae97f27c1077732afafb257c281c6d87cd4d49ff53b",
   "schema_version": 1,
   "version": "0.8.1"
 }

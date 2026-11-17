@@ -94,8 +94,9 @@ unknown_base; conflicts and unknown_base files come with a diff.
 
 The plugin registers two hooks through `.claude-plugin/plugin.json`. Both start through `claude/hook.sh`, which looks for Python 3.9+ on PATH, then in
 `/opt/homebrew/bin`, `/usr/local/bin` and `/usr/bin`, so an app started from the Dock (Claude Desktop) finds it
-too. Without one, an initialized project gets a visible warning at session start, and the guard blocks
-`git add` and `git commit` instead of passing them unchecked.
+too. Without one, an initialized project (found from the session's directory, also in any worktree) gets
+a visible warning at session start, and the guard blocks `git add`, `git stage`, `git commit` and Git with
+global options instead of passing them unchecked; it reads only the command, not its description.
 
 - **Session start.** In a project initialized locally, each session (startup, resume, clear,
   compact; also in a worktree) gets the absolute paths of the kit files and the reading order:
