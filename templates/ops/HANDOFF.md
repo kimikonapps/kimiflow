@@ -1,7 +1,6 @@
 # Handoff — <project>
 
-Only the current state. Rewrite this file at every block end; move the old version to
-`archive/HANDOFF-<YYYY-MM-DD>.md`.
+Only the current state. Rewritten at every handoff, never appended; old copy → `archive/HANDOFF-<YYYY-MM-DD>.md`; ≤ 6 KB.
 
 ## Result
 

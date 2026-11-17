@@ -3,7 +3,7 @@
 An operating kit for planner-led work with coding agents, plus a short working agreement for
 everything else: define the result, use native tools, verify the work.
 
-[Deutsch](README.de.md) · [Workflow](SKILL.md) · [Release 0.8.0](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.8.0)
+[Deutsch](README.de.md) · [Workflow](SKILL.md) · [Release 0.8.1](https://github.com/kimikonapps/kimiflow/releases/tag/kimiflow--v0.8.1)
 
 ## What Kimiflow does
 

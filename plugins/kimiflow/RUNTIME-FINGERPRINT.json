@@ -4,12 +4,12 @@
     {
       "bytes": 490,
       "path": ".claude-plugin/plugin.json",
-      "sha256": "3993cc5d3ec5558fcad0603b0c57fca575559265474f1c2e6c40bfc74c4a1e3f"
+      "sha256": "479bdc7a8734bbe4b5e721d94eb1dae16eeb66942731fb1ea6a7934656724d99"
     },
     {
       "bytes": 1723,
       "path": ".codex-plugin/plugin.json",
-      "sha256": "8b041be1f139acb58dc02cbf7e8bfe258061eb78567ede546890b3975a9bcd69"
+      "sha256": "ef0babdafd58112f866ef3eb70e7d0e3b1358fa263d3849f35815bf938134751"
     },
     {
       "bytes": 2162,
@@ -29,12 +29,12 @@
     {
       "bytes": 11457,
       "path": "README.de.md",
-      "sha256": "e3c9e86bc774c3d46adbecd50c946acfe18186f0ed029cccc5e2988cf7f2c943"
+      "sha256": "df2cc8f4e2bc9d6f6595e7e1070b85cd24c9dc08ae6202eaed1083c1b4365751"
     },
     {
       "bytes": 10516,
       "path": "README.md",
-      "sha256": "19dfd31f4965c63794ac2979749f419a2f5d20d953ef4ef9ca210d918072ea23"
+      "sha256": "680dbe19bce43a9ccad51fb242d6ce45f11a61651eddc312eec119dda90f59cb"
     },
     {
       "bytes": 3669,
@@ -74,7 +74,7 @@
     {
       "bytes": 264,
       "path": "package.json",
-      "sha256": "528627b5333883749c92629e1f90ba74f211455f6d3666dec76c3ec6f4ec0464"
+      "sha256": "6473e101f805dc6e300f63234700518a3a54a1f3e27fd3363e1e01319b3d4b3a"
     },
     {
       "bytes": 926,
@@ -92,9 +92,9 @@
       "sha256": "0d9d2fd9ee7ff31f4645e706115a1c0a26426760491ce7e11121c72a8e1d9a5b"
     },
     {
-      "bytes": 14228,
+      "bytes": 15456,
       "path": "references/operating-model.md",
-      "sha256": "ba9a6d68ef7be6ef12b3c00f4b3b691e34352dbf55117fe656b492340869da43"
+      "sha256": "df0e6709a53aafbc6f4692967b4c0c0adcda98f9db8f945f6dfe2218be43155d"
     },
     {
       "bytes": 3159,
@@ -132,9 +132,9 @@
       "sha256": "de9ff82f6148554635d8ba72f60dde8d51c59f12c124e372cadb43fd1da29ad9"
     },
     {
-      "bytes": 536,
+      "bytes": 541,
       "path": "templates/ops/HANDOFF.md",
-      "sha256": "25e1f7cc5ff2287a85fdd8427a041e440332ad4e2bb0565fb45bfbb1b1a8d01c"
+      "sha256": "c897725770cf3424db71dcece053f2d76d1066ea98fda9029244f0b04ad47d95"
     },
     {
       "bytes": 129,
@@ -192,9 +192,9 @@
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
-      "bytes": 4334,
+      "bytes": 4538,
       "path": "templates/ops/rules-worker.md",
-      "sha256": "454761cc8e135b2a9eded9ae587f55d5c51d5470c0a521b9c93b8a3103a2b141"
+      "sha256": "54227ed3e093628dae172afbc222906a039e0e7d98714fe68fe51bced697b7a4"
     },
     {
       "bytes": 5069,
@@ -202,7 +202,7 @@
       "sha256": "8fc3c10936072588f83938c85551f019a9d1bb7a767de9f0a87431bdb7bad3ad"
     }
   ],
-  "runtime_fingerprint": "sha256:f5b51503f5a9d98e549b30a3a3f067b3589e4bb56bdb119eb43b01066788db95",
+  "runtime_fingerprint": "sha256:3e098e94ca95642ccb0c47d0cbd2587de1ba40a8f997f280106e63f8565aa4a7",
   "schema_version": 1,
-  "version": "0.8.0"
+  "version": "0.8.1"
 }

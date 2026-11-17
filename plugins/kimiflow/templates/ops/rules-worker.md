@@ -43,8 +43,10 @@ Change a rule here, never by copying it into a brief.
 ## Waits and scratch files
 
 - Every wait loop has a time cap, so a hung build or test cannot block the session for good.
-- Wait for a run's log to end with `EXIT <code>`; stop a run by killing its process group, so no
-  child keeps running beside the next one.
+- Wait for a run's log to end with `EXIT <code>`: a loop over the log with a fixed maximum of
+  iterations that breaks on that line. Never `until ! pgrep -f "<pattern>"`: `pgrep -f` matches the
+  waiting shell's own command line, so the loop never ends. Stop a run by killing its process group,
+  so no child keeps running beside the next one.
 - A run log silent for over 20 minutes while its process lives is a stall; suspect a permission
   prompt. Kill your run, restart it and note it in your report.
 - Scratch files use the prefix given in the brief, so parallel work does not collide.
