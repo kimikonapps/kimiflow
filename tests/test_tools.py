@@ -83,8 +83,11 @@ class MergeAdditiveTests(unittest.TestCase):
         for name, text in ours.items():
             self.write(name, text)
         git(self.repo, 'commit', '-qam', 'ours')
-        result = subprocess.run(['git', 'merge', '-q', 'side'], cwd=self.repo, capture_output=True, text=True)
+        result = subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'merge', '-q', 'side'],
+                                cwd=self.repo, capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0, 'the merge must stop on a conflict')
+        # PREMISE: it stopped on a conflict, not on a missing identity (CI has no global git user).
+        self.assertTrue(self.unmerged(), 'the merge left conflicted files: ' + result.stdout + result.stderr)
 
     def tool(self):
         return subprocess.run([sys.executable, str(TOOLS / 'merge-additive.py'), '--operations',
