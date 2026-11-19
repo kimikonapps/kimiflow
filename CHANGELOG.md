@@ -4,6 +4,8 @@ The public release history starts at **0.5.0**. Earlier development artifacts ar
 
 ## Unreleased
 
+## 0.8.2
+
 - Tool fixes after review of #9: `merge-additive.py` refuses binary stages and a failed
   `git merge-file` instead of writing an empty file; it refuses a path git reports as conflicted
   whose text merge is clean (a merge attribute, for example) instead of staging it unchecked; its
@@ -14,7 +16,7 @@ The public release history starts at **0.5.0**. Earlier development artifacts ar
   turning a control, instant, computed after) gets one question about that feel before the
   architecture is planned, and an estimate the owner finds absurd is answered with what makes it bigger.
 - rules-worker and test economy: a worker never ends its turn while its own run is live; the new
-  `tools/wait.sh <logname> [max-seconds]` blocks on the log with a cap, prints the reds and the `EXIT`
+  `tools/wait.sh --after <epoch> <logname> [max-seconds]` blocks on the log with a cap, prints the reds and the `EXIT`
   line and exits with the run's code, or reports "run live" with exit 124 on the cap.
 - Operating model and OPERATIONS § 4: **additive conflicts by a tool** — the new
   `tools/merge-additive.py` resolves conflicts in files OPERATIONS names as additive (keeps both sides
