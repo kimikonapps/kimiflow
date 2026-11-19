@@ -70,7 +70,8 @@ table's model as the Agent `model` parameter when starting one.
   tests `<1>`, builds `<LANES>` · Build output: `<dir>` · Guard tests: `<list or file>`
 - Quiet window (performance numbers only then): `<when>` · Quick path for an owner bug: `<slot / command>`
   · Owner view: `<local URL or none>`
-- Merge conflicts by tool (`python3 .kimiflow/ops/tools/merge-additive.py`), one line per file or glob:
+- Merge conflicts by tool (`python3 .kimiflow/ops/tools/merge-additive.py`), one line per file or glob
+  (`*` stays in one directory, `**` spans any number):
 - MERGE ADDITIVE: `<path or glob>` check `<command>`
 - MERGE REGENERATE: `<path or glob>` run `<command>`
 

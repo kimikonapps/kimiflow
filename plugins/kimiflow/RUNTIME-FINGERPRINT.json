@@ -102,9 +102,9 @@
       "sha256": "7e7f44d44fd92e53d74a0c1b9f43496a0e5efa3181a3cfed7c5841a442172e50"
     },
     {
-      "bytes": 7855,
+      "bytes": 8096,
       "path": "references/test-economy.md",
-      "sha256": "58a7dd1b534c153e89c0fd225d2eeb4e4a1df0f1f1d816e503a62d9ba65609e7"
+      "sha256": "a9275cfa8f295bdf936aab08bddb4b60d2d0c96443258a90be288080f8494ac6"
     },
     {
       "bytes": 1540,
@@ -152,9 +152,9 @@
       "sha256": "1a41b7ec79a971f4bf237465d3a4c19e84b1da05064f99f23c4c02f86b68548c"
     },
     {
-      "bytes": 5093,
+      "bytes": 5147,
       "path": "templates/ops/OPERATIONS.md",
-      "sha256": "7e6d8b8b89210440a5327318c460734395c2f21b90ed91b4ed4e0b3f16b53189"
+      "sha256": "2c563e510a8000705577a60b5dd0aaf04b03f1fa80cfe2aee492ffb4d7f9dd45"
     },
     {
       "bytes": 0,
@@ -192,27 +192,27 @@
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
-      "bytes": 5035,
+      "bytes": 5261,
       "path": "templates/ops/rules-worker.md",
-      "sha256": "14188402306c344bc45837b3edc9614e357ad1640b1b8ac97eeab16eab6a8666"
+      "sha256": "922e3846f13e8f25b60f5754e8c91c93b3c268ae11730bf4ec599aa5426a3221"
     },
     {
-      "bytes": 5865,
+      "bytes": 7379,
       "path": "templates/ops/tools/merge-additive.py",
-      "sha256": "0f5b3d43d75b24e91a89b4d396225aa9edcfd348c9bcc5090f28d999e1e0f198"
+      "sha256": "0f95a69626d26024d07ba3c868fde515a3d70a048401b359c9356a14c1f62b04"
     },
     {
-      "bytes": 5150,
+      "bytes": 5296,
       "path": "templates/ops/tools/run.sh",
-      "sha256": "e7b2afe0a54817c9822aa18610935430eb28bf1310eaf579d2053d69d20f33cf"
+      "sha256": "46cd10ce53cb9431556001f8d97de90b1db844b5679550b8006b8f4a8f304cda"
     },
     {
-      "bytes": 1057,
+      "bytes": 1786,
       "path": "templates/ops/tools/wait.sh",
-      "sha256": "09e4ed4608cffbe837cb76a728069c30a8f779fd0ff4d73ba87ad58600092942"
+      "sha256": "f145122bc75fab1d60639e55f176fef4d069ffaa73ba07fd1700703e81cc8c56"
     }
   ],
-  "runtime_fingerprint": "sha256:0c6f8ce13e1c0de790bcf77256747025dca7669d2e3761749cb808037e50cdd0",
+  "runtime_fingerprint": "sha256:4e794b84cab3e93e266aa54c8554446f67d64bac4c6e0c3d733d1e549a36c842",
   "schema_version": 1,
   "version": "0.8.1"
 }

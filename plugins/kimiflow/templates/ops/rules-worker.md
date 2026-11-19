@@ -49,7 +49,10 @@ Change a rule here, never by copying it into a brief.
   so no child keeps running beside the next one.
 - **Never end your turn while your own run is live.** Wait on it with one capped wait that blocks:
   `sh <main checkout>/.kimiflow/ops/tools/wait.sh <logname> [max-seconds]` prints the `real-red:` /
-  `load-red:` lines and the `EXIT` line and exits with the run's code. Read them and report. On the cap
+  `load-red:` lines and the `EXIT` line and exits with the run's code. Read them and report. Start it
+  right after the run: it trusts only a log whose `START` line is newer than itself (minus 2 s), so a
+  reused log name never reports the previous run; started later, pass `--after <date +%s taken before
+  the run>`. On the cap
   (exit 124) report "run live, log <path>, no EXIT yet", never silence. Reason: on one day five workers
   stopped with their run finished but unread, and the planner had to find each EXIT line.
 - A run log silent for over 20 minutes while its process lives is a stall; suspect a permission

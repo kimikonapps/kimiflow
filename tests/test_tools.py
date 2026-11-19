@@ -1,8 +1,10 @@
+import importlib.util
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,24 +25,48 @@ class WaitTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def wait(self, name, cap):
+    def wait(self, name, cap, *options):
         env = {**os.environ, 'RUN_DIR': str(self.runs), 'WAIT_POLL': '0.1'}
-        return subprocess.run(['sh', str(TOOLS / 'wait.sh'), name, cap], env=env,
+        return subprocess.run(['sh', str(TOOLS / 'wait.sh'), *options, name, cap], env=env,
                               capture_output=True, text=True, timeout=30)
 
+    def log(self, name, body, start=None):
+        """A run log as run.sh writes it: START <epoch> <pid> first (default: now)."""
+        start = int(time.time()) if start is None else start
+        (self.runs / (name + '.log')).write_text('START %d 4242\n' % start + body)
+
     def test_finished_run_prints_reds_and_exit_and_returns_its_code(self):
-        (self.runs / 'a.log').write_text('BUILD\nreal-red: T1\nload-red: T2\nEXIT 1 after 9s\n')
+        self.log('a', 'BUILD\nreal-red: T1\nload-red: T2\nEXIT 1 after 9s\n')
         result = self.wait('a', '5')
         self.assertEqual(result.returncode, 1)
         self.assertEqual(result.stdout, 'real-red: T1\nload-red: T2\nEXIT 1 after 9s\n')
 
     def test_green_run_returns_zero(self):
-        (self.runs / 'g.log').write_text('BUILD\nEXIT 0 after 3s\n')
+        self.log('g', 'BUILD\nEXIT 0 after 3s\n')
         result = self.wait('g', '5')
         self.assertEqual((result.returncode, result.stdout), (0, 'EXIT 0 after 3s\n'))
 
+    def test_previous_runs_finished_log_is_not_accepted(self):
+        self.log('old', 'BUILD\nEXIT 0 after 3s\n', start=int(time.time()) - 600)
+        result = self.wait('old', '1')
+        self.assertEqual(result.returncode, 124)
+        self.assertIn('run live, log ' + str(self.runs / 'old.log') + ', no EXIT yet', result.stdout)
+
+    def test_log_without_start_line_is_not_accepted(self):
+        (self.runs / 'bare.log').write_text('BUILD\nEXIT 0 after 3s\n')
+        self.assertEqual(self.wait('bare', '1').returncode, 124)
+
+    def test_log_started_after_the_given_time_is_accepted(self):
+        self.log('late', 'BUILD\nEXIT 3 after 3s\n', start=2000)
+        result = self.wait('late', '5', '--after', '1000')
+        self.assertEqual((result.returncode, result.stdout), (3, 'EXIT 3 after 3s\n'))
+
+    def test_log_started_before_the_given_time_is_not_accepted(self):
+        self.log('early', 'BUILD\nEXIT 0 after 3s\n', start=999)
+        self.assertEqual(self.wait('early', '1', '--after', '1000').returncode, 124)
+
     def test_live_run_reports_at_the_cap_instead_of_silence(self):
-        (self.runs / 'live.log').write_text('BUILD\n')
+        self.log('live', 'BUILD\n')
         result = self.wait('live', '1')
         self.assertEqual(result.returncode, 124)
         self.assertIn('run live, log ' + str(self.runs / 'live.log') + ', no EXIT yet', result.stdout)
@@ -49,6 +75,7 @@ class WaitTests(unittest.TestCase):
 OPERATIONS = """# Operations
 - MERGE ADDITIVE: `<path or glob>` check `<command>`
 - MERGE ADDITIVE: `project/*.list` check `grep -q base project/files.list`
+- MERGE ADDITIVE: `gen/**/*.list` check `true`
 - MERGE REGENERATE: `stamp.txt` run `printf 'regenerated\\n' > stamp.txt`
 """
 
@@ -67,7 +94,11 @@ class MergeAdditiveTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def write(self, name, text):
-        (self.repo / name).write_text(text)
+        (self.repo / name).parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(text, bytes):
+            (self.repo / name).write_bytes(text)
+        else:
+            (self.repo / name).write_text(text)
 
     def conflict(self, base, ours, theirs):
         """Commit base, change it on a side branch (theirs) and on main (ours), then merge."""
@@ -140,12 +171,60 @@ class MergeAdditiveTests(unittest.TestCase):
         self.assertEqual((self.repo / 'notes.txt').read_text(), before)
         self.assertEqual(self.unmerged(), ['notes.txt'])
 
+    def test_binary_conflict_is_refused_and_file_untouched(self):
+        name = 'project/blob.list'
+        # files.list makes the check pass, so only the binary refusal keeps the file unstaged.
+        self.conflict({name: b'base\0\n', 'project/files.list': 'base\n'},
+                      {name: b'base\0\nours\n'}, {name: b'base\0\ntheirs\n'})
+        before = (self.repo / name).read_bytes()
+        result = self.tool()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('REFUSED ' + name + ': binary content', result.stdout)
+        self.assertEqual((self.repo / name).read_bytes(), before)
+        self.assertEqual(self.unmerged(), [name])
+
+    def test_conflict_the_text_merge_does_not_see_is_refused(self):
+        name = 'project/attr.list'
+        # merge=binary makes git stop although the two additions sit on separate lines.
+        self.conflict({name: 'a\nb\nc\nd\n', 'project/files.list': 'base\n',
+                       '.gitattributes': name + ' merge=binary\n'},
+                      {name: 'a\nours\nb\nc\nd\n'}, {name: 'a\nb\nc\ntheirs\nd\n'})
+        before = (self.repo / name).read_text()
+        result = self.tool()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('REFUSED ' + name + ': git reported a conflict the text merge does not see', result.stdout)
+        self.assertEqual((self.repo / name).read_text(), before)
+        self.assertEqual(self.unmerged(), [name])
+
+    def test_glob_star_stays_in_its_directory(self):
+        self.conflict({'gen/x/a.list': 'one\n'}, {'gen/x/a.list': 'one\nours\n'},
+                      {'gen/x/a.list': 'one\ntheirs\n'})
+        result = self.tool()  # `project/*.list` must not reach it; `gen/**/*.list` does
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('RESOLVED gen/x/a.list', result.stdout)
+
     def test_regenerated_file_runs_the_command_and_stages(self):
         self.conflict({'stamp.txt': 'v0\n'}, {'stamp.txt': 'v1\n'}, {'stamp.txt': 'v2\n'})
         result = self.tool()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual((self.repo / 'stamp.txt').read_text(), 'regenerated\n')
         self.assertEqual(self.unmerged(), [])
+
+
+class GlobTests(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('merge_additive', TOOLS / 'merge-additive.py')
+        self.tool = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.tool)
+
+    def test_star_never_crosses_a_slash(self):
+        self.assertTrue(self.tool.glob_match('gen/a.list', 'gen/*.list'))
+        self.assertFalse(self.tool.glob_match('gen/x/a.list', 'gen/*.list'))
+
+    def test_double_star_matches_any_number_of_directories(self):
+        for path in ('gen/a.list', 'gen/x/a.list', 'gen/x/y/a.list'):
+            self.assertTrue(self.tool.glob_match(path, 'gen/**/*.list'), path)
+        self.assertFalse(self.tool.glob_match('other/a.list', 'gen/**/*.list'))
 
 
 if __name__ == '__main__':
