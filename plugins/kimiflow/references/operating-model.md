@@ -81,7 +81,9 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
 - **Package size.** More than about 8 scope items, or a whole mockup in one brief → split before the
   launch. Reason: a worker that hits its context limit leaves half-done work for a fresh worker.
 - **Brief check.** Every "the code does X today" claim in a brief is grep-verified by the planner
-  before the worker starts. Reason: a wrong premise costs a full worker round.
+  before the worker starts. The check blocks the launch: the brief carries "facts checked: file:line …".
+  Reason: a wrong premise costs a full worker round; under pace the check was skipped, and a worker
+  spent its whole budget finding that a function the brief named did not exist.
 - **RED is an assertion.** A test for new behaviour must fail on the old code with an assertion; a
   compile error is not red. Acceptance checks the evidence. Reason: a test that never failed may not
   test the change.
@@ -126,6 +128,13 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
   refuses while a run uses the integration worktree (the project adds both; the run.sh skeleton has
   neither). Reason: a merge during a gate voided
   the gate and its rerun.
+- **Additive conflicts by a tool, not by hand.** A conflict in a file OPERATIONS § 4 names as additive
+  (a generated project file where both sides only add lines, e.g. an IDE project file) or regenerated
+  (a generated stamp file, rendered docs) is resolved with `tools/merge-additive.py`: it keeps both
+  sides only when every conflict hunk adds lines on both sides and refuses, listing the hunk, when one
+  removes or changes a line; then it runs the file's check command and stages. Regenerated files get
+  the project's regenerate command instead. Other files stay untouched; the planner commits as usual.
+  Reason: on one day two merges stopped on such files, and a hand resolution is where a line gets lost.
 - After two or three merged packages: a combined gate run and a release build; at block end a test
   build. The full suite runs only in the night before a beta. A red test is traced to its package
   before anything else moves.
@@ -145,8 +154,12 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
   from the template, never appended, then its size is checked (at most 6 KB). Over → move content to
   its one home (LIST item, package brief file, rule file), never cut it. Reason: a size rule alone is
   not kept (a handoff grew to about 58 KB); the archive keeps everything.
-- Tell the owner it is a good moment for a fresh session, with a one-line start prompt. A fresh session
-  reads OPERATIONS.md and HANDOFF.md and continues without the old context.
+- **Fresh session at a threshold.** The planner proposes a fresh session, with a one-line start prompt,
+  after a large block is merged and at the latest when its own context passes about a quarter of the
+  model's window or about 250k tokens, whichever comes first; HANDOFF.md is brought up to date before.
+  A fresh session reads OPERATIONS.md and HANDOFF.md and continues without the old context. Reason:
+  every planner step re-reads the whole conversation; a day-long planner context made each step slow
+  and costly, and the switch was proposed only at the very end.
 - Session start names how many commits landed since HANDOFF.md was last updated: a stale handoff is
   worse than none, because the next session trusts it.
 - **Facts from the source.** The version or state of another repo or tool is read there (git log,

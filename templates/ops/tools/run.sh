@@ -6,7 +6,8 @@
 #         TESTS_OK=1 sh <main checkout>/.kimiflow/ops/tools/run.sh <logname> test [test ids...]
 #         Commands run in the current directory (checkout or worktree); logs and locks stay next to
 #         the kit in the main checkout, so every worktree shares the same lanes and test lock.
-# Log:    $RUN_DIR/<logname>.log, last line "EXIT <code> after <n>s". Wait for that line (capped).
+# Log:    $RUN_DIR/<logname>.log, last line "EXIT <code> after <n>s". Wait for that line (capped):
+#         sh <main checkout>/.kimiflow/ops/tools/wait.sh <logname> [max-seconds]
 # Stop:   kill the process group: kill -TERM -<pgid>  (pgid from: ps -axo pid,pgid,command)
 
 # --- project lines -------------------------------------------------------------------------------
