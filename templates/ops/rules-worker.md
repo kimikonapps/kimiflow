@@ -48,8 +48,11 @@ Change a rule here, never by copying it into a brief.
   waiting shell's own command line, so the loop never ends. Stop a run by killing its process group,
   so no child keeps running beside the next one.
 - **Never end your turn while your own run is live.** Wait on it with one capped wait that blocks:
-  `sh <main checkout>/.kimiflow/ops/tools/wait.sh <logname> [max-seconds]` prints the `real-red:` /
-  `load-red:` lines and the `EXIT` line and exits with the run's code. Read them and report. On the cap
+  take `T=$(date +%s)` before you start the run, then
+  `sh <main checkout>/.kimiflow/ops/tools/wait.sh --after "$T" <logname> [max-seconds]` prints the `real-red:` /
+  `load-red:` lines and the `EXIT` line and exits with the run's code. Read them and report. `--after` is
+  required: it trusts only a log whose `START` line is at or after it, so a reused log name never reports
+  the previous run, and a run that already ended is still read. On the cap
   (exit 124) report "run live, log <path>, no EXIT yet", never silence. Reason: on one day five workers
   stopped with their run finished but unread, and the planner had to find each EXIT line.
 - A run log silent for over 20 minutes while its process lives is a stall; suspect a permission

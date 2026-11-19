@@ -66,11 +66,12 @@ table's model as the Agent `model` parameter when starting one.
 
 - Tests: `<test command>` · Lint/format: `<command>` · Build: `<command>` · CI: `<where>`
 - Branches: `<feat/<slug> → int/<batch> → main>` · Commits: `<convention>`
-- Runner: `<sh .kimiflow/ops/tools/run.sh <log> build|test>` (log ends `EXIT <code> after <n>s`; wait: `sh .kimiflow/ops/tools/wait.sh <log> [max-s]`) · Slots:
+- Runner: `<sh .kimiflow/ops/tools/run.sh <log> build|test>` (log ends `EXIT <code> after <n>s`; wait: `T=$(date +%s)` before the run, then `sh .kimiflow/ops/tools/wait.sh --after "$T" <log> [max-s]`) · Slots:
   tests `<1>`, builds `<LANES>` · Build output: `<dir>` · Guard tests: `<list or file>`
 - Quiet window (performance numbers only then): `<when>` · Quick path for an owner bug: `<slot / command>`
   · Owner view: `<local URL or none>`
-- Merge conflicts by tool (`python3 .kimiflow/ops/tools/merge-additive.py`), one line per file or glob:
+- Merge conflicts by tool (`python3 .kimiflow/ops/tools/merge-additive.py`), one line per file or glob
+  (`*` stays in one directory, `**` spans any number):
 - MERGE ADDITIVE: `<path or glob>` check `<command>`
 - MERGE REGENERATE: `<path or glob>` run `<command>`
 

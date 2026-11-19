@@ -6,8 +6,9 @@
 #         TESTS_OK=1 sh <main checkout>/.kimiflow/ops/tools/run.sh <logname> test [test ids...]
 #         Commands run in the current directory (checkout or worktree); logs and locks stay next to
 #         the kit in the main checkout, so every worktree shares the same lanes and test lock.
-# Log:    $RUN_DIR/<logname>.log, last line "EXIT <code> after <n>s". Wait for that line (capped):
-#         sh <main checkout>/.kimiflow/ops/tools/wait.sh <logname> [max-seconds]
+# Log:    $RUN_DIR/<logname>.log, first line "START <epoch-seconds> <pid>", last line
+#         "EXIT <code> after <n>s". Wait for that line (capped), right after starting the run:
+#         sh <main checkout>/.kimiflow/ops/tools/wait.sh --after <epoch before this run> <logname> [max-seconds]
 # Stop:   kill the process group: kill -TERM -<pgid>  (pgid from: ps -axo pid,pgid,command)
 
 # --- project lines -------------------------------------------------------------------------------
@@ -28,7 +29,7 @@ SMALL_MAX=${SMALL_MAX:-0}            # test runs of 1..SMALL_MAX ids may take th
 NAME=$1 MODE=$2; shift 2
 mkdir -p "$RUN_DIR/state"
 LOG=$RUN_DIR/$NAME.log STATE=$RUN_DIR/state/$NAME.json T0=$(date +%s) HELD=
-: > "$LOG"; rm -f "$LOG.rerun"
+echo "START $T0 $$" > "$LOG"; rm -f "$LOG.rerun"   # wait.sh trusts EXIT only after this START
 
 finish() { echo "EXIT $1 after $(( $(date +%s) - T0 ))s" >> "$LOG"; exit "$1"; }
 json() { printf %s "$1" | sed 's/[\\"]/\\&/g'; }  # escape \ and " for a JSON string

@@ -8,9 +8,13 @@ worktree where the merge stopped:
 OPERATIONS.md lines it reads (backticks required; a glob is allowed):
     - MERGE ADDITIVE: `<path>` check `<command>`     both sides only add lines: keep both, check, stage
     - MERGE REGENERATE: `<path>` run `<command>`     the project rebuilds the file: run it, stage
+A glob matches path components: `*`, `?` and `[...]` never cross `/`, a whole `**` component matches
+any number of directories (`gen/*.list` matches `gen/a.list` only, `gen/**/*.list` also `gen/x/a.list`).
 
 An additive file is resolved only when every conflict hunk adds lines on both sides and removes or
-changes none; otherwise it is refused, the hunk is listed and the file stays untouched. Files not
+changes none; otherwise it is refused, the hunk is listed and the file stays untouched. Binary
+stages, a failed text merge and a conflict git reports but the text merge does not see (a merge
+attribute, for example) are refused the same way. Files not
 named stay untouched. Exit 0 when every conflict was resolved, 1 when any is left for the planner.
 """
 import argparse
@@ -43,11 +47,28 @@ def stage(root, path, number):
     return result.stdout if result.returncode == 0 else None
 
 
+class Refused(Exception):
+    pass
+
+
+def glob_match(path, pattern):
+    """Component-wise glob: `*` never crosses `/`, a `**` component matches any number of directories."""
+    def walk(parts, globs):
+        if not globs:
+            return not parts
+        if globs[0] == '**':
+            return any(walk(parts[i:], globs[1:]) for i in range(len(parts) + 1))
+        return bool(parts) and fnmatch.fnmatchcase(parts[0], globs[0]) and walk(parts[1:], globs[1:])
+    return walk(path.split('/'), pattern.split('/'))
+
+
 def three_way(root, path):
-    """The file merged again from its index stages with diff3 markers, or None for a delete conflict."""
+    """The file merged again from its index stages with diff3 markers; Refused when it cannot be."""
     base, ours, theirs = (stage(root, path, n) for n in (1, 2, 3))
     if ours is None or theirs is None:
-        return None
+        raise Refused('deleted on one side, not an addition')
+    if any(b'\0' in data for data in (base or b'', ours, theirs)):
+        raise Refused('binary content, not a text addition')
     with tempfile.TemporaryDirectory() as tmp:
         names = []
         for name, data in (('ours', ours), ('base', base or b''), ('theirs', theirs)):
@@ -55,8 +76,16 @@ def three_way(root, path):
             names.append(str(Path(tmp) / name))
         result = subprocess.run(['git', 'merge-file', '-p', '--diff3', '--marker-size=%d' % SIZE,
                                  '-L', 'ours', '-L', 'base', '-L', 'theirs', *names],
-                                capture_output=True, text=True)
-    return result.stdout
+                                capture_output=True)
+    # merge-file exits with the number of conflicts (at most 127), negative on an error.
+    if not 0 <= result.returncode <= 127:
+        raise Refused('git merge-file failed (%d): %s' % (result.returncode, result.stderr.decode(errors='replace').strip()))
+    if result.returncode == 0:
+        raise Refused('git reported a conflict the text merge does not see')
+    try:
+        return result.stdout.decode()
+    except UnicodeDecodeError:
+        raise Refused('not UTF-8 text, not a text addition')
 
 
 def keep_both(merged):
@@ -96,14 +125,15 @@ def resolve(root, path, kind, command):
             return 'still holds conflict markers after the regenerate command'
         git(root, 'add', '--', path)
         return None
-    merged = three_way(root, path)
-    if merged is None:
-        return 'deleted on one side, not an addition'
+    try:
+        merged = three_way(root, path)
+    except Refused as refused:
+        return str(refused)
     text, refused = keep_both(merged)
     if refused:
         return 'a hunk changes or removes lines, ' + refused
     before = target.read_bytes()
-    target.write_text(text)
+    target.write_bytes(text.encode())
     result = subprocess.run(command, shell=True, cwd=root, capture_output=True, text=True)
     if result.returncode != 0:
         target.write_bytes(before)
@@ -121,7 +151,7 @@ def main(argv=None):
     conflicted = [p for p in git(root, 'diff', '--name-only', '-z', '--diff-filter=U').stdout.split('\0') if p]
     left = 0
     for path in conflicted:
-        match = next((rule for rule in listed if fnmatch.fnmatch(path, rule[1])), None)
+        match = next((rule for rule in listed if glob_match(path, rule[1])), None)
         if match is None:
             print('LEFT ' + path + ': not named in OPERATIONS.md, resolve by hand')
             left += 1

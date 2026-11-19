@@ -22,8 +22,10 @@ are tested on these POSIX systems only.
 - `tests/test_check_change.py`: the check helper, including failing commands, source/index drift,
   ignored output, timeouts, surviving children and linked worktrees inside the checkout.
 - `tests/test_tools.py`: the kit's `wait.sh` (reds and EXIT line, the run's exit code, 124 with a
-  "run live" line on the cap) and `merge-additive.py` (two additive hunks kept, a changed line refused
-  with the file untouched, a failed check restores the file, unnamed files untouched, a regenerated file).
+  "run live" line on the cap, a log whose START is older than the wait or `--after` or missing not
+  accepted) and `merge-additive.py` (two additive hunks kept, a changed line refused with the file
+  untouched, a failed check restores the file, binary stages and a conflict the text merge does not see
+  refused, unnamed files untouched, a regenerated file, globs matched per path component).
 - `tests/test_package.py`: exact package contents, source/render parity, version consistency, unsafe
   output/source paths, hooks and agents only in the Claude manifest, agents without a model, no
   model-excluding wording and no project-specific terms in shipped texts.
