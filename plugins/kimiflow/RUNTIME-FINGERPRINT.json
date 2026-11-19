@@ -4,12 +4,12 @@
     {
       "bytes": 490,
       "path": ".claude-plugin/plugin.json",
-      "sha256": "479bdc7a8734bbe4b5e721d94eb1dae16eeb66942731fb1ea6a7934656724d99"
+      "sha256": "7f522ed61e5f2c3e2c880b18e462c3c0e02aa65e78ea73c7fbfd4bcaf3c27e0e"
     },
     {
       "bytes": 1723,
       "path": ".codex-plugin/plugin.json",
-      "sha256": "ef0babdafd58112f866ef3eb70e7d0e3b1358fa263d3849f35815bf938134751"
+      "sha256": "ee8d720697fce99fb26c2684bde325b316a75a88dca9c11c8f7c417b64ed7bbc"
     },
     {
       "bytes": 2343,
@@ -29,12 +29,12 @@
     {
       "bytes": 11616,
       "path": "README.de.md",
-      "sha256": "ec1455b162f3d9586c7174189543315424580921eac3f2303cd7caafeaff83f1"
+      "sha256": "85c976ee8b1bd52fd16cd8da87757c799c88aead0e39d74efac151b93a3ad6d4"
     },
     {
       "bytes": 10661,
       "path": "README.md",
-      "sha256": "5b2f943dc5e66e62cd6a635dc4b4696e21e084fbfa71e8f2ab811f2069848f54"
+      "sha256": "03b7d2411d6165dc165b02e5b2c38210622440fa1f6d296d67b1ae44da2d4c31"
     },
     {
       "bytes": 3669,
@@ -74,7 +74,7 @@
     {
       "bytes": 264,
       "path": "package.json",
-      "sha256": "6473e101f805dc6e300f63234700518a3a54a1f3e27fd3363e1e01319b3d4b3a"
+      "sha256": "0a8367371527b11126c5d6946c3518fe314d76813ea9f8d471fd951817c31360"
     },
     {
       "bytes": 926,
@@ -212,7 +212,7 @@
       "sha256": "c798e82ef6329c811aafe9193d1873ba22fee0a98f7dec292ed7bfa202d5ed67"
     }
   ],
-  "runtime_fingerprint": "sha256:51f290d1f44c2aaf95d0284e88d9f4ab8590333e93b691d7166095d9ea996812",
+  "runtime_fingerprint": "sha256:a682c015bb6ad686fece69b73663db3b56c9908188644e93d2c2ad46f6af6eb0",
   "schema_version": 1,
-  "version": "0.8.1"
+  "version": "0.8.2"
 }
