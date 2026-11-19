@@ -9,7 +9,7 @@ The public release history starts at **0.5.0**. Earlier development artifacts ar
   whose text merge is clean (a merge attribute, for example) instead of staging it unchecked; its
   globs match per path component (`*` never crosses `/`, `**` spans directories). `run.sh` writes
   `START <epoch> <pid>` first and `wait.sh` accepts an `EXIT` line only from a log started at or after
-  `--after` (default: its own start minus 2 s), so a reused log name never reports the previous run.
+  `--after` (required: the epoch taken before the run started), so a reused log name never reports the previous run and a run that already ended is still read.
 - Feature work and feature sheet: **feel before plan** — a feature with a felt quality (live while
   turning a control, instant, computed after) gets one question about that feel before the
   architecture is planned, and an estimate the owner finds absurd is answered with what makes it bigger.

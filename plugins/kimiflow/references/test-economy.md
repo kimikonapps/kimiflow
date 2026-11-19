@@ -86,10 +86,10 @@ in the skeleton: the project adds them to its runner or merge step before relyin
 - *(project)* A gate starts with `estimate <n> min (<k> classes)` from the per-class durations of earlier logs,
   then `OVER BUDGET` or `SPLIT-OR-NIGHTLY` lines where they apply, before anything builds.
 - One log per run; the first line is `START <epoch-seconds> <pid>`, the last `EXIT <code> after <n>s`.
-  Waits watch for that line, with a time cap (`tools/wait.sh [--after <epoch>] <logname> [max-seconds]`:
+  Waits watch for that line, with a time cap (`tools/wait.sh --after <epoch> <logname> [max-seconds]`:
   the reds and the EXIT line, the run's exit code, 124 on the cap). A wait accepts the EXIT line only
-  from a log whose START is at or after `--after` (default: the wait's own start minus 2 s), so a reused
-  log name never reports the previous run. A worker never ends its turn while its own run is live: it blocks on that one wait, reads
+  from a log whose START is at or after `--after` — the epoch taken before the run was started, required — so a
+  reused log name never reports the previous run and a run that ended before the wait began is still read. A worker never ends its turn while its own run is live: it blocks on that one wait, reads
   the result and reports, or reports the live run and its log at the cap. Stop a run by killing its
   process group, not only the runner's pid.
 - One test phase per machine: a lock directory (`mkdir`), a stale pid is taken over.

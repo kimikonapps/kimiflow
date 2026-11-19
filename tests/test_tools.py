@@ -27,6 +27,7 @@ class WaitTests(unittest.TestCase):
 
     def wait(self, name, cap, *options):
         env = {**os.environ, 'RUN_DIR': str(self.runs), 'WAIT_POLL': '0.1'}
+        options = options or ('--after', str(int(time.time()) - 5))  # the epoch before the run started
         return subprocess.run(['sh', str(TOOLS / 'wait.sh'), *options, name, cap], env=env,
                               capture_output=True, text=True, timeout=30)
 
@@ -64,6 +65,19 @@ class WaitTests(unittest.TestCase):
     def test_log_started_before_the_given_time_is_not_accepted(self):
         self.log('early', 'BUILD\nEXIT 0 after 3s\n', start=999)
         self.assertEqual(self.wait('early', '1', '--after', '1000').returncode, 124)
+
+    def test_wait_without_after_is_refused(self):
+        self.log('n', 'BUILD\nEXIT 0 after 3s\n')
+        result = subprocess.run(['sh', str(TOOLS / 'wait.sh'), 'n', '1'], capture_output=True, text=True, timeout=30,
+                                env={**os.environ, 'RUN_DIR': str(self.runs)})
+        self.assertEqual(result.returncode, 64)
+        self.assertIn('--after', result.stderr)
+
+    def test_a_run_that_ended_before_the_wait_is_still_read(self):
+        before = int(time.time()) - 60
+        self.log('done', 'BUILD\nEXIT 2 after 9s\n', start=before + 10)
+        result = self.wait('done', '5', '--after', str(before))
+        self.assertEqual((result.returncode, result.stdout), (2, 'EXIT 2 after 9s\n'))
 
     def test_live_run_reports_at_the_cap_instead_of_silence(self):
         self.log('live', 'BUILD\n')

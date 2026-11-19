@@ -8,7 +8,7 @@
 #         the kit in the main checkout, so every worktree shares the same lanes and test lock.
 # Log:    $RUN_DIR/<logname>.log, first line "START <epoch-seconds> <pid>", last line
 #         "EXIT <code> after <n>s". Wait for that line (capped), right after starting the run:
-#         sh <main checkout>/.kimiflow/ops/tools/wait.sh <logname> [max-seconds]
+#         sh <main checkout>/.kimiflow/ops/tools/wait.sh --after <epoch before this run> <logname> [max-seconds]
 # Stop:   kill the process group: kill -TERM -<pgid>  (pgid from: ps -axo pid,pgid,command)
 
 # --- project lines -------------------------------------------------------------------------------
