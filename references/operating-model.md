@@ -156,7 +156,7 @@ for it, and the owner-items check (the LIST grep) before a merge to main. Small 
   not kept (a handoff grew to about 58 KB); the archive keeps everything.
 - **Fresh session at a threshold.** The planner proposes a fresh session, with a one-line start prompt,
   after a large block is merged and at the latest when its own context passes about a quarter of the
-  model's window or about 250k tokens, whichever comes first; HANDOFF.md is brought up to date before.
+  model's context window; HANDOFF.md is brought up to date before.
   A fresh session reads OPERATIONS.md and HANDOFF.md and continues without the old context. Reason:
   every planner step re-reads the whole conversation; a day-long planner context made each step slow
   and costly, and the switch was proposed only at the very end.

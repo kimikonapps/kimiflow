@@ -12,12 +12,12 @@ that materially affect the result, and reuse existing authorization.
 - **Done when:** Observable acceptance, with a concrete user scenario and relevant failure behavior.
 - **Boundaries:** What is excluded, and which existing behavior must remain intact?
 
-**Feel before plan.** A feature with a felt quality (response time, "while I turn the knob", direct or
+**Feel before plan.** A feature with a felt quality (response time, "it changes while I drag", direct or
 computed, like a named reference product) gets one question about that feel, with a recommendation,
 before the architecture is planned; the answer goes into "Done when". When the owner finds an estimate
 absurd ("that is one minute of code"), the feel or scope was not shared: say in one line what makes it
-bigger before planning. Reason: a feature was built as an offline render, correct, tested and reviewed,
-then discarded because the owner wanted to hear it live while turning the control; one question would
+bigger before planning. Reason: a feature was built as a precomputed result, correct, tested and reviewed,
+then discarded because the owner wanted to see the effect live while adjusting the control; one question would
 have saved a full package and its review.
 
 ## Build and accept

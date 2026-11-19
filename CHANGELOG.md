@@ -15,7 +15,7 @@ The public release history starts at **0.5.0**. Earlier development artifacts ar
   only when every hunk adds lines, then runs the file's check and stages) or regenerated (runs the
   regenerate command); everything else stays for the planner.
 - Operating model: **fresh session at a threshold** — the planner proposes it after a large merged
-  block and at the latest at about a quarter of the model's window or 250k tokens of its own context.
+  block and at the latest at about a quarter of the model's context window.
 - Operating model: the **brief check** blocks the launch; the brief carries "facts checked: file:line".
 
 - Hooks without Python: the fallback guard reads only the command, not its description, and also
