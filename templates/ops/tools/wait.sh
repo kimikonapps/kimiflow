@@ -7,6 +7,8 @@
 # Usage:  T=$(date +%s); sh run.sh <logname> test … &   (then, any time later)
 #         sh <main checkout>/.kimiflow/ops/tools/wait.sh --after "$T" <logname> [max-seconds]
 #         --after is required: the epoch taken BEFORE run.sh was started.
+#         Limit: START has whole seconds, so never reuse a log name within the second you take --after
+#         (a new name per run, or the previous log removed before the launch, avoids it).
 # Prints: the run's real-red: / load-red: lines, then its last line "EXIT <code> after <n>s";
 #         exits with the run's code. On the cap: "run live, log <path>, no EXIT yet", exit 124.
 

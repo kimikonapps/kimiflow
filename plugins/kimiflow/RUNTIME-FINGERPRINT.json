@@ -207,12 +207,12 @@
       "sha256": "51edc951ed28c9eec1210b8d594020cfda5f506e2dbe0af5da955c7028bea4c9"
     },
     {
-      "bytes": 1806,
+      "bytes": 1999,
       "path": "templates/ops/tools/wait.sh",
-      "sha256": "0f18290b90a540f584e290d07de73db8ac3d718ac23f56438f63fc60f7e67571"
+      "sha256": "c798e82ef6329c811aafe9193d1873ba22fee0a98f7dec292ed7bfa202d5ed67"
     }
   ],
-  "runtime_fingerprint": "sha256:871f8c6722a32307094de5542a8542e0f0ef5dccddb16bc6abcfd9ef327083e1",
+  "runtime_fingerprint": "sha256:51f290d1f44c2aaf95d0284e88d9f4ab8590333e93b691d7166095d9ea996812",
   "schema_version": 1,
   "version": "0.8.1"
 }
