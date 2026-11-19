@@ -18,6 +18,7 @@ before adding one; extend or centralize it instead of writing a second.
 - GIT GUARD — stage named paths only; no AI attribution in commits — enforced by the kimiflow hook
 - HELD WORK STAYS OUT — `git merge-base --is-ancestor <held> <candidate>` before freezing a batch — installed `references/operating-model.md` § Integration
 - COMPLETION LINE — reports go to the brief's report file and end with `DONE`/`REVIEW-DONE` — rules-worker.md § Report
+- MERGE BY TOOL — additive and regenerated conflict files are resolved by `tools/merge-additive.py` — OPERATIONS § 4
 - `<NAME>` — `<rule>` — `<OPERATIONS § n / rules-worker.md / rules-<topic>.md>`
 
 ## 0 · Quick start
@@ -65,10 +66,13 @@ table's model as the Agent `model` parameter when starting one.
 
 - Tests: `<test command>` · Lint/format: `<command>` · Build: `<command>` · CI: `<where>`
 - Branches: `<feat/<slug> → int/<batch> → main>` · Commits: `<convention>`
-- Runner: `<sh .kimiflow/ops/tools/run.sh <log> build|test>` (log ends `EXIT <code> after <n>s`) · Slots:
+- Runner: `<sh .kimiflow/ops/tools/run.sh <log> build|test>` (log ends `EXIT <code> after <n>s`; wait: `sh .kimiflow/ops/tools/wait.sh <log> [max-s]`) · Slots:
   tests `<1>`, builds `<LANES>` · Build output: `<dir>` · Guard tests: `<list or file>`
 - Quiet window (performance numbers only then): `<when>` · Quick path for an owner bug: `<slot / command>`
   · Owner view: `<local URL or none>`
+- Merge conflicts by tool (`python3 .kimiflow/ops/tools/merge-additive.py`), one line per file or glob:
+- MERGE ADDITIVE: `<path or glob>` check `<command>`
+- MERGE REGENERATE: `<path or glob>` run `<command>`
 
 ## 5 · Project rules
 

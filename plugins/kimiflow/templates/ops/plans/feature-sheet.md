@@ -6,6 +6,7 @@ At most one page. Written after the shaping conversation; the plan starts after 
 - **Where / elements / states:** <screens, commands or files; each state incl. empty, loading, error>
 - **Interaction:** <what the user does, keys and shortcuts, edge cases>
 - **Space / performance budget:** <limits that must hold>
+- **Feel:** <response the user feels (live while dragging, instant, computed after), asked before the plan>
 - **Touches existing:** searched <where>, found <what> → reuse <it> / new because <reason>
 - **Bundled wishes:** <LIST IDs packaged with this feature>
 - **Out of scope:** <what this feature does not do>

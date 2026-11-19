@@ -26,6 +26,7 @@ RUNTIME_FILES = (
     'templates/ops/LIST-done.md', 'templates/ops/plans/feature-sheet.md', 'templates/ops/plans/plan.md',
     'templates/ops/plans/worker-brief.md', 'templates/ops/plans/review-brief.md',
     'templates/ops/plans/build-order.md', 'templates/ops/tools/run.sh',
+    'templates/ops/tools/wait.sh', 'templates/ops/tools/merge-additive.py',
     'templates/ops/archive/.keep', 'templates/ops/research/.keep',
     'README.md', 'README.de.md', 'MIGRATION.md', 'COMPATIBILITY.md', 'LICENSE',
 )

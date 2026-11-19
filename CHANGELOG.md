@@ -4,6 +4,20 @@ The public release history starts at **0.5.0**. Earlier development artifacts ar
 
 ## Unreleased
 
+- Feature work and feature sheet: **feel before plan** — a feature with a felt quality (live while
+  turning a control, instant, computed after) gets one question about that feel before the
+  architecture is planned, and an estimate the owner finds absurd is answered with what makes it bigger.
+- rules-worker and test economy: a worker never ends its turn while its own run is live; the new
+  `tools/wait.sh <logname> [max-seconds]` blocks on the log with a cap, prints the reds and the `EXIT`
+  line and exits with the run's code, or reports "run live" with exit 124 on the cap.
+- Operating model and OPERATIONS § 4: **additive conflicts by a tool** — the new
+  `tools/merge-additive.py` resolves conflicts in files OPERATIONS names as additive (keeps both sides
+  only when every hunk adds lines, then runs the file's check and stages) or regenerated (runs the
+  regenerate command); everything else stays for the planner.
+- Operating model: **fresh session at a threshold** — the planner proposes it after a large merged
+  block and at the latest at about a quarter of the model's context window.
+- Operating model: the **brief check** blocks the launch; the brief carries "facts checked: file:line".
+
 - Hooks without Python: the fallback guard reads only the command, not its description, and also
   catches `git stage` and Git split by tabs or several blanks. It finds the project from the payload's
   `cwd` (symlinks resolved) and from any linked worktree, also one outside the checkout, and stays

@@ -47,6 +47,11 @@ Change a rule here, never by copying it into a brief.
   iterations that breaks on that line. Never `until ! pgrep -f "<pattern>"`: `pgrep -f` matches the
   waiting shell's own command line, so the loop never ends. Stop a run by killing its process group,
   so no child keeps running beside the next one.
+- **Never end your turn while your own run is live.** Wait on it with one capped wait that blocks:
+  `sh <main checkout>/.kimiflow/ops/tools/wait.sh <logname> [max-seconds]` prints the `real-red:` /
+  `load-red:` lines and the `EXIT` line and exits with the run's code. Read them and report. On the cap
+  (exit 124) report "run live, log <path>, no EXIT yet", never silence. Reason: on one day five workers
+  stopped with their run finished but unread, and the planner had to find each EXIT line.
 - A run log silent for over 20 minutes while its process lives is a stall; suspect a permission
   prompt. Kill your run, restart it and note it in your report.
 - Scratch files use the prefix given in the brief, so parallel work does not collide.

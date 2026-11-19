@@ -1,5 +1,5 @@
 {
-  "file_count": 40,
+  "file_count": 42,
   "files": [
     {
       "bytes": 490,
@@ -82,9 +82,9 @@
       "sha256": "b61a59bde342fb47d8987f16efad46f4d9a626b35b028c9bed84cd635343179d"
     },
     {
-      "bytes": 3166,
+      "bytes": 3838,
       "path": "references/feature-work.md",
-      "sha256": "1535622b1fd4ba864bc3d135dfc744f8ef49904699e4b2dc071f1e741c41d88e"
+      "sha256": "667d121457c595ef26557a232c5977574ca999b2af456998fabb0563055c2c95"
     },
     {
       "bytes": 8864,
@@ -92,9 +92,9 @@
       "sha256": "0d9d2fd9ee7ff31f4645e706115a1c0a26426760491ce7e11121c72a8e1d9a5b"
     },
     {
-      "bytes": 15456,
+      "bytes": 16737,
       "path": "references/operating-model.md",
-      "sha256": "df0e6709a53aafbc6f4692967b4c0c0adcda98f9db8f945f6dfe2218be43155d"
+      "sha256": "e365d2ff3bb15239c3e216ddf1dc7be7fa326e40e0313da90e41ef37d8a8a13a"
     },
     {
       "bytes": 3159,
@@ -102,9 +102,9 @@
       "sha256": "7e7f44d44fd92e53d74a0c1b9f43496a0e5efa3181a3cfed7c5841a442172e50"
     },
     {
-      "bytes": 7580,
+      "bytes": 7855,
       "path": "references/test-economy.md",
-      "sha256": "a5ce99d3ed7a97a239534cf53d5db10ab68d14d44596b3cb0f99dcea518de4df"
+      "sha256": "58a7dd1b534c153e89c0fd225d2eeb4e4a1df0f1f1d816e503a62d9ba65609e7"
     },
     {
       "bytes": 1540,
@@ -152,9 +152,9 @@
       "sha256": "1a41b7ec79a971f4bf237465d3a4c19e84b1da05064f99f23c4c02f86b68548c"
     },
     {
-      "bytes": 4707,
+      "bytes": 5093,
       "path": "templates/ops/OPERATIONS.md",
-      "sha256": "69a02ec219120ec0d27c9ae83a8dad626b0e91e828ef38b7dc9770c7e25b315b"
+      "sha256": "7e6d8b8b89210440a5327318c460734395c2f21b90ed91b4ed4e0b3f16b53189"
     },
     {
       "bytes": 0,
@@ -167,9 +167,9 @@
       "sha256": "07b8c06699394cb1f60995b53d152dfa789c3e2fb39da32c2dadf6af2f70882c"
     },
     {
-      "bytes": 633,
+      "bytes": 741,
       "path": "templates/ops/plans/feature-sheet.md",
-      "sha256": "01291992e8138def0cadf8a7ce4c64c1548253b30feec7a395f3632fbeafa33f"
+      "sha256": "871cdb149e511c287b599d87874bf3aacf757d6a52ac30d843497d5070058408"
     },
     {
       "bytes": 725,
@@ -192,17 +192,27 @@
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
-      "bytes": 4538,
+      "bytes": 5035,
       "path": "templates/ops/rules-worker.md",
-      "sha256": "54227ed3e093628dae172afbc222906a039e0e7d98714fe68fe51bced697b7a4"
+      "sha256": "14188402306c344bc45837b3edc9614e357ad1640b1b8ac97eeab16eab6a8666"
     },
     {
-      "bytes": 5069,
+      "bytes": 5865,
+      "path": "templates/ops/tools/merge-additive.py",
+      "sha256": "0f5b3d43d75b24e91a89b4d396225aa9edcfd348c9bcc5090f28d999e1e0f198"
+    },
+    {
+      "bytes": 5150,
       "path": "templates/ops/tools/run.sh",
-      "sha256": "8fc3c10936072588f83938c85551f019a9d1bb7a767de9f0a87431bdb7bad3ad"
+      "sha256": "e7b2afe0a54817c9822aa18610935430eb28bf1310eaf579d2053d69d20f33cf"
+    },
+    {
+      "bytes": 1057,
+      "path": "templates/ops/tools/wait.sh",
+      "sha256": "09e4ed4608cffbe837cb76a728069c30a8f779fd0ff4d73ba87ad58600092942"
     }
   ],
-  "runtime_fingerprint": "sha256:2ca625042bab7dec4375eae97f27c1077732afafb257c281c6d87cd4d49ff53b",
+  "runtime_fingerprint": "sha256:0c6f8ce13e1c0de790bcf77256747025dca7669d2e3761749cb808037e50cdd0",
   "schema_version": 1,
   "version": "0.8.1"
 }
